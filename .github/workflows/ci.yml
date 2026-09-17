@@ -101,3 +101,6 @@ jobs:
             gh release create $tag --title "Dental Solutions $tag" --verify-tag --generate-notes
           }
           gh release upload $tag $exe SHA256SUMS.txt --clobber
+          # A prior failed run can leave the release as a draft (invisible to
+          # the public); always ensure it ends up published.
+          gh release edit $tag --draft=false
