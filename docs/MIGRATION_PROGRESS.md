@@ -98,6 +98,16 @@ verified by booting the packaged exe over the stale 0-byte DB file (fresh valid
 516 KB database created). Old 2.0.0 artifacts deleted. Docs + CHANGELOG updated.
 Git commit still awaits user identity.
 
+## CI pipeline (2026-09-18)
+
+`.github/workflows/ci.yml` pushed (commit `236913f`) and verified live —
+run [#35273019410](https://github.com/beingadil/Dental-Clinic-Management/actions/runs/35273019410):
+- **web** (ubuntu): `tsc --noEmit` strict + vitest (63) + `vite build` → **success**
+- **desktop** (windows, after web): full `tauri:build` (NSIS + MSI) → **success**;
+  artifact `dental-solutions-windows-installers` (6.1 MB) uploaded, retention 30 days.
+- Triggers: push to master, `v*` tags, PRs, manual dispatch. Concurrency-canceled.
+- CI-built installers remove the local Rust toolchain requirement for future releases.
+
 ## Known issues / follow-ups
 
 - Desktop build requires Rust toolchain + one-time `cargo` compile (documented in README).

@@ -140,6 +140,11 @@ installers rebuilt and runtime-verified.
   (URL provided by owner). Pushed `master` → `origin/master`; verified via
   `git ls-remote` (remote HEAD == local HEAD `bcc8ea2`). Pushed tree re-audited:
   197 files, zero matches for env/freebuff/sqlite/backup/build paths.
+- PASS — **CI verified live** (run 35273019410): web job (strict typecheck +
+  63 tests + web build) and desktop job (Tauri NSIS + MSI on Windows, artifact
+  `dental-solutions-windows-installers` 6.1 MB) both succeeded on a clean
+  machine. CI-built installers now serve future releases without a local
+  Rust toolchain.
 
 ## Manual Tests Remaining
 
