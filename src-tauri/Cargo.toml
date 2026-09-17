@@ -1,0 +1,25 @@
+[package]
+name = "dental-solutions"
+version = "2.0.1"
+edition = "2021"
+
+[lib]
+name = "dental_solutions_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["backup", "bundled"] }
+sha2 = "0.10"
+hex = "0.4"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
