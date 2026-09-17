@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+coverage/
+
+# Tauri / Rust build artifacts (regenerated from src-tauri/)
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Runtime application data — NEVER commit clinic data
+*.sqlite
+*.sqlite3
+*.sqlite.bak
+*.sqlite.tmp
+*.db
+*.dentalbackup
+*.dentalupdate
+backups/
+
+# Environment / secrets — nothing env-related EVER goes to GitHub
+# (includes .env.example, .env.local, *.env, every variant)
+.env
+.env.*
+.env*
+*.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / agent tooling
+.vscode/
+.idea/
+*.swp
+.freebuff
+.freebuff*
+*freebuff*
+
+# AI Studio export artifacts
+metadata.json
+bun.lock
+
+# Temporary
+tmp/
+*.tmp
