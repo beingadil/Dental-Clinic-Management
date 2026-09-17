@@ -108,6 +108,22 @@ run [#35273019410](https://github.com/beingadil/Dental-Clinic-Management/actions
 - Triggers: push to master, `v*` tags, PRs, manual dispatch. Concurrency-canceled.
 - CI-built installers remove the local Rust toolchain requirement for future releases.
 
+## GitHub Releases pipeline (2026-09-18)
+
+Tag-triggered release publishing added and debugged live:
+- `v*` tag push → CI builds the branded NSIS installer, generates SHA256SUMS.txt,
+  creates/updates the GitHub Release and uploads assets, then force-publishes
+  (draft residue from a failed run would otherwise stay invisible).
+- Two real bugs found and fixed in the process: `softprops/action-gh-release`
+  fails on Windows runners ("Error creating asset temp dir") → replaced with the
+  official `gh` CLI; and asset upload does not flip a draft release to published
+  → added explicit `gh release edit --draft=false`.
+- **Verified end-to-end:** release v2.0.1 is public at
+  github.com/beingadil/Dental-Clinic-Management/releases/tag/v2.0.1 with
+  `Dental.Solutions_2.0.1_x64-setup.exe` (2.8 MB) + SHA256SUMS.txt; the
+  downloaded installer's SHA-256 matches the published checksum exactly.
+- Note: release asset filenames normalize spaces to dots.
+
 ## Known issues / follow-ups
 
 - Desktop build requires Rust toolchain + one-time `cargo` compile (documented in README).
