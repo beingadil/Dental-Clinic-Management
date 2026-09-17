@@ -123,24 +123,23 @@ installers rebuilt and runtime-verified.
 
 ## Git
 
-- PASS — repository initialized; 192 files staged; sensitive-file scan clean
-  (no .env, no databases, no backups, no node_modules/dist/target staged).
-- BLOCKED — commit requires git identity (`user.name` / `user.email`), which the
-  agent must not configure. Exact commands for the user:
-  ```
-  git config user.name "YOUR NAME"
-  git config user.email "YOUR EMAIL"
-  ```
-  then commit (all files are staged) — suggested message:
-  `release: Dental Solutions v2.0.1 offline SQLite migration + packaged-app boot fix`
+- PASS — repository initialized; commit created and verified:
+  `bcc8ea269c716ecbe915fe4cf1f4eb0497ff78c5` — author
+  `beingadil <beingadil@users.noreply.github.com>` (repo-local config, per owner
+  instruction; GitHub noreply email, sole contributor, no co-author trailer).
+- PASS — pre-commit safety audit per owner requirements: **no `.env` file of any
+  kind** (`.env.example` was found staged, then unstaged and deleted — the repo
+  contains zero env files by explicit owner rule), no Freebuff files, no doc
+  binaries (doc/docx/pdf/xls), no databases/backups, no secrets (content scan of
+  the full staged diff: AWS/GitHub/Slack/Google key formats, private-key headers
+  — all clean).
 
 ## GitHub
 
-- BLOCKED — no remote exists (`git remote -v` is empty) and none was invented.
-  User must either provide the repository URL
-  (`git remote add origin git@github.com:<user>/<repo>.git`) or create the repo
-  (GitHub CLI `gh` is not installed on this machine). Push only after the commit
-  gate passes; push result will be recorded when it actually runs.
+- PASS — remote `origin` = `https://github.com/beingadil/Dental-Clinic-Management.git`
+  (URL provided by owner). Pushed `master` → `origin/master`; verified via
+  `git ls-remote` (remote HEAD == local HEAD `bcc8ea2`). Pushed tree re-audited:
+  197 files, zero matches for env/freebuff/sqlite/backup/build paths.
 
 ## Manual Tests Remaining
 
@@ -161,8 +160,7 @@ installers rebuilt and runtime-verified.
 
 ## Release Status
 
-**READY FOR RELEASE (with user-side Git/GitHub step pending).**
-Code, database, financial integrity, offline capability, 2.0.1 installers
-(runtime-verified over the exact reported failure), and tests are verified. The
-single remaining pipeline step is the user's git identity → commit → remote →
-push, followed by manual hardware tests.
+**RELEASED — v2.0.1 pushed to GitHub (`beingadil/Dental-Clinic-Management`,
+commit `bcc8ea2`).** Code, database, financial integrity, offline capability,
+installers, and tests verified. Remaining items are manual hardware/user
+tests only (offline pass, installer smoke, cross-machine restore, printer).
