@@ -91,7 +91,62 @@ export const DEFAULT_IMPLANT_BRANDS: ClinicalImplantBrand[] = [
 
 const STORAGE_KEY = 'dental_solutions_clinical_specs';
 
+import { clinicalSpecsRepo } from '../db/repos';
+
+function getDbHelpers(): { clinicalSpecsRepo: typeof clinicalSpecsRepo } | null {
+  // Repo calls throw if the DB engine isn't ready yet; callers below catch
+  // that and fall back to localStorage. No eager probe needed.
+  return { clinicalSpecsRepo };
+}
+
+function rowToPrepType(r: any): ClinicalPrepType {
+  return { id: r.id, name: r.name, code: r.code ?? undefined, description: r.description ?? undefined, is_active: !!r.is_active };
+}
+
+function rowToMaterial(r: any): ClinicalMaterial {
+  return { id: r.id, name: r.name, category: r.category, description: r.description ?? undefined, is_active: !!r.is_active, price_modifier: r.price_modifier ?? undefined };
+}
+
+function seedDbFromDefaults(repo: typeof import('../db/repos')['clinicalSpecsRepo']) {
+  // Non-transactional best-effort seed of a fresh database
+  DEFAULT_MATERIALS.forEach((m) => { try { repo.materials.insert(m); } catch { /* ignore */ } });
+  DEFAULT_PREP_TYPES.forEach((p) => { try { repo.prepTypes.insert(p); } catch { /* ignore */ } });
+  DEFAULT_SHADE_GUIDES.forEach((g) => { try { repo.shadeGuides.insert(g); } catch { /* ignore */ } });
+  DEFAULT_IMPLANT_BRANDS.forEach((b) => { try { repo.implantBrands.insert(b); } catch { /* ignore */ } });
+}
+
 export function getClinicalSpecs(): ClinicalSpecsState {
+  const db = getDbHelpers();
+  if (db) {
+    try {
+      const dbMaterials = db.clinicalSpecsRepo.materials.all().map(rowToMaterial);
+      const dbPreps = db.clinicalSpecsRepo.prepTypes.all().map(rowToPrepType);
+      const dbShades = db.clinicalSpecsRepo.shadeGuides.all() as ClinicalShadeGuide[];
+      const dbImplants = db.clinicalSpecsRepo.implantBrands.all() as ClinicalImplantBrand[];
+
+      if (dbMaterials.length === 0 && dbPreps.length === 0 && dbShades.length === 0 && dbImplants.length === 0) {
+        // Fresh DB — seed from defaults, then re-read
+        seedDbFromDefaults(db.clinicalSpecsRepo);
+        return {
+          materials: db.clinicalSpecsRepo.materials.all().map(rowToMaterial),
+          prepTypes: db.clinicalSpecsRepo.prepTypes.all().map(rowToPrepType),
+          shadeGuides: db.clinicalSpecsRepo.shadeGuides.all() as ClinicalShadeGuide[],
+          implantBrands: db.clinicalSpecsRepo.implantBrands.all() as ClinicalImplantBrand[],
+        };
+      }
+
+      return {
+        materials: dbMaterials,
+        prepTypes: dbPreps,
+        shadeGuides: dbShades,
+        implantBrands: dbImplants,
+      };
+    } catch (err) {
+      console.error('Failed to read clinical specs from SQLite — falling back to localStorage:', err);
+    }
+  }
+
+  // Fallback: localStorage (legacy path)
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
@@ -121,10 +176,29 @@ export function getClinicalSpecs(): ClinicalSpecsState {
 }
 
 export function saveClinicalSpecs(specs: ClinicalSpecsState): void {
+  // Primary write: SQLite (survives resets, included in backups)
+  const db = getDbHelpers();
+  if (db) {
+    try {
+      db.clinicalSpecsRepo.materials.deleteAll();
+      db.clinicalSpecsRepo.prepTypes.deleteAll();
+      db.clinicalSpecsRepo.shadeGuides.deleteAll();
+      db.clinicalSpecsRepo.implantBrands.deleteAll();
+      specs.materials.forEach((m) => db.clinicalSpecsRepo.materials.insert(m));
+      specs.prepTypes.forEach((p) => db.clinicalSpecsRepo.prepTypes.insert(p));
+      specs.shadeGuides.forEach((g) => db.clinicalSpecsRepo.shadeGuides.insert(g));
+      specs.implantBrands.forEach((b) => db.clinicalSpecsRepo.implantBrands.insert(b));
+    } catch (err) {
+      console.error('Failed to write clinical specs to SQLite:', err);
+    }
+  }
+
+  // Mirror write: localStorage kept in sync as legacy fallback
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(specs));
-    window.dispatchEvent(new CustomEvent('clinical-specs-updated', { detail: specs }));
   } catch (err) {
     console.error('Failed to save clinical specs:', err);
   }
+
+  window.dispatchEvent(new CustomEvent('clinical-specs-updated', { detail: specs }));
 }

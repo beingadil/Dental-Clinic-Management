@@ -130,6 +130,12 @@ function syncNow(c: SyncCollections): void {
 
     // ── cases (+ teeth, history, notes, attachments) ──
     tx.run('DELETE FROM cases');
+    // Child tables are wiped explicitly: the rebuild below re-inserts every row,
+    // and FK cascade cannot be relied upon on every engine/connection.
+    tx.run('DELETE FROM case_teeth');
+    tx.run('DELETE FROM case_status_history');
+    tx.run('DELETE FROM case_notes');
+    tx.run("DELETE FROM attachments WHERE entity_type = 'case'");
     for (const cse of c.cases) {
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
@@ -189,6 +195,10 @@ function syncNow(c: SyncCollections): void {
 
     // ── invoices (+ payments + proof attachments) — after labs & cases ──
     tx.run('DELETE FROM invoices');
+    // Payments and their proof attachments are fully rebuilt below (invoice
+    // payments + advance payments), so they are wiped explicitly up front.
+    tx.run('DELETE FROM payment_attachments');
+    tx.run('DELETE FROM payments');
     for (const inv of c.invoices) {
       tx.run(
         `INSERT INTO invoices (id, invoice_number, case_id, case_number, lab_id, lab_name, case_type_id, case_type_name, doctor_name, patient_name,

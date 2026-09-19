@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   Clock,
   Plus,
-  BookOpen
+  BookOpen,
+  Printer
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -69,6 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
           badgeColor: 'bg-indigo-100 text-indigo-700 font-bold' 
         },
         { id: 'catalog', label: 'Price List & Catalog', icon: BookOpen },
+        { id: 'print', label: 'Print Studio', icon: Printer },
       ]
     },
     {
