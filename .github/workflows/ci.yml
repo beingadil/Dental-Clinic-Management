@@ -106,13 +106,12 @@ jobs:
           gh release edit $tag --draft=false
 
       # Publishes the auto-update manifest consumed by the in-app updater
-      # (src/services/updateService.ts). Pushed to gh-pages so the manifest is
-      # served at a stable https URL with no API rate limit. Safe on re-runs.
-      - name: Publish update manifest (GitHub Pages)
+      # (src/services/updateService.ts) to the gh-pages branch, served at a
+      # stable https URL with no API rate limit. The action handles branch
+      # creation and pushing; we only stage the single JSON file.
+      - name: Prepare update manifest
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
           $version = $tag.TrimStart('v')
@@ -129,21 +128,13 @@ jobs:
             payload_checksum = "sha256:$hash"
             notes            = "Dental Solutions $tag installer"
           } | ConvertTo-Json
-          $manifest | Out-File -Encoding ascii update-manifest.json
-          Get-Content update-manifest.json
+          New-Item -ItemType Directory -Force pages | Out-Null
+          $manifest | Out-File -Encoding ascii pages/update-manifest.json
+          Get-Content pages/update-manifest.json
 
-          # Ensure the gh-pages branch exists, then commit the manifest onto it.
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin gh-pages 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            git checkout --orphan gh-pages
-            git rm -rf . 2>$null
-          } else {
-            git checkout gh-pages
-          }
-          Copy-Item update-manifest.json . -Force
-          git add update-manifest.json
-          git commit -m "update manifest $tag" 2>$null
-          git push origin gh-pages
-          git checkout -
+      - name: Publish update manifest (GitHub Pages)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./pages
