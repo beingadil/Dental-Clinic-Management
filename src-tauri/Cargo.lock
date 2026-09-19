@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "dental-solutions"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "hex",
  "rusqlite",
