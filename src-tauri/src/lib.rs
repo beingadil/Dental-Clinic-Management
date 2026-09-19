@@ -6,6 +6,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 /// The single real SQLite database file used by the desktop build.
 /// The web engine (sql.js) exports/imports these exact bytes, so the
@@ -212,6 +213,19 @@ fn base64_decode(text: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Opens a URL in the user's default system browser. Used by the in-app
+/// update flow so the new installer downloads outside the sandboxed webview.
+/// Only https URLs are allowed — this is not a general file/URL launcher.
+#[tauri::command]
+fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("Only https URLs can be opened".into());
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -223,7 +237,8 @@ pub fn run() {
             db_read_bytes,
             db_save_bytes,
             db_backup_file,
-            file_sha256
+            file_sha256,
+            open_external
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

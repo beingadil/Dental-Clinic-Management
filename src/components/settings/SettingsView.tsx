@@ -8,7 +8,7 @@ import {
   applyRestoredBytes,
   APP_VERSION,
 } from '../../services/backupService';
-import { checkForUpdates, parseOfflineUpdate, currentVersion, UpdateStatus } from '../../services/updateService';
+import { checkForUpdates, parseOfflineUpdate, currentVersion, downloadUpdate, UpdateStatus } from '../../services/updateService';
 import { exportSqliteFile } from '../../services/sqliteStorage';
 import { initEngineFromBytes, getDatabase } from '../../db';
 import { 
@@ -1386,7 +1386,13 @@ export const SettingsView: React.FC = () => {
               <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-[11px] text-amber-900">
                 <p className="font-bold">Update available: v{updateStatus.version}</p>
                 {updateStatus.notes && <p className="mt-1">{updateStatus.notes}</p>}
-                {updateStatus.download_url && <p className="mt-1 font-mono break-all">{updateStatus.download_url}</p>}
+                <button
+                  onClick={() => downloadUpdate(updateStatus.download_url)}
+                  className="mt-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
+                >
+                  <Upload className="w-3.5 h-3.5 rotate-180" />
+                  Download Installer v{updateStatus.version}
+                </button>
               </div>
             )}
             {updateStatus.state === 'error' && (

@@ -1,6 +1,6 @@
 [package]
 name = "dental-solutions"
-version = "2.1.0"
+version = "2.2.0"
 edition = "2021"
 
 [lib]
@@ -15,6 +15,7 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["backup", "bundled"] }
+tauri-plugin-opener = "2"
 sha2 = "0.10"
 hex = "0.4"
 
