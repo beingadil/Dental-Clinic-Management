@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] — 2026-09-20
+
+### Added
+- **Global Print & Documents settings** (Settings → new Print tab): paper size
+  (A4/Letter), page margins, text scale, and logo placement (on/off + left /
+  centered / right) govern every printed invoice, job slip, payment receipt
+  and statement. The chosen paper+margin become the live `@page` rule at
+  print time; Print Studio previews respect the same settings.
+- **Automatic updates.** The desktop app checks for releases on dashboard
+  load and hourly: fetches the installer, verifies its SHA-256 inside the
+  Rust shell (fail-closed — nothing runs on mismatch), then installs
+  silently and restarts. The web build opens the browser download instead.
+  Progress and a one-click update now appear as a **dashboard pill**
+  (silent when current), with a full **Settings → Updates** card.
+
+### Fixed
+- Update-suite fixtures now derive their "newer" version from the installed
+  version, so release bumps no longer break tests.
+
 ## [2.2.0] — 2026-09-19
 
 ### Added
