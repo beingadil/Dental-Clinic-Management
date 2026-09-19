@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   createBackup,
@@ -45,8 +45,20 @@ import {
   ShieldAlert,
   Mail,
   Code,
-  Table
+  Table,
+  Printer,
+  ArrowUpCircle,
+  Loader2
 } from 'lucide-react';
+import { loadPrintSettings, savePrintSettings, PrintSettings } from '../../services/printSettings';
+import {
+  runAutoUpdate,
+  onAutoUpdatePhase,
+  getAutoUpdatePhase,
+  getLastUpdateCheck,
+  AutoUpdatePhase,
+  isDesktopShell,
+} from '../../services/updateInstaller';
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -73,10 +85,18 @@ export const SettingsView: React.FC = () => {
     wipeAllData
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates'>('branding');
   const [brandingForm, setBrandingForm] = useState(brandingSettings);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Global print settings (Settings → Print & Documents)
+  const [printSettingsForm, setPrintSettingsForm] = useState<PrintSettings>(() => loadPrintSettings());
+  const [printSaved, setPrintSaved] = useState(false);
+
+  // Auto-update engine (dashboard pill + this card share one phase store)
+  const [autoPhase, setAutoPhase] = useState<AutoUpdatePhase>(() => getAutoUpdatePhase());
+  useEffect(() => onAutoUpdatePhase(setAutoPhase), []);
 
   // My Account form state
   const [accountForm, setAccountForm] = useState({
@@ -201,6 +221,13 @@ export const SettingsView: React.FC = () => {
     updateBrandingSettings(brandingForm);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleSavePrintSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    savePrintSettings(printSettingsForm);
+    setPrintSaved(true);
+    setTimeout(() => setPrintSaved(false), 3000);
   };
 
   // ---- Phase 8: portable .dentalbackup export ----
@@ -464,6 +491,30 @@ export const SettingsView: React.FC = () => {
         >
           <Sliders className="w-4 h-4" />
           <span>Application Defaults</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('print')}
+          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            activeTab === 'print'
+              ? 'border-slate-900 text-slate-900 bg-slate-50'
+              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Printer className="w-4 h-4" />
+          <span>Print & Documents</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('updates')}
+          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            activeTab === 'updates'
+              ? 'border-slate-900 text-slate-900 bg-slate-50'
+              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <ArrowUpCircle className="w-4 h-4" />
+          <span>Updates</span>
         </button>
       </div>
 
@@ -1899,6 +1950,183 @@ export const SettingsView: React.FC = () => {
                 Update Password
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'print' && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="p-2.5 bg-slate-100 text-slate-600 rounded-2xl">
+              <Printer className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Print &amp; Documents</h2>
+              <p className="text-xs text-slate-500">Global defaults for every printed invoice, job slip, receipt and statement. Per-document sections live in the Print Studio module.</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSavePrintSettings} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Paper Size</label>
+                <select
+                  value={printSettingsForm.paper}
+                  onChange={(e) => setPrintSettingsForm((p) => ({ ...p, paper: e.target.value as PrintSettings['paper'] }))}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                >
+                  <option value="a4">A4 (210 × 297 mm)</option>
+                  <option value="letter">US Letter (8.5 × 11 in)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Page Margins</label>
+                <select
+                  value={printSettingsForm.margin}
+                  onChange={(e) => setPrintSettingsForm((p) => ({ ...p, margin: e.target.value as PrintSettings['margin'] }))}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                >
+                  <option value="narrow">Narrow (8 mm)</option>
+                  <option value="normal">Normal (12 mm)</option>
+                  <option value="wide">Wide (18 mm)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Text Size</label>
+                <select
+                  value={printSettingsForm.fontSize}
+                  onChange={(e) => setPrintSettingsForm((p) => ({ ...p, fontSize: e.target.value as PrintSettings['fontSize'] }))}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                >
+                  <option value="compact">Compact</option>
+                  <option value="normal">Normal</option>
+                  <option value="large">Large</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 space-y-4">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Logo on Printed Documents</h3>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={printSettingsForm.showLogo}
+                  onChange={(e) => setPrintSettingsForm((p) => ({ ...p, showLogo: e.target.checked }))}
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-slate-800">Print the lab logo on documents</span>
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Logo Position</label>
+                  <select
+                    value={printSettingsForm.logoPosition}
+                    disabled={!printSettingsForm.showLogo}
+                    onChange={(e) => setPrintSettingsForm((p) => ({ ...p, logoPosition: e.target.value as PrintSettings['logoPosition'] }))}
+                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-50"
+                  >
+                    <option value="left">Left (letterhead style)</option>
+                    <option value="center">Centered above name</option>
+                    <option value="right">Right</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <p className="text-[11px] text-slate-500">Upload or replace the logo itself in Branding &amp; Identity. Documents preview live in Print Studio.</p>
+                </div>
+                {printSettingsForm.logoPosition === 'right' && (
+                  <p className="md:col-span-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    Right placement mirrors the letterhead — logo right, contact block moves left.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
+              >
+                Save Print Settings
+              </button>
+              {printSaved && (
+                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved — applies to all documents
+                </span>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
+
+      {activeTab === 'updates' && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
+                <ArrowUpCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Software Updates</h2>
+                <p className="text-xs text-slate-500">The app checks automatically on start. Updates are checksum-verified before anything is installed; offline machines use the Import Offline Update package below.</p>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+              v{currentVersion()}
+            </span>
+          </div>
+
+          {autoPhase.state === 'available' && (
+            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between gap-3">
+              <span className="font-bold">Dental Solutions v{autoPhase.version} is available</span>
+              <button
+                onClick={() => runAutoUpdate()}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                <ArrowUpCircle className="w-3.5 h-3.5" /> Update Now
+                </button>
+            </div>
+          )}
+          {(autoPhase.state === 'downloading' || autoPhase.state === 'verifying' || autoPhase.state === 'installing') && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+              <span className="font-bold">
+                {autoPhase.state === 'downloading'
+                  ? `Downloading v${autoPhase.version}${autoPhase.total > 0 ? ` — ${Math.round((autoPhase.received / autoPhase.total) * 100)}%` : '…'}`
+                  : autoPhase.state === 'verifying'
+                  ? `Verifying v${autoPhase.version}…`
+                  : `Installing v${autoPhase.version} — the app will restart automatically`}
+              </span>
+            </div>
+          )}
+          {autoPhase.state === 'failed' && (
+            <p className="text-xs text-slate-500">{autoPhase.message}</p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <p className="text-xs font-bold text-slate-800">Automatic checking</p>
+              <p className="text-[11px] text-slate-600">Runs when the dashboard loads and hourly afterwards. Silent when up to date; nothing is installed without verification against the published SHA-256.</p>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <p className="text-xs font-bold text-slate-800">Offline / manual install</p>
+              <p className="text-[11px] text-slate-600">Download the installer from the Releases page on any connected PC, copy it over, and run it — or import a verified .dentalupdate package from the Database &amp; Backup tab.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => runAutoUpdate()}
+              disabled={autoPhase.state === 'checking' || autoPhase.state === 'downloading' || autoPhase.state === 'verifying' || autoPhase.state === 'installing'}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${autoPhase.state === 'checking' ? 'animate-spin' : ''}`} />
+              Check &amp; Install Now
+            </button>
+            {getLastUpdateCheck() && (
+              <span className="text-[11px] text-slate-500 self-center">
+                Last check: {new Date(getLastUpdateCheck()!.at).toLocaleString()} — {getLastUpdateCheck()!.state}
+              </span>
+            )}
           </div>
         </div>
       )}

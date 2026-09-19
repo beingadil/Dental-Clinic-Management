@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
-import { UpdateBanner } from './components/common/UpdateBanner';
 import { Sidebar } from './components/common/Sidebar';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { CaseListView } from './components/cases/CaseListView';
@@ -39,9 +38,6 @@ const MainAppContent: React.FC = () => {
 
       {/* Main Column: Top Header + View Content */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* In-app auto-update banner (checks GitHub releases, silent offline) */}
-        <UpdateBanner />
-
         {/* Top Header */}
         <Header onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
 

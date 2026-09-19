@@ -64,3 +64,19 @@
     margin: 12mm;
   }
 }
+
+/* =========================================================================
+   Global print settings (Settings → Print)
+   ========================================================================= */
+
+.paper-letter {
+  max-width: 850px;
+  min-height: 580px;
+}
+
+/* Font scale uses zoom: the document sets explicit px sizes on children,
+   so parent font-size alone would not cascade. Chromium (WebView2) honors
+   zoom in both preview and print. */
+.print-fs-compact { zoom: 0.9; }
+.print-fs-normal { zoom: 1; }
+.print-fs-large { zoom: 1.08; }

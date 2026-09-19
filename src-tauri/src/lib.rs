@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -213,6 +214,29 @@ fn base64_decode(text: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Runs a downloaded, checksum-verified update installer (NSIS /S = silent).
+/// The installer replaces the app and relaunches it; this process exits after.
+#[tauri::command]
+fn run_installer(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err(format!("Installer not found: {}", path));
+    }
+    let exe = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !(exe.ends_with(".exe")) {
+        return Err("Only .exe installers can be launched".into());
+    }
+    Command::new(&p)
+        .args(["/S"])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Opens a URL in the user's default system browser. Used by the in-app
 /// update flow so the new installer downloads outside the sandboxed webview.
 /// Only https URLs are allowed — this is not a general file/URL launcher.
@@ -224,6 +248,53 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+/// Writes the received update-installer bytes to a temp file, verifies the
+/// SHA-256 against the published checksum, and only then launches it
+/// silently (NSIS /S). Fails closed: any mismatch aborts without executing.
+#[tauri::command]
+fn auto_install_update(bytes: Vec<u8>, version: String, checksum: String, notes: Option<String>) -> Result<bool, String> {
+    if bytes.is_empty() {
+        return Err("Update payload is empty".into());
+    }
+    if !checksum.starts_with("sha256:") || checksum.len() != 7 + 64 {
+        return Err("Refusing to install without a valid checksum".into());
+    }
+    let expected = checksum[7..].to_lowercase();
+
+    // Stage the payload in the OS temp directory.
+    let dir = std::env::temp_dir().join("dental-solutions-update");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("Dental.Solutions_{}_x64-setup.exe", version));
+    {
+        let mut f = fs::File::create(&path).map_err(|e| e.to_string())?;
+        f.write_all(&bytes).map_err(|e| e.to_string())?;
+    }
+
+    // Verify BEFORE executing anything.
+    let mut hasher = Sha256::new();
+    let mut f = fs::File::open(&path).map_err(|e| e.to_string())?;
+    std::io::copy(&mut f, &mut hasher).map_err(|e| e.to_string())?;
+    let actual = hex::encode(hasher.finalize());
+    if actual != expected {
+        let _ = fs::remove_file(&path);
+        return Err(format!(
+            "Checksum mismatch (expected {}, got {}) — update aborted, nothing was installed.",
+            &expected[..12],
+            &actual[..12]
+        ));
+    }
+
+    // Verified — launch the NSIS installer silently; it replaces the app and
+    // relaunches it. Log the outcome alongside the version for diagnostics.
+    let log = format!("{}: verified {} ({} bytes) — {}", version, &actual[..12], bytes.len(), notes.unwrap_or_default());
+    let _ = fs::write(dir.join("last-update.log"), log);
+    Command::new(&path)
+        .args(["/S"])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -238,7 +309,9 @@ pub fn run() {
             db_save_bytes,
             db_backup_file,
             file_sha256,
-            open_external
+            open_external,
+            run_installer,
+            auto_install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

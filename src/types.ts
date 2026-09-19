@@ -528,6 +528,13 @@ export interface BrandingSettings {
   warningHighlightColor?: 'rose' | 'red' | 'amber' | 'emerald' | 'indigo' | 'purple';
   warningHighlightStyle?: 'border' | 'solid' | 'badge' | 'full';
   cardBgColor?: string;
+
+  // Global print defaults (Settings → Print; per-document section toggles live in Print Studio)
+  printPaper?: 'a4' | 'letter';
+  printMargin?: 'narrow' | 'normal' | 'wide';
+  printFontSize?: 'compact' | 'normal' | 'large';
+  printShowLogo?: boolean;
+  printLogoPosition?: 'left' | 'center' | 'right';
 }
 
 export interface InvoiceLineItem {
