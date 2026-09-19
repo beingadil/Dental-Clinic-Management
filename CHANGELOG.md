@@ -4,6 +4,42 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] — 2026-09-19
+
+### Added
+- **In-app auto-update system.** The app now silently checks GitHub for a newer
+  release on startup (and hourly after). When one exists, a dismissible banner
+  offers a one-click installer download that opens in the system browser
+  (new `open_external` Tauri command, https-only). Offline machines remain
+  fully supported via the Settings → Import Offline Update (`.dentalupdate`)
+  path. Update sources: a CI-published `update-manifest.json` on GitHub Pages,
+  with the GitHub Releases API as fallback.
+- CI now publishes `update-manifest.json` to the `gh-pages` branch on every
+  `v*` tag so released installers are discoverable by the in-app updater.
+
+### Fixed
+- **`APP_VERSION` was left at 2.0.1 by the v2.1.0 release** — installed 2.1.0
+  apps under-reported their version to the backup/update system.
+
+### Changed
+- **Create New Job form simplified:** the per-tooth tooth-spec inspector no
+  longer shows the Restoration/Preparation Type grid and Restoration Material
+  dropdown (redundant with the case-level material selection and the Catalog →
+  Restoration Types manager). Shade and per-tooth notes are unchanged; defaults
+  still flow to `case_teeth` storage.
+
+## [2.1.0] — 2026-09-19
+
+### Added
+- Case job lifecycle: view/edit/delete cases, row action menus, Record Payment
+  shortcut.
+- Print Studio module (Job Slip / Lab Card / Invoice / Receipt with per-section
+  toggles, live A4 preview, saved templates).
+- Catalog → Restoration Types tab backed by SQLite clinical specs.
+- True 32-tooth FDI SVG odontogram with clinical overlays and FDI/Universal
+  toggle.
+- Every billing entry auto-logs a voucher + journal entry.
+
 ## [2.0.1] — 2026-09-18
 
 ### Fixed
