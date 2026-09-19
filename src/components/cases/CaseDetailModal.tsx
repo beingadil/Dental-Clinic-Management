@@ -8,18 +8,16 @@ import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
 import { openFileInBrowser } from '../../utils/fileUtils';
 import { getClinicalSpecs, ClinicalMaterial } from '../../services/clinicalSpecsService';
-import { 
-  X, 
-  Check, 
-  Trash2, 
-  Bookmark, 
-  ShieldAlert, 
-  Clock, 
-  FileText, 
-  Paperclip, 
-  MessageSquare, 
-  Sparkles, 
-  DollarSign, 
+import {
+  X,
+  Check,
+  Trash2,
+  Bookmark,
+  Clock,
+  FileText,
+  Paperclip,
+  MessageSquare,
+  DollarSign,
   AlertCircle,
   Printer,
   Maximize2,
@@ -28,17 +26,48 @@ import {
   Eye,
   Download,
   File,
-  Image as ImageIcon,
   Upload,
   CheckCircle2,
   Box,
   Layers,
   ExternalLink,
   Save,
-  FileEdit,
-  Palette
+  Palette,
+  ArrowRight,
+  ArrowLeft,
+  CalendarDays,
+  Sparkles
 } from 'lucide-react';
 import { PRIORITY_SLA_DAYS, prioritySlaLabel, computeSlaDueDate } from '../../services/prioritySla';
+
+/* ------------------------------------------------------------------ */
+/*  Design system — Soft Structuralism                                 */
+/*  Warm cream canvas · espresso ink · teal accent · hairline bezels   */
+/* ------------------------------------------------------------------ */
+
+const EASE = 'ease-[cubic-bezier(0.32,0.72,0,1)]';
+
+/* Module-level field primitives (no hooks — safe to define here) */
+
+const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
+  <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 ${className}`}>
+    {children}
+  </span>
+);
+
+const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean }> = ({ children, required }) => (
+  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+    {children}
+    {required && <span className="ml-1 text-indigo-600">*</span>}
+  </span>
+);
+
+const inputCls = `w-full rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 ring-1 ring-slate-200
+  placeholder:text-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${EASE}
+  hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/40`;
+
+const bezelCard = `rounded-[1.5rem] bg-slate-900/[0.035] p-1.5 ring-1 ring-slate-900/10 shadow-[0_1px_2px_rgba(15,23,42,0.06)]`;
+const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-white p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)]`;
 
 interface CaseDetailModalProps {
   initialCase?: DentalCase | null; // null if creating new case
@@ -46,20 +75,30 @@ interface CaseDetailModalProps {
   onClose: () => void;
 }
 
+/* Wizard step definitions */
+type StepKey = 'basics' | 'chart' | 'schedule' | 'attach';
+
+const STEPS: { key: StepKey; numeral: string; label: string; caption: string }[] = [
+  { key: 'basics', numeral: '01', label: 'Procedure', caption: 'Clinic, doctor & case type' },
+  { key: 'chart', numeral: '02', label: 'Teeth & Shade', caption: 'FDI charting & aesthetics' },
+  { key: 'schedule', numeral: '03', label: 'Schedule & Price', caption: 'SLA, delivery & billing' },
+  { key: 'attach', numeral: '04', label: 'Attach & Review', caption: 'Scans, photos & confirmation' },
+];
+
 export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   initialCase,
   appliedTemplate,
   onClose,
 }) => {
-  const { 
-    labs, 
-    caseTypes, 
-    pricingOverrides, 
-    addCase, 
-    updateCase, 
-    deleteCase, 
-    saveAsTemplate, 
-    getDoctorPreferredLab, 
+  const {
+    labs,
+    caseTypes,
+    pricingOverrides,
+    addCase,
+    updateCase,
+    deleteCase,
+    saveAsTemplate,
+    getDoctorPreferredLab,
     setDoctorPreferredLab,
     caseAttachments,
     addCaseAttachment,
@@ -70,7 +109,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const isEdit = Boolean(initialCase?.id);
   const attachmentsForCase = isEdit && initialCase ? (caseAttachments[initialCase.id] || []) : [];
 
-  // Form Fields
+  /* ---------------------------- form state (preserved) ---------------------------- */
   const [patientName, setPatientName] = useState(initialCase?.patient_name || '');
   const [labId, setLabId] = useState(initialCase?.lab_id || labs[0]?.id || '');
   const [caseTypeId, setCaseTypeId] = useState(
@@ -97,6 +136,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     window.addEventListener('clinical-specs-updated', handleSpecsUpdate);
     return () => window.removeEventListener('clinical-specs-updated', handleSpecsUpdate);
   }, []);
+
   const [priority, setPriority] = useState<PriorityLevel>(
     initialCase?.priority || appliedTemplate?.default_priority || 'normal'
   );
@@ -134,7 +174,76 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [showJobSlipModal, setShowJobSlipModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Helper to categorize case attachments
+  /* ---------------------------- wizard state ---------------------------- */
+  const [step, setStep] = useState(0);
+  const [maxVisited, setMaxVisited] = useState(0);
+  const [attempted, setAttempted] = useState(false);
+
+  const stepValid: Record<StepKey, boolean> = {
+    basics: !!(labId && caseTypeId && doctorName.trim().length >= 2 && doctorName.trim().length <= 100),
+    chart: selectedTeeth.length > 0,
+    schedule:
+      !!deliveryDate &&
+      !isNaN(new Date(deliveryDate).getTime()) &&
+      new Date(deliveryDate).getTime() <= Date.now() + 365 * 24 * 60 * 60 * 1000 &&
+      price > 0 &&
+      !isNaN(price) &&
+      discount >= 0 &&
+      !isNaN(discount) &&
+      discount <= price,
+    attach: true,
+  };
+
+  const stepError: Record<StepKey, string | null> = {
+    basics: !doctorName.trim()
+      ? 'Doctor name is required'
+      : doctorName.trim().length < 2 || doctorName.trim().length > 100
+      ? 'Doctor name must be between 2 and 100 characters'
+      : !labId
+      ? 'Please select a dental clinic'
+      : !caseTypeId
+      ? 'Please select a case procedure / type'
+      : null,
+    chart: selectedTeeth.length === 0 ? 'At least one tooth must be selected on the FDI chart' : null,
+    schedule: !deliveryDate || isNaN(new Date(deliveryDate).getTime())
+      ? 'Delivery date is required'
+      : new Date(deliveryDate).getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000
+      ? 'Delivery date cannot be more than 1 year in the future'
+      : price <= 0 || isNaN(price)
+      ? 'Base price must be a positive number'
+      : discount < 0 || isNaN(discount)
+      ? 'Discount cannot be negative'
+      : discount > price
+      ? 'Discount cannot exceed case price'
+      : null,
+    attach: null,
+  };
+
+  const goToStep = (i: number) => {
+    if (i <= maxVisited) {
+      setStep(i);
+      setAttempted(false);
+    }
+  };
+
+  const goNext = () => {
+    if (!stepValid[STEPS[step].key]) {
+      setAttempted(true);
+      return;
+    }
+    setAttempted(false);
+    const n = Math.min(step + 1, STEPS.length - 1);
+    setStep(n);
+    setMaxVisited((m) => Math.max(m, n));
+  };
+
+  const goBack = () => {
+    setAttempted(false);
+    setStep((s) => Math.max(0, s - 1));
+  };
+
+  /* ---------------------------- helpers (preserved) ---------------------------- */
+
   const getAttachmentCategory = (filename?: string, file_type?: string) => {
     const lowerName = (filename || '').toLowerCase();
     const ext = lowerName.split('.').pop() || '';
@@ -142,39 +251,38 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     if (['stl', 'ply', 'obj', 'cad'].includes(ext) || safeType.includes('sla') || safeType.includes('model')) {
       return {
         category: '3D Dental Scan / CAD Model',
-        badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        badge: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20',
         kind: 'cad'
       };
     }
     if (['dcm', 'dicom'].includes(ext) || safeType.includes('dicom')) {
       return {
         category: 'CBCT / DICOM Scan',
-        badge: 'bg-purple-50 text-purple-700 border-purple-200',
+        badge: 'bg-violet-50 text-violet-800 ring-1 ring-violet-600/20',
         kind: 'dicom'
       };
     }
     if (['jpg', 'jpeg', 'png', 'webp', 'heic', 'svg'].includes(ext) || safeType.startsWith('image/')) {
       return {
         category: 'Patient Photo / Shade Image',
-        badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        badge: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600/20',
         kind: 'image'
       };
     }
     if (['pdf', 'doc', 'docx', 'txt'].includes(ext) || safeType.includes('pdf') || safeType.includes('word')) {
       return {
         category: 'Prescription / Clinical Notes',
-        badge: 'bg-blue-50 text-blue-700 border-blue-200',
+        badge: 'bg-amber-50 text-amber-800 ring-1 ring-amber-600/20',
         kind: 'doc'
       };
     }
     return {
       category: 'Case File Attachment',
-      badge: 'bg-slate-100 text-slate-700 border-slate-200',
+      badge: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
       kind: 'file'
     };
   };
 
-  // Priority toggling handler with instant feedback, SLA due-date sync
   const handlePriorityToggle = (newP: PriorityLevel) => {
     setPriority(newP);
     const label = prioritySlaLabel(newP);
@@ -183,14 +291,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       setPriorityFeedback(`Priority set: ${label}`);
       setTimeout(() => setPriorityFeedback(null), 2500);
     } else {
-      // Create mode: align the target delivery date with the SLA commitment.
       setDeliveryDate(computeSlaDueDate(newP));
-      setPriorityFeedback(`Priority set: ${label} (delivery auto-set)`);
+      setPriorityFeedback(`Priority set: ${label} — delivery auto-set`);
       setTimeout(() => setPriorityFeedback(null), 2500);
     }
   };
 
-  // Local storage / file system upload handler
   const handleLocalFileUpload = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
@@ -217,7 +323,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           addCaseAttachment(initialCase.id, newAttachment);
         } else {
           setPendingAttachments(prev => [...(prev || []), newAttachment]);
-          // Auto set case photo url if not set and uploaded file is an image
           if (!photoUrl && (safeType.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(safeName))) {
             setPhotoUrl(dataUrl);
           }
@@ -233,18 +338,15 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     });
   };
 
-  // Preferred Lab Suggestion State
   const preferredLab = doctorName ? getDoctorPreferredLab(doctorName) : undefined;
 
-  // Auto calculate pricing on Lab / Case Type selection if creating new case or changing case type
+  /* Auto pricing on lab / case-type selection (create mode) */
   useEffect(() => {
-    if (isEdit) return; // don't override manually set price when editing
+    if (isEdit) return;
 
-    const selectedLab = labs.find((l) => l.id === labId);
     const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
     if (!selectedCT) return;
 
-    // Check pricing overrides
     const override = pricingOverrides.find((po) => po.lab_id === labId && po.case_type_id === caseTypeId);
     if (override) {
       setPrice(override.custom_price);
@@ -259,7 +361,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     }
   }, [labId, caseTypeId, isEdit]);
 
-  // Apply Doctor Preferred Lab if available
   const handleApplyPreferredLab = () => {
     if (preferredLab) {
       setLabId(preferredLab.lab_id);
@@ -275,7 +376,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     }
   };
 
-  // Validation
+  /* ---------------------------- validation & submit (preserved) ---------------------------- */
+
   const validate = () => {
     const errs: Record<string, string> = {};
 
@@ -300,7 +402,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       errs.deliveryDate = 'Delivery date is required';
     } else {
       const delTime = new Date(deliveryDate).getTime();
-      const maxTime = new Date().getTime() + 365 * 24 * 60 * 60 * 1000; // 1 year
+      const maxTime = new Date().getTime() + 365 * 24 * 60 * 60 * 1000;
       if (isNaN(delTime)) {
         errs.deliveryDate = 'Invalid delivery date';
       } else if (delTime > maxTime) {
@@ -326,9 +428,29 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     return Object.keys(errs).length === 0;
   };
 
+  const jumpToFirstInvalidStep = () => {
+    if (!stepValid.basics) { setStep(0); return; }
+    if (!stepValid.chart) { setStep(1); return; }
+    if (!stepValid.schedule) { setStep(2); return; }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+
+    // Wizard guard: on any non-final step, a form submission means "advance".
+    // This makes it impossible for a stale-element hit, double click, or Enter
+    // key on "Continue" to land on the freshly-mounted "Create Dental Case"
+    // submit button — creation can only ever happen from the final review step.
+    if (!isEdit && step < STEPS.length - 1) {
+      goNext();
+      return;
+    }
+
+    if (!validate()) {
+      jumpToFirstInvalidStep();
+      setAttempted(true);
+      return;
+    }
 
     const selectedLab = labs.find((l) => l.id === labId);
     const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
@@ -488,1226 +610,1203 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
   const finalComputedPrice = Math.max(0, price - discount);
 
-  return (
-    <div className={`fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center ${isFullScreen ? 'p-0' : 'p-2 sm:p-4 md:p-6'} overflow-y-auto`}>
-      <div className={`bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all duration-200 ${
-        isFullScreen 
-          ? 'w-full h-full max-w-none max-h-screen rounded-none' 
-          : 'w-full max-w-[98vw] xl:max-w-[1580px] 2xl:max-w-[1780px] max-h-[96vh] rounded-2xl my-auto'
-      }`}>
-        {/* Modal Header */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
-          <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="font-bold text-lg text-white">
-                {isEdit ? `Case Details: ${initialCase?.case_number}` : 'Create New Dental Case'}
-              </span>
+  const selectedLab = labs.find((l) => l.id === labId);
+  const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
 
-              {/* Visual Priority Indicator Badge */}
-              <div 
-                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border shadow-sm transition-all ${
-                  priority === 'urgent'
-                    ? 'bg-rose-950/90 text-rose-300 border-rose-600 shadow-rose-900/50'
-                    : priority === 'high'
-                    ? 'bg-amber-950/90 text-amber-300 border-amber-600 shadow-amber-900/50'
-                    : priority === 'normal'
-                    ? 'bg-emerald-950/90 text-emerald-300 border-emerald-600 shadow-emerald-900/50'
-                    : 'bg-blue-950/90 text-blue-300 border-blue-600 shadow-blue-900/50'
-                }`}
-              >
-                {priority === 'urgent' && (
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                  </span>
+  /* Priority visual mapping */
+  const priorityDot: Record<PriorityLevel, string> = {
+    low: 'bg-sky-500',
+    normal: 'bg-indigo-500',
+    high: 'bg-amber-500',
+    urgent: 'bg-rose-500',
+  };
+  const priorityHeaderBadge: Record<PriorityLevel, string> = {
+    low: 'bg-sky-400/10 text-sky-300 ring-1 ring-sky-400/30',
+    normal: 'bg-indigo-400/10 text-indigo-300 ring-1 ring-indigo-400/30',
+    high: 'bg-amber-400/10 text-amber-300 ring-1 ring-amber-400/30',
+    urgent: 'bg-rose-400/10 text-rose-300 ring-1 ring-rose-400/30',
+  };
+
+  /* Shared shade-toggle handler (sets global shade + per-tooth details) */
+  const applyShadeToSelection = (s: string) => {
+    setShade(s);
+    setToothDetails((prev) => {
+      const updated = { ...prev };
+      selectedTeeth.forEach((t) => {
+        updated[t] = {
+          ...(updated[t] || { tooth_number: t, prep_type: 'crown', material }),
+          shade: s,
+        };
+      });
+      return updated;
+    });
+  };
+
+  /* ================================================================== */
+  /*  Shared step content — used by the create wizard AND the edit form  */
+  /* ================================================================== */
+
+  const renderBasicsSection = () => (
+    <div className={bezelCard}>
+      <div className={bezelCardInner}>
+        <div className="mb-5 flex items-center justify-between">
+          <Eyebrow>01 · Referral</Eyebrow>
+            <span className="font-mono text-[10px] tracking-widest text-slate-400">WHO & WHAT</span>
+          </div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div>
+              <FieldLabel>Patient Name / ID</FieldLabel>
+              <input
+                type="text"
+                value={patientName}
+                onChange={(e) => setPatientName(e.target.value)}
+                placeholder="e.g. Sarah Jenkins (optional)"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <FieldLabel required>Doctor Name</FieldLabel>
+              <input
+                type="text"
+                value={doctorName}
+                onChange={(e) => {
+                  setDoctorName(e.target.value);
+                  if (errors.doctorName) setErrors((prev) => ({ ...prev, doctorName: '' }));
+                }}
+                placeholder="e.g. Dr. Tariq Mahmood"
+                className={inputCls}
+              />
+              {errors.doctorName && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.doctorName}</p>}
+            </div>
+            <div>
+              <div className="flex items-end justify-between">
+                <FieldLabel required>Dental Clinic</FieldLabel>
+                {doctorName && labId && (
+                  <button
+                    type="button"
+                    onClick={handleSetDoctorPreference}
+                    className={`mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-700 transition-colors hover:text-indigo-500 ${EASE}`}
+                  >
+                    Set preferred
+                  </button>
                 )}
-                {priority === 'urgent' ? (
-                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                ) : priority === 'high' ? (
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                ) : priority === 'normal' ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : (
-                  <Clock className="w-3.5 h-3.5 text-blue-400" />
-                )}
-                <span>Priority: {priority === 'normal' ? 'Medium' : priority.charAt(0).toUpperCase() + priority.slice(1)}</span>
               </div>
-
-              {priorityFeedback && (
-                <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-700/60 flex items-center gap-1 animate-fadeIn">
-                  <Check className="w-3 h-3 text-emerald-400" />
-                  {priorityFeedback}
-                </span>
+              <select
+                value={labId}
+                onChange={(e) => {
+                  setLabId(e.target.value);
+                  if (errors.labId) setErrors((prev) => ({ ...prev, labId: '' }));
+                }}
+                className={inputCls}
+              >
+                {labs.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name} ({l.phone})
+                  </option>
+                ))}
+              </select>
+              {errors.labId && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.labId}</p>}
+              {preferredLab && (
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-indigo-50/70 px-3 py-2 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
+                  <span className="truncate">
+                    Preferred lab: <strong className="font-semibold">{preferredLab.lab_name}</strong>
+                  </span>
+                  {labId !== preferredLab.lab_id && (
+                    <button
+                      type="button"
+                      onClick={handleApplyPreferredLab}
+                      className={`shrink-0 rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}
+                    >
+                      Auto-select
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {isEdit ? 'Update case workflow, FDI teeth, instructions & history' : 'Auto-generates case number and invoice record'}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowJobSlipModal(true)}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              title="Print Job Slip / Workstation Routing Ticket"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Print Job Slip</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTemplateModalOpen(true)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
-            >
-              <Bookmark className="w-4 h-4 text-blue-400" />
-              <span>Save Preset</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsFullScreen(!isFullScreen)}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-              title={isFullScreen ? "Restore Window Size" : "Expand to Full Page"}
-            >
-              {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div>
+              <FieldLabel required>Case Procedure / Type</FieldLabel>
+              <select
+                value={caseTypeId}
+                onChange={(e) => setCaseTypeId(e.target.value)}
+                className={inputCls}
+              >
+                {caseTypes.map((ct) => (
+                  <option key={ct.id} value={ct.id}>
+                    {ct.name} (PKR {ct.base_price.toLocaleString()})
+                  </option>
+                ))}
+              </select>
+              {selectedCT && (
+                <p className="mt-1.5 font-mono text-[11px] tracking-wide text-slate-400">
+                  BASE PKR {selectedCT.base_price.toLocaleString()}
+                </p>
+              )}
+            </div>
           </div>
         </div>
+      </div>
+  );
 
-        {/* Tab Navigation if Editing */}
-        {isEdit && (
-          <div className="bg-slate-100 border-b border-slate-200 px-6 flex items-center gap-4 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab('details')}
-              className={`py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-                activeTab === 'details' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <FileText className="w-4 h-4" /> Case Details & Tooth Chart
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('attachments')}
-              className={`py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-                activeTab === 'attachments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Paperclip className="w-4 h-4" /> Case Attachments & Photos
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('notes')}
-              className={`py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-                activeTab === 'notes' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4" /> Notes & History Log
-            </button>
-          </div>
-        )}
-
-        {/* Interactive Visual Case Stage Tracker Header */}
-        <div className="bg-slate-50 border-b border-slate-200 px-6 py-3.5 shrink-0">
-          <div className="mb-2 flex items-center justify-between text-xs">
-            <span className="font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-indigo-600" /> Case Stage Workflow Stepper
-            </span>
-            <span className="text-[11px] text-slate-500">
-              Click any stage step to advance or update case status
+  const renderChartSection = () => (
+    <div className="space-y-6">
+      <div className={bezelCard}>
+        <div className={bezelCardInner}>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+            <Eyebrow>02 · FDI Charting</Eyebrow>
+            <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3.5 py-1.5 font-mono text-[11px] font-bold tracking-wider text-white">
+              {selectedTeeth.length} UNIT{selectedTeeth.length === 1 ? '' : 'S'} ACTIVE
             </span>
           </div>
-          <CaseProgressIndicator
-            status={status}
-            onStatusChange={(newStatus) => setStatus(newStatus)}
-            variant="detailed"
-            showLabels={true}
+          <Odontogram
+            initialSelected={selectedTeeth}
+            initialRestorations={
+              Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
+                const detail = d as ToothDetail | undefined;
+                if (detail?.prep_type) acc[Number(t)] = detail.prep_type;
+                return acc;
+              }, {} as Record<number, string>)
+            }
+            initialShades={
+              Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
+                const detail = d as ToothDetail | undefined;
+                if (detail?.shade) acc[Number(t)] = detail.shade;
+                return acc;
+              }, {} as Record<number, string>)
+            }
+            initialMaterials={
+              Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
+                const detail = d as ToothDetail | undefined;
+                if (detail?.material) acc[Number(t)] = detail.material;
+                return acc;
+              }, {} as Record<number, string>)
+            }
+            onChange={({ selected, restorationByTooth, shadeByTooth, materialByTooth, toothDetails: generatedDetails }) => {
+              setSelectedTeeth(selected);
+              if (errors.selectedTeeth && selected.length > 0) {
+                setErrors((prev) => ({ ...prev, selectedTeeth: '' }));
+              }
+              const updatedDetails: Record<number, ToothDetail> = {};
+              selected.forEach((t) => {
+                updatedDetails[t] = {
+                  tooth_number: t,
+                  prep_type: (restorationByTooth[t] as any) || 'crown',
+                  shade: shadeByTooth[t] || shade || 'A2',
+                  material: materialByTooth?.[t] || material || 'Zirconia (Multi-layer 3D Pro)',
+                  notes: generatedDetails?.[t]?.notes || '',
+                  implant_brand: generatedDetails?.[t]?.implant_brand,
+                  implant_size: generatedDetails?.[t]?.implant_size,
+                };
+              });
+              setToothDetails(updatedDetails);
+              if (selected.length > 0) {
+                const latestTooth = selected[selected.length - 1];
+                if (shadeByTooth[latestTooth]) {
+                  setShade(shadeByTooth[latestTooth]);
+                }
+                if (materialByTooth?.[latestTooth]) {
+                  setMaterial(materialByTooth[latestTooth]);
+                }
+              }
+            }}
           />
-        </div>
-
-        {/* Modal Scrollable Body */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1">
-          {activeTab === 'attachments' && isEdit && initialCase && (
-            <CaseAttachmentsPanel caseId={initialCase.id} />
+          {errors.selectedTeeth && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-600">
+              <AlertCircle className="h-3.5 w-3.5" /> {errors.selectedTeeth}
+            </p>
           )}
-
-          {activeTab === 'notes' && isEdit && initialCase && (
-            <CaseNotesPanel caseId={initialCase.id} />
-          )}
-
-          {activeTab === 'details' && (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Row 1: Patient, Doctor Name & Preferred Clinic */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Patient Name / ID</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={patientName}
-                    onChange={(e) => setPatientName(e.target.value)}
-                    placeholder="e.g. Sarah Jenkins (Optional)"
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Doctor Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={doctorName}
-                    onChange={(e) => {
-                      setDoctorName(e.target.value);
-                      if (errors.doctorName) setErrors((prev) => ({ ...prev, doctorName: '' }));
-                    }}
-                    placeholder="e.g. Dr. Tariq Mahmood"
-                    className={`w-full p-2.5 text-xs bg-slate-50 border rounded-xl focus:outline-none focus:ring-2 transition-all ${
-                      errors.doctorName ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 focus:border-blue-500'
-                    }`}
-                  />
-                  {errors.doctorName && <p className="text-[11px] text-rose-500 mt-1">{errors.doctorName}</p>}
-
-                  {/* Doctor Preferred Lab Suggestion */}
-                  {preferredLab && (
-                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between text-xs text-blue-900">
-                      <span>Preferred Lab: <strong>{preferredLab.lab_name}</strong></span>
-                      {labId !== preferredLab.lab_id && (
-                        <button
-                          type="button"
-                          onClick={handleApplyPreferredLab}
-                          className="px-2 py-0.5 bg-blue-600 text-white font-semibold text-[10px] rounded hover:bg-blue-700"
-                        >
-                          Auto-Select Lab
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Dental Clinic / Practice <span className="text-rose-500">*</span>
-                    </label>
-                    {doctorName && labId && (
-                      <button
-                        type="button"
-                        onClick={handleSetDoctorPreference}
-                        className="text-[10px] text-blue-600 font-semibold hover:underline"
-                      >
-                        Set preferred
-                      </button>
-                    )}
-                  </div>
-                  <select
-                    value={labId}
-                    onChange={(e) => {
-                      setLabId(e.target.value);
-                      if (errors.labId) setErrors((prev) => ({ ...prev, labId: '' }));
-                    }}
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                  >
-                    {labs.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name} ({l.phone})
-                      </option>
-                    ))}
-                  </select>
-                  {errors.labId && <p className="text-[11px] text-rose-500 mt-1">{errors.labId}</p>}
-                </div>
-              </div>
-
-              {/* Row 2: Case Material, Status & Delivery Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Case Procedure / Type <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={caseTypeId}
-                    onChange={(e) => setCaseTypeId(e.target.value)}
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                  >
-                    {caseTypes.map((ct) => (
-                      <option key={ct.id} value={ct.id}>
-                        {ct.name} (PKR {ct.base_price.toLocaleString()})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Priority & SLA
-                  </label>
-                  <div className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-1">
-                    {(['low', 'normal', 'high', 'urgent'] as PriorityLevel[]).map((p) => {
-                      const isActive = priority === p;
-                      const activeCls = p === 'urgent'
-                        ? 'bg-rose-600 text-white'
-                        : p === 'high'
-                        ? 'bg-amber-500 text-white'
-                        : p === 'normal'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-blue-600 text-white';
-                      return (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => handlePriorityToggle(p)}
-                          className={`flex-1 px-1.5 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                            isActive ? activeCls + ' shadow-sm' : 'text-slate-500 hover:bg-slate-200/70'
-                          }`}
-                          title={`SLA: ready in ${PRIORITY_SLA_DAYS[p]} day${PRIORITY_SLA_DAYS[p] === 1 ? '' : 's'}`}
-                        >
-                          {p === 'normal' ? 'Medium' : p.charAt(0).toUpperCase() + p.slice(1)}
-                          <span className="block text-[8px] font-semibold opacity-75">{PRIORITY_SLA_DAYS[p]}d</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Target Delivery Date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={deliveryDate}
-                    onChange={(e) => setDeliveryDate(e.target.value)}
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                  />
-                  {errors.deliveryDate && <p className="text-[11px] text-rose-500 mt-1">{errors.deliveryDate}</p>}
-                </div>
-              </div>
-
-              {/* Odontogram (per-tooth material, prep & shade are set on the chart below) */}
-              <div className="w-full">
-                <Odontogram
-                  initialSelected={selectedTeeth}
-                  initialRestorations={
-                    Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
-                      const detail = d as ToothDetail | undefined;
-                      if (detail?.prep_type) acc[Number(t)] = detail.prep_type;
-                      return acc;
-                    }, {} as Record<number, string>)
-                  }
-                  initialShades={
-                    Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
-                      const detail = d as ToothDetail | undefined;
-                      if (detail?.shade) acc[Number(t)] = detail.shade;
-                      return acc;
-                    }, {} as Record<number, string>)
-                  }
-                  initialMaterials={
-                    Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
-                      const detail = d as ToothDetail | undefined;
-                      if (detail?.material) acc[Number(t)] = detail.material;
-                      return acc;
-                    }, {} as Record<number, string>)
-                  }
-                  onChange={({ selected, restorationByTooth, shadeByTooth, materialByTooth, toothDetails: generatedDetails }) => {
-                    setSelectedTeeth(selected);
-                    if (errors.selectedTeeth && selected.length > 0) {
-                      setErrors((prev) => ({ ...prev, selectedTeeth: '' }));
-                    }
-                    const updatedDetails: Record<number, ToothDetail> = {};
-                    selected.forEach((t) => {
-                      updatedDetails[t] = {
-                        tooth_number: t,
-                        prep_type: (restorationByTooth[t] as any) || 'crown',
-                        shade: shadeByTooth[t] || shade || 'A2',
-                        material: materialByTooth?.[t] || material || 'Zirconia (Multi-layer 3D Pro)',
-                        notes: generatedDetails?.[t]?.notes || '',
-                        implant_brand: generatedDetails?.[t]?.implant_brand,
-                        implant_size: generatedDetails?.[t]?.implant_size,
-                      };
-                    });
-                    setToothDetails(updatedDetails);
-                    if (selected.length > 0) {
-                      const latestTooth = selected[selected.length - 1];
-                      if (shadeByTooth[latestTooth]) {
-                        setShade(shadeByTooth[latestTooth]);
-                      }
-                      if (materialByTooth?.[latestTooth]) {
-                        setMaterial(materialByTooth[latestTooth]);
-                      }
-                    }
-                  }}
-                />
-                {errors.selectedTeeth && (
-                  <p className="text-xs text-rose-500 font-semibold mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5" /> {errors.selectedTeeth}
-                  </p>
-                )}
-              </div>
-
-              {/* VITA Classical & Multi-Tooth Shade Selection */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <Palette className="w-4 h-4 text-amber-600" />
-                    VITA Classical & Bleach Shade Guide
-                  </label>
-                  <span className="text-[11px] text-slate-500">
-                    Active Shade: <strong className="text-slate-900 font-mono text-xs">{shade || 'None'}</strong>
-                  </span>
-                </div>
-
-                {/* VITA Classical Swatch Grid */}
-                <div className="space-y-1.5">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">VITA Classical Swatches</div>
-                  <div className="grid grid-cols-8 sm:grid-cols-16 gap-1.5">
-                    {['A1', 'A2', 'A3', 'A3.5', 'A4', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'D2', 'D3', 'D4'].map((s) => {
-                      const isCurrent = shade === s;
-                      const swatchColor = SHADE_COLORS[s] || '#F9F7EB';
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => {
-                            setShade(s);
-                            setToothDetails((prev) => {
-                              const updated = { ...prev };
-                              selectedTeeth.forEach((t) => {
-                                updated[t] = {
-                                  ...(updated[t] || { tooth_number: t, prep_type: 'crown', material }),
-                                  shade: s,
-                                };
-                              });
-                              return updated;
-                            });
-                          }}
-                          className={`group flex flex-col items-center p-1 rounded-lg border transition-all cursor-pointer ${
-                            isCurrent
-                              ? 'border-indigo-600 ring-2 ring-indigo-300 bg-white shadow-xs'
-                              : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-2xs'
-                          }`}
-                          title={`Select VITA ${s}`}
-                        >
-                          <span
-                            className="w-5 h-5 rounded-md border border-black/10 shadow-2xs group-hover:scale-105 transition-transform"
-                            style={{ backgroundColor: swatchColor }}
-                          />
-                          <span className={`text-[10px] font-bold mt-0.5 ${isCurrent ? 'text-indigo-900 font-black' : 'text-slate-700'}`}>
-                            {s}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Bleach Shades */}
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bleach & High-Aesthetic Shades</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {['BL1', 'BL2', 'BL3', 'BL4', 'OM1', 'OM2', 'OM3'].map((s) => {
-                      const isCurrent = shade === s;
-                      const swatchColor = SHADE_COLORS[s] || '#FFFFFF';
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => {
-                            setShade(s);
-                            setToothDetails((prev) => {
-                              const updated = { ...prev };
-                              selectedTeeth.forEach((t) => {
-                                updated[t] = {
-                                  ...(updated[t] || { tooth_number: t, prep_type: 'crown', material }),
-                                  shade: s,
-                                };
-                              });
-                              return updated;
-                            });
-                          }}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                            isCurrent
-                              ? 'border-indigo-600 ring-2 ring-indigo-300 bg-white shadow-xs'
-                              : 'border-slate-200 bg-white hover:border-slate-400'
-                          }`}
-                        >
-                          <span
-                            className="w-3.5 h-3.5 rounded-full border border-black/10"
-                            style={{ backgroundColor: swatchColor }}
-                          />
-                          <span className={`text-xs font-bold ${isCurrent ? 'text-indigo-900' : 'text-slate-700'}`}>
-                            {s}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Custom multi-layer shade notes live in Technician Special Instructions below —
-                    the canonical shade is picked from the swatches above (or per tooth on the chart). */}
-              </div>
-
-              {/* Pricing Breakdown Card */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <DollarSign className="w-4 h-4 text-emerald-600" />
-                  Financial Calculation (PKR)
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1 font-semibold">Base Price (PKR)</label>
-                    <input
-                      type="number"
-                      value={price}
-                      onChange={(e) => setPrice(Number(e.target.value))}
-                      className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
-                    />
-                    {errors.price && <p className="text-[10px] text-rose-500 mt-0.5">{errors.price}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1 font-semibold">Discount (PKR)</label>
-                    <input
-                      type="number"
-                      value={discount}
-                      onChange={(e) => setDiscount(Number(e.target.value))}
-                      className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg font-semibold text-rose-600"
-                    />
-                    {errors.discount && <p className="text-[10px] text-rose-500 mt-0.5">{errors.discount}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1 font-semibold">Final Price (PKR) — auto-computed</label>
-                    <div className="p-2 bg-emerald-100 text-emerald-900 text-sm font-bold rounded-lg text-center border border-emerald-300">
-                      PKR {Math.max(0, price - discount).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Special Instructions */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Technician Special Instructions
-                </label>
-                <textarea
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  rows={3}
-                  placeholder="Incisal translucency, pontic design, margin bevel specifications..."
-                  className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
-                />
-                {errors.instructions && <p className="text-[11px] text-rose-500 mt-1">{errors.instructions}</p>}
-              </div>
-
-              {/* Upload Case Picture & Other Docs from Local Storage (New Case) */}
-              {!isEdit && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                        <Upload className="w-4 h-4 text-blue-600" />
-                        Upload Case Picture & Documents from Local Storage
-                      </h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Upload patient photos, shade guides, 3D STL scans, DICOM files, or clinical prescriptions directly from your device.
-                      </p>
-                    </div>
-                    {pendingAttachments.length > 0 && (
-                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                        {pendingAttachments.length} file{pendingAttachments.length > 1 ? 's' : ''} ready
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Drag & Drop Upload Zone */}
-                  <div
-                    onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-                    onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
-                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragActive(false);
-                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                        handleLocalFileUpload(e.dataTransfer.files);
-                      }
-                    }}
-                    className={`border-2 border-dashed rounded-xl p-5 text-center transition-all ${
-                      dragActive
-                        ? 'border-blue-500 bg-blue-50/70 scale-[1.005]'
-                        : 'border-slate-300 bg-white hover:border-blue-400 hover:bg-slate-50/70'
-                    }`}
-                  >
-                    <div className="w-10 h-10 mx-auto rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
-                      <Paperclip className="w-5 h-5" />
-                    </div>
-                    <p className="text-xs font-bold text-slate-800">
-                      Drag & Drop case pictures or scans here, or browse from your computer
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Supports JPG, PNG, WEBP, STL, OBJ, PLY, DCM, PDF, DOCX (Local Storage)
-                    </p>
-
-                    <label className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-colors">
-                      <Upload className="w-3.5 h-3.5" />
-                      Browse Files from Local Storage
-                      <input
-                        type="file"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => handleLocalFileUpload(e.target.files)}
-                      />
-                    </label>
-                  </div>
-
-                  {uploadNotice && (
-                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="font-semibold">{uploadNotice}</span>
-                    </div>
-                  )}
-
-                  {/* Local Storage Files Preview & Metadata Cards */}
-                  {pendingAttachments.length > 0 && (
-                    <div className="space-y-2 pt-1">
-                      <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                        Files ready to be attached on case creation:
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                        {pendingAttachments.map((att, i) => {
-                          const cat = getAttachmentCategory(att?.filename, att?.file_type);
-                          const isImage = (att?.file_type || '').startsWith('image/');
-                          const isMainPhoto = photoUrl === att.file_url;
-
-                          return (
-                            <div
-                              key={i}
-                              className={`p-2.5 bg-white rounded-xl border transition-all flex items-center justify-between gap-2.5 ${
-                                isMainPhoto ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200 hover:border-slate-300'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5 overflow-hidden">
-                                <div 
-                                  onClick={() => setPreviewModalAttachment(att)}
-                                  className="w-11 h-11 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden cursor-pointer group"
-                                  title="Click to inspect metadata & preview"
-                                >
-                                  {isImage ? (
-                                    <img src={att.file_url} alt={att.filename} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                                  ) : cat.kind === 'cad' ? (
-                                    <Box className="w-5 h-5 text-indigo-600" />
-                                  ) : (
-                                    <File className="w-5 h-5 text-slate-500" />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-xs font-bold text-slate-900 truncate" title={att.filename}>
-                                    {att.filename}
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${cat.badge}`}>
-                                      {cat.category}
-                                    </span>
-                                    <span className="text-[10px] text-slate-400">
-                                      {att.file_size || 'Unknown size'}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1 shrink-0">
-                                {isImage && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setPhotoUrl(att.file_url)}
-                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
-                                      isMainPhoto
-                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                    }`}
-                                    title={isMainPhoto ? 'Primary case picture' : 'Set as primary case picture'}
-                                  >
-                                    {isMainPhoto ? 'Primary Photo' : 'Set Main'}
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => openFileInBrowser(att.file_url, att.filename, att.file_type)}
-                                  className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Open file in browser tab"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewModalAttachment(att)}
-                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Inspect Metadata & Preview"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setPendingAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Remove from upload queue"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Status Change Note (if editing status) */}
-              {isEdit && (
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Status History Change Log Note (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={statusNote}
-                    onChange={(e) => setStatusNote(e.target.value)}
-                    placeholder="Reason for status change or QC verification note..."
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl"
-                  />
-                </div>
-              )}
-
-              {/* History Timeline preview if editing */}
-              {isEdit && initialCase && initialCase.history.length > 0 && (
-                <div className="border-t border-slate-100 pt-4 space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-blue-600" /> Case Status History Timeline
-                  </h4>
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {initialCase.history.map((h) => (
-                      <div key={h.id} className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 text-xs flex items-center justify-between">
-                        <div>
-                          <span className="font-bold text-slate-900 uppercase text-[10px] px-2 py-0.5 bg-slate-200 rounded mr-2">
-                            {h.status}
-                          </span>
-                          <span className="text-slate-600">{h.notes || 'Status updated'}</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {h.timestamp} • {h.updated_by}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Dental Scans & Patient Photos Preview Section with Metadata */}
-              {isEdit && initialCase && (
-                <div className="border-t border-slate-200 pt-5 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                        <Paperclip className="w-4 h-4 text-blue-600" />
-                        Dental Scans, CAD & Patient Photos Preview ({attachmentsForCase.length})
-                      </h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Inspect file metadata, view 3D dental scans and patient photos, or upload additional assets from local storage.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-blue-200">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Upload from Local Storage</span>
-                        <input
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => handleLocalFileUpload(e.target.files)}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('attachments')}
-                        className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
-                      >
-                        All Files Tab
-                      </button>
-                    </div>
-                  </div>
-
-                  {uploadNotice && (
-                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="font-semibold">{uploadNotice}</span>
-                    </div>
-                  )}
-
-                  {attachmentsForCase.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {attachmentsForCase.map((att) => {
-                        const cat = getAttachmentCategory(att?.filename, att?.file_type);
-                        const isImage = (att?.file_type || '').startsWith('image/');
-                        const isMainPhoto = photoUrl === att.file_url;
-
-                        return (
-                          <div 
-                            key={att.id} 
-                            className={`p-3 bg-slate-50 hover:bg-white border rounded-xl transition-all shadow-xs flex flex-col justify-between gap-2.5 ${
-                              isMainPhoto ? 'border-emerald-400 ring-2 ring-emerald-50' : 'border-slate-200 hover:border-slate-300'
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div 
-                                onClick={() => setPreviewModalAttachment(att)}
-                                className="w-14 h-14 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden cursor-pointer group shadow-xs"
-                                title="Click to view full preview & metadata"
-                              >
-                                {isImage ? (
-                                  <img 
-                                    src={att.file_url} 
-                                    alt={att.filename} 
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                                  />
-                                ) : cat.kind === 'cad' ? (
-                                  <Box className="w-7 h-7 text-indigo-600 group-hover:scale-110 transition-transform" />
-                                ) : cat.kind === 'dicom' ? (
-                                  <Layers className="w-7 h-7 text-purple-600 group-hover:scale-110 transition-transform" />
-                                ) : (
-                                  <FileText className="w-7 h-7 text-slate-500 group-hover:scale-110 transition-transform" />
-                                )}
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${cat.badge}`}>
-                                    {cat.category}
-                                  </span>
-                                  {isMainPhoto && (
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                                      <Check className="w-2.5 h-2.5" /> Main Case Photo
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="text-xs font-bold text-slate-900 truncate mt-1" title={att.filename}>
-                                  {att.filename}
-                                </div>
-
-                                <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] text-slate-500">
-                                  <div>
-                                    <span className="font-semibold text-slate-600">Size:</span> {att.file_size || 'N/A'}
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold text-slate-600">Type:</span> {att.file_type || 'Unknown'}
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold text-slate-600">By:</span> {att.uploaded_by || 'Lab Staff'}
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold text-slate-600">Date:</span> {att.uploaded_at ? att.uploaded_at.substring(0, 10) : 'Recent'}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Action Buttons for each attachment */}
-                            <div className="flex items-center justify-between pt-2 border-t border-slate-200/70 text-xs">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => openFileInBrowser(att.file_url, att.filename, att.file_type)}
-                                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg border border-indigo-200 flex items-center gap-1 text-[11px] transition-colors cursor-pointer"
-                                  title="Open file/photo directly in browser tab"
-                                >
-                                  <ExternalLink className="w-3 h-3 text-indigo-600" />
-                                  <span>Open in Browser</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewModalAttachment(att)}
-                                  className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 flex items-center gap-1 text-[11px] transition-colors cursor-pointer"
-                                  title="Inspect file metadata"
-                                >
-                                  <Eye className="w-3 h-3 text-blue-600" />
-                                  <span>Preview</span>
-                                </button>
-                                {isImage && !isMainPhoto && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setPhotoUrl(att.file_url);
-                                      updateCase(initialCase.id, { photo_url: att.file_url }, 'Updated main case photo');
-                                    }}
-                                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-lg border border-emerald-200 text-[11px] transition-colors cursor-pointer"
-                                    title="Set as primary reference photo"
-                                  >
-                                    Set as Main Photo
-                                  </button>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-1">
-                                <a
-                                  href={att.file_url}
-                                  download={att.filename}
-                                  className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="Download to local computer"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </a>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (confirm(`Delete ${att.filename}?`)) {
-                                      deleteCaseAttachment(initialCase.id, att.id);
-                                    }
-                                  }}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Delete attachment"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
-                      <Paperclip className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                      <p className="text-xs font-bold text-slate-700">No scans or photos attached to this case yet.</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Upload dental STL scans, intraoral photos, or clinical documents from your local storage.
-                      </p>
-                      <label className="inline-flex items-center gap-1.5 mt-3 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-colors">
-                        <Upload className="w-3.5 h-3.5" />
-                        Browse Local Files
-                        <input
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => handleLocalFileUpload(e.target.files)}
-                        />
-                      </label>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-                {isEdit && initialCase ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm(`Are you sure you want to PERMANENTLY delete case ${initialCase.case_number}?`)) {
-                        deleteCase(initialCase.id);
-                        onClose();
-                      }
-                    }}
-                    className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete Case
-                  </button>
-                ) : (
-                  <div />
-                )}
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveDraft}
-                    className="px-4 py-2 bg-slate-200/80 hover:bg-slate-300 text-slate-800 font-semibold text-xs rounded-xl border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="Save case in Draft state without submitting to production"
-                  >
-                    <Save className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Save as Draft</span>
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-md shadow-blue-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{isEdit ? 'Save Changes' : 'Create Dental Case'}</span>
-                  </button>
-                </div>
-              </div>
-            </form>
+          {attempted && stepError.chart && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-600">
+              <AlertCircle className="h-3.5 w-3.5" /> {stepError.chart}
+            </p>
           )}
         </div>
       </div>
+    </div>
+  );
 
-      {/* Save as Template Modal */}
-      {templateModalOpen && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4">
-            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <Bookmark className="w-4 h-4 text-blue-600" /> Save Case as Template Preset
-            </h3>
-            <p className="text-xs text-slate-500">
-              Save teeth selection, shade, and instructions as a quick preset for future cases.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Preset Template Name</label>
-              <input
-                type="text"
-                value={templateNameInput}
-                onChange={(e) => setTemplateNameInput(e.target.value)}
-                placeholder="e.g. Anterior Zirconia Shade A2 Standard"
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-              />
+  const renderScheduleSection = () => (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="space-y-6 lg:col-span-7">
+        <div className={bezelCard}>
+          <div className={bezelCardInner}>
+            <Eyebrow>03 · Priority & SLA</Eyebrow>
+            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {(['low', 'normal', 'high', 'urgent'] as PriorityLevel[]).map((p) => {
+                const isActive = priority === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => handlePriorityToggle(p)}
+                    className={`group flex flex-col items-start gap-2 rounded-2xl p-3.5 text-left transition-all duration-500 ${EASE} active:scale-[0.97] ${
+                      isActive
+                        ? 'bg-slate-900 text-white shadow-[0_12px_28px_-12px_rgba(15,23,42,0.5)]'
+                        : 'bg-white ring-1 ring-slate-200 hover:ring-slate-300'
+                    }`}
+                    title={`SLA: ready in ${PRIORITY_SLA_DAYS[p]} day${PRIORITY_SLA_DAYS[p] === 1 ? '' : 's'}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className={`h-1.5 w-1.5 rounded-full ${priorityDot[p]} ${p === 'urgent' && isActive ? 'animate-pulse' : ''}`} />
+                      <span className={`text-xs font-bold ${isActive ? 'text-white' : 'text-slate-900'}`}>
+                        {p === 'normal' ? 'Medium' : p.charAt(0).toUpperCase() + p.slice(1)}
+                      </span>
+                    </span>
+                    <span className={`font-mono text-[10px] tracking-wider ${isActive ? 'text-slate-400' : 'text-slate-400'}`}>
+                      {PRIORITY_SLA_DAYS[p]}D TURNAROUND
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            {priorityFeedback && (
+              <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-800 ring-1 ring-indigo-600/20 animate-fadeIn`}>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {priorityFeedback}
+              </div>
+            )}
+
+            <div className="mt-5">
+              <FieldLabel required>Target Delivery Date</FieldLabel>
+              <div className="relative">
+                <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  className={`${inputCls} pl-10`}
+                />
+              </div>
+              {(errors.deliveryDate || (attempted && stepError.schedule && stepError.schedule.includes('date'))) && (
+                <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.deliveryDate || stepError.schedule}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className={bezelCard}>
+          <div className={bezelCardInner}>
+            <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              <FileText className="h-4 w-4 text-indigo-700" />
+              Technician Special Instructions
+            </span>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={3}
+              placeholder="Incisal translucency, pontic design, margin bevel specifications..."
+              className={`${inputCls} mt-3 resize-none`}
+            />
+            {errors.instructions && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.instructions}</p>}
+          </div>
+        </div>
+      </div>
+
+      <div className="lg:col-span-5">
+        <div className={`${bezelCard} h-full`}>
+          <div className={`${bezelCardInner} flex h-full flex-col`}>
+            <Eyebrow>Financial · PKR</Eyebrow>
+            <div className="mt-4 space-y-4">
+              <div>
+                <FieldLabel>Base Price</FieldLabel>
+                <input
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(Number(e.target.value))}
+                  className={`${inputCls} font-mono font-bold`}
+                />
+                {errors.price && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.price}</p>}
+              </div>
+              <div>
+                <FieldLabel>Discount</FieldLabel>
+                <input
+                  type="number"
+                  value={discount}
+                  onChange={(e) => setDiscount(Number(e.target.value))}
+                  className={`${inputCls} font-mono font-semibold text-rose-700`}
+                />
+                {errors.discount && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.discount}</p>}
+              </div>
+              <div className="rounded-2xl bg-slate-900 p-5">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Final price — auto-computed</div>
+                <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-white">
+                  PKR {finalComputedPrice.toLocaleString()}
+                </div>
+                {discount > 0 && (
+                  <div className="mt-1 font-mono text-[11px] text-indigo-300">
+                    −PKR {discount.toLocaleString()} applied
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderReviewSummary = () => (
+    <div className="rounded-[1.5rem] bg-slate-900 p-6 shadow-[0_24px_48px_-16px_rgba(15,23,42,0.4)]">
+      <div className="flex items-center justify-between">
+        <Eyebrow className="text-slate-400">Final review</Eyebrow>
+        <span className="font-mono text-[10px] tracking-widest text-slate-400">READY TO FABRICATE</span>
+      </div>
+      <div className="mt-4 space-y-2.5">
+        {[
+          ['Clinic', selectedLab?.name || '—'],
+          ['Doctor', doctorName.trim() || '—'],
+          ['Patient', patientName.trim() || 'Optional / not provided'],
+          ['Procedure', selectedCT ? `${selectedCT.name}` : '—'],
+          ['Units', `${selectedTeeth.length} · ${selectedTeeth.join(', ')}`],
+          ['Shade / Material', `${shade} · ${material}`],
+          ['Priority', `${priority === 'normal' ? 'Medium' : priority.charAt(0).toUpperCase() + priority.slice(1)} · ${PRIORITY_SLA_DAYS[priority]}d SLA`],
+          ['Delivery', deliveryDate || '—'],
+        ].map(([k, v]) => (
+          <div key={k} className="flex items-baseline justify-between gap-4 border-b border-white/10 pb-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{k}</span>
+            <span className="max-w-[60%] truncate text-right text-xs font-semibold text-white" title={v}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 flex items-end justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Final Price</span>
+        <span className="font-mono text-3xl font-bold tracking-tight text-white">
+          PKR {finalComputedPrice.toLocaleString()}
+        </span>
+      </div>
+      {discount > 0 && (
+        <div className="mt-1 text-right font-mono text-[11px] text-indigo-300">base PKR {price.toLocaleString()} − discount PKR {discount.toLocaleString()}</div>
+      )}
+      <div className="mt-5 flex items-center justify-between rounded-2xl bg-white/[0.06] p-3.5">
+        <span className="flex items-center gap-2 text-[11px] font-semibold text-slate-300">
+          <Paperclip className="h-3.5 w-3.5 text-indigo-300" />
+          {pendingAttachments.length} file{pendingAttachments.length === 1 ? '' : 's'} will be attached
+        </span>
+        <button
+          type="button"
+          onClick={() => setTemplateModalOpen(true)}
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-300 ring-1 ring-white/20 transition-all duration-500 hover:bg-white/10 hover:text-white ${EASE}`}
+        >
+          <Bookmark className="h-3 w-3" />
+          Save as preset
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderAttachSection = () => (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="lg:col-span-7">
+        <div className={`${bezelCard} h-full`}>
+          <div className={`${bezelCardInner} h-full`}>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <Eyebrow>04 · Attachments</Eyebrow>
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                  Patient photos, shade guides, 3D STL scans, DICOM files or prescriptions.
+                </p>
+              </div>
+              {pendingAttachments.length > 0 && (
+                <span className="rounded-full bg-indigo-50 px-3 py-1 font-mono text-[11px] font-bold text-indigo-800 ring-1 ring-indigo-600/20">
+                  {pendingAttachments.length} READY
+                </span>
+              )}
+            </div>
+
+            <div
+              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragActive(false);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  handleLocalFileUpload(e.dataTransfer.files);
+                }
+              }}
+              className={`mt-4 rounded-2xl border-2 border-dashed p-6 text-center transition-all duration-500 ${EASE} ${
+                dragActive
+                  ? 'scale-[1.01] border-indigo-600/50 bg-indigo-50/70'
+                  : 'border-slate-300 bg-white hover:border-indigo-500/40 hover:bg-indigo-50/20'
+              }`}
+            >
+              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600/10 text-indigo-800">
+                <Upload className="h-5 w-5" />
+              </div>
+              <p className="text-xs font-bold text-slate-900">
+                Drag & drop files here, or browse from your computer
+              </p>
+              <p className="mt-1 text-[11px] text-slate-400">
+                JPG · PNG · WEBP · STL · OBJ · PLY · DCM · PDF · DOCX
+              </p>
+              <label className={`mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-[0_10px_24px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
+                <Upload className="h-3.5 w-3.5" />
+                Browse files
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleLocalFileUpload(e.target.files)}
+                />
+              </label>
+            </div>
+
+            {uploadNotice && (
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span className="font-semibold">{uploadNotice}</span>
+              </div>
+            )}
+
+            {pendingAttachments.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                  Ready to attach on creation
+                </div>
+                <div className="space-y-2.5">
+                  {pendingAttachments.map((att, i) => {
+                    const cat = getAttachmentCategory(att?.filename, att?.file_type);
+                    const isImage = (att?.file_type || '').startsWith('image/');
+                    const isMainPhoto = photoUrl === att.file_url;
+
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center justify-between gap-2.5 rounded-xl bg-white p-2.5 ring-1 transition-all duration-500 ${EASE} ${
+                          isMainPhoto ? 'ring-2 ring-indigo-500/50' : 'ring-slate-200 hover:ring-slate-300'
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div
+                            onClick={() => setPreviewModalAttachment(att)}
+                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200"
+                            title="Click to inspect metadata & preview"
+                          >
+                            {isImage ? (
+                              <img src={att.file_url} alt={att.filename} className="h-full w-full object-cover" />
+                            ) : cat.kind === 'cad' ? (
+                              <Box className="h-5 w-5 text-indigo-700" />
+                            ) : (
+                              <File className="h-5 w-5 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-bold text-slate-900" title={att.filename}>
+                              {att.filename}
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                              <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${cat.badge}`}>
+                                {cat.category}
+                              </span>
+                              <span className="font-mono text-[10px] text-slate-400">{att.file_size || ''}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          {isImage && (
+                            <button
+                              type="button"
+                              onClick={() => setPhotoUrl(att.file_url)}
+                              className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition-all duration-500 ${EASE} ${
+                                isMainPhoto
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                              }`}
+                              title={isMainPhoto ? 'Primary case picture' : 'Set as primary case picture'}
+                            >
+                              {isMainPhoto ? 'Main' : 'Set main'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openFileInBrowser(att.file_url, att.filename, att.file_type)}
+                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                            title="Open file in browser tab"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewModalAttachment(att)}
+                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                            title="Inspect metadata & preview"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                            title="Remove from upload queue"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="lg:col-span-5">{renderReviewSummary()}</div>
+    </div>
+  );
+
+  /* ================================================================== */
+  /*  Modal shell                                                        */
+  /* ================================================================== */
+
+  const shellSize = isFullScreen
+    ? 'h-full w-full max-w-none rounded-none'
+    : isEdit
+    ? 'max-h-[96vh] w-full max-w-[1500px]'
+    : 'max-h-[94vh] w-full max-w-5xl';
+
+  const stepContent = [
+    renderBasicsSection,
+    renderChartSection,
+    renderScheduleSection,
+    renderAttachSection,
+  ][step];
+
+  return (
+    <div className={`no-print-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm ${isFullScreen ? 'p-0' : 'p-2 sm:p-4 md:p-6'}`}>
+      <div
+        className={`flex flex-col overflow-hidden bg-white ring-1 ring-slate-200 shadow-[0_48px_96px_-24px_rgba(15,23,42,0.45)] transition-all duration-500 ${EASE} my-auto ${shellSize}`}
+        style={{ borderRadius: isFullScreen ? 0 : '2rem' }}
+      >
+        {/* ---------------------------- Header ---------------------------- */}
+        <div className="relative shrink-0 bg-slate-900 px-6 py-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <Eyebrow className="text-slate-400">
+                {isEdit ? 'Case file' : 'New lab case'}
+              </Eyebrow>
+              <h2 className="mt-1 truncate text-lg font-bold tracking-tight text-white">
+                {isEdit ? `Case ${initialCase?.case_number}` : 'Create Dental Case'}
+              </h2>
+              <p className="mt-0.5 truncate text-xs text-slate-400">
+                {isEdit
+                  ? 'Workflow, charting, attachments & history'
+                  : 'Four focused steps — review before it hits the bench'}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Priority badge (edit mode keeps it prominent) */}
+              {isEdit && (
+                <div className={`hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wider sm:flex ${priorityHeaderBadge[priority]}`}>
+                  {priority === 'urgent' && (
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-400"></span>
+                    </span>
+                  )}
+                  <span>{priority === 'normal' ? 'Medium' : priority.charAt(0).toUpperCase() + priority.slice(1)}</span>
+                </div>
+              )}
+              {isEdit && (
+                <button
+                  type="button"
+                  onClick={() => setShowJobSlipModal(true)}
+                  className={`hidden items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-white/20 active:scale-[0.97] md:inline-flex ${EASE}`}
+                  title="Print Job Slip / Workstation Routing Ticket"
+                >
+                  <Printer className="h-4 w-4" />
+                  Job Slip
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setTemplateModalOpen(false)}
-                className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg"
+                onClick={() => setIsFullScreen(!isFullScreen)}
+                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+                title={isFullScreen ? 'Restore window size' : 'Expand to full page'}
               >
-                Cancel
+                {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
               <button
                 type="button"
-                onClick={handleSaveAsTemplate}
-                className="px-4 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg"
+                onClick={onClose}
+                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
               >
-                Save Preset
+                <X className="h-5 w-5" />
               </button>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Printable Case Job Slip Modal */}
-      {showJobSlipModal && (
-        <CaseJobSlipModal
-          caseData={
-            initialCase || {
-              id: 'temp-new',
-              case_number: 'CASE-DRAFT',
-              patient_name: 'Patient (Pending Save)',
-              lab_id: labId,
-              lab_name: labs.find((l) => l.id === labId)?.name || 'Dental Clinic',
-              case_type_id: caseTypeId,
-              case_type_name: caseTypes.find((ct) => ct.id === caseTypeId)?.name || 'Dental Restoration',
-              doctor_name: doctorName || 'Dr. Attending',
-              selected_teeth: selectedTeeth,
-              shade: shade || 'A2',
-              delivery_date: deliveryDate,
-              priority: priority,
-              price: price,
-              discount: discount,
-              final_price: finalComputedPrice,
-              instructions: instructions,
-              status: status,
-              photo_url: photoUrl,
-              created_at: new Date().toISOString().substring(0, 10),
-              updated_at: new Date().toISOString().substring(0, 10),
-              history: []
-            }
-          }
-          onClose={() => setShowJobSlipModal(false)}
-        />
-      )}
-      {/* File Attachment Metadata & Preview Inspector Lightbox Modal */}
-      {previewModalAttachment && (
-        <div className="fixed inset-0 z-60 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fadeIn">
-          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
-            {/* Modal Header */}
-            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5 overflow-hidden">
-                <span className="p-1.5 rounded-lg bg-slate-800 text-blue-400">
-                  <Eye className="w-4 h-4" />
+        {/* ---------------------------- Edit tabs ---------------------------- */}
+        {isEdit && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-6 py-3">
+            {([
+              ['details', 'Case Details & Chart', <FileText key="i" className="h-3.5 w-3.5" />],
+              ['attachments', 'Attachments', <Paperclip key="i" className="h-3.5 w-3.5" />],
+              ['notes', 'Notes & History', <MessageSquare key="i" className="h-3.5 w-3.5" />],
+            ] as const).map(([key, label, icon]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key as 'details' | 'attachments' | 'notes')}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition-all duration-500 ${EASE} active:scale-[0.97] ${
+                  activeTab === key
+                    ? 'bg-slate-900 text-white shadow-[0_8px_20px_-8px_rgba(15,23,42,0.5)]'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ---------------------------- Wizard stepper ---------------------------- */}
+        {!isEdit && (
+          <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
+            <div className="flex items-center justify-between">
+              {/* Desktop rail */}
+              <div className="hidden flex-1 items-center gap-1 md:flex">
+                {STEPS.map((s, i) => {
+                  const done = i < step;
+                  const active = i === step;
+                  const locked = i > maxVisited;
+                  return (
+                    <React.Fragment key={s.key}>
+                      {i > 0 && (
+                        <div className={`mx-1 h-px flex-1 transition-all duration-700 ${EASE} ${i <= step ? 'bg-indigo-600/50' : 'bg-slate-200'}`} />
+                      )}
+                      <button
+                        type="button"
+                        disabled={locked}
+                        onClick={() => goToStep(i)}
+                        className={`group flex items-center gap-2.5 rounded-full py-1.5 pl-1.5 pr-3.5 transition-all duration-500 ${EASE} ${
+                          locked ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-slate-100'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-9 w-9 items-center justify-center rounded-full font-mono text-[11px] font-bold transition-all duration-500 ${EASE} ${
+                            active
+                              ? 'bg-slate-900 text-white shadow-[0_8px_20px_-6px_rgba(15,23,42,0.55)]'
+                              : done
+                              ? 'bg-indigo-600/10 text-indigo-800 ring-1 ring-indigo-600/30'
+                              : 'bg-white text-slate-400 ring-1 ring-slate-200'
+                          }`}
+                        >
+                          {done ? <Check className="h-4 w-4" /> : s.numeral}
+                        </span>
+                        <span className="text-left">
+                          <span className={`block text-xs font-bold leading-tight ${active ? 'text-slate-900' : done ? 'text-indigo-800' : 'text-slate-400'}`}>
+                            {s.label}
+                          </span>
+                          <span className="hidden text-[10px] leading-tight text-slate-400 lg:block">{s.caption}</span>
+                        </span>
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              {/* Mobile compact */}
+              <div className="flex w-full items-center justify-between md:hidden">
+                <span className="text-xs font-bold text-slate-900">
+                  Step {step + 1} of {STEPS.length} — {STEPS[step].label}
                 </span>
-                <div className="truncate">
-                  <h3 className="text-sm font-bold text-white truncate" title={previewModalAttachment.filename}>
-                    {previewModalAttachment.filename}
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Attachment Metadata & High-Resolution Preview Inspector
-                  </p>
+                <div className="flex items-center gap-1.5">
+                  {STEPS.map((s, i) => (
+                    <span
+                      key={s.key}
+                      className={`h-1.5 rounded-full transition-all duration-500 ${EASE} ${
+                        i === step ? 'w-6 bg-slate-900' : i < step ? 'w-1.5 bg-indigo-600/60' : 'w-1.5 bg-slate-300'
+                      }`}
+                    />
+                  ))}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setPreviewModalAttachment(null)}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------------------- Body ---------------------------- */}
+        {isEdit && activeTab === 'attachments' && initialCase && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <CaseAttachmentsPanel caseId={initialCase.id} />
+          </div>
+        )}
+
+        {isEdit && activeTab === 'notes' && initialCase && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <CaseNotesPanel caseId={initialCase.id} />
+          </div>
+        )}
+
+        {(!isEdit || activeTab === 'details') && (
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className={`min-h-0 flex-1 overflow-y-auto ${isEdit ? 'p-6' : 'px-6 py-8 md:px-10 md:py-10'}`}>
+              {isEdit ? (
+                <div className="space-y-6">
+                  {/* Status stepper (meaningful while editing) */}
+                  <div className={bezelCard}>
+                    <div className={bezelCardInner}>
+                      <div className="mb-3 flex items-center justify-between">
+                        <Eyebrow>Stage workflow</Eyebrow>
+                        <span className="text-[11px] text-slate-400">Click any stage to update case status</span>
+                      </div>
+                      <CaseProgressIndicator
+                        status={status}
+                        onStatusChange={(newStatus) => setStatus(newStatus)}
+                        variant="detailed"
+                        showLabels={true}
+                      />
+                      <input
+                        type="text"
+                        value={statusNote}
+                        onChange={(e) => setStatusNote(e.target.value)}
+                        placeholder="Status change note (optional) — reason, QC verification..."
+                        className={`${inputCls} mt-4`}
+                      />
+                    </div>
+                  </div>
+
+                  {renderBasicsSection()}
+                  {renderChartSection()}
+                  {renderScheduleSection()}
+
+                  {/* History timeline */}
+                  {initialCase && initialCase.history.length > 0 && (
+                    <div className={bezelCard}>
+                      <div className={bezelCardInner}>
+                        <Eyebrow>Status history</Eyebrow>
+                        <div className="mt-3 max-h-44 space-y-2 overflow-y-auto pr-1">
+                          {initialCase.history.map((h) => (
+                            <div key={h.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-xs">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="rounded-full bg-slate-900 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-white">
+                                  {h.status}
+                                </span>
+                                <span className="truncate text-slate-600">{h.notes || 'Status updated'}</span>
+                              </div>
+                              <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                                {h.timestamp} · {h.updated_by}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Edit-mode attachments preview */}
+                  {initialCase && (
+                    <div className={bezelCard}>
+                      <div className={bezelCardInner}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Eyebrow>Scans & photos ({attachmentsForCase.length})</Eyebrow>
+                          <div className="flex items-center gap-2">
+                            <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
+                              <Upload className="h-3.5 w-3.5" />
+                              Upload
+                              <input
+                                type="file"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => handleLocalFileUpload(e.target.files)}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('attachments')}
+                              className={`rounded-full px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:ring-slate-300 active:scale-[0.97] ${EASE}`}
+                            >
+                              All files
+                            </button>
+                          </div>
+                        </div>
+
+                        {uploadNotice && (
+                          <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                            <span className="font-semibold">{uploadNotice}</span>
+                          </div>
+                        )}
+
+                        {attachmentsForCase.length > 0 ? (
+                          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                            {attachmentsForCase.map((att) => {
+                              const cat = getAttachmentCategory(att?.filename, att?.file_type);
+                              const isImage = (att?.file_type || '').startsWith('image/');
+                              const isMainPhoto = photoUrl === att.file_url;
+
+                              return (
+                                <div
+                                  key={att.id}
+                                  className={`flex flex-col justify-between gap-2.5 rounded-xl bg-white p-3 ring-1 transition-all duration-500 ${EASE} ${
+                                    isMainPhoto ? 'ring-2 ring-indigo-500/50' : 'ring-slate-200 hover:ring-slate-300'
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div
+                                      onClick={() => setPreviewModalAttachment(att)}
+                                      className="flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200"
+                                      title="Click to view full preview & metadata"
+                                    >
+                                      {isImage ? (
+                                        <img src={att.file_url} alt={att.filename} className="h-full w-full object-cover" />
+                                      ) : cat.kind === 'cad' ? (
+                                        <Box className="h-7 w-7 text-indigo-700" />
+                                      ) : cat.kind === 'dicom' ? (
+                                        <Layers className="h-7 w-7 text-violet-700" />
+                                      ) : (
+                                        <FileText className="h-7 w-7 text-slate-400" />
+                                      )}
+                                    </div>
+
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${cat.badge}`}>
+                                          {cat.category}
+                                        </span>
+                                        {isMainPhoto && (
+                                          <span className="flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold text-white">
+                                            <Check className="h-2.5 w-2.5" /> Main
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="mt-1 truncate text-xs font-bold text-slate-900" title={att.filename}>
+                                        {att.filename}
+                                      </div>
+                                      <div className="mt-1 grid grid-cols-2 gap-x-2 text-[10px] text-slate-400">
+                                        <div>Size: {att.file_size || 'N/A'}</div>
+                                        <div>Type: {att.file_type || 'Unknown'}</div>
+                                        <div>By: {att.uploaded_by || 'Lab Staff'}</div>
+                                        <div>Date: {att.uploaded_at ? att.uploaded_at.substring(0, 10) : 'Recent'}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => openFileInBrowser(att.file_url, att.filename, att.file_type)}
+                                        className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-indigo-800 transition-colors hover:bg-indigo-50"
+                                        title="Open file in browser tab"
+                                      >
+                                        Open
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewModalAttachment(att)}
+                                        className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+                                        title="Inspect metadata"
+                                      >
+                                        Preview
+                                      </button>
+                                      {isImage && !isMainPhoto && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setPhotoUrl(att.file_url);
+                                            updateCase(initialCase.id, { photo_url: att.file_url }, 'Updated main case photo');
+                                          }}
+                                          className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-indigo-800 transition-colors hover:bg-indigo-50"
+                                          title="Set as primary reference photo"
+                                        >
+                                          Set main
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <a
+                                        href={att.file_url}
+                                        download={att.filename}
+                                        className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                                        title="Download to local computer"
+                                      >
+                                        <Download className="h-3.5 w-3.5" />
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (confirm(`Delete ${att.filename}?`)) {
+                                            deleteCaseAttachment(initialCase.id, att.id);
+                                          }
+                                        }}
+                                        className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                                        title="Delete attachment"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-4 rounded-2xl border-2 border-dashed border-slate-200 bg-white py-6 text-center">
+                            <Paperclip className="mx-auto mb-1.5 h-8 w-8 text-slate-300" />
+                            <p className="text-xs font-bold text-slate-900">No scans or photos attached yet.</p>
+                            <p className="mt-0.5 text-[11px] text-slate-400">
+                              Upload STL scans, intraoral photos or clinical documents.
+                            </p>
+                            <label className={`mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
+                              <Upload className="h-3.5 w-3.5" />
+                              Browse local files
+                              <input
+                                type="file"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => handleLocalFileUpload(e.target.files)}
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div key={step} className="animate-step-in">
+                  {stepContent()}
+                </div>
+              )}
             </div>
 
-            {/* Modal Body */}
-            <div className="p-5 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-12 gap-5">
-              {/* Media Preview Stage (Left) */}
-              <div className="md:col-span-7 bg-slate-950/95 rounded-xl border border-slate-800 p-3 flex flex-col items-center justify-center min-h-[320px] max-h-[500px] overflow-hidden">
+            {/* ---------------------------- Footer ---------------------------- */}
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4">
+              {isEdit && initialCase ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Are you sure you want to PERMANENTLY delete case ${initialCase.case_number}?`)) {
+                      deleteCase(initialCase.id);
+                      onClose();
+                    }
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-rose-700 ring-1 ring-rose-600/25 transition-all duration-500 hover:bg-rose-50 active:scale-[0.97] ${EASE}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete Case
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:bg-slate-100 active:scale-[0.97] ${EASE}`}
+                  title="Save case in Draft state without submitting to production"
+                >
+                  <Save className="h-4 w-4" />
+                  Save as Draft
+                </button>
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className={`rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 ${EASE}`}
+                >
+                  Cancel
+                </button>
+
+                {isEdit ? (
+                  <button
+                    type="submit"
+                    className={`group inline-flex items-center gap-2 rounded-full bg-indigo-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.98] ${EASE}`}
+                  >
+                    <span>Save Changes</span>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-transform duration-500 group-hover:translate-x-0.5">
+                      <Check className="h-4 w-4" />
+                    </span>
+                  </button>
+                ) : (
+                  <>
+                    {step > 0 && (
+                      <button
+                        type="button"
+                        onClick={goBack}
+                        className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:ring-slate-300 active:scale-[0.97] ${EASE}`}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        Back
+                      </button>
+                    )}
+                    {step < STEPS.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={goNext}
+                        className={`group inline-flex items-center gap-2 rounded-full bg-slate-900 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(15,23,42,0.55)] transition-all duration-500 hover:bg-indigo-600 active:scale-[0.98] ${EASE}`}
+                      >
+                        <span>Continue</span>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
+                          <ArrowRight className="h-4 w-4" />
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        className={`group inline-flex items-center gap-2 rounded-full bg-indigo-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.98] ${EASE}`}
+                      >
+                        <span>Create Dental Case</span>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
+                          <Check className="h-4 w-4" />
+                        </span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* ---------------------------- Attachment preview modal ---------------------------- */}
+      {previewModalAttachment && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-[1.5rem] bg-slate-100 p-2 ring-1 ring-slate-900/10 shadow-[0_48px_96px_-24px_rgba(15,23,42,0.5)]">
+            <div className="rounded-[calc(1.5rem-0.5rem)] bg-white p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <span className={`rounded-full px-3 py-1 text-[10px] font-bold ${getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).badge}`}>
+                  {getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).category}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModalAttachment(null)}
+                  className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex min-h-[280px] items-center justify-center rounded-2xl bg-slate-900 p-4">
                 {(previewModalAttachment.file_type || '').startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(previewModalAttachment.filename || '') ? (
                   <img
                     src={previewModalAttachment.file_url}
                     alt={previewModalAttachment.filename || 'preview'}
-                    className="max-w-full max-h-[440px] object-contain rounded-lg shadow-md"
+                    className="max-h-[420px] max-w-full rounded-xl object-contain"
                   />
                 ) : getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).kind === 'cad' ? (
-                  <div className="text-center p-6 space-y-3">
-                    <div className="w-16 h-16 rounded-2xl bg-indigo-950/80 border border-indigo-700/60 text-indigo-400 flex items-center justify-center mx-auto shadow-inner">
-                      <Box className="w-8 h-8" />
+                  <div className="space-y-3 p-6 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06] text-indigo-300 ring-1 ring-indigo-400/20">
+                      <Box className="h-8 w-8" />
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">3D CAD / STL Surface Mesh</h4>
-                      <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                        Dental CAD scan mesh. Ready for milling, 3D printing, or CAD/CAM fabrication.
-                      </p>
-                    </div>
-                    <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-indigo-900/60 text-indigo-300 border border-indigo-700/60">
-                      Standard Triangulation Language (STL / PLY)
-                    </span>
+                    <h4 className="text-sm font-bold text-white">3D CAD / STL Surface Mesh</h4>
+                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-400">
+                      Dental CAD scan mesh. Ready for milling, 3D printing, or CAD/CAM fabrication.
+                    </p>
                   </div>
                 ) : getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).kind === 'dicom' ? (
-                  <div className="text-center p-6 space-y-3">
-                    <div className="w-16 h-16 rounded-2xl bg-purple-950/80 border border-purple-700/60 text-purple-400 flex items-center justify-center mx-auto shadow-inner">
-                      <Layers className="w-8 h-8" />
+                  <div className="space-y-3 p-6 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06] text-violet-300 ring-1 ring-violet-400/20">
+                      <Layers className="h-8 w-8" />
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">CBCT / DICOM Volumetric Scan</h4>
-                      <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                        High-resolution 3D radiographic tomography slice series.
-                      </p>
-                    </div>
+                    <h4 className="text-sm font-bold text-white">CBCT / DICOM Volumetric Scan</h4>
+                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-400">
+                      High-resolution 3D radiographic tomography slice series.
+                    </p>
                   </div>
                 ) : (
-                  <div className="text-center p-6 space-y-3">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-700 text-slate-400 flex items-center justify-center mx-auto">
-                      <FileText className="w-8 h-8" />
+                  <div className="space-y-3 p-6 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06] text-slate-300 ring-1 ring-white/15">
+                      <FileText className="h-8 w-8" />
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">Clinical Document / Prescription</h4>
-                      <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                        Doctor instructions, lab prescription, or patient clinical record.
-                      </p>
-                    </div>
+                    <h4 className="text-sm font-bold text-white">Clinical Document / Prescription</h4>
+                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-400">
+                      Doctor instructions, lab prescription, or patient clinical record.
+                    </p>
                   </div>
                 )}
               </div>
 
-              {/* Metadata Details (Right) */}
-              <div className="md:col-span-5 flex flex-col justify-between space-y-4">
-                <div className="space-y-4">
-                  <div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${
-                      getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).badge
-                    }`}>
-                      {getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).category}
-                    </span>
-                    <h4 className="text-base font-bold text-slate-900 mt-1.5 break-all">
-                      {previewModalAttachment.filename}
-                    </h4>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
+                {[
+                  ['File name', previewModalAttachment.filename || '—'],
+                  ['Size', previewModalAttachment.file_size || '—'],
+                  ['Type', previewModalAttachment.file_type || '—'],
+                  ['Uploaded by', previewModalAttachment.uploaded_by || 'Lab Staff'],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-xl bg-slate-50 px-3 py-2">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{k}</div>
+                    <div className="mt-0.5 truncate font-semibold text-slate-900" title={v}>{v}</div>
                   </div>
+                ))}
+              </div>
 
-                  {/* Metadata Specification Table */}
-                  <div className="bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-2.5 text-xs">
-                    <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
-                      <span className="text-slate-500 font-medium">Case Association:</span>
-                      <span className="text-slate-900 font-bold">
-                        {initialCase?.case_number || 'New Case (Draft)'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
-                      <span className="text-slate-500 font-medium">File Size:</span>
-                      <span className="text-slate-900 font-bold">
-                        {previewModalAttachment.file_size || 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
-                      <span className="text-slate-500 font-medium">MIME Type:</span>
-                      <span className="text-slate-900 font-mono text-[11px] truncate max-w-[160px]" title={previewModalAttachment.file_type}>
-                        {previewModalAttachment.file_type || 'application/octet-stream'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
-                      <span className="text-slate-500 font-medium">Uploaded By:</span>
-                      <span className="text-slate-900 font-semibold">
-                        {previewModalAttachment.uploaded_by || user?.name || 'Lab Staff'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center py-1">
-                      <span className="text-slate-500 font-medium">Uploaded Date:</span>
-                      <span className="text-slate-900 font-semibold">
-                        {previewModalAttachment.uploaded_at ? previewModalAttachment.uploaded_at : 'Today (Recent)'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Direct Action Controls */}
-                <div className="space-y-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => openFileInBrowser(previewModalAttachment.file_url, previewModalAttachment.filename, previewModalAttachment.file_type)}
-                    className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Open File in Browser Tab
-                  </button>
-
-                  {((previewModalAttachment.file_type || '').startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(previewModalAttachment.filename || '')) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPhotoUrl(previewModalAttachment.file_url);
-                        if (isEdit && initialCase) {
-                          updateCase(initialCase.id, { photo_url: previewModalAttachment.file_url }, 'Updated main case photo');
-                        }
-                        setPreviewModalAttachment(null);
-                      }}
-                      className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-                    >
-                      <Check className="w-4 h-4" />
-                      Set as Primary Case Photo
-                    </button>
-                  )}
-
-                  <a
-                    href={previewModalAttachment.file_url}
-                    download={previewModalAttachment.filename}
-                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download File to Computer
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => setPreviewModalAttachment(null)}
-                    className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                  >
-                    Close Inspector
-                  </button>
-                </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => openFileInBrowser(previewModalAttachment.file_url, previewModalAttachment.filename, previewModalAttachment.file_type)}
+                  className={`inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-600 active:scale-[0.97] ${EASE}`}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open in browser
+                </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* ---------------------------- Save as Template modal ---------------------------- */}
+      {templateModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[1.5rem] bg-slate-100 p-2 ring-1 ring-slate-900/10 shadow-[0_48px_96px_-24px_rgba(15,23,42,0.5)]">
+            <div className="space-y-4 rounded-[calc(1.5rem-0.5rem)] bg-white p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <Bookmark className="h-4 w-4 text-indigo-700" /> Save as Preset Template
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setTemplateModalOpen(false)}
+                  className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-xs leading-relaxed text-slate-600">
+                Save teeth selection, shade, and instructions as a quick preset for future cases.
+              </p>
+              <div>
+                <FieldLabel>Preset Template Name</FieldLabel>
+                <input
+                  type="text"
+                  value={templateNameInput}
+                  onChange={(e) => setTemplateNameInput(e.target.value)}
+                  placeholder="e.g. Anterior Zirconia Shade A2 Standard"
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTemplateModalOpen(false)}
+                  className={`rounded-full px-4 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 ${EASE}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAsTemplate}
+                  className={`inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-5 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}
+                >
+                  <Bookmark className="h-3.5 w-3.5" />
+                  Save Preset
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------- Job slip modal (edit mode) ---------------------------- */}
+      {showJobSlipModal && initialCase && (
+        <CaseJobSlipModal caseData={initialCase} onClose={() => setShowJobSlipModal(false)} />
       )}
     </div>
   );

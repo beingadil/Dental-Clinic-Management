@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
+import { CaseDetailPanel } from './CaseDetailPanel';
 import { CaseTemplateModal } from './CaseTemplateModal';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
@@ -26,7 +27,8 @@ import {
   Move,
   Printer,
   CheckSquare,
-  Receipt
+  Receipt,
+  Pencil
 } from 'lucide-react';
 
 const KANBAN_STAGES: { id: CaseStatus; title: string; color: string; badgeBg: string; headerBg: string }[] = [
@@ -61,6 +63,7 @@ export const CaseListView: React.FC = () => {
     }
   };
   const [selectedCase, setSelectedCase] = useState<DentalCase | null>(null);
+  const [detailCase, setDetailCase] = useState<DentalCase | null>(null);
   const [printSlipCase, setPrintSlipCase] = useState<DentalCase | null>(null);
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [bulkPrintModalOpen, setBulkPrintModalOpen] = useState(false);
@@ -688,7 +691,7 @@ export const CaseListView: React.FC = () => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedCase(c);
+                                  setDetailCase(c);
                                 }}
                                 className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition-colors"
                                 title="View Details"
@@ -759,7 +762,7 @@ export const CaseListView: React.FC = () => {
                     return (
                       <tr
                         key={c.id}
-                        onClick={() => setSelectedCase(c)}
+                        onClick={() => setDetailCase(c)}
                         className={`hover:bg-indigo-50/40 cursor-pointer transition-colors ${
                           isSelected 
                             ? 'bg-indigo-50/60' 
@@ -846,11 +849,22 @@ export const CaseListView: React.FC = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedCase(c);
+                                setDetailCase(c);
                               }}
                               className="px-2.5 py-1 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" /> View
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCase(c);
+                              }}
+                              className="px-2.5 py-1 bg-white hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 hover:border-indigo-600 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              title="Edit case"
+                            >
+                              <Pencil className="w-3.5 h-3.5" /> Edit
                             </button>
                           </div>
                         </td>
@@ -862,6 +876,23 @@ export const CaseListView: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* Case Job Detail Panel (read-first view) */}
+      {detailCase && (
+        <CaseDetailPanel
+          caseData={detailCase}
+          onClose={() => setDetailCase(null)}
+          onEdit={(c) => {
+            setDetailCase(null);
+            setSelectedCase(c);
+          }}
+          onDeleted={() => setDetailCase(null)}
+          onPrint={(c) => {
+            setDetailCase(null);
+            setPrintSlipCase(c);
+          }}
+        />
       )}
 
       {/* Case Detail / Create Modal */}

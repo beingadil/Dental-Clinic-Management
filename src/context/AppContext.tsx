@@ -921,6 +921,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSavedVouchers((prev) => [newVoucher, ...prev]);
 
+    // Persist to SQLite (mirror-keyed effect does not cover this collection)
+    dbWrite(() => {
+      vouchersRepo.insert(newVoucher);
+      mirrorSet('savedVouchers', vouchersRepo.all());
+    });
+
     if (voucherData.case_id && voucherData.case_id !== 'temp-new') {
       const isInv = voucherData.voucher_type === 'invoice';
       const noteMsg = `[VOUCHER LOGGED] Official ${isInv ? 'Invoice Voucher' : 'Workstation Job Slip'} (${voucherData.voucher_number}) saved to system database.`;
@@ -1509,6 +1515,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lab_name: caseData.lab_name,
       case_type_name: caseData.case_type_name,
       doctor_name: caseData.doctor_name,
+      patient_name: caseData.patient_name,
       amount: caseData.price,
       discount: caseData.discount,
       final_amount: caseData.final_price,
@@ -1918,6 +1925,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return updatedInv;
       })
     );
+
+    // ---- Auto-log voucher + system journal for every payment entry ----
+    const payVoucher = createdPayment as PaymentRecord | null;
+    const payInv = invoices.find((i) => i.id === invoiceId);
+    if (payVoucher && payInv) {
+      saveVoucherToSystem({
+        voucher_number: payVoucher.payment_number || paymentNum,
+        voucher_type: 'invoice',
+        case_id: payInv.case_id || '',
+        case_number: payInv.case_number || '',
+        lab_name: payInv.lab_name,
+        doctor_name: payInv.doctor_name || '',
+        patient_name: payInv.patient_name || '',
+        case_type_name: payInv.case_type_name,
+        amount,
+        notes: notes || `Payment ${method}${referenceNumber ? ` · ref ${referenceNumber}` : ''} on ${payInv.invoice_number}`
+      });
+
+      const journal = buildPaymentJournal(
+        payVoucher,
+        [{
+          id: `alloc-${payVoucher.id}`,
+          source_type: 'payment',
+          source_id: payVoucher.id,
+          source_ref: payVoucher.payment_number || paymentNum,
+          invoice_id: payInv.id,
+          invoice_number: payInv.invoice_number,
+          amount,
+          allocated_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          allocated_by: user ? user.name : 'Staff'
+        }],
+        0,
+        user ? user.name : 'Staff'
+      );
+      payVoucher.journal_id = journal.id;
+      setJournalEntries((prev) => [journal, ...prev]);
+    }
 
     return createdPayment;
   };
@@ -2440,6 +2484,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setNotifications((prev) => [notif, ...prev]);
 
+    // Voucher trail for this transaction
+    const firstAllocInvoice = preparedAllocations[0]
+      ? invoices.find((i) => i.id === preparedAllocations[0].invoice_id)
+      : undefined;
+    saveVoucherToSystem({
+      voucher_number: paymentNum,
+      voucher_type: 'invoice',
+      case_id: firstAllocInvoice?.case_id || '',
+      case_number: firstAllocInvoice?.case_number || '',
+      lab_name: labName,
+      doctor_name: firstAllocInvoice?.doctor_name || '',
+      patient_name: firstAllocInvoice?.patient_name || '',
+      case_type_name: firstAllocInvoice?.case_type_name || '',
+      amount: command.amount,
+      notes: command.notes || `${command.method} payment received from ${labName}`
+    });
+
     return { payment: newPayment, receiptNumber: receiptNum, journal };
   };
 
@@ -2708,6 +2769,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAccountAdjustments((prev) => [newAdj, ...prev]);
     setJournalEntries((prev) => [journal, ...prev]);
+
+    // Voucher trail for credit notes
+    saveVoucherToSystem({
+      voucher_number: crNum,
+      voucher_type: 'invoice',
+      case_id: inv?.case_id || '',
+      case_number: inv?.case_number || '',
+      lab_name: labName,
+      doctor_name: inv?.doctor_name || '',
+      patient_name: inv?.patient_name || '',
+      case_type_name: inv?.case_type_name || '',
+      amount: command.amount,
+      notes: command.reasonText || `Credit note issued on ${inv?.invoice_number || 'invoice'}`
+    });
 
     // Audit Event
     const auditEvt: AuditEvent = {

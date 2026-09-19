@@ -1,0 +1,66 @@
+/* =========================================================================
+   Print output styles — visibility-isolation technique so only the active
+   .print-area reaches paper, regardless of surrounding app chrome.
+   ========================================================================= */
+
+.print-preview-shell {
+  background: #e2e8f0;
+  border-radius: 1rem;
+  padding: 1.5rem 1rem;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+  max-height: calc(100vh - 260px);
+}
+
+.print-preview-page {
+  background: #ffffff;
+  width: 100%;
+  max-width: 820px;
+  min-height: 600px;
+  padding: 2.5rem 2.25rem;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.18);
+  border-radius: 4px;
+}
+
+@media (max-width: 640px) {
+  .print-preview-page {
+    padding: 1.25rem 1rem;
+  }
+}
+
+/* ---- Actual printing ---- */
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-area,
+  .print-area * {
+    visibility: visible !important;
+  }
+
+  .print-area {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print-preview-page {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 0.75rem 1rem !important;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

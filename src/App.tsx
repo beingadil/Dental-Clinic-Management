@@ -11,6 +11,7 @@ import { AnalyticsView } from './components/analytics/AnalyticsView';
 import { NotificationsView } from './components/notifications/NotificationsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { CatalogView } from './components/catalog/CatalogView';
+import { PrintStudioView } from './components/print/PrintStudioView';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
 import { ConfirmationModal } from './components/common/ConfirmationModal';
@@ -55,6 +56,8 @@ const MainAppContent: React.FC = () => {
               {currentView === 'billing' && <BillingView />}
 
               {currentView === 'catalog' && <CatalogView />}
+
+              {currentView === 'print' && <PrintStudioView />}
 
               {currentView === 'analytics' && <AnalyticsView />}
 

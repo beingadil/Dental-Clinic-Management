@@ -47,6 +47,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   onReversePayment
 }) => {
   const { cases, accountAdjustments, journalEntries } = useApp();
+  const [jvOpen, setJvOpen] = useState(false);
 
   if (!isOpen || !invoice) return null;
 
@@ -62,9 +63,10 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   const isPaid = netDue <= 0;
   const statusV2 = invoice.status_v2 || deriveInvoiceStatus(invoice.final_amount, totalPaid, invoice.due_date, totalCredits);
 
-  // Journal entries linked to this invoice or its payments
+  // Journal entries linked to this invoice or any of its payments
   const linkedJournals = journalEntries.filter(
-    (j) => j.reference_number === invoice.invoice_number || j.reference_id === invoice.id
+    (j) => j.reference_number === invoice.invoice_number || j.reference_id === invoice.id ||
+      (invoice.payments || []).some((p) => p.id === j.reference_id || p.payment_number === j.reference_number)
   );
 
   return (
@@ -92,7 +94,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Dental Clinic Invoice & Settlement Ledger
+                {invoice.patient_name || 'Walk-in Patient'} · {invoice.case_type_name}
               </p>
             </div>
           </div>
@@ -140,26 +142,46 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             </div>
           </div>
 
+          {/* Bill-To — the person this invoice belongs to */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Billed For Patient</span>
+                <span className="text-base font-bold text-slate-900 truncate block">
+                  {invoice.patient_name || linkedCase?.patient_name || 'Walk-in Patient'}
+                </span>
+                <div className="flex items-center gap-2 mt-1 text-xs text-slate-600 flex-wrap">
+                  <span className="inline-flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-slate-400" /> Dr. {invoice.doctor_name || linkedCase?.doctor_name || '—'}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400" /> {invoice.lab_name}
+                  </span>
+                  {invoice.case_number && (
+                    <span className="font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                      {invoice.case_number}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {invoice.case_type_name && (
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Procedure</span>
+                  <span className="text-xs font-semibold text-slate-800">{invoice.case_type_name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Key Dates & Reference Grid */}
-          <div className="grid grid-cols-3 gap-3 text-xs bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+          <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3.5 rounded-lg border border-slate-200">
             <div>
               <span className="text-slate-500 block mb-0.5">Invoice Date</span>
-              <span className="font-semibold text-slate-800">{invoice.issue_date}</span>
+              <span className="font-semibold text-slate-800">{invoice.issue_date || invoice.created_at?.slice(0, 10)}</span>
             </div>
             <div>
               <span className="text-slate-500 block mb-0.5">Due Date</span>
               <span className="font-semibold text-slate-800">{invoice.due_date || 'Due upon receipt'}</span>
-            </div>
-            <div>
-              <span className="text-slate-500 block mb-0.5">Accounting Journal</span>
-              <button
-                type="button"
-                onClick={() => onOpenJournalModal(invoice.invoice_number)}
-                className="font-mono text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"
-              >
-                <Scale className="w-3.5 h-3.5" />
-                <span>View Entries</span>
-              </button>
             </div>
           </div>
 
@@ -290,6 +312,65 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* System Ledger Entry (JV) — collapsed by default */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50/60">
+            <button
+              type="button"
+              onClick={() => setJvOpen((v) => !v)}
+              className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">
+                <Scale className="w-4 h-4 text-slate-400" />
+                System Ledger Entry (Journal Voucher)
+                {linkedJournals.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold">{linkedJournals.length}</span>
+                )}
+              </span>
+              <ChevronRight className={`w-4 h-4 transition-transform ${jvOpen ? 'rotate-90' : ''}`} />
+            </button>
+            {jvOpen && (
+              <div className="px-4 pb-3.5 space-y-2">
+                {linkedJournals.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic">No journal entries recorded for this invoice yet.</p>
+                ) : (
+                  linkedJournals.map((j) => (
+                    <div key={j.id} className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-mono text-xs font-bold text-slate-800">{j.journal_number}</span>
+                        <button
+                          type="button"
+                          onClick={() => onOpenJournalModal(invoice.invoice_number)}
+                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                        >
+                          Open in Ledger
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mb-2">{j.date} · {j.description}</div>
+                      <table className="w-full text-[10px]">
+                        <thead>
+                          <tr className="text-slate-400 uppercase tracking-wider">
+                            <th className="text-left font-bold py-0.5">Account</th>
+                            <th className="text-right font-bold py-0.5">Debit</th>
+                            <th className="text-right font-bold py-0.5">Credit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {j.lines.map((l) => (
+                            <tr key={l.id} className="border-t border-slate-100">
+                              <td className="py-1 text-slate-700">{l.account_code} · {l.account_name}</td>
+                              <td className="py-1 text-right font-mono text-slate-700">{l.debit ? formatPKR(l.debit) : '—'}</td>
+                              <td className="py-1 text-right font-mono text-slate-700">{l.credit ? formatPKR(l.credit) : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
