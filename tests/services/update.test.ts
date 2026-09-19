@@ -33,10 +33,17 @@ describe('version comparison (semver)', () => {
   });
 });
 
+// Fixture version is always one minor ahead of the installed version so the
+// suite keeps passing no matter how APP_VERSION moves.
+const FUTURE_VERSION = (() => {
+  const [maj, min] = currentVersion().split('.');
+  return `${maj}.${Number(min) + 1}.0`;
+})();
+
 function makeManifest(overrides: Partial<any> = {}) {
   return {
     magic: 'DENTALUPDATE',
-    version: '2.1.0',
+    version: FUTURE_VERSION,
     channel: 'stable',
     released_at: '2026-09-17T00:00:00Z',
     notes: 'test update',
@@ -48,7 +55,7 @@ describe('offline .dentalupdate package validation', () => {
   it('accepts a valid, newer package without payload', async () => {
     const result = await parseOfflineUpdate(JSON.stringify(makeManifest()));
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.manifest.version).toBe('2.1.0');
+    if (result.ok) expect(result.manifest.version).toBe(FUTURE_VERSION);
   });
 
   it('rejects a package with the wrong magic header', async () => {
