@@ -28,6 +28,7 @@ import { ClinicStatementModal } from './ClinicStatementModal';
 import { BatchBillingModal } from './BatchBillingModal';
 import { ClinicNotesModal } from './ClinicNotesModal';
 import { ChairsideCalendarModal } from './ChairsideCalendarModal';
+import { UpdateStatusPill } from '../common/UpdateStatusPill';
 
 interface DashboardViewProps {
   onOpenNewCaseModal: () => void;
@@ -133,7 +134,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
 
   return (
     <div className="space-y-6 pb-12">
-      
+
+      {/* Auto-update status pill (checks on mount, silent when up to date) */}
+      <UpdateStatusPill />
+
       {/* BEGIN: Hero Operations Banner */}
       <section 
         className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-6 sm:p-8 shadow-xl"

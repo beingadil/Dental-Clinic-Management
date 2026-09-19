@@ -8,6 +8,7 @@ import {
   PrintDocument,
 } from './printRenderer';
 import './printStyles.css';
+import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 import {
   Printer,
   Save,
@@ -41,6 +42,7 @@ function loadTemplates(): TemplateMap {
 export const PrintStudioView: React.FC = () => {
   const { cases, invoices, labs, brandingSettings } = useApp();
 
+  const [printSettings] = useState<PrintSettings>(() => loadPrintSettings());
   const [kind, setKind] = useState<DocumentKind>('job_slip');
   const [templates, setTemplates] = useState<TemplateMap>(loadTemplates);
   const [enabled, setEnabled] = useState<string[]>(DEFAULT_ENABLED.job_slip);
@@ -256,12 +258,13 @@ export const PrintStudioView: React.FC = () => {
               </span>
             </div>
             <div className="print-preview-shell">
-              <div className="print-preview-page">
+              <div className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter' : 'print-preview-page'}>
                 <div className="print-area">
                   <PrintDocument
                     kind={kind}
                     sections={enabled}
                     branding={brandingSettings}
+                    printSettings={printSettings}
                     caseData={selectedCase}
                     invoice={selectedInvoice}
                     labName={selectedInvoice?.lab_name || labs[0]?.name}

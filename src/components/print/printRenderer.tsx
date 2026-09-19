@@ -69,6 +69,13 @@ interface PrintDocumentProps {
   kind: DocumentKind;
   sections: string[];
   branding: BrandingSettings;
+  printSettings?: {
+    paper?: 'a4' | 'letter';
+    margin?: 'narrow' | 'normal' | 'wide';
+    fontSize?: 'compact' | 'normal' | 'large';
+    showLogo?: boolean;
+    logoPosition?: 'left' | 'center' | 'right';
+  };
   caseData?: DentalCase | null;
   invoice?: Invoice | null;
   labName?: string;
@@ -80,6 +87,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   kind,
   sections,
   branding,
+  printSettings,
   caseData,
   invoice,
   labName,
@@ -87,6 +95,11 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   period,
 }) => {
   const lab = branding;
+  const paper = printSettings?.paper || 'a4';
+  const margin = printSettings?.margin || 'normal';
+  const fontSize = printSettings?.fontSize || 'normal';
+  const showLogo = printSettings?.showLogo !== false;
+  const logoPos = printSettings?.logoPosition || 'left';
   const title =
     kind === 'job_slip' ? 'DENTAL LAB JOB SLIP'
     : kind === 'invoice' ? 'INVOICE'
@@ -100,18 +113,24 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
 
   const statementInvoices: Invoice[] = invoice ? [invoice] : [];
 
+  // Dynamic page setup — the chosen paper size + margin become the actual
+  // @page rule for printing (overrides the 12mm stylesheet default).
+  const pageMarginMm = margin === 'narrow' ? 8 : margin === 'wide' ? 18 : 12;
+  const pageSetupCss = `@page { size: ${paper === 'letter' ? 'letter' : 'A4'}; margin: ${pageMarginMm}mm; }`;
+
   return (
-    <div className="print-doc bg-white text-slate-900" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+    <div className={`print-doc bg-white text-slate-900 print-fs-${fontSize}`} style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+      <style>{pageSetupCss}</style>
       {on(sections, 'brand') && (
-        <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
+        <div className={`flex items-start ${logoPos === 'center' ? 'flex-col items-center text-center gap-2' : 'justify-between'} border-b-2 border-slate-900 pb-3`}>
           <div className="flex items-center gap-3">
-            {lab.logoUrl && <img src={lab.logoUrl} alt="" className="h-12 w-12 object-contain" />}
+            {showLogo && lab.logoUrl && <img src={lab.logoUrl} alt="" className="h-12 w-12 object-contain" />}
             <div>
               <div className="text-xl font-bold tracking-tight">{lab.lab_name || lab.appName || 'Dental Lab'}</div>
               {lab.tagline && <div className="text-[11px] italic text-slate-600">{lab.tagline}</div>}
             </div>
           </div>
-          <div className="text-right text-[10px] text-slate-600 leading-relaxed">
+          <div className={`${logoPos === 'center' ? 'text-center' : 'text-right'} text-[10px] text-slate-600 leading-relaxed`}>
             {lab.address && <div>{lab.address}</div>}
             {lab.phone && <div>Tel: {lab.phone}</div>}
             {lab.email && <div>{lab.email}</div>}
