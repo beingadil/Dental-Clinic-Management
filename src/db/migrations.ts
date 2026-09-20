@@ -630,7 +630,23 @@ export const MIGRATION_004_APP_VERSION: Migration = {
   name: 'app_version',
   statements: [
     `INSERT INTO app_meta (key, value) VALUES ('app_version', '2.0.0')`,
-    `INSERT INTO app_meta (key, value) VALUES ('schema_version', '4')`
+    `INSERT INTO app_meta (key, value) VALUES ('schema_version', '4')`,
+  ],
+};
+
+const MIGRATION_005_PRINT_TEMPLATES: Migration = {
+  version: 5,
+  name: 'print_templates',
+  statements: [
+    `CREATE TABLE print_templates (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('job_slip', 'invoice', 'receipt', 'statement')),
+      name TEXT NOT NULL,
+      sections TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      UNIQUE (kind, name)
+    )`,
+    `CREATE INDEX idx_print_templates_kind ON print_templates (kind)`,
   ],
 };
 
@@ -639,4 +655,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_002_PRAGMAS_AND_FTS,
   MIGRATION_003_DEMO_FIXTURES,
   MIGRATION_004_APP_VERSION,
+  MIGRATION_005_PRINT_TEMPLATES,
 ];

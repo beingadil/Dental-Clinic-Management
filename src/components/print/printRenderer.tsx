@@ -1,6 +1,6 @@
 import React from 'react';
 import { DentalCase, Invoice, BrandingSettings, PaymentRecord } from '../../types';
-import { TOOTH_NAMES, SHADE_COLORS } from '../cases/Odontogram';
+import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
 
@@ -18,6 +18,7 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'patient', label: 'Patient details', hint: 'Name / ID' },
     { id: 'caseMeta', label: 'Case meta', hint: 'Case #, priority, delivery date' },
     { id: 'teeth', label: 'FDI teeth & prep table', hint: 'Per-unit charting' },
+    { id: 'odontogram', label: 'Printable odontogram', hint: 'Arch chart with case units marked' },
     { id: 'shade', label: 'Shade & material summary', hint: 'Global shade / material' },
     { id: 'instructions', label: 'Doctor instructions', hint: 'Special notes' },
     { id: 'signature', label: 'Signature lines', hint: 'Technician & QC' },
@@ -191,6 +192,12 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                 })}
               </tbody>
             </table>
+          )}
+          {on(sections, 'odontogram') && (
+            <PrintOdontogram
+              selectedTeeth={caseData.selected_teeth}
+              toothDetails={toothDetails}
+            />
           )}
           {on(sections, 'shade') && (
             <div className="mb-4 text-[11px]">
@@ -398,6 +405,53 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
     </div>
   );
 };
+
+/**
+ * Paper-friendly 32-tooth FDI arch chart for job slips: case units are filled
+ * solid (photocopies cleanly), the rest stay as hairline outlines. Purely
+ * monochrome — no screen colors.
+ */
+const PrintOdontogram: React.FC<{
+  selectedTeeth: number[];
+  toothDetails: Record<number, any>;
+}> = ({ selectedTeeth, toothDetails }) => (
+  <div className="mb-4">
+    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Odontogram</div>
+    <svg viewBox="0 0 1000 680" className="w-full h-auto" role="img" aria-label="32-tooth FDI chart with case units marked">
+      <line x1="500" y1="84" x2="500" y2="580" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 6" />
+      {getToothLayout().map(({ id, arch, x, y, rotation }) => {
+        const active = selectedTeeth.includes(id);
+        const prep = String(toothDetails[id]?.prep_type || '');
+        return (
+          <g key={id} transform={`translate(${x} ${y}) rotate(${rotation})`}>
+            <circle r="10" fill={active ? '#0f172a' : '#ffffff'} stroke={active ? '#0f172a' : '#94a3b8'} strokeWidth="1.5" />
+            {active && prep === 'implant' && <circle r="3.5" fill="#ffffff" stroke="none" />}
+            <text
+              x="0"
+              y={arch === 'upper' ? -18 : 26}
+              textAnchor="middle"
+              transform={`rotate(${-rotation})`}
+              fontSize="12"
+              fontWeight={active ? 700 : 500}
+              fill={active ? '#0f172a' : '#64748b'}
+            >
+              {id}
+            </text>
+          </g>
+        );
+      })}
+      <text x="500" y="36" textAnchor="middle" fontSize="11" letterSpacing="3" fill="#94a3b8">MAXILLA</text>
+      <text x="500" y="664" textAnchor="middle" fontSize="11" letterSpacing="3" fill="#94a3b8">MANDIBLE</text>
+    </svg>
+    <div className="text-[10px] text-slate-600 mt-1">
+      <span className="font-bold">Case units:</span>{' '}
+      {selectedTeeth.length ? selectedTeeth.join(', ') : '—'}
+      {selectedTeeth.length === 1 && String(toothDetails[selectedTeeth[0]]?.prep_type || '') && (
+        <span> · Prep: {String(toothDetails[selectedTeeth[0]].prep_type).replace(/_/g, ' ')}</span>
+      )}
+    </div>
+  </div>
+);
 
 const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>

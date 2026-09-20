@@ -35,6 +35,42 @@ export function isDesktopShell(): boolean {
   return tauri() !== null;
 }
 
+/** Release-asset hosts trusted for auto-download. Anything else fails closed. */
+const TRUSTED_DOWNLOAD_HOSTS = new Set([
+  'github.com',
+  'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
+]);
+
+function isTrustedDownloadUrl(url: string | undefined | null): url is string {
+  if (!url || !url.startsWith('https://')) return false;
+  try {
+    return TRUSTED_DOWNLOAD_HOSTS.has(new URL(url).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Base64 for large binary payloads over Tauri IPC. Sending a raw number array
+ * serializes ~8 bytes of JSON per installer byte (≈600 MB JSON for a 150 MB
+ * installer); base64 is 1.33× — the Rust side decodes with its own helper.
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = bytes[i + 1];
+    const b2 = bytes[i + 2];
+    out += B64[b0 >> 2];
+    out += B64[((b0 & 3) << 4) | ((b1 ?? 0) >> 4)];
+    out += b1 === undefined ? '=' : B64[((b1 & 15) << 2) | ((b2 ?? 0) >> 6)];
+    out += b2 === undefined ? '=' : B64[b2 & 63];
+  }
+  return out;
+}
+
 type Listener = (phase: AutoUpdatePhase) => void;
 
 let current: AutoUpdatePhase = { state: 'idle' };
@@ -134,9 +170,13 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
     }
 
     try {
-      // 1 — fetch the installer bytes
+      // 1 — fetch the installer bytes (only from trusted release hosts;
+      // a tampered manifest must not be able to redirect the download)
+      if (!isTrustedDownloadUrl(downloadUrl)) {
+        throw new Error('Update source is not a trusted release host — refusing to auto-download.');
+      }
       setPhase({ state: 'downloading', version, received: 0, total: 0 });
-      const res = await fetch(downloadUrl || '', { cache: 'no-store' });
+      const res = await fetch(downloadUrl, { cache: 'no-store' });
       if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`);
       const total = Number(res.headers.get('content-length') || 0);
       const reader = res.body?.getReader();
@@ -166,7 +206,7 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
       const checksum = await resolveChecksum(version, (status as any).payload_checksum as string | undefined);
       const api = tauri()!;
       const ok = await api.invoke('auto_install_update', {
-        bytes: Array.from(bytes),
+        bytes_b64: bytesToBase64(bytes),
         version,
         checksum,
         notes: notes || null,

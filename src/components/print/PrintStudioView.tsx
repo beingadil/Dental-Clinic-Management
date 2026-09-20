@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, Invoice } from '../../types';
+import { printTemplatesRepo } from '../../db/repos';
 import {
   DocumentKind,
   PRINT_SECTIONS,
@@ -27,15 +28,44 @@ const KIND_META: { id: DocumentKind; label: string; icon: React.ReactNode }[] = 
   { id: 'statement', label: 'Statement', icon: <ScrollText className="w-3.5 h-3.5" /> },
 ];
 
-const STORE_KEY = 'dentlab_print_templates_v1';
-
 type TemplateMap = Partial<Record<DocumentKind, { name: string; sections: string[] }[]>>;
 
-function loadTemplates(): TemplateMap {
+/** Legacy localStorage key — imported into SQLite once, then removed. */
+const LEGACY_STORE_KEY = 'dentlab_print_templates_v1';
+
+function repoToMap(): TemplateMap {
   try {
-    return JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    const map: TemplateMap = {};
+    for (const t of printTemplatesRepo.all()) {
+      const kind = t.kind as DocumentKind;
+      (map[kind] ||= []).push({ name: t.name, sections: t.sections });
+    }
+    return map;
   } catch {
     return {};
+  }
+}
+
+function importLegacyTemplates(): TemplateMap | null {
+  try {
+    const legacy = localStorage.getItem(LEGACY_STORE_KEY);
+    if (!legacy) return null;
+    const map = JSON.parse(legacy) as TemplateMap;
+    const existing = new Set(printTemplatesRepo.all().map((t) => `${t.kind}::${t.name}`));
+    let imported = 0;
+    for (const [kind, list] of Object.entries(map)) {
+      for (const t of list || []) {
+        if (existing.has(`${kind}::${t.name}`)) continue;
+        try {
+          printTemplatesRepo.insert({ kind, name: t.name, sections: t.sections });
+          imported++;
+        } catch { /* skip unusable rows */ }
+      }
+    }
+    localStorage.removeItem(LEGACY_STORE_KEY);
+    return imported > 0 ? repoToMap() : null;
+  } catch {
+    return null;
   }
 }
 
@@ -44,7 +74,7 @@ export const PrintStudioView: React.FC = () => {
 
   const [printSettings] = useState<PrintSettings>(() => loadPrintSettings());
   const [kind, setKind] = useState<DocumentKind>('job_slip');
-  const [templates, setTemplates] = useState<TemplateMap>(loadTemplates);
+  const [templates, setTemplates] = useState<TemplateMap>({});
   const [enabled, setEnabled] = useState<string[]>(DEFAULT_ENABLED.job_slip);
 
   const [caseId, setCaseId] = useState<string>('');
@@ -57,14 +87,10 @@ export const PrintStudioView: React.FC = () => {
     setEnabled(DEFAULT_ENABLED[kind]);
   }, [kind]);
 
-  const saveTemplates = (next: TemplateMap) => {
-    setTemplates(next);
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(next));
-    } catch {
-      // ignore quota errors
-    }
-  };
+  // Hydrate from SQLite; import legacy localStorage templates exactly once.
+  useEffect(() => {
+    setTemplates(importLegacyTemplates() ?? repoToMap());
+  }, []);
 
   const selectedCase: DentalCase | null = useMemo(
     () => cases.find((c) => c.id === caseId) || cases[0] || null,
@@ -85,8 +111,12 @@ export const PrintStudioView: React.FC = () => {
 
   const saveTemplate = () => {
     if (!templateName.trim()) return;
-    const list = templates[kind] || [];
-    saveTemplates({ ...templates, [kind]: [...list, { name: templateName.trim(), sections: enabled }] });
+    try {
+      printTemplatesRepo.insert({ kind, name: templateName.trim(), sections: enabled });
+      setTemplates(repoToMap());
+    } catch {
+      // DB unavailable — keep the modal usable rather than crashing
+    }
     setTemplateName('');
     setSaveOpen(false);
   };
@@ -94,7 +124,13 @@ export const PrintStudioView: React.FC = () => {
   const applyTemplate = (sections: string[]) => setEnabled(sections);
 
   const deleteTemplate = (name: string) => {
-    saveTemplates({ ...templates, [kind]: (templates[kind] || []).filter((t) => t.name !== name) });
+    try {
+      const row = printTemplatesRepo.all().find((t) => t.kind === kind && t.name === name);
+      if (row) printTemplatesRepo.delete(row.id);
+      setTemplates(repoToMap());
+    } catch {
+      // DB unavailable
+    }
   };
 
   const handlePrint = () => window.print();
