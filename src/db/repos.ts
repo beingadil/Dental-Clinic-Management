@@ -1456,6 +1456,47 @@ export const caseTemplatesRepo = {
   },
 };
 
+// ─────────────────────────────────────────────────────────── print templates
+
+export interface PrintTemplateRow {
+  id: string;
+  kind: string;
+  name: string;
+  sections: string[];
+  created_at: string;
+}
+
+export const printTemplatesRepo = {
+  all(): PrintTemplateRow[] {
+    return requireEngine()
+      .all<{ id: string; kind: string; name: string; sections: string; created_at: string }>(
+        'SELECT * FROM print_templates ORDER BY created_at DESC'
+      )
+      .map((r) => {
+        let sections: string[] = [];
+        try { sections = JSON.parse(r.sections || '[]'); } catch { /* corrupt row → empty */ }
+        return { id: r.id, kind: r.kind, name: r.name, sections, created_at: r.created_at };
+      });
+  },
+  insert(t: { kind: string; name: string; sections: string[] }): PrintTemplateRow {
+    const id = genId('prt');
+    requireEngine().run(
+      `INSERT INTO print_templates (id, kind, name, sections, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [id, t.kind, t.name, JSON.stringify(t.sections), now()]
+    );
+    const row = requireEngine().get<{ id: string; kind: string; name: string; sections: string; created_at: string }>(
+      'SELECT * FROM print_templates WHERE id = ?',
+      [id]
+    )!;
+    return { ...row, sections: JSON.parse(row.sections || '[]') };
+  },
+  delete(id: string): boolean {
+    const before = requireEngine().rowCount('print_templates');
+    requireEngine().run('DELETE FROM print_templates WHERE id = ?', [id]);
+    return requireEngine().rowCount('print_templates') < before;
+  },
+};
+
 // ─────────────────────────────────────────────────────────── vouchers
 
 export interface VoucherRow {

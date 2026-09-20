@@ -242,6 +242,22 @@ const INITIAL_TEETH: Tooth[] = [
   ...createArch(LOWER_PANORAMIC_TEETH, "lower"),
 ];
 
+export interface ToothLayoutPoint {
+  id: ToothId;
+  arch: Arch;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+/**
+ * Static arch layout for all 32 teeth (FDI identity + parabolic position).
+ * Shared with print documents so the paper chart matches the on-screen one.
+ */
+export function getToothLayout(): ToothLayoutPoint[] {
+  return INITIAL_TEETH.map(({ id, arch, x, y, rotation }) => ({ id, arch, x, y, rotation }));
+}
+
 /* =========================================================================
    VISUAL STATE MODEL — prep types mapped to clinical overlay art
    ========================================================================= */

@@ -98,10 +98,16 @@ fn db_save_bytes(state: State<DbState>, bytes_b64: String) -> Result<SaveResult,
         f.sync_all()
             .map_err(|e| format!("cannot flush temp file: {e}"))?;
     }
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| format!("cannot replace database file: {e}"))?;
+    // Atomic replace: rename over the live file — the DB never exists in a
+    // half-written state (Windows rename uses MOVEFILE_REPLACE_EXISTING).
+    // Fall back to remove+rename only if the filesystem refuses the overwrite
+    // (e.g. an antivirus scanner briefly holding the target).
+    if fs::rename(&tmp, &path).is_err() {
+        if path.exists() {
+            fs::remove_file(&path).map_err(|e| format!("cannot replace database file: {e}"))?;
+        }
+        fs::rename(&tmp, &path).map_err(|e| format!("cannot finalize database file: {e}"))?;
     }
-    fs::rename(&tmp, &path).map_err(|e| format!("cannot finalize database file: {e}"))?;
 
     Ok(SaveResult {
         path: path.to_string_lossy().to_string(),
@@ -190,6 +196,7 @@ fn base64_decode(text: &str) -> Result<Vec<u8>, String> {
             b'0'..=b'9' => Ok((c - b'0' + 52) as u32),
             b'+' => Ok(62),
             b'/' => Ok(63),
+            b'=' => Ok(0), // padding — ignored via the chunk-length logic below
             _ => Err("invalid base64".into()),
         }
     }
@@ -214,36 +221,28 @@ fn base64_decode(text: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// Runs a downloaded, checksum-verified update installer (NSIS /S = silent).
-/// The installer replaces the app and relaunches it; this process exits after.
-#[tauri::command]
-fn run_installer(path: String) -> Result<(), String> {
-    let p = PathBuf::from(&path);
-    if !p.exists() {
-        return Err(format!("Installer not found: {}", path));
-    }
-    let exe = p
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    if !(exe.ends_with(".exe")) {
-        return Err("Only .exe installers can be launched".into());
-    }
-    Command::new(&p)
-        .args(["/S"])
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
-}
-
 /// Opens a URL in the user's default system browser. Used by the in-app
 /// update flow so the new installer downloads outside the sandboxed webview.
-/// Only https URLs are allowed — this is not a general file/URL launcher.
+/// Only https URLs on known-good hosts are allowed — this is not a general
+/// file/URL launcher.
 #[tauri::command]
 fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    const ALLOWED_HOSTS: [&str; 3] = [
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+    ];
     if !url.starts_with("https://") {
         return Err("Only https URLs can be opened".into());
+    }
+    let host = url
+        .trim_start_matches("https://")
+        .split(&['/', '?', ':'][..])
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    if !ALLOWED_HOSTS.contains(&host.as_str()) {
+        return Err(format!("URL host is not allowed: {host}"));
     }
     app.opener()
         .open_url(url, None::<&str>)
@@ -254,7 +253,22 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
 /// SHA-256 against the published checksum, and only then launches it
 /// silently (NSIS /S). Fails closed: any mismatch aborts without executing.
 #[tauri::command]
-fn auto_install_update(bytes: Vec<u8>, version: String, checksum: String, notes: Option<String>) -> Result<bool, String> {
+fn auto_install_update(
+    state: State<DbState>,
+    bytes_b64: String,
+    version: String,
+    checksum: String,
+    notes: Option<String>,
+) -> Result<bool, String> {
+    // The version lands in the staged filename — never allow path characters.
+    let version_ok = version.len() <= 32
+        && version
+            .split('.')
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+    if !version_ok {
+        return Err("Refusing to install: invalid version string".into());
+    }
+    let bytes = base64_decode(&bytes_b64)?;
     if bytes.is_empty() {
         return Err("Update payload is empty".into());
     }
@@ -270,6 +284,7 @@ fn auto_install_update(bytes: Vec<u8>, version: String, checksum: String, notes:
     {
         let mut f = fs::File::create(&path).map_err(|e| e.to_string())?;
         f.write_all(&bytes).map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
     }
 
     // Verify BEFORE executing anything.
@@ -284,6 +299,19 @@ fn auto_install_update(bytes: Vec<u8>, version: String, checksum: String, notes:
             &expected[..12],
             &actual[..12]
         ));
+    }
+
+    // Refuse to auto-install over a database save that never reached disk.
+    if state.path.lock().unwrap().is_none() {
+        return Err("Database not loaded — refusing to update now; try again after the app has saved its data.".into());
+    }
+
+    // Take a safety backup of the live database before the installer runs,
+    // so a failed NSIS run can never take clinic data with it.
+    let db_path = state.path.lock().unwrap().clone().unwrap();
+    let backup = db_path.with_extension(format!("sqlite.pre-update-{}-{}.bak", version, chrono_like_stamp()));
+    if let Err(e) = fs::copy(&db_path, &backup) {
+        return Err(format!("Could not back up the database before updating: {e}"));
     }
 
     // Verified — launch the NSIS installer silently; it replaces the app and
@@ -310,7 +338,6 @@ pub fn run() {
             db_backup_file,
             file_sha256,
             open_external,
-            run_installer,
             auto_install_update
         ])
         .run(tauri::generate_context!())
