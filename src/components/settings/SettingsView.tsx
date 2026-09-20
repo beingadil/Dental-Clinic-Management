@@ -59,6 +59,7 @@ import {
   AutoUpdatePhase,
   isDesktopShell,
 } from '../../services/updateInstaller';
+import { getUpdateHistory, UpdateHistoryEntry } from '../../services/updateHistory';
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -97,6 +98,10 @@ export const SettingsView: React.FC = () => {
   // Auto-update engine (dashboard pill + this card share one phase store)
   const [autoPhase, setAutoPhase] = useState<AutoUpdatePhase>(() => getAutoUpdatePhase());
   useEffect(() => onAutoUpdatePhase(setAutoPhase), []);
+  // Persisted update history — re-read whenever the phase moves so the log
+  // reflects the run that just happened.
+  const [updateHistory, setUpdateHistory] = useState<UpdateHistoryEntry[]>(() => getUpdateHistory());
+  useEffect(() => { setUpdateHistory(getUpdateHistory()); }, [autoPhase]);
 
   // My Account form state
   const [accountForm, setAccountForm] = useState({
@@ -2108,8 +2113,8 @@ export const SettingsView: React.FC = () => {
               <p className="text-[11px] text-slate-600">Runs when the dashboard loads and hourly afterwards. Silent when up to date; nothing is installed without verification against the published SHA-256.</p>
             </div>
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-              <p className="text-xs font-bold text-slate-800">Offline / manual install</p>
-              <p className="text-[11px] text-slate-600">Download the installer from the Releases page on any connected PC, copy it over, and run it — or import a verified .dentalupdate package from the Database &amp; Backup tab.</p>
+              <p className="text-xs font-bold text-slate-800">Silent install</p>
+              <p className="text-[11px] text-slate-600">Installs per-user — no administrator rights needed. The installer is checksum-verified, the database is backed up first, and the app restarts itself on the new version. Offline machines: import a verified .dentalupdate package from the Database &amp; Backup tab.</p>
             </div>
           </div>
 
@@ -2128,6 +2133,43 @@ export const SettingsView: React.FC = () => {
               </span>
             )}
           </div>
+
+          {updateHistory.length > 0 ? (
+            <div className="pt-3 border-t border-slate-100">
+              <p className="text-xs font-bold text-slate-800 mb-1">Update history</p>
+              <ul className="divide-y divide-slate-100">
+                {updateHistory.slice(0, 8).map((h, i) => (
+                  <li key={`${h.at}-${i}`} className="py-2 flex items-start gap-2.5 text-[11px]">
+                    <span
+                      className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${
+                        h.state === 'installed'
+                          ? 'bg-emerald-500'
+                          : h.state === 'available'
+                          ? 'bg-indigo-500'
+                          : h.state === 'up_to_date'
+                          ? 'bg-slate-300'
+                          : 'bg-rose-500'
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-700">
+                        {h.state === 'available' && `v${h.version} available`}
+                        {h.state === 'installed' && `Updated to v${h.version}`}
+                        {h.state === 'failed' && `Update failed${h.version !== currentVersion() ? ` (v${h.version})` : ''}`}
+                        {h.state === 'up_to_date' && 'Checked — up to date'}
+                        <span className="font-normal text-slate-400"> · {new Date(h.at).toLocaleString()}</span>
+                      </p>
+                      {h.message && (
+                        <p className="text-slate-500 truncate" title={h.message}>{h.message}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-400 border-t border-slate-100 pt-3">No update activity recorded yet.</p>
+          )}
         </div>
       )}
     </div>

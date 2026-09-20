@@ -1,15 +1,16 @@
 /**
  * Auto-update engine — shared phase store consumed by the dashboard pill and
- * the Settings card. Flow: check manifest → (desktop) fetch the installer
- * bytes → verify SHA-256 in Rust → execute silently (NSIS /S) → the installer
- * replaces the app and relaunches it on the new version. The web build falls
- * back to the system-browser download.
+ * the Settings card. Flow: check manifest → (desktop) the native `update_install`
+ * command streams the installer to disk, verifies SHA-256, takes a database
+ * backup, runs the NSIS installer silently and exits so it can replace files.
+ * The web build falls back to the system-browser download.
  *
  * Verification happens in Rust *before* anything is executed; a checksum
  * mismatch aborts the update with the file left untouched.
  */
 import { settingsRepo } from '../db/repos';
 import { checkForUpdates, UpdateStatus, currentVersion } from './updateService';
+import { recordUpdateHistory } from './updateHistory';
 
 export type AutoUpdatePhase =
   | { state: 'idle' }
@@ -23,6 +24,9 @@ export type AutoUpdatePhase =
 
 interface TauriApi {
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<any>;
+  event?: {
+    listen: (name: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>;
+  };
 }
 
 function tauri(): TauriApi | null {
@@ -33,42 +37,6 @@ function tauri(): TauriApi | null {
 
 export function isDesktopShell(): boolean {
   return tauri() !== null;
-}
-
-/** Release-asset hosts trusted for auto-download. Anything else fails closed. */
-const TRUSTED_DOWNLOAD_HOSTS = new Set([
-  'github.com',
-  'objects.githubusercontent.com',
-  'release-assets.githubusercontent.com',
-]);
-
-function isTrustedDownloadUrl(url: string | undefined | null): url is string {
-  if (!url || !url.startsWith('https://')) return false;
-  try {
-    return TRUSTED_DOWNLOAD_HOSTS.has(new URL(url).hostname.toLowerCase());
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Base64 for large binary payloads over Tauri IPC. Sending a raw number array
- * serializes ~8 bytes of JSON per installer byte (≈600 MB JSON for a 150 MB
- * installer); base64 is 1.33× — the Rust side decodes with its own helper.
- */
-function bytesToBase64(bytes: Uint8Array): string {
-  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let out = '';
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i];
-    const b1 = bytes[i + 1];
-    const b2 = bytes[i + 2];
-    out += B64[b0 >> 2];
-    out += B64[((b0 & 3) << 4) | ((b1 ?? 0) >> 4)];
-    out += b1 === undefined ? '=' : B64[((b1 & 15) << 2) | ((b2 ?? 0) >> 6)];
-    out += b2 === undefined ? '=' : B64[b2 & 63];
-  }
-  return out;
 }
 
 type Listener = (phase: AutoUpdatePhase) => void;
@@ -95,8 +63,9 @@ export function getAutoUpdatePhase(): AutoUpdatePhase {
 /** Last completed check, persisted for the dashboard pill. */
 export function getLastUpdateCheck(): { at: string; version: string; state: string } | null {
   try {
+    // settingsRepo already JSON-parses values — no second parse here.
     const row = settingsRepo.get('updates', 'last_check');
-    return row ? JSON.parse(row.value) : null;
+    return row ? (row as { at: string; version: string; state: string }) : null;
   } catch {
     return null;
   }
@@ -104,27 +73,8 @@ export function getLastUpdateCheck(): { at: string; version: string; state: stri
 
 function setLastUpdateCheck(version: string, state: string): void {
   try {
-    settingsRepo.set('updates', 'last_check', JSON.stringify({ at: new Date().toISOString(), version, state }));
+    settingsRepo.set('updates', 'last_check', { at: new Date().toISOString(), version, state });
   } catch { /* non-fatal */ }
-}
-
-/**
- * Resolves the installer checksum: prefer the Pages manifest, fall back to
- * the SHA256SUMS.txt asset CI uploads with every release. No checksum →
- * refuse to auto-install (fail closed).
- */
-async function resolveChecksum(version: string, fromManifest?: string): Promise<string> {
-  if (fromManifest) return fromManifest;
-  const url = `https://github.com/beingadil/Dental-Clinic-Management/releases/download/v${version}/SHA256SUMS.txt`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (res.ok) {
-    for (const line of (await res.text()).split('\n')) {
-      if (!/-setup\.exe/i.test(line)) continue;
-      const hash = line.trim().split(/\s+/)[0];
-      if (/^[a-f0-9]{64}$/i.test(hash)) return 'sha256:' + hash;
-    }
-  }
-  throw new Error('No checksum available for this release — refusing to auto-install.');
 }
 
 /**
@@ -141,6 +91,7 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
     const status: UpdateStatus = await checkForUpdates();
     if (status.state === 'error') {
       setLastUpdateCheck(currentVersion(), 'offline');
+      recordUpdateHistory({ version: currentVersion(), state: 'failed', message: status.message });
       const phase: AutoUpdatePhase = { state: 'failed', message: status.message };
       setPhase(phase);
       return phase;
@@ -156,8 +107,9 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
     const downloadUrl = (status as any).download_url as string | undefined;
 
     // Record availability immediately so the pill can show it even if the
-    // desktop download path is unavailable.
+    // download or install later fails.
     setLastUpdateCheck(version, 'available');
+    recordUpdateHistory({ version, state: 'available' });
     setPhase({ state: 'available', version });
 
     if (!isDesktopShell()) {
@@ -170,56 +122,51 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
     }
 
     try {
-      // 1 — fetch the installer bytes (only from trusted release hosts;
-      // a tampered manifest must not be able to redirect the download)
-      if (!isTrustedDownloadUrl(downloadUrl)) {
-        throw new Error('Update source is not a trusted release host — refusing to auto-download.');
-      }
       setPhase({ state: 'downloading', version, received: 0, total: 0 });
-      const res = await fetch(downloadUrl, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`);
-      const total = Number(res.headers.get('content-length') || 0);
-      const reader = res.body?.getReader();
-      let bytes: Uint8Array;
-      if (reader && total > 0) {
-        const chunks: Uint8Array[] = [];
-        let received = 0;
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          received += value.length;
-          setPhase({ state: 'downloading', version, received, total });
+
+      // Native side streams the download, verifies the checksum, backs up the
+      // database and launches the installer. The release-asset CDN sends no
+      // CORS headers, so this must run in Rust — a webview fetch of the
+      // installer throws and the update silently dies (seen on v2.3.1).
+      const api = tauri()!;
+      const { listen } = await import('@tauri-apps/api/event');
+      const unlisten = await listen<{ version?: string; received?: number; total?: number }>(
+        'update://progress',
+        (event) => {
+          const p = event.payload;
+          if (p && typeof p.received === 'number' && typeof p.total === 'number') {
+            setPhase({ state: 'downloading', version, received: p.received, total: p.total });
+          }
+        },
+      );
+
+      let phase: AutoUpdatePhase;
+      try {
+        const ok = await api.invoke('update_install', {
+          version,
+          downloadUrl: downloadUrl ?? null,
+          expectedChecksum: (status as any).payload_checksum ?? null,
+        });
+        if (ok !== true) {
+          phase = { state: 'failed', message: String(ok || 'Update installation failed') };
+        } else {
+          // Verified installer is running; we exit so it can replace files.
+          phase = { state: 'installing', version };
         }
-        bytes = new Uint8Array(received);
-        let off = 0;
-        for (const c of chunks) {
-          bytes.set(c, off);
-          off += c.length;
-        }
-      } else {
-        bytes = new Uint8Array(await res.arrayBuffer());
+      } finally {
+        if (unlisten) unlisten();
       }
 
-      // 2 — verify in Rust (checksum from the manifest or the release's SHA256SUMS.txt)
-      setPhase({ state: 'verifying', version });
-      const checksum = await resolveChecksum(version, (status as any).payload_checksum as string | undefined);
-      const api = tauri()!;
-      const ok = await api.invoke('auto_install_update', {
-        bytes_b64: bytesToBase64(bytes),
-        version,
-        checksum,
-        notes: notes || null,
-      });
-      if (ok !== true) throw new Error(String(ok || 'Installer verification failed'));
-
-      // 3 — verified installer is running; it will replace and relaunch us
-      setPhase({ state: 'installing', version });
-      const phase: AutoUpdatePhase = { state: 'installing', version };
+      if (phase.state === 'installing') {
+        recordUpdateHistory({ version, state: 'installed', message: notes });
+      } else {
+        recordUpdateHistory({ version, state: 'failed', message: (phase as any).message });
+      }
       setPhase(phase);
       return phase;
     } catch (e: any) {
       const phase: AutoUpdatePhase = { state: 'failed', message: e?.message || String(e) };
+      recordUpdateHistory({ version, state: 'failed', message: phase.message });
       setPhase(phase);
       return phase;
     }

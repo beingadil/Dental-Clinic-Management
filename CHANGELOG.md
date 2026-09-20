@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.2] — 2026-09-21
+
+### Fixed
+- **Auto-update engine works end-to-end** — the installer download moved from
+  the webview (where the release-asset CDN's missing CORS headers silently
+  killed every attempt) to a native streaming download in Rust with live
+  progress events. The SHA256SUMS.txt fallback now works for the same reason.
+- Update checks read the CI-published manifest from the raw `gh-pages` URL
+  first (the repo's GitHub Pages site was never enabled, so the old primary
+  source 404'd), with the published Pages URL and Releases API as fallbacks.
+- The silent NSIS install now runs detached and the app exits cleanly so the
+  installer can replace files and relaunch the new version.
+
+### Security
+- **Checksum cross-check**: a manifest-provided checksum must exactly match the
+  release's published SHA256SUMS.txt, which is now always fetched — any
+  absence, unparsable entry, or disagreement fails closed.
+- **Per-user install mode** (`installMode: currentUser`): silent updates no
+  longer need administrator rights on clinic PCs.
+
+### Added
+- **Update history** in Settings → Updates: a persisted, capped log of every
+  update check, availability, install, and failure, shown with the current
+  version and a manual re-check button.
+
 ## [2.3.1] — 2026-09-20
 
 ### Added

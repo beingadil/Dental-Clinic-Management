@@ -15,7 +15,15 @@ import { APP_VERSION } from './backupService';
  * A fully offline computer can always be updated via the offline package.
  */
 
+/**
+ * Primary update source. The repo's GitHub Pages site was never enabled, so
+ * the published pages URL 404s; the raw gh-pages URL serves the same
+ * CI-published file over raw.githubusercontent (no CORS issues in the
+ * webview, no rate limiting like the Releases API).
+ */
 export const UPDATE_MANIFEST_URL_DEFAULT =
+  'https://raw.githubusercontent.com/beingadil/Dental-Clinic-Management/gh-pages/update-manifest.json';
+export const UPDATE_MANIFEST_PAGES_URL =
   'https://beingadil.github.io/Dental-Clinic-Management/update-manifest.json';
 export const GITHUB_LATEST_RELEASE_URL =
   'https://api.github.com/repos/beingadil/Dental-Clinic-Management/releases/latest';
@@ -69,14 +77,17 @@ interface GithubReleaseInfo {
  * unauthenticated) if Pages isn't reachable yet.
  */
 async function fetchLatestManifest(): Promise<UpdateManifest | null> {
-  // 1 — GitHub Pages manifest (published by CI on every tag push)
-  try {
-    const res = await fetch(UPDATE_MANIFEST_URL_DEFAULT, { cache: 'no-store' });
-    if (res.ok) {
-      const manifest = (await res.json()) as UpdateManifest;
-      if (manifest?.magic === 'DENTALUPDATE' && manifest.version) return manifest;
-    }
-  } catch { /* fall through to the API fallback */ }
+  // 1 — CI-published manifest on the gh-pages branch (raw + published URLs,
+  // in that order, so an enabled-Pages repo keeps working too)
+  for (const url of [UPDATE_MANIFEST_URL_DEFAULT, UPDATE_MANIFEST_PAGES_URL]) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (res.ok) {
+        const manifest = (await res.json()) as UpdateManifest;
+        if (manifest?.magic === 'DENTALUPDATE' && manifest.version) return manifest;
+      }
+    } catch { /* try the next source */ }
+  }
 
   // 2 — GitHub Releases API fallback
   try {
