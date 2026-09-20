@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 /// The single real SQLite database file used by the desktop build.
@@ -249,16 +249,107 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Writes the received update-installer bytes to a temp file, verifies the
-/// SHA-256 against the published checksum, and only then launches it
-/// silently (NSIS /S). Fails closed: any mismatch aborts without executing.
-#[tauri::command]
-fn auto_install_update(
-    state: State<DbState>,
-    bytes_b64: String,
+const TRUSTED_UPDATE_HOSTS: [&str; 3] = [
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+
+fn is_trusted_download_url(raw: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(raw) else { return false };
+    if url.scheme() != "https" {
+        return false;
+    }
+    match url.host_str() {
+        Some(h) => TRUSTED_UPDATE_HOSTS.contains(&h.to_ascii_lowercase().as_str()),
+        None => false,
+    }
+}
+
+async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("HTTP {}", res.status()));
+    }
+    res.text().await.map_err(|e| format!("read failed: {e}"))
+}
+
+/// The expected checksum must be confirmed by the release's published
+/// SHA256SUMS.txt: when the manifest provides one, both sources have to agree
+/// exactly; the sums file is the authority either way. Any absence,
+/// unparsable entry, or disagreement fails closed — no install, ever.
+async fn resolve_expected_checksum(
+    client: &reqwest::Client,
+    version: &str,
+    provided: Option<&str>,
+) -> Result<String, String> {
+    if let Some(c) = provided {
+        if !(c.len() == 7 + 64 && c.starts_with("sha256:")) {
+            return Err("Provided update checksum is malformed — refusing to install.".into());
+        }
+    }
+    let sums_url = format!(
+        "https://github.com/beingadil/Dental-Clinic-Management/releases/download/v{version}/SHA256SUMS.txt"
+    );
+    let text = fetch_text(client, &sums_url).await.map_err(|_| {
+        "Checksum file (SHA256SUMS.txt) is unavailable for this release — refusing to auto-install."
+            .to_string()
+    })?;
+    let mut sums_hash: Option<String> = None;
+    for line in text.lines() {
+        if !line.to_ascii_lowercase().contains("-setup.exe") {
+            continue;
+        }
+        let hash = line.trim().split_whitespace().next().unwrap_or("");
+        if hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            sums_hash = Some(hash.to_ascii_lowercase());
+            break;
+        }
+    }
+    let sums = sums_hash.ok_or_else(|| {
+        "Checksum file has no installer entry — refusing to auto-install.".to_string()
+    })?;
+    if let Some(c) = provided {
+        let provided_hex = c[7..].to_ascii_lowercase();
+        if provided_hex != sums {
+            return Err(format!(
+                "Manifest checksum ({}) and release checksum file ({}) disagree — update aborted.",
+                &provided_hex[..12],
+                &sums[..12]
+            ));
+        }
+    }
+    Ok(sums)
+}
+
+#[derive(Clone, Serialize)]
+struct UpdateProgress {
     version: String,
-    checksum: String,
-    notes: Option<String>,
+    received: u64,
+    total: u64,
+}
+
+/// Downloads and installs an update entirely on the native side:
+///
+/// 1. streams the installer from a trusted GitHub release host to a temp file,
+///    emitting `update://progress` events (the release-asset CDN sends no CORS
+///    headers, so this must NOT run in the webview; it also keeps multi-MB
+///    payloads out of it),
+/// 2. verifies SHA-256 while streaming — fail closed, nothing executes on a
+///    missing or mismatched checksum,
+/// 3. takes a safety backup of the live database,
+/// 4. launches the NSIS installer silently and exits so it can replace files.
+#[tauri::command]
+async fn update_install(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    version: String,
+    download_url: Option<String>,
+    expected_checksum: Option<String>,
 ) -> Result<bool, String> {
     // The version lands in the staged filename — never allow path characters.
     let version_ok = version.len() <= 32
@@ -268,32 +359,67 @@ fn auto_install_update(
     if !version_ok {
         return Err("Refusing to install: invalid version string".into());
     }
-    let bytes = base64_decode(&bytes_b64)?;
-    if bytes.is_empty() {
-        return Err("Update payload is empty".into());
-    }
-    if !checksum.starts_with("sha256:") || checksum.len() != 7 + 64 {
-        return Err("Refusing to install without a valid checksum".into());
-    }
-    let expected = checksum[7..].to_lowercase();
 
-    // Stage the payload in the OS temp directory.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = download_url
+        .filter(|u| is_trusted_download_url(u))
+        .ok_or_else(|| "Update source is not a trusted release host — refusing to download.".to_string())?;
+
+    let expected = resolve_expected_checksum(&client, &version, expected_checksum.as_deref()).await?;
+
+    // Stream to a temp file, hashing as we go.
     let dir = std::env::temp_dir().join("dental-solutions-update");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(format!("Dental.Solutions_{}_x64-setup.exe", version));
-    {
-        let mut f = fs::File::create(&path).map_err(|e| e.to_string())?;
-        f.write_all(&bytes).map_err(|e| e.to_string())?;
-        f.sync_all().map_err(|e| e.to_string())?;
+    let staged = dir.join(format!("Dental.Solutions_{}_x64-setup.exe", version));
+
+    let mut res = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("Download failed (HTTP {}) for a trusted host", res.status()));
     }
+    let total = res.content_length().unwrap_or(0);
+
+    let mut file = fs::File::create(&staged).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut received: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    let _ = app.emit("update://progress", UpdateProgress { version: version.clone(), received, total });
+    while let Some(chunk) = res
+        .chunk()
+        .await
+        .map_err(|e| format!("Download interrupted: {e}"))?
+    {
+        file.write_all(&chunk)
+            .map_err(|e| format!("cannot write staged update: {e}"))?;
+        hasher.update(&chunk);
+        received += chunk.len() as u64;
+        // Throttle IPC traffic — the pill only needs a few updates per second.
+        if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
+            last_emit = std::time::Instant::now();
+            let _ = app.emit(
+                "update://progress",
+                UpdateProgress { version: version.clone(), received, total },
+            );
+        }
+    }
+    file.sync_all().map_err(|e| e.to_string())?;
+    drop(file);
 
     // Verify BEFORE executing anything.
-    let mut hasher = Sha256::new();
-    let mut f = fs::File::open(&path).map_err(|e| e.to_string())?;
-    std::io::copy(&mut f, &mut hasher).map_err(|e| e.to_string())?;
+    if received == 0 {
+        let _ = fs::remove_file(&staged);
+        return Err("Downloaded installer is empty — update aborted.".into());
+    }
     let actual = hex::encode(hasher.finalize());
     if actual != expected {
-        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&staged);
         return Err(format!(
             "Checksum mismatch (expected {}, got {}) — update aborted, nothing was installed.",
             &expected[..12],
@@ -309,19 +435,42 @@ fn auto_install_update(
     // Take a safety backup of the live database before the installer runs,
     // so a failed NSIS run can never take clinic data with it.
     let db_path = state.path.lock().unwrap().clone().unwrap();
-    let backup = db_path.with_extension(format!("sqlite.pre-update-{}-{}.bak", version, chrono_like_stamp()));
+    let backup = db_path.with_extension(format!(
+        "sqlite.pre-update-{}-{}.bak",
+        version,
+        chrono_like_stamp()
+    ));
     if let Err(e) = fs::copy(&db_path, &backup) {
         return Err(format!("Could not back up the database before updating: {e}"));
     }
 
-    // Verified — launch the NSIS installer silently; it replaces the app and
-    // relaunches it. Log the outcome alongside the version for diagnostics.
-    let log = format!("{}: verified {} ({} bytes) — {}", version, &actual[..12], bytes.len(), notes.unwrap_or_default());
-    let _ = fs::write(dir.join("last-update.log"), log);
-    Command::new(&path)
-        .args(["/S"])
+    let _ = fs::write(
+        dir.join("last-update.log"),
+        format!(
+            "{}: verified {} ({} bytes) — installing\n",
+            version,
+            &actual[..12],
+            received
+        ),
+    );
+
+    // Launch the silent NSIS install from a detached process. NSIS cannot
+    // replace the files of a running app, so the app exits right after the
+    // installer is up; the installer relaunches the app on the new version
+    // when it finishes. CREATE_NEW_PROCESS_GROUP detaches from this app's
+    // console/job so the installer outlives our exit.
+    use std::os::windows::process::CommandExt;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    Command::new(&staged)
+        .arg("/S")
+        .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Could not start the installer: {e}"))?;
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    app.exit(0);
+    // Unreachable in practice — exit(0) tears down the runtime before the
+    // response resolves.
     Ok(true)
 }
 
@@ -338,7 +487,7 @@ pub fn run() {
             db_backup_file,
             file_sha256,
             open_external,
-            auto_install_update
+            update_install
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

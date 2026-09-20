@@ -1,6 +1,6 @@
 [package]
 name = "dental-solutions"
-version = "2.3.1"
+version = "2.3.2"
 edition = "2021"
 
 [lib]
@@ -18,6 +18,9 @@ rusqlite = { version = "0.32", features = ["backup", "bundled"] }
 tauri-plugin-opener = "2"
 sha2 = "0.10"
 hex = "0.4"
+# Streaming HTTPS downloads for the auto-update engine (no OpenSSL — rustls keeps
+# the Windows build toolchain-free). "stream" gives access to Response::bytes_stream.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 
 [profile.release]
 codegen-units = 1
