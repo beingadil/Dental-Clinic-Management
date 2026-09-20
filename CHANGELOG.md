@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.1] — 2026-09-20
+
+### Added
+- **Printable odontogram on job slips** — a 32-tooth FDI arch chart section in
+  Print Studio; case units are filled solid for clean photocopying and share
+  the same arch layout as the on-screen chart.
+- **Print templates moved to SQLite** — new `print_templates` table
+  (migration 005) with a one-time import from the legacy localStorage key, so
+  templates survive reinstalls and follow the database backup/restore path.
+
+### Security
+- Update-engine hardening: removed the unused `run_installer` command
+  (arbitrary path execution from the webview), allowlisted download/open URL
+  hosts, validate the manifest version string, stage installer bytes as
+  base64 over IPC (3× smaller payload), refuse updates before the database
+  is loaded, and take a pre-update database backup before silent install.
+- Fixed latent `base64_decode` padding rejection and made database saves
+  atomic (rename-first) so a crash or antivirus lock can no longer leave a
+  half-replaced database file.
+
+### Changed
+- Main JS bundle split into cacheable vendor chunks — main chunk down 43%
+  (1.68 MB → 0.96 MB).
+- Login page simplified to a single clean centered column (brand rail,
+  decorative cards and hardcoded contact details removed).
+
 ## [2.3.0] — 2026-09-20
 
 ### Added
