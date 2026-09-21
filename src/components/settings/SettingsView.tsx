@@ -410,7 +410,7 @@ export const SettingsView: React.FC = () => {
         {/* Quick Storage Badge */}
         <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 px-3.5 py-1.5 rounded-2xl text-xs font-semibold text-slate-700 self-start md:self-auto">
           <HardDrive className="w-4 h-4 text-indigo-600" />
-          <span>Local Storage DB: <strong className="text-slate-900 font-mono">{storageMetrics.totalKb} KB</strong></span>
+          <span>SQLite Database: <strong className="text-slate-900 font-mono">{liveTableStats.reduce((a, t) => a + t.rows, 0).toLocaleString()} rows</strong></span>
         </div>
       </div>
 
@@ -1264,7 +1264,7 @@ export const SettingsView: React.FC = () => {
             </div>
             <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-full flex items-center gap-1.5">
               <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{storageMetrics.totalKb} KB Local Data</span>
+              <span>{liveTableStats.reduce((a, t) => a + t.rows, 0).toLocaleString()} rows in SQLite</span>
             </span>
           </div>
 

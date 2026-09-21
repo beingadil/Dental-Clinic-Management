@@ -72,7 +72,8 @@ import {
   usersRepo, labsRepo, caseTypesRepo, casesRepo, caseNotesRepo, attachmentsRepo,
   caseTemplatesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo,
   notificationsRepo, settingsRepo, vouchersRepo, auditRepo,
-  sessionsRepo,
+  sessionsRepo, labContactsRepo, labAddressesRepo, labPricingOverridesRepo, labReviewsRepo,
+  doctorPreferredLabsRepo, reconciliationRepo,
 } from '../db/repos';
 import { hashPassword, verifyPassword } from '../db/crypto';
 
@@ -104,6 +105,31 @@ function mirrorSet(key: string, rows: any[]): void {
  * Loads every collection from SQLite into React state (the mirror), marking
  * the sync effect dirty so DB and mirror stay coherent. Safe pre-boot.
  */
+/** Group flat child rows (case_id-keyed) into the per-case maps state uses. */
+function groupByCase<T extends { case_id: string }>(rows: T[]): Record<string, T[]> {
+  const out: Record<string, T[]> = {};
+  for (const r of rows) (out[r.case_id] ||= []).push(r);
+  return out;
+}
+
+/** AttachmentRow (entity-keyed, DB column names) → per-case CaseAttachment map. */
+function attachmentsByCase(rows: any[]): Record<string, any[]> {
+  const out: Record<string, any[]> = {};
+  for (const r of rows) {
+    (out[r.entity_id] ||= []).push({
+      id: r.id,
+      case_id: r.entity_id,
+      filename: r.original_filename,
+      file_type: r.mime_type,
+      file_url: r.data_url || '',
+      uploaded_at: r.created_at,
+      uploaded_by: r.uploaded_by || 'System',
+      file_size: r.description ?? undefined, // syncCore stores size here
+    });
+  }
+  return out;
+}
+
 function hydrateAllFromDb(): boolean {
   if (!isDatabaseReady()) return false;
   try {
@@ -119,6 +145,14 @@ function hydrateAllFromDb(): boolean {
     mirrorSet('templates', caseTemplatesRepo.all());
     mirrorSet('savedVouchers', vouchersRepo.all());
     mirrorSet('auditEvents', auditRepo.all());
+    mirrorSet('labContacts', labContactsRepo.all());
+    mirrorSet('labAddresses', labAddressesRepo.all());
+    mirrorSet('pricingOverrides', labPricingOverridesRepo.all());
+    mirrorSet('labReviews', labReviewsRepo.all());
+    mirrorSet('doctorPreferences', doctorPreferredLabsRepo.all());
+    mirrorSet('caseNotes', groupByCase(caseNotesRepo.all()) as any);
+    mirrorSet('caseAttachments', attachmentsByCase(attachmentsRepo.all()) as any);
+    mirrorSet('reconciliationItems', reconciliationRepo.all());
     dbReflected = true;
     return true;
   } catch (e) {
@@ -136,6 +170,16 @@ function dbWrite(fn: () => void): void {
   } catch (e: any) {
     // eslint-disable-next-line no-console
     console.error('[cutover] DB write failed:', e?.message || e);
+  }
+}
+
+/** Hydrate from the boot mirror, else read the repo directly (fallback safe when engine not booted, e.g. tests). */
+function dbRows<T>(key: string, read: () => T): T {
+  if (dbMirror[key]) return dbMirror[key] as T;
+  try {
+    return read();
+  } catch {
+    return [] as unknown as T;
   }
 }
 
@@ -546,32 +590,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Helper for generating unique IDs
   const genId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-  // Persistent Collections — hydrated from SQLite at mount (legacy fallback pre-boot)
+  // Persistent Collections — hydrated from the SQLite mirror at mount.
+  // Legacy dsw_* keys are read ONLY by the one-time legacyMigrator; the app's
+  // active persistence layer is SQLite alone.
   const [cases, setCases] = useState<DentalCase[]>(() => {
     if (hydrateAllFromDb() && dbMirror['cases']) return dbMirror['cases'] as DentalCase[];
-    const loaded = sqliteDb.cases.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_cases', INITIAL_CASES);
+    return sqliteDb.cases.getAll();
   });
   const [labs, setLabs] = useState<DentalLab[]>(() => {
     if (dbMirror['labs']) return dbMirror['labs'] as DentalLab[];
-    const loaded = sqliteDb.labs.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_labs', INITIAL_LABS);
+    return sqliteDb.labs.getAll();
   });
   const [caseTypes, setCaseTypes] = useState<CaseType[]>(() => {
     if (dbMirror['caseTypes']) return dbMirror['caseTypes'] as CaseType[];
-    const loaded = sqliteDb.caseTypes.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_casetypes', INITIAL_CASE_TYPES);
+    return sqliteDb.caseTypes.getAll();
   });
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
     if (dbMirror['invoices']) return dbMirror['invoices'] as Invoice[];
-    const loaded = sqliteDb.invoices.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_invoices', INITIAL_INVOICES);
+    return sqliteDb.invoices.getAll();
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     if (dbMirror['notifications']) return dbMirror['notifications'] as AppNotification[];
     const fromDb = sqliteDb.notifications.getAll();
-    const parsed: AppNotification[] = fromDb.length > 0 ? fromDb : safeGetJSON('dsw_notifications', INITIAL_NOTIFICATIONS);
+    const parsed: AppNotification[] = fromDb.length > 0 ? fromDb : INITIAL_NOTIFICATIONS;
     const seen = new Set<string>();
     const safeList = Array.isArray(parsed) ? parsed : INITIAL_NOTIFICATIONS;
     return safeList.map((n, idx) => {
@@ -584,55 +626,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   });
 
-  const [templates, setTemplates] = useState<CaseTemplate[]>(() => dbMirror['templates'] ? dbMirror['templates'] as CaseTemplate[] : safeGetJSON('dsw_templates', INITIAL_TEMPLATES));
-  const [labContacts, setLabContacts] = useState<LabContact[]>(() => safeGetJSON('dsw_lab_contacts', INITIAL_LAB_CONTACTS));
-  const [labAddresses, setLabAddresses] = useState<LabAddress[]>(() => safeGetJSON('dsw_lab_addresses', INITIAL_LAB_ADDRESSES));
-  const [pricingOverrides, setPricingOverrides] = useState<LabPricingOverride[]>(() => safeGetJSON('dsw_pricing_overrides', INITIAL_PRICING_OVERRIDES));
-  const [labReviews, setLabReviews] = useState<LabReview[]>(() => safeGetJSON('dsw_lab_reviews', INITIAL_LAB_REVIEWS));
-  const [doctorPreferences, setDoctorPreferences] = useState<DoctorPreferredLab[]>(() => safeGetJSON('dsw_doctor_preferences', INITIAL_DOCTOR_PREFERENCES));
+  const [templates, setTemplates] = useState<CaseTemplate[]>(() => dbRows('templates', () => caseTemplatesRepo.all() as unknown as CaseTemplate[]));
+  const [labContacts, setLabContacts] = useState<LabContact[]>(() => dbRows('labContacts', () => labContactsRepo.all() as LabContact[]));
+  const [labAddresses, setLabAddresses] = useState<LabAddress[]>(() => dbRows('labAddresses', () => labAddressesRepo.all() as LabAddress[]));
+  const [pricingOverrides, setPricingOverrides] = useState<LabPricingOverride[]>(() => dbRows('pricingOverrides', () => labPricingOverridesRepo.all() as LabPricingOverride[]));
+  const [labReviews, setLabReviews] = useState<LabReview[]>(() => dbRows('labReviews', () => labReviewsRepo.all() as LabReview[]));
+  const [doctorPreferences, setDoctorPreferences] = useState<DoctorPreferredLab[]>(() => dbRows('doctorPreferences', () => doctorPreferredLabsRepo.all() as DoctorPreferredLab[]));
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
-    return sqliteDb.settings.getPreferences() || safeGetJSON('dsw_user_prefs', INITIAL_USER_PREFERENCES);
+    return sqliteDb.settings.getPreferences() || INITIAL_USER_PREFERENCES;
   });
 
-  const [caseAttachments, setCaseAttachments] = useState<Record<string, CaseAttachment[]>>(() => {
-    return safeGetJSON('dsw_case_attachments', {});
-  });
+  const [caseAttachments, setCaseAttachments] = useState<Record<string, CaseAttachment[]>>(() => dbRows('caseAttachments', () => attachmentsByCase(attachmentsRepo.all())));
 
-  const [caseNotes, setCaseNotes] = useState<Record<string, CaseNote[]>>(() => {
-    return safeGetJSON('dsw_case_notes', {});
-  });
+  const [caseNotes, setCaseNotes] = useState<Record<string, CaseNote[]>>(() => dbRows('caseNotes', () => groupByCase(caseNotesRepo.all()) as unknown as Record<string, CaseNote[]>));
 
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>(() => {
     if (isDatabaseReady()) {
       try { return settingsRepo.get('branding', 'settings') as BrandingSettings || DEFAULT_BRANDING; } catch { /* fall through */ }
     }
-    return sqliteDb.settings.getBranding() || safeGetJSON('dsw_branding', DEFAULT_BRANDING);
+    return sqliteDb.settings.getBranding() || DEFAULT_BRANDING;
   });
   const [savedVouchers, setSavedVouchers] = useState<SavedVoucher[]>(() => {
     if (dbMirror['savedVouchers']) return dbMirror['savedVouchers'] as SavedVoucher[];
-    return sqliteDb.vouchers.getAll() || safeGetJSON('dsw_saved_vouchers', []);
+    return sqliteDb.vouchers.getAll();
   });
   const [advancePayments, setAdvancePayments] = useState<AdvancePayment[]>(() => {
     if (dbMirror['advancePayments']) return dbMirror['advancePayments'] as AdvancePayment[];
-    const loaded = sqliteDb.advancePayments.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_advance_payments', INITIAL_ADVANCE_PAYMENTS);
+    return sqliteDb.advancePayments.getAll();
   });
   const [accountAdjustments, setAccountAdjustments] = useState<AccountAdjustment[]>(() => {
     if (dbMirror['accountAdjustments']) return dbMirror['accountAdjustments'] as AccountAdjustment[];
-    const loaded = sqliteDb.adjustments.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_account_adjustments', INITIAL_ADJUSTMENTS);
+    return sqliteDb.adjustments.getAll();
   });
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>(() => {
     if (dbMirror['journalEntries']) return dbMirror['journalEntries'] as JournalEntry[];
-    const loaded = sqliteDb.journalEntries.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_journal_entries', INITIAL_JOURNAL_ENTRIES);
+    return sqliteDb.journalEntries.getAll();
   });
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>(() => {
     if (dbMirror['auditEvents']) return dbMirror['auditEvents'] as AuditEvent[];
-    const loaded = sqliteDb.audit.getAll();
-    return loaded.length > 0 ? loaded : safeGetJSON('dsw_audit_events', INITIAL_AUDIT_EVENTS);
+    return sqliteDb.audit.getAll();
   });
-  const [reconciliationItems, setReconciliationItems] = useState<ReconciliationItem[]>(() => safeGetJSON('dsw_reconciliation_items', INITIAL_RECONCILIATION_ITEMS));
+  const [reconciliationItems, setReconciliationItems] = useState<ReconciliationItem[]>(() => dbRows('reconciliationItems', () => reconciliationRepo.all() as ReconciliationItem[]));
 
   // ─── SQLite write-through sync (replaces all dsw_* localStorage writes) ───
   // React state = UI mirror; SQLite = authoritative store.
@@ -658,6 +692,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     dbWrite(() => settingsRepo.set('preferences', 'global', userPreferences));
   }, [userPreferences]);
+
+  // One-time legacy sweep: business data lives in SQLite only. Once the
+  // migrator marker is set (import done), every other dsw_* key is dead
+  // weight — remove it. Keys that are still live (browser persistence
+  // snapshot, dirty flag, session token, remember-me, the marker itself)
+  // are preserved.
+  useEffect(() => {
+    if (!isDatabaseReady()) return;
+    try {
+      if (!localStorage.getItem('dsw_legacy_migration_done')) return;
+      const preserve = new Set([
+        'dsw_sqlite_snapshot',
+        'dsw_sqlite_dirty',
+        'dsw_session_token',
+        'dsw_remember_user',
+        'dsw_legacy_migration_done',
+      ]);
+      const stale: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('dsw_') && !preserve.has(k)) stale.push(k);
+      }
+      stale.forEach((k) => {
+        try { localStorage.removeItem(k); } catch { /* ignore */ }
+      });
+      if (stale.length > 0) {
+        // eslint-disable-next-line no-console
+        console.info(`[cutover] removed ${stale.length} legacy dsw_* key(s) — SQLite is the only store`);
+      }
+    } catch { /* storage unavailable — nothing to sweep */ }
+  }, [user]);
 
   // Session state lives in the SQLite `sessions` table. localStorage caches only
   // the opaque token (never the user object, never a password) so a valid
