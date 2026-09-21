@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Printer, Download, Building2, Calendar, FileText, CheckCircle2, ChevronDown } from 'lucide-react';
 import { Invoice, DentalLab, DentalCase } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface ClinicStatementModalProps {
   clinicName?: string;
@@ -17,6 +18,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   labs,
   onClose,
 }) => {
+  const { brandingSettings } = useApp();
   const [selectedClinic, setSelectedClinic] = useState<string>(() => {
     if (initialClinicName && initialClinicName !== 'Apex Dental Care & Clinic') {
       return initialClinicName;
@@ -89,9 +91,9 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
           {/* Lab & Clinic Banner */}
           <div className="flex justify-between items-start pb-4 border-b border-slate-200">
             <div>
-              <h2 className="text-xl font-black text-blue-900 tracking-tight">DENTAL SOLUTIONS LAB</h2>
-              <p className="text-[11px] text-slate-500 mt-0.5">Digital Dental CAD/CAM Laboratory & Milling Center</p>
-              <p className="text-[11px] text-slate-500">Gill Road, Gujranwala • Tel: 0333-0473797 • info@dentalsolutions.pk</p>
+              <h2 className="text-xl font-black text-blue-900 tracking-tight">{brandingSettings.appName || 'DENTAL SOLUTIONS LAB'}</h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">{brandingSettings.tagline || 'Digital Dental CAD/CAM Laboratory & Milling Center'}</p>
+              <p className="text-[11px] text-slate-500">{[brandingSettings.address, brandingSettings.phone && `Tel: ${brandingSettings.phone}`, brandingSettings.email].filter(Boolean).join(' • ')}</p>
             </div>
             <div className="text-right">
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 uppercase">
@@ -184,14 +186,20 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
           <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 grid grid-cols-2 gap-3 text-[11px]">
             <div>
               <span className="font-bold text-slate-800 block">Bank Transfer Information</span>
-              <p className="text-slate-600">Bank: Meezan Bank Ltd</p>
-              <p className="text-slate-600">Account Title: Dental Solutions Lab</p>
-              <p className="font-mono text-slate-800">IBAN: PK36MEZN0001020304050607</p>
+              {brandingSettings.bankName ? (
+                <>
+                  <p className="text-slate-600">Bank: {brandingSettings.bankName}</p>
+                  {brandingSettings.bankAccountTitle && <p className="text-slate-600">Account Title: {brandingSettings.bankAccountTitle}</p>}
+                  {brandingSettings.bankIban && <p className="font-mono text-slate-800">IBAN: {brandingSettings.bankIban}</p>}
+                </>
+              ) : (
+                <p className="text-slate-500">Add bank remittance details in Settings → Branding & Identity.</p>
+              )}
             </div>
             <div>
               <span className="font-bold text-slate-800 block">Terms & Remittance</span>
               <p className="text-slate-500">Invoices are payable within standard turnaround agreement.</p>
-              <p className="text-slate-500">Please send payment confirmation screenshot to 0333-0473797.</p>
+              {brandingSettings.phone && <p className="text-slate-500">Please send payment confirmation screenshot to {brandingSettings.phone}.</p>}
             </div>
           </div>
 

@@ -15,7 +15,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
   onClose,
   initialPrintType = 'slips',
 }) => {
-  const { invoices, saveVoucherToSystem } = useApp();
+  const { invoices, saveVoucherToSystem, brandingSettings } = useApp();
   const [printType, setPrintType] = useState<'slips' | 'invoices'>(initialPrintType);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -170,12 +170,16 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b-2 border-slate-900 pb-6">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-slate-900 text-indigo-400 font-black rounded-lg flex items-center justify-center text-sm shadow-xs">
-                          DS
-                        </div>
-                        <span className="font-black text-xl text-slate-900 tracking-tight">DENTAL SOLUTIONS LAB</span>
+                        {brandingSettings.logoUrl ? (
+                          <img src={brandingSettings.logoUrl} alt="" className="w-8 h-8 rounded-lg object-contain" />
+                        ) : (
+                          <div className="w-8 h-8 bg-slate-900 text-indigo-400 font-black rounded-lg flex items-center justify-center text-sm shadow-xs">
+                            DS
+                          </div>
+                        )}
+                        <span className="font-black text-xl text-slate-900 tracking-tight">{brandingSettings.appName || 'DENTAL SOLUTIONS LAB'}</span>
                       </div>
-                      <p className="text-xs font-semibold text-slate-600">Advanced Digital Crown & Bridge Laboratory</p>
+                      {brandingSettings.tagline && <p className="text-xs font-semibold text-slate-600">{brandingSettings.tagline}</p>}
                     </div>
 
                     <div className="text-left sm:text-right space-y-2">

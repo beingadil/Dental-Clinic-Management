@@ -168,14 +168,16 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
           <div className="flex items-start justify-between border-b border-slate-200 pb-6">
             <div>
               <h1 className="text-xl font-bold text-slate-900 tracking-tight uppercase">
-                {brandingSettings.lab_name || 'DENTAL SOLUTIONS WORKFLOW'}
+                {brandingSettings.appName || brandingSettings.lab_name || 'DENTAL SOLUTIONS LAB'}
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                Precision Dental Prosthetics & Digital Milling Center
+                {brandingSettings.tagline || 'Precision Dental Prosthetics & Digital Milling Center'}
               </p>
               <div className="text-xs text-slate-600 mt-2 space-y-0.5">
-                <div>{brandingSettings.address || 'Suite 402, Dental Plaza, Blue Area, Islamabad'}</div>
-                <div>Phone: {brandingSettings.phone || '+92 (051) 289-4400'} • Email: accounts@dentalsolutions.pk</div>
+                {brandingSettings.address && <div>{brandingSettings.address}</div>}
+                <div>
+                  {[brandingSettings.phone && `Phone: ${brandingSettings.phone}`, brandingSettings.email].filter(Boolean).join(' • ')}
+                </div>
               </div>
             </div>
 
@@ -288,10 +290,10 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
           <div className="border-t border-slate-200 pt-4 grid grid-cols-2 gap-4 text-xs text-slate-600">
             <div>
               <span className="font-bold text-slate-800 block mb-1">Bank Remittance Details:</span>
-              <div>Bank: Meezan Bank Limited</div>
-              <div>Account Title: Dental Solutions Lab (Pvt) Ltd</div>
-              <div>IBAN: PK64 MEZN 0001 2345 6789 0101</div>
-              <div>Please email deposit slip to accounts@dentalsolutions.pk with your clinic name.</div>
+              <div>Bank: {brandingSettings.bankName || '—'}</div>
+              <div>Account Title: {brandingSettings.bankAccountTitle || brandingSettings.appName || '—'}</div>
+              {brandingSettings.bankIban && <div>IBAN: {brandingSettings.bankIban}</div>}
+              {brandingSettings.email && <div>Please email deposit slip to {brandingSettings.email} with your clinic name.</div>}
             </div>
 
             <div className="text-right">

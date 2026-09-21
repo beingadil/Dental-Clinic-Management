@@ -26,6 +26,7 @@ import {
   Palette,
   Trash2,
   AlertTriangle,
+  XCircle,
   HardDrive,
   Sliders,
   X,
@@ -1358,8 +1359,8 @@ export const SettingsView: React.FC = () => {
                       {Object.entries(pendingRestore.table_counts).filter(([, n]) => (n ?? 0) > 0).map(([t, n]) => `${t}: ${n}`).join(' · ') || 'Empty database'}
                     </p>
                   )}
-                  {pendingRestore.warnings.map((w, i) => <p key={i} className="text-amber-700 font-semibold">⚠ {w}</p>)}
-                  {pendingRestore.errors.map((er, i) => <p key={i} className="font-semibold">✕ {er}</p>)}
+                  {pendingRestore.warnings.map((w, i) => <p key={i} className="text-amber-700 font-semibold flex items-start gap-1"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {w}</p>)}
+                  {pendingRestore.errors.map((er, i) => <p key={i} className="font-semibold text-rose-700 flex items-start gap-1"><XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {er}</p>)}
                   {pendingRestore.errors.length === 0 && (
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
