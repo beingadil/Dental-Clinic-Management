@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — 2026-09-21
+
+### Added
+- **Automatic scheduled backups** — daily or weekly zero-click backups.
+  Desktop: timestamped copies of the live SQLite file in the app data folder
+  with retention rotation (keep 3–30, oldest pruned). Browser: a verified
+  snapshot of the latest backup in local storage. Runs a minute after boot
+  and re-checks hourly. New Automatic Backups card in Settings → Backup with
+  last-run status, Back Up Now, and a per-run history log.
+- Desktop commands `backup_list` / `backup_delete` (path-guarded) for the
+  rotation UI.
+
+### Changed
+- Branding save toast now says "Saved to Database!" (it was always SQLite —
+  the old text said Local Storage).
+- Logo preview is circular, matching how the header and avatars render it.
+
 ## [2.3.4] — 2026-09-21
 
 ### Fixed
