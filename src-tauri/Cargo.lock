@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "dental-solutions"
-version = "2.3.4"
+version = "2.4.0"
 dependencies = [
  "hex",
  "reqwest 0.12.28",
