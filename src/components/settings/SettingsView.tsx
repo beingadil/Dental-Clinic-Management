@@ -10,6 +10,16 @@ import {
 } from '../../services/backupService';
 import { currentVersion } from '../../services/updateService';
 import { exportSqliteFile } from '../../services/sqliteStorage';
+import {
+  getBackupSchedule,
+  saveBackupSchedule,
+  getBackupRuns,
+  runScheduledBackup,
+  initBackupScheduler,
+  isDesktopShell as isDesktopShellForBackups,
+  BackupScheduleState,
+  BackupRun,
+} from '../../services/backupScheduler';
 import { initEngineFromBytes, getDatabase } from '../../db';
 import { 
   Settings, 
@@ -99,6 +109,25 @@ export const SettingsView: React.FC = () => {
   // Auto-update engine (dashboard pill + this card share one phase store)
   const [autoPhase, setAutoPhase] = useState<AutoUpdatePhase>(() => getAutoUpdatePhase());
   useEffect(() => onAutoUpdatePhase(setAutoPhase), []);
+
+  // Scheduled auto-backup (Settings → Backup card shares the scheduler store)
+  const [backupSchedule, setBackupSchedule] = useState<BackupScheduleState>(() => getBackupSchedule());
+  const [backupRuns, setBackupRuns] = useState<BackupRun[]>(() => getBackupRuns());
+  const [backupBusy, setBackupBusy] = useState(false);
+  useEffect(() => { initBackupScheduler(); }, []);
+  const handleBackupScheduleChange = (patch: Partial<BackupScheduleState>) => {
+    setBackupSchedule(saveBackupSchedule(patch));
+  };
+  const handleRunBackupNow = async () => {
+    setBackupBusy(true);
+    try {
+      await runScheduledBackup('manual', true);
+      setBackupSchedule(getBackupSchedule());
+      setBackupRuns(getBackupRuns());
+    } finally {
+      setBackupBusy(false);
+    }
+  };
   // Persisted update history — re-read whenever the phase moves so the log
   // reflects the run that just happened.
   const [updateHistory, setUpdateHistory] = useState<UpdateHistoryEntry[]>(() => getUpdateHistory());
@@ -525,7 +554,7 @@ export const SettingsView: React.FC = () => {
 
             {saveSuccess && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200 animate-in fade-in">
-                <Check className="w-3.5 h-3.5 text-emerald-600" /> Saved to Local Storage!
+                <Check className="w-3.5 h-3.5 text-emerald-600" /> Saved to Database!
               </div>
             )}
           </div>
@@ -567,7 +596,7 @@ export const SettingsView: React.FC = () => {
                     <img 
                       src={brandingForm.logoUrl} 
                       alt="Current Logo" 
-                      className="w-16 h-16 rounded-2xl object-contain bg-slate-50 border border-slate-200 p-1 shadow-xs"
+                      className="w-16 h-16 rounded-full object-contain bg-slate-50 border border-slate-200 p-1 shadow-xs"
                     />
                     <button
                       type="button"
@@ -1407,6 +1436,91 @@ export const SettingsView: React.FC = () => {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Automatic backups */}
+          <div className="p-6 bg-white border border-slate-200 rounded-2xl space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2 text-slate-900 font-bold text-sm uppercase tracking-wider">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Automatic Backups
+              </div>
+              {backupSchedule.lastRun ? (
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                  Last automatic backup: {new Date(backupSchedule.lastRun).toLocaleString()}
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+                  No automatic backup yet — runs shortly after first launch
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Backup frequency</label>
+                <select
+                  value={backupSchedule.frequency}
+                  onChange={(e) => handleBackupScheduleChange({ frequency: e.target.value as BackupScheduleState['frequency'] })}
+                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl"
+                >
+                  <option value="off">Off (manual only)</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Keep last (copies)</label>
+                <select
+                  value={backupSchedule.keep}
+                  onChange={(e) => handleBackupScheduleChange({ keep: Number(e.target.value) })}
+                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl"
+                >
+                  <option value="3">3</option>
+                  <option value="7">7</option>
+                  <option value="14">14</option>
+                  <option value="30">30</option>
+                </select>
+              </div>
+
+              <button
+                onClick={handleRunBackupNow}
+                disabled={backupBusy}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Database className="w-4 h-4 text-emerald-200" />
+                <span>{backupBusy ? 'Backing up…' : 'Back Up Now'}</span>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              {isDesktopShellForBackups() ? (
+                <>Automatic backups are timestamped copies of the live SQLite file stored in the app data folder — zero-click recovery points. Oldest copies beyond the retention count are pruned automatically.</>
+              ) : (
+                <>In the browser the latest automatic backup is kept as a verified snapshot in local storage. For off-machine safety, export a <code>.dentalbackup</code> file regularly.</>
+              )}
+            </p>
+
+            {backupRuns.length > 0 && (
+              <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-100">
+                <table className="w-full text-[11px]">
+                  <tbody>
+                    {backupRuns.slice(0, 8).map((r, i) => (
+                      <tr key={i} className="border-b border-slate-50 last:border-0">
+                        <td className="px-3 py-1.5 text-slate-500 font-mono whitespace-nowrap">{new Date(r.at).toLocaleString()}</td>
+                        <td className="px-2 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded font-bold ${r.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                            {r.ok ? 'OK' : 'FAILED'}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-slate-600">{r.reason}</td>
+                        <td className="px-3 py-1.5 text-slate-500 truncate max-w-[220px]" title={r.detail || ''}>{r.detail || ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -34,6 +34,69 @@ struct SaveResult {
     bytes: usize,
 }
 
+/// Directory entries for the auto-backup rotation UI (name + modified time).
+#[derive(Serialize)]
+struct BackupFileInfo {
+    name: String,
+    modified: String,
+}
+
+/// Lists the automatic `.bak` rotation files next to the database.
+#[tauri::command]
+fn backup_list(state: State<DbState>) -> Result<Vec<BackupFileInfo>, String> {
+    let path = {
+        let path_lock = state.path.lock().unwrap();
+        path_lock
+            .as_ref()
+            .ok_or_else(|| "database not loaded".to_string())?
+            .clone()
+    };
+    let dir = path.parent().ok_or_else(|| "no parent dir".to_string())?;
+    let prefix = format!(
+        "{}.sqlite.",
+        path.file_stem().and_then(|s| s.to_str()).unwrap_or("dental_solutions")
+    );
+    let mut out = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) && name.ends_with(".bak") {
+                let modified = e
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .map(|t| {
+                        let secs = t
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        format!("{secs}")
+                    })
+                    .unwrap_or_default();
+                out.push(BackupFileInfo { name, modified });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Deletes one automatic backup file by name (rotation only).
+#[tauri::command]
+fn backup_delete(state: State<DbState>, name: String) -> Result<(), String> {
+    let path = {
+        let path_lock = state.path.lock().unwrap();
+        path_lock
+            .as_ref()
+            .ok_or_else(|| "database not loaded".to_string())?
+            .clone()
+    };
+    let dir = path.parent().ok_or_else(|| "no parent dir".to_string())?;
+    // Refuse anything that isn't a plain .bak file name.
+    if name.contains('\\') || name.contains('/') || name.contains("..") || !name.ends_with(".bak") {
+        return Err("invalid backup file name".to_string());
+    }
+    fs::remove_file(dir.join(&name)).map_err(|e| format!("delete failed: {e}"))
+}
+
 fn resolve_db_path(app: &AppHandle, override_path: Option<String>) -> Result<PathBuf, String> {
     if let Some(p) = override_path {
         return Ok(PathBuf::from(p));
@@ -516,6 +579,8 @@ pub fn run() {
             db_read_bytes,
             db_save_bytes,
             db_backup_file,
+            backup_list,
+            backup_delete,
             file_sha256,
             open_external,
             update_install
