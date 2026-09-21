@@ -36,7 +36,10 @@ export default defineConfig(() => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Never watch the Rust build tree: on Windows, chokidar hits EBUSY trying
+      // to watch .dll/.exe files that cargo is actively writing, which kills
+      // the dev server mid `tauri dev`.
+      watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/src-tauri/target/**'] },
     },
   };
 });

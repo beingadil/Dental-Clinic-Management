@@ -454,20 +454,30 @@ async fn update_install(
         ),
     );
 
-    // Launch the silent NSIS install from a detached process. NSIS cannot
-    // replace the files of a running app, so the app exits right after the
-    // installer is up; the installer relaunches the app on the new version
-    // when it finishes. CREATE_NEW_PROCESS_GROUP detaches from this app's
-    // console/job so the installer outlives our exit.
+    // Launch the silent NSIS install via a detached waiter script. NSIS
+    // cannot replace the files of a running app, so the ordering matters:
+    // the waiter waits for THIS process to exit, then runs the installer
+    // (no file locks), waits for it to finish, and relaunches the app from
+    // its install location on the new version. CREATE_NEW_PROCESS_GROUP
+    // detaches the waiter from our console/job so it outlives our exit;
+    // CREATE_NO_WINDOW keeps it invisible.
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("cannot resolve app executable for relaunch: {e}"))?;
+    let script = format!(
+        "Wait-Process -Id {} -ErrorAction SilentlyContinue; $p = Start-Process -FilePath '{}' -ArgumentList '/S' -PassThru -WindowStyle Hidden; Wait-Process -Id $p.Id; Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}'",
+        std::process::id(),
+        staged.display(),
+        current_exe.display()
+    );
     use std::os::windows::process::CommandExt;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    Command::new(&staged)
-        .arg("/S")
+    Command::new("powershell")
+        .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
         .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| format!("Could not start the installer: {e}"))?;
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::thread::sleep(std::time::Duration::from_millis(300));
     app.exit(0);
     // Unreachable in practice — exit(0) tears down the runtime before the
     // response resolves.
