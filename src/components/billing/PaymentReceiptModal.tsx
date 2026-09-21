@@ -144,7 +144,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             </div>
             <div className="border-t border-slate-300 pt-2 text-right">
               <p className="font-bold text-slate-800">Authorized Signature & Stamp</p>
-              <p className="text-[11px] text-slate-400">Dental Solutions Laboratory</p>
+              <p className="text-[11px] text-slate-400">{brandingSettings.appName || 'Dental Solutions Laboratory'}</p>
             </div>
           </div>
 

@@ -21,6 +21,9 @@ hex = "0.4"
 # Streaming HTTPS downloads for the auto-update engine (no OpenSSL — rustls keeps
 # the Windows build toolchain-free). "stream" gives access to Response::bytes_stream.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+# Windows registry read (HKCU InstallLocation) for the update relaunch target.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
 
 [profile.release]
 codegen-units = 1

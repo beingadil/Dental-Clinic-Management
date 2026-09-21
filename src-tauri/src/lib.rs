@@ -8,6 +8,10 @@ use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
+#[cfg(windows)]
+use winreg::enums::HKEY_CURRENT_USER;
+#[cfg(windows)]
+use winreg::RegKey;
 
 /// The single real SQLite database file used by the desktop build.
 /// The web engine (sql.js) exports/imports these exact bytes, so the
@@ -463,11 +467,28 @@ async fn update_install(
     // CREATE_NO_WINDOW keeps it invisible.
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("cannot resolve app executable for relaunch: {e}"))?;
+    // Relaunch the INSTALLED exe, not necessarily the one that is running:
+    // when the updater is triggered from a dev build or a portable copy,
+    // current_exe points outside the install dir and the freshly installed
+    // files would never be launched. The NSIS uninstall registry
+    // (HKCU, per-user install) holds the authoritative InstallLocation.
+    let reg = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Dental Solutions")
+        .ok()
+        .and_then(|k| k.get_value::<String, _>("InstallLocation").ok());
+    let exe_name = current_exe
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "dental-solutions.exe".into());
+    let relaunch_target = reg
+        .map(|dir| PathBuf::from(dir).join(&exe_name))
+        .filter(|p| p.exists())
+        .unwrap_or(current_exe);
     let script = format!(
         "Wait-Process -Id {} -ErrorAction SilentlyContinue; $p = Start-Process -FilePath '{}' -ArgumentList '/S' -PassThru -WindowStyle Hidden; Wait-Process -Id $p.Id; Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}'",
         std::process::id(),
         staged.display(),
-        current_exe.display()
+        relaunch_target.display()
     );
     use std::os::windows::process::CommandExt;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
