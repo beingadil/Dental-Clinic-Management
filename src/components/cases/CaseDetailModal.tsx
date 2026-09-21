@@ -1593,15 +1593,17 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Delete Case
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:bg-slate-100 active:scale-[0.97] ${EASE}`}
-                  title="Save case in Draft state without submitting to production"
-                >
-                  <Save className="h-4 w-4" />
-                  Save as Draft
-                </button>
+                step === STEPS.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={handleSaveDraft}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:bg-slate-100 active:scale-[0.97] ${EASE}`}
+                    title="Save case in Draft state without submitting to production"
+                  >
+                    <Save className="h-4 w-4" />
+                    Save as Draft
+                  </button>
+                )
               )}
 
               <div className="flex items-center gap-2">

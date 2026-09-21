@@ -32,6 +32,13 @@
 /* ---- Actual printing ---- */
 
 @media print {
+  /* Kill transitions/animations on paper: with `transition: all` chrome,
+     visibility flips could otherwise be captured mid-transition. */
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
@@ -41,7 +48,8 @@
     visibility: visible !important;
   }
 
-  .print-area {
+  .print-area,
+  .print-area.printable-area {
     position: absolute !important;
     left: 0;
     top: 0;
@@ -58,6 +66,18 @@
     width: 100% !important;
     min-height: auto !important;
     padding: 0.75rem 1rem !important;
+  }
+
+  /* Full-page views (Ledger, General Ledger, Catalog) print in normal
+     document flow: every direct child of .print-page except the marked
+     .print-flow content is dropped (chrome above, modals below). Only
+     applies when no modal (.print-area) is open — a focused modal wins. */
+  body:not(:has(.print-area)) .print-page > :not(.print-flow) {
+    display: none !important;
+  }
+  body:not(:has(.print-area)) .print-page .print-flow,
+  body:not(:has(.print-area)) .print-page .print-flow * {
+    visibility: visible !important;
   }
 
   @page {

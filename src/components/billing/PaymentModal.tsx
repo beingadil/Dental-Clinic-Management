@@ -315,7 +315,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </div>
                 <div>
                   <p className="text-[10px] uppercase font-bold text-amber-400">Remaining Balance</p>
-                  <p className="text-base font-black text-amber-300 mt-0.5">PKR {remainingBalance.toLocaleString()}</p>
+                  <p className="text-base font-bold text-amber-300 mt-0.5">PKR {remainingBalance.toLocaleString()}</p>
                 </div>
               </div>
             </div>

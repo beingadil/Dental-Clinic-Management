@@ -326,7 +326,7 @@ export const BillingView: React.FC = () => {
     if (isOverdue) {
       return (
         <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
             <AlertTriangle className="w-3 h-3 text-rose-600" />
             <span>OVERDUE</span>
           </span>
@@ -428,7 +428,7 @@ export const BillingView: React.FC = () => {
                 }}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
               >
-                <ArrowDownLeft className="w-4 h-4 text-emerald-400" />
+                <ArrowDownLeft className="w-4 h-4 text-slate-300" />
                 <span>
                   {selectedLabSummary && (selectedLabSummary.outstanding_balance || 0) > 0
                     ? `Receive Payment (PKR ${(selectedLabSummary.outstanding_balance || 0).toLocaleString()})`
@@ -471,7 +471,7 @@ export const BillingView: React.FC = () => {
                 onClick={handleBulkPay}
                 className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <CheckCircle2 className="w-4 h-4 text-slate-300" />
                 <span>Bulk Mark Paid ({selectedIds.length})</span>
               </button>
             )}
@@ -564,7 +564,7 @@ export const BillingView: React.FC = () => {
                             ? 'bg-emerald-700 text-white shadow-xs'
                             : 'bg-slate-900 text-white shadow-xs'
                           : sub.isOverdueAlert && (sub.count || 0) > 0
-                          ? 'bg-rose-100 text-rose-800 hover:bg-rose-200 font-black'
+                          ? 'bg-rose-100 text-rose-800 hover:bg-rose-200 font-bold'
                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -644,20 +644,20 @@ export const BillingView: React.FC = () => {
                         {selectedLab.name}
                       </span>
                       {selectedLabSummary.outstanding_balance > 0 ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-300">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300">
                           RECEIVABLES DUE (OWES LAB)
                         </span>
                       ) : selectedLabSummary.advance_balance > 0 ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-200 text-purple-900 border border-purple-300">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-200 text-purple-900 border border-purple-300">
                           CREDIT SURPLUS / ADVANCE HELD
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-200 text-emerald-900 border border-emerald-300">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-900 border border-emerald-300">
                           FULLY CLEARED / ZERO BALANCE
                         </span>
                       )}
                       {metrics.overdueCount > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-200 text-rose-900 border border-rose-300">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900 border border-rose-300">
                           <AlertTriangle className="w-3 h-3 text-rose-600" />
                           {metrics.overdueCount} OVERDUE
                         </span>
@@ -726,7 +726,7 @@ export const BillingView: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-xs text-slate-800">Lab-Wide Payment Status:</span>
                       {metrics.overdueCount > 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-200 text-rose-900 border border-rose-300">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900 border border-rose-300">
                           <AlertTriangle className="w-3 h-3 text-rose-600" />
                           {metrics.overdueCount} Invoices Overdue
                         </span>
@@ -910,7 +910,7 @@ export const BillingView: React.FC = () => {
 
                           {/* Remaining Due */}
                           <td className={`py-3 px-3 text-right font-bold whitespace-nowrap ${
-                            remaining > 0 ? (isOverdue ? 'text-rose-600 font-black' : 'text-amber-600') : 'text-slate-400'
+                            remaining > 0 ? (isOverdue ? 'text-rose-600 font-bold' : 'text-amber-600') : 'text-slate-400'
                           }`}>
                             PKR {(remaining || 0).toLocaleString()}
                           </td>
@@ -924,11 +924,11 @@ export const BillingView: React.FC = () => {
                               </div>
                             ) : isOverdue ? (
                               <div className="inline-flex flex-col items-center">
-                                <span className="text-rose-600 font-black text-[11px] flex items-center gap-1">
+                                <span className="text-rose-600 font-bold text-[11px] flex items-center gap-1">
                                   <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
                                   <span>{inv.due_date}</span>
                                 </span>
-                                <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-black text-[9px] rounded mt-0.5 whitespace-nowrap">
+                                <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-bold text-[9px] rounded mt-0.5 whitespace-nowrap">
                                   EXPIRED ({diffDays}d)
                                 </span>
                               </div>

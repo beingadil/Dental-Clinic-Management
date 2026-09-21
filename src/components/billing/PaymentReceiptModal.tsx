@@ -23,7 +23,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl lg:max-w-3xl w-full overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl lg:max-w-3xl w-full overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200 print-area print:max-h-none">
         
         {/* Modal Controls (Hidden in Print) */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 print:hidden">
@@ -55,7 +55,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
           {/* Header */}
           <div className="flex items-start justify-between border-b-2 border-slate-900 pb-5">
             <div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
                 {brandingSettings.appName || 'DENTAL SOLUTIONS'}
               </h1>
               <p className="text-xs text-slate-500 font-medium">{brandingSettings.tagline}</p>
@@ -66,7 +66,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
               <span className="inline-block px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-bold uppercase rounded-md tracking-wider">
                 Payment Receipt
               </span>
-              <p className="text-base font-black text-slate-900 mt-1">
+              <p className="text-base font-bold text-slate-900 mt-1">
                 {payment.payment_number || 'RECEIPT'}
               </p>
               <p className="text-xs text-slate-500">Date: {payment.payment_date}</p>
@@ -101,7 +101,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Amount Received</p>
                 <p className="text-xs text-slate-400 mt-0.5">Pakistani Rupees (PKR)</p>
               </div>
-              <p className="text-2xl font-black text-emerald-600 tracking-tight">
+              <p className="text-2xl font-bold text-emerald-600 tracking-tight">
                 PKR {payment.amount.toLocaleString()}
               </p>
             </div>

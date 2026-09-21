@@ -142,7 +142,7 @@ export const AdvancePaymentModal: React.FC<AdvancePaymentModalProps> = ({
                 </div>
                 <div className="border-r border-slate-800 pr-2">
                   <p className="text-[10px] uppercase font-bold text-emerald-400">Advance Credit Balance</p>
-                  <p className="text-sm font-black text-emerald-300 mt-0.5">PKR {(currentSummary.advance_balance || 0).toLocaleString()}</p>
+                  <p className="text-sm font-bold text-emerald-300 mt-0.5">PKR {(currentSummary.advance_balance || 0).toLocaleString()}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase font-bold text-amber-400">Net Receivable Due</p>

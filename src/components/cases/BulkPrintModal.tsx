@@ -69,7 +69,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print-backdrop">
-      <div className="bg-white rounded-3xl max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area">
+      <div className="bg-white rounded-3xl max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area print-area">
         {/* Header Controls (hidden when printing) */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">

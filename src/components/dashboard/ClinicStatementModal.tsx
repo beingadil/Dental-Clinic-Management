@@ -38,7 +38,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 print:p-0 print:bg-white">
-      <div className="bg-white w-full max-w-3xl rounded-3xl p-6 md:p-8 shadow-2xl border border-slate-200 space-y-6 max-h-[92vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none">
+      <div className="bg-white w-full max-w-3xl rounded-3xl p-6 md:p-8 shadow-2xl border border-slate-200 space-y-6 max-h-[92vh] overflow-y-auto print:max-h-none print:overflow-visible print:shadow-none print:border-none print-area">
         
         {/* Header with Print Controls & Clinic Selector */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3 print:hidden">

@@ -172,7 +172,7 @@ export const LedgerView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print-page">
       
       {/* Top Header & Export Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -221,7 +221,7 @@ export const LedgerView: React.FC = () => {
               <ArrowUpRight className="w-3.5 h-3.5" />
             </span>
           </div>
-          <p className="text-xl font-black text-slate-900">
+          <p className="text-xl font-bold text-slate-900">
             PKR {summaryMetrics.totalInvoiced.toLocaleString()}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
@@ -237,7 +237,7 @@ export const LedgerView: React.FC = () => {
               <ArrowDownLeft className="w-3.5 h-3.5" />
             </span>
           </div>
-          <p className="text-xl font-black text-emerald-600">
+          <p className="text-xl font-bold text-emerald-600">
             PKR {(summaryMetrics.totalPaid + summaryMetrics.totalAdvance).toLocaleString()}
           </p>
           <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-1">
@@ -257,7 +257,7 @@ export const LedgerView: React.FC = () => {
               <DollarSign className="w-3.5 h-3.5" />
             </span>
           </div>
-          <p className="text-xl font-black text-blue-600">
+          <p className="text-xl font-bold text-blue-600">
             PKR {(selectedLabId !== 'all' ? (summaryMetrics.availableAdvance ?? 0) : (summaryMetrics.totalAdvance ?? 0)).toLocaleString()}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
@@ -273,7 +273,7 @@ export const LedgerView: React.FC = () => {
               <Receipt className="w-3.5 h-3.5" />
             </span>
           </div>
-          <p className={`text-xl font-black ${summaryMetrics.netReceivables > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+          <p className={`text-xl font-bold ${summaryMetrics.netReceivables > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
             PKR {summaryMetrics.netReceivables.toLocaleString()}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
@@ -369,15 +369,15 @@ export const LedgerView: React.FC = () => {
       </div>
 
       {/* Printable Statement Header (Visible only when printing) */}
-      <div className="hidden print:block p-4 border-b-2 border-slate-900 mb-4 text-slate-900">
+      <div className="hidden print:block p-4 border-b-2 border-slate-900 mb-4 text-slate-900 print-flow">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-xl font-black">{brandingSettings.appName || 'DENTAL SOLUTIONS'}</h1>
+            <h1 className="text-xl font-bold">{brandingSettings.appName || 'DENTAL SOLUTIONS'}</h1>
             <p className="text-xs text-slate-600">{brandingSettings.tagline}</p>
             <p className="text-[11px] text-slate-500">{brandingSettings.address} • Ph: {brandingSettings.phone}</p>
           </div>
           <div className="text-right">
-            <h2 className="text-base font-black">STATEMENT OF ACCOUNT / LEDGER</h2>
+            <h2 className="text-base font-bold">STATEMENT OF ACCOUNT / LEDGER</h2>
             <p className="text-xs text-slate-600">
               Clinic: {selectedLabId === 'all' ? 'All Dental Clinics' : labs.find((l) => l.id === selectedLabId)?.name}
             </p>
@@ -387,7 +387,7 @@ export const LedgerView: React.FC = () => {
       </div>
 
       {/* Double-Entry Ledger Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs print-flow">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
@@ -400,7 +400,7 @@ export const LedgerView: React.FC = () => {
                 <th className="py-3 px-3 min-w-[200px]">Particulars / Remarks</th>
                 <th className="py-3 px-3 text-right">Debit (PKR)</th>
                 <th className="py-3 px-3 text-right">Credit (PKR)</th>
-                <th className="py-3 px-3.5 text-right font-black">Balance (PKR)</th>
+                <th className="py-3 px-3.5 text-right font-bold">Balance (PKR)</th>
                 <th className="py-3 px-3 text-center print:hidden">Proof</th>
                 <th className="py-3 px-3 text-center print:hidden">Action</th>
               </tr>
@@ -536,7 +536,7 @@ export const LedgerView: React.FC = () => {
                       </td>
 
                       {/* Running Balance */}
-                      <td className={`py-3 px-3.5 text-right font-black whitespace-nowrap ${entry.running_balance > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>
+                      <td className={`py-3 px-3.5 text-right font-bold whitespace-nowrap ${entry.running_balance > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>
                         PKR {(entry.running_balance || 0).toLocaleString()}
                       </td>
 
@@ -624,13 +624,13 @@ export const LedgerView: React.FC = () => {
                   <td colSpan={6} className="py-3 px-3.5 text-slate-700">
                     Total Filtered Period Summary:
                   </td>
-                  <td className="py-3 px-3 text-right text-indigo-700 font-black">
+                  <td className="py-3 px-3 text-right text-indigo-700 font-bold">
                     PKR {filteredLedger.reduce((sum, e) => sum + e.debit, 0).toLocaleString()}
                   </td>
-                  <td className="py-3 px-3 text-right text-emerald-700 font-black">
+                  <td className="py-3 px-3 text-right text-emerald-700 font-bold">
                     PKR {filteredLedger.reduce((sum, e) => sum + e.credit, 0).toLocaleString()}
                   </td>
-                  <td className="py-3 px-3.5 text-right text-slate-900 font-black">
+                  <td className="py-3 px-3.5 text-right text-slate-900 font-bold">
                     {filteredLedger[0] ? `PKR ${filteredLedger[0].running_balance.toLocaleString()}` : '—'}
                   </td>
                   <td colSpan={2} className="print:hidden"></td>

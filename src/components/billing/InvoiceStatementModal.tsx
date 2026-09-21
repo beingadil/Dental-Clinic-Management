@@ -134,7 +134,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6 overflow-y-auto no-print-backdrop">
-      <div className="bg-white rounded-3xl max-w-4xl xl:max-w-5xl w-full p-6 md:p-10 border border-slate-200 shadow-2xl relative space-y-8 printable-area my-auto">
+      <div className="bg-white rounded-3xl max-w-4xl xl:max-w-5xl w-full p-6 md:p-10 border border-slate-200 shadow-2xl relative space-y-8 printable-area print-area my-auto">
         {/* Screen Header Controls (Hidden during print) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
@@ -145,7 +145,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-900 text-base">Print PDF Invoice Statement</h3>
                 {savedSuccess && (
-                  <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase rounded-full flex items-center gap-1 animate-in fade-in">
+                  <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-full flex items-center gap-1 animate-in fade-in">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Saved in System!
                   </span>
                 )}
@@ -194,12 +194,12 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
                     className="w-10 h-10 rounded-xl object-contain bg-slate-50 border border-slate-200 p-0.5 shrink-0"
                   />
                 ) : (
-                  <div className="w-10 h-10 bg-slate-900 text-indigo-400 font-black rounded-xl flex items-center justify-center text-sm shadow-xs shrink-0">
+                  <div className="w-10 h-10 bg-slate-900 text-indigo-400 font-bold rounded-xl flex items-center justify-center text-sm shadow-xs shrink-0">
                     {brandingSettings.appName ? brandingSettings.appName.substring(0, 2).toUpperCase() : 'DS'}
                   </div>
                 )}
                 <div>
-                  <span className="font-black text-xl text-slate-900 tracking-tight uppercase block leading-none">
+                  <span className="font-bold text-xl text-slate-900 tracking-tight uppercase block leading-none">
                     {brandingSettings.appName || 'DENTAL SOLUTIONS LAB'}
                   </span>
                   <span className="text-[10px] font-bold text-indigo-600 tracking-wider uppercase block mt-1">
@@ -226,10 +226,10 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
                   <QRCodeSVG value={qrInvoicePayload} size={54} level="M" />
                 </div>
                 <div>
-                  <div className="inline-block px-3 py-1 bg-slate-900 text-white text-xs font-black uppercase tracking-widest rounded-md">
+                  <div className="inline-block px-3 py-1 bg-slate-900 text-white text-xs font-bold uppercase tracking-widest rounded-md">
                     INVOICE VOUCHER
                   </div>
-                  <div className="font-mono font-black text-lg text-indigo-600 print:text-slate-900 mt-1">
+                  <div className="font-mono font-bold text-lg text-indigo-600 print:text-slate-900 mt-1">
                     {invoice.invoice_number}
                   </div>
                 </div>
@@ -264,14 +264,14 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
           {/* Bill To & Case Meta Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
-              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">BILLED TO (DENTAL CLINIC / PRACTICE)</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">BILLED TO (DENTAL CLINIC / PRACTICE)</span>
               <div className="font-extrabold text-slate-900 text-sm">{invoice.lab_name}</div>
               <div className="text-slate-700 font-semibold">Attn: {invoice.doctor_name}</div>
               <div className="text-slate-500">Department: Restorative & Implant Prosthetics</div>
             </div>
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1 sm:text-right">
-              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">WORKSTATION CASE REFERENCE</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">WORKSTATION CASE REFERENCE</span>
               <div className="font-extrabold text-indigo-700 text-sm print:text-slate-900">Case #: {invoice.case_number}</div>
               <div className="text-slate-800 font-semibold">Patient: {caseData?.patient_name || 'Clinical Patient'}</div>
               <div className="text-slate-500">Shade: <strong>{caseData?.shade || 'A1.5'}</strong></div>
@@ -301,7 +301,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
                   </td>
                   <td className="p-3.5 text-right font-mono text-slate-700">PKR {invoice.amount.toLocaleString()}</td>
                   <td className="p-3.5 text-right font-mono text-rose-600 font-semibold">- PKR {invoice.discount.toLocaleString()}</td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-900">PKR {invoice.final_amount.toLocaleString()}</td>
+                  <td className="p-3.5 text-right font-mono font-bold text-slate-900">PKR {invoice.final_amount.toLocaleString()}</td>
                 </tr>
               </tbody>
             </table>
@@ -312,7 +312,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
             
             {/* Bank Payment Remittance Instructions */}
             <div className="w-full sm:w-1/2 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-2">
-              <span className="font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5 text-[10px]">
+              <span className="font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 text-[10px]">
                 <Landmark className="w-3.5 h-3.5 text-indigo-600" /> BANK REMITTANCE DETAILS
               </span>
               <div className="space-y-1 font-mono text-[11px] text-slate-800">
@@ -336,7 +336,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               </div>
               <div className="flex justify-between py-1.5 border-b-2 border-slate-900 text-slate-900 font-bold text-sm">
                 <span>Total Net Billed Amount:</span>
-                <span className="font-mono font-black">PKR {invoice.final_amount.toLocaleString()}</span>
+                <span className="font-mono font-bold">PKR {invoice.final_amount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-200 text-emerald-700 font-semibold">
                 <span>Total Received Payments:</span>
@@ -344,7 +344,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               </div>
               <div className="flex justify-between py-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 font-extrabold text-sm text-indigo-950 print:bg-slate-100">
                 <span>Outstanding Balance Due:</span>
-                <span className="font-mono font-black text-rose-700 print:text-slate-900">PKR {remainingBalance.toLocaleString()}</span>
+                <span className="font-mono font-bold text-rose-700 print:text-slate-900">PKR {remainingBalance.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -352,14 +352,14 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
           {/* Payment Receipts History (if payments exist) */}
           {invoice.payments.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-slate-200">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">ITEMIZED PAYMENT CLEARANCE HISTORY</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">ITEMIZED PAYMENT CLEARANCE HISTORY</span>
               <div className="space-y-1 text-xs">
                 {invoice.payments.map((p) => (
                   <div key={p.id} className="p-2.5 bg-emerald-50/60 border border-emerald-200 rounded-xl flex justify-between items-center text-emerald-950 font-medium">
                     <div>
                       <span className="font-bold text-slate-900">{p.payment_date}</span> • <span className="uppercase font-mono text-[10px] font-bold bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded">{p.payment_method}</span> {p.notes && <span className="text-slate-600 italic">({p.notes})</span>}
                     </div>
-                    <span className="font-mono font-black text-emerald-800">PKR {p.amount.toLocaleString()}</span>
+                    <span className="font-mono font-bold text-emerald-800">PKR {p.amount.toLocaleString()}</span>
                   </div>
                 ))}
               </div>

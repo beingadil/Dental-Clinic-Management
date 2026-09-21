@@ -283,7 +283,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl font-black text-slate-900 mt-1">PKR {(totalCollections || 0).toLocaleString()}</p>
+          <p className="text-xl font-bold text-slate-900 mt-1">PKR {(totalCollections || 0).toLocaleString()}</p>
           <p className="text-[11px] text-slate-500 mt-0.5">{allPayments.length} direct invoice payments</p>
         </div>
 
@@ -294,7 +294,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
               <Wallet className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl font-black text-indigo-700 mt-1">PKR {(totalAdvanceDeposits || 0).toLocaleString()}</p>
+          <p className="text-xl font-bold text-indigo-700 mt-1">PKR {(totalAdvanceDeposits || 0).toLocaleString()}</p>
           <p className="text-[11px] text-slate-500 mt-0.5">{advancePayments.length} clinic deposit records</p>
         </div>
 
@@ -305,7 +305,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl font-black text-emerald-600 mt-1">PKR {(totalAdvanceCreditRemaining || 0).toLocaleString()}</p>
+          <p className="text-xl font-bold text-emerald-600 mt-1">PKR {(totalAdvanceCreditRemaining || 0).toLocaleString()}</p>
           <p className="text-[11px] text-slate-500 mt-0.5">Holding in clinic prepaid wallets</p>
         </div>
 
@@ -316,7 +316,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
               <Percent className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl font-black text-purple-700 mt-1">PKR {(totalCreditNotes || 0).toLocaleString()}</p>
+          <p className="text-xl font-bold text-purple-700 mt-1">PKR {(totalCreditNotes || 0).toLocaleString()}</p>
           <p className="text-[11px] text-slate-500 mt-0.5">{accountAdjustments.length} adjustment records</p>
         </div>
       </div>
@@ -553,7 +553,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       </td>
 
                       {/* Amount */}
-                      <td className="py-3 px-3 text-right font-black whitespace-nowrap">
+                      <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
                         <span className={
                           txn.direction === 'inflow'
                             ? 'text-emerald-600'

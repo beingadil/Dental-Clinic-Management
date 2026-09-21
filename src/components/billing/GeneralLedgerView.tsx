@@ -332,17 +332,19 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     }
   };
 
-  // Handle Print safely
+  // Handle Print safely. The printable block only exists while the preview
+  // is active, so activate it first — otherwise the printout would be blank.
   const handlePrint = () => {
+    setIsPreviewActive(true);
     try {
-      window.print();
+      setTimeout(() => window.print(), 50);
     } catch (e) {
       console.warn('Print not supported in iframe environment:', e);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print-page">
       {/* Top Header Card */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -350,7 +352,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
             <BookOpen className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-base md:text-lg font-black text-slate-900 flex items-center gap-2">
+            <h2 className="text-base md:text-lg font-bold text-slate-900 flex items-center gap-2">
               General Ledger
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                 Clinic Statement
@@ -622,14 +624,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
       {/* PREVIEW CONTAINER */}
       {isPreviewActive && (
-        <div className="space-y-4">
+        <div className="space-y-4 print-flow">
           {/* Summary Strip Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
                 Opening Balance
               </span>
-              <span className="text-sm md:text-base font-black text-slate-900 mt-1 block">
+              <span className="text-sm md:text-base font-bold text-slate-900 mt-1 block">
                 PKR {openingBalance.toLocaleString()}
               </span>
               <span className="text-[10px] text-slate-500">
@@ -641,7 +643,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">
                 Total Debits (Cases)
               </span>
-              <span className="text-sm md:text-base font-black text-blue-900 mt-1 block">
+              <span className="text-sm md:text-base font-bold text-blue-900 mt-1 block">
                 PKR {totalDebits.toLocaleString()}
               </span>
               <span className="text-[10px] text-slate-500">
@@ -653,7 +655,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 block">
                 Total Credits (Cash/Bank)
               </span>
-              <span className="text-sm md:text-base font-black text-emerald-900 mt-1 block">
+              <span className="text-sm md:text-base font-bold text-emerald-900 mt-1 block">
                 PKR {totalCredits.toLocaleString()}
               </span>
               <span className="text-[10px] text-slate-500">
@@ -665,7 +667,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
                 Closing Balance
               </span>
-              <span className={`text-sm md:text-base font-black mt-1 block ${
+              <span className={`text-sm md:text-base font-bold mt-1 block ${
                 closingBalance > 0 ? 'text-amber-700' : closingBalance < 0 ? 'text-blue-700' : 'text-emerald-700'
               }`}>
                 PKR {closingBalance.toLocaleString()} {closingBalance > 0 ? 'Dr' : closingBalance < 0 ? 'Cr' : ''}
@@ -680,7 +682,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
           {selectedClinic && (
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 font-black flex items-center justify-center text-xs">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
                   {String(selectedClinic.name || 'CL').slice(0, 2).toUpperCase()}
                 </div>
                 <div>
@@ -740,14 +742,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                         {selectedClinic ? selectedClinic.name : 'Consolidated Clinics'}
                       </td>
                       <td className="py-2.5 px-4">
-                        <span className="inline-block text-[10px] uppercase font-black px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
+                        <span className="inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
                           Opening Balance
                         </span>
                         <span className="text-slate-600 not-italic">Balance brought forward</span>
                       </td>
                       <td className="py-2.5 px-3 text-right text-slate-500">-</td>
                       <td className="py-2.5 px-3 text-right text-slate-500">-</td>
-                      <td className="py-2.5 px-4 text-right font-black font-mono text-slate-900 not-italic">
+                      <td className="py-2.5 px-4 text-right font-bold font-mono text-slate-900 not-italic">
                         PKR {openingBalance.toLocaleString()}
                       </td>
                     </tr>
@@ -796,7 +798,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           <td className="py-3 px-4">
                             <div className="space-y-1">
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${details.typeBadgeBg}`}>
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${details.typeBadgeBg}`}>
                                   <Icon className="w-3 h-3" />
                                   {details.typeLabel}
                                 </span>
@@ -835,7 +837,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           </td>
 
                           {/* Closing Balance */}
-                          <td className="py-3 px-4 text-right whitespace-nowrap font-mono font-black text-slate-900">
+                          <td className="py-3 px-4 text-right whitespace-nowrap font-mono font-bold text-slate-900">
                             <span className={entry.closing_balance > 0 ? 'text-slate-900' : entry.closing_balance < 0 ? 'text-emerald-700' : 'text-slate-500'}>
                               PKR {entry.closing_balance.toLocaleString()}
                             </span>
@@ -850,16 +852,16 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 {ledgerItems.length > 0 && (
                   <tfoot>
                     <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-xs text-slate-900">
-                      <td colSpan={4} className="py-3.5 px-4 text-right uppercase tracking-wider font-black">
+                      <td colSpan={4} className="py-3.5 px-4 text-right uppercase tracking-wider font-bold">
                         Total Period Activity & Net Closing Balance:
                       </td>
-                      <td className="py-3.5 px-3 text-right font-black font-mono text-blue-900 whitespace-nowrap">
+                      <td className="py-3.5 px-3 text-right font-bold font-mono text-blue-900 whitespace-nowrap">
                         PKR {totalDebits.toLocaleString()}
                       </td>
-                      <td className="py-3.5 px-3 text-right font-black font-mono text-emerald-700 whitespace-nowrap">
+                      <td className="py-3.5 px-3 text-right font-bold font-mono text-emerald-700 whitespace-nowrap">
                         PKR {totalCredits.toLocaleString()}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black font-mono text-slate-950 whitespace-nowrap text-sm bg-slate-200/60">
+                      <td className="py-3.5 px-4 text-right font-bold font-mono text-slate-950 whitespace-nowrap text-sm bg-slate-200/60">
                         PKR {closingBalance.toLocaleString()} {closingBalance > 0 ? 'Dr' : closingBalance < 0 ? 'Cr' : ''}
                       </td>
                     </tr>
