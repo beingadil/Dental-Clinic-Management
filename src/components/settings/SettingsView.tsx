@@ -20,6 +20,7 @@ import {
   BackupScheduleState,
   BackupRun,
 } from '../../services/backupScheduler';
+import { runRestoreDrill, RestoreDrillResult } from '../../services/restoreDrill';
 import { initEngineFromBytes, getDatabase } from '../../db';
 import { 
   Settings, 
@@ -126,6 +127,18 @@ export const SettingsView: React.FC = () => {
       setBackupRuns(getBackupRuns());
     } finally {
       setBackupBusy(false);
+    }
+  };
+
+  // Restore drill — proves the backup→restore pipeline on a temp engine
+  const [drillBusy, setDrillBusy] = useState(false);
+  const [drillResult, setDrillResult] = useState<RestoreDrillResult | null>(null);
+  const handleRestoreDrill = async () => {
+    setDrillBusy(true);
+    try {
+      setDrillResult(await runRestoreDrill());
+    } finally {
+      setDrillBusy(false);
     }
   };
   // Persisted update history — re-read whenever the phase moves so the log
@@ -1491,7 +1504,33 @@ export const SettingsView: React.FC = () => {
                 <Database className="w-4 h-4 text-emerald-200" />
                 <span>{backupBusy ? 'Backing up…' : 'Back Up Now'}</span>
               </button>
+
+              <button
+                onClick={handleRestoreDrill}
+                disabled={drillBusy}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                <span>{drillBusy ? 'Verifying…' : 'Verify Restore'}</span>
+              </button>
             </div>
+
+            {drillResult && (
+              <div className={`p-3 rounded-xl text-xs font-semibold flex items-start gap-2 border ${
+                drillResult.ok
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}>
+                {drillResult.ok ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />}
+                <div>
+                  <span className="font-bold">{drillResult.ok ? 'Restore drill PASSED' : 'Restore drill FAILED'}</span>
+                  <span className="block font-normal">{drillResult.detail}</span>
+                </div>
+                <button onClick={() => setDrillResult(null)} className="ml-auto text-slate-400 hover:text-slate-600 p-0.5">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
               {isDesktopShellForBackups() ? (
