@@ -65,3 +65,16 @@ export async function initEngineFromBytes(bytes?: Uint8Array): Promise<SqliteEng
 }
 
 export type { SqliteEngine };
+
+/**
+ * Builds a transient in-memory engine for verification drills (restore
+ * checks). Never touches the live global engine, its persistence, or the
+ * snapshot store — the caller owns closing it.
+ */
+export async function createTransientEngine(bytes?: Uint8Array): Promise<SqliteEngine> {
+  const init = (initSqlJs ?? null) as unknown as (cfg?: any) => Promise<SqlJsStatic>;
+  const SQL = await init(wasmLocator ? { locateFile: wasmLocator } : undefined);
+  const engine = await SqliteEngine.create(SQL, bytes);
+  engine.migrate();
+  return engine;
+}

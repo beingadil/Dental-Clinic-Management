@@ -11,8 +11,6 @@ import {
   LabPricingOverride,
   LabReview,
   DoctorPreferredLab,
-  NotificationConfig,
-  EmailTemplate,
   UserPreferences,
   UserProfile,
   PaymentRecord,
@@ -48,8 +46,6 @@ import {
   INITIAL_PRICING_OVERRIDES,
   INITIAL_LAB_REVIEWS,
   INITIAL_DOCTOR_PREFERENCES,
-  INITIAL_NOTIFICATION_CONFIG,
-  INITIAL_EMAIL_TEMPLATES,
   INITIAL_USER_PREFERENCES,
   INITIAL_ADVANCE_PAYMENTS,
   INITIAL_ADJUSTMENTS,
@@ -75,7 +71,7 @@ import { syncCollectionsToDb } from '../db/syncCore';
 import {
   usersRepo, labsRepo, caseTypesRepo, casesRepo, caseNotesRepo, attachmentsRepo,
   caseTemplatesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo,
-  notificationsRepo, settingsRepo, notificationConfigRepo, emailTemplatesRepo, vouchersRepo, auditRepo,
+  notificationsRepo, settingsRepo, vouchersRepo, auditRepo,
   sessionsRepo,
 } from '../db/repos';
 import { hashPassword, verifyPassword } from '../db/crypto';
@@ -192,8 +188,6 @@ interface AppContextType {
   pricingOverrides: LabPricingOverride[];
   labReviews: LabReview[];
   doctorPreferences: DoctorPreferredLab[];
-  notificationConfig: NotificationConfig;
-  emailTemplates: EmailTemplate[];
   userPreferences: UserPreferences;
   caseAttachments: Record<string, CaseAttachment[]>;
   caseNotes: Record<string, CaseNote[]>;
@@ -426,9 +420,6 @@ interface AppContextType {
   } | null) => void;
 
   // Settings
-  updateNotificationConfig: (config: NotificationConfig) => void;
-  updateEmailTemplate: (id: string, updates: Partial<EmailTemplate>) => void;
-  resetEmailTemplate: (id: string) => void;
   updateUserPreferences: (prefs: Partial<UserPreferences>) => void;
   
   // Quick Search
@@ -599,8 +590,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [pricingOverrides, setPricingOverrides] = useState<LabPricingOverride[]>(() => safeGetJSON('dsw_pricing_overrides', INITIAL_PRICING_OVERRIDES));
   const [labReviews, setLabReviews] = useState<LabReview[]>(() => safeGetJSON('dsw_lab_reviews', INITIAL_LAB_REVIEWS));
   const [doctorPreferences, setDoctorPreferences] = useState<DoctorPreferredLab[]>(() => safeGetJSON('dsw_doctor_preferences', INITIAL_DOCTOR_PREFERENCES));
-  const [notificationConfig, setNotificationConfig] = useState<NotificationConfig>(() => safeGetJSON('dsw_notif_config', INITIAL_NOTIFICATION_CONFIG));
-  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(() => safeGetJSON('dsw_email_templates', INITIAL_EMAIL_TEMPLATES));
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     return sqliteDb.settings.getPreferences() || safeGetJSON('dsw_user_prefs', INITIAL_USER_PREFERENCES);
   });
@@ -669,14 +658,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     dbWrite(() => settingsRepo.set('preferences', 'global', userPreferences));
   }, [userPreferences]);
-  useEffect(() => {
-    dbWrite(() => notificationConfigRepo.set(notificationConfig));
-  }, [notificationConfig]);
-  useEffect(() => {
-    dbWrite(() => {
-      emailTemplates.forEach((t) => emailTemplatesRepo.upsert(t));
-    });
-  }, [emailTemplates]);
 
   // Session state lives in the SQLite `sessions` table. localStorage caches only
   // the opaque token (never the user object, never a password) so a valid
@@ -976,8 +957,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pricingOverrides,
         labReviews,
         doctorPreferences,
-        notificationConfig,
-        emailTemplates,
         userPreferences,
         caseAttachments,
         caseNotes,
@@ -1013,8 +992,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(tables.pricingOverrides)) setPricingOverrides(tables.pricingOverrides);
       if (Array.isArray(tables.labReviews)) setLabReviews(tables.labReviews);
       if (Array.isArray(tables.doctorPreferences)) setDoctorPreferences(tables.doctorPreferences);
-      if (tables.notificationConfig) setNotificationConfig(tables.notificationConfig);
-      if (Array.isArray(tables.emailTemplates)) setEmailTemplates(tables.emailTemplates);
       if (tables.userPreferences) setUserPreferences(tables.userPreferences);
       if (tables.caseAttachments) setCaseAttachments(tables.caseAttachments);
       if (tables.caseNotes) setCaseNotes(tables.caseNotes);
@@ -1045,8 +1022,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPricingOverrides(INITIAL_PRICING_OVERRIDES);
     setLabReviews(INITIAL_LAB_REVIEWS);
     setDoctorPreferences(INITIAL_DOCTOR_PREFERENCES);
-    setNotificationConfig(INITIAL_NOTIFICATION_CONFIG);
-    setEmailTemplates(INITIAL_EMAIL_TEMPLATES);
     setUserPreferences(INITIAL_USER_PREFERENCES);
     setBrandingSettings(DEFAULT_BRANDING);
     setSavedVouchers([]);
@@ -1079,8 +1054,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPricingOverrides([]);
     setLabReviews([]);
     setDoctorPreferences([]);
-    setNotificationConfig(INITIAL_NOTIFICATION_CONFIG);
-    setEmailTemplates(INITIAL_EMAIL_TEMPLATES);
     setUserPreferences(INITIAL_USER_PREFERENCES);
     setBrandingSettings(DEFAULT_BRANDING);
     setSavedVouchers([]);
@@ -1153,6 +1126,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setNotifications((prev) => [...newAlerts, ...(prev || [])]);
     }
   }, [cases, todayStr]);
+
+  // Auto-generate unpaid-invoice reminders: one per invoice while its due date
+  // is today or past — the app's real, local "payment trigger". Because the
+  // alert id is invoice-keyed, once a payment logs, the alert disappears.
+  useEffect(() => {
+    const alerts: AppNotification[] = [];
+    (invoices || []).forEach((inv) => {
+      if (!inv || inv.payment_status === 'paid' || inv.status_v2 === 'voided') return;
+      if (!inv.due_date || inv.due_date > todayStr) return;
+      alerts.push({
+        id: `notif-unpaid-${inv.id}`,
+        type: 'unpaid_invoice',
+        title: `Payment Due — Invoice ${inv.invoice_number}`,
+        message: `${inv.final_amount.toLocaleString()} PKR outstanding for ${inv.patient_name || inv.lab_name}. Due ${inv.due_date}.`,
+        invoice_id: inv.id,
+        case_number: inv.case_number,
+        lab_id: inv.lab_id,
+        is_read: false,
+        read: false,
+        created_at: new Date().toISOString(),
+      });
+    });
+    if (alerts.length > 0) {
+      setNotifications((prev) => {
+        const existing = new Set((prev || []).map((n) => n.id));
+        const fresh = alerts.filter((a) => !existing.has(a.id));
+        return fresh.length > 0 ? [...fresh, ...(prev || [])] : prev || [];
+      });
+    }
+  }, [invoices, todayStr]);
 
   // Agent workflow listener trigger simulation
   const triggerAgentWorkflow = (event: string, payload: any) => {
@@ -3112,22 +3115,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Settings
-  const updateNotificationConfig = (config: NotificationConfig) => {
-    setNotificationConfig(config);
-  };
-
-  const updateEmailTemplate = (id: string, updates: Partial<EmailTemplate>) => {
-    const nowStr = new Date().toISOString().split('T')[0];
-    setEmailTemplates((prev) => prev.map((et) => (et.id === id ? { ...et, ...updates, updated_at: nowStr } : et)));
-  };
-
-  const resetEmailTemplate = (id: string) => {
-    const original = INITIAL_EMAIL_TEMPLATES.find((et) => et.id === id);
-    if (original) {
-      setEmailTemplates((prev) => prev.map((et) => (et.id === id ? { ...original } : et)));
-    }
-  };
-
   const updateUserPreferences = (prefs: Partial<UserPreferences>) => {
     setUserPreferences((prev) => ({ ...prev, ...prefs }));
   };
@@ -3161,8 +3148,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pricingOverrides,
         labReviews,
         doctorPreferences,
-        notificationConfig,
-        emailTemplates,
         userPreferences,
         caseAttachments,
         caseNotes,
@@ -3279,9 +3264,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         billingFilterPreset,
         setBillingFilterPreset,
 
-        updateNotificationConfig,
-        updateEmailTemplate,
-        resetEmailTemplate,
         updateUserPreferences,
 
         searchTerm,
