@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.4] — 2026-09-21
+
+### Fixed
+- **Update relaunch** — after a silent update installs, the app now relaunches
+  the exe from the installed location (read from the per-user uninstall
+  registry key) instead of whatever path started the update, so the fresh
+  version always opens. Shipped in this release so installed 2.3.3 clients
+  auto-update once more, and every update after that relaunches itself.
+
+### Changed
+- **Sidebar navigation polish** — active items use an indigo accent with a
+  left indicator bar (replacing the heavy black pill), refined group
+  headings, focus-visible rings for keyboard use, badge dot indicators in
+  collapsed mode, a circular Log-New-Case button when collapsed, and the
+  mobile bottom bar respects the safe-area inset.
+- Print documents (clinic statements, bulk print letterhead, receipts) read
+  all identity and bank details from Branding settings.
+
 ## [2.3.3] — 2026-09-21
 
 ### Fixed

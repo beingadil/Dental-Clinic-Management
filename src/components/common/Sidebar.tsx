@@ -15,7 +15,8 @@ import {
   Activity,
   Plus,
   BookOpen,
-  Printer
+  Printer,
+  Clock3
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -38,9 +39,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
 
   const unpaidInvoicesCount = invoices.filter((i) => i.payment_status !== 'paid').length;
 
-  const navGroups = [
+  interface NavItem {
+    id: string;
+    label: string;
+    icon: React.FC<{ className?: string }>;
+    badge?: string;
+    badgeColor?: string;
+  }
+
+  const navGroups: { groupTitle: string; items: NavItem[] }[] = [
     {
-      groupTitle: 'WORKSPACE',
+      groupTitle: 'Workspace',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { 
@@ -48,12 +57,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
           label: 'Dental Workstation', 
           icon: FolderKanban, 
           badge: overdueCount > 0 ? `${overdueCount}` : undefined, 
-          badgeColor: 'bg-amber-500 text-white font-bold' 
+          badgeColor: 'bg-amber-500 text-white' 
         },
       ]
     },
     {
-      groupTitle: 'MANAGEMENT',
+      groupTitle: 'Management',
       items: [
         { id: 'labs', label: 'Dental Clinics', icon: Building2 },
         { 
@@ -61,14 +70,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
           label: 'Billing & Invoices', 
           icon: Receipt, 
           badge: unpaidInvoicesCount > 0 ? `${unpaidInvoicesCount}` : undefined, 
-          badgeColor: 'bg-indigo-100 text-indigo-700 font-bold' 
+          badgeColor: 'bg-indigo-100 text-indigo-700' 
         },
         { id: 'catalog', label: 'Price List & Catalog', icon: BookOpen },
         { id: 'print', label: 'Print Studio', icon: Printer },
       ]
     },
     {
-      groupTitle: 'INTELLIGENCE',
+      groupTitle: 'Insights',
       items: [
         { id: 'analytics', label: 'Analytics & Reports', icon: BarChart3 },
         { 
@@ -76,7 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
           label: 'System Inbox', 
           icon: Bell, 
           badge: unreadCount > 0 ? `${unreadCount}` : undefined, 
-          badgeColor: 'bg-rose-500 text-white font-bold' 
+          badgeColor: 'bg-rose-500 text-white' 
         },
         { id: 'settings', label: 'System Settings', icon: Settings },
       ]
@@ -148,27 +157,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
         </div>
 
         {/* Action Shortcut Button */}
-        {!isCollapsed && onOpenNewCaseModal && (
+        {onOpenNewCaseModal && (
           <div className="px-3 pt-3.5">
             <button
               onClick={onOpenNewCaseModal}
-              className="w-full py-2.5 px-3.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              title={isCollapsed ? 'Log New Case' : undefined}
+              className={`bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-sm shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                isCollapsed ? 'w-11 h-11 mx-auto' : 'w-full py-2.5 px-3.5'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>Log New Case</span>
+              <Plus className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span>Log New Case</span>}
             </button>
           </div>
         )}
 
         {/* Navigation Groups */}
-        <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto no-scrollbar">
+        <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto no-scrollbar" aria-label="Main navigation">
           {navGroups.map((group, idx) => (
             <div key={idx} className="space-y-1">
               {!isCollapsed && (
-                <div className="px-3 mb-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                <div className="px-3 mb-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-[0.14em]">
                   {group.groupTitle}
                 </div>
               )}
+              {isCollapsed && idx > 0 && <div className="mx-3 mb-2 border-t border-slate-100" />}
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentView === item.id;
@@ -180,22 +193,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
                       setSidebarOpen(false);
                     }}
                     title={isCollapsed ? item.label : undefined}
-                    className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'justify-between px-3 py-2.5'} rounded-xl font-medium text-xs md:text-sm transition-all cursor-pointer ${
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`group relative w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'justify-between px-3 py-2.5'} rounded-xl font-medium text-xs md:text-sm transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 ${
                       isActive
-                        ? 'bg-slate-900 text-white font-semibold shadow-xs'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                        : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-400' : 'text-slate-400'}`} />
-                      {!isCollapsed && <span className="truncate">{item.label}</span>}
+                    {isActive && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full bg-indigo-600" aria-hidden="true" />
+                    )}
+                    <div className="flex items-center min-w-0">
+                      <Icon className={`w-4 h-4 shrink-0 transition-colors ${
+                        isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'
+                      }`} />
+                      {!isCollapsed && <span className="truncate ml-3">{item.label}</span>}
                     </div>
                     {!isCollapsed && item.badge && (
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                        isActive ? 'bg-slate-800 text-slate-200' : (item.badgeColor || 'bg-slate-100 text-slate-600')
+                      <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 tabular-nums ${
+                        item.badgeColor || 'bg-slate-100 text-slate-600'
                       }`}>
                         {item.badge}
                       </span>
+                    )}
+                    {isCollapsed && item.badge && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-white bg-rose-500" aria-hidden="true" />
                     )}
                   </button>
                 );
@@ -208,15 +230,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
         {!isCollapsed ? (
           <div className="p-3 border-t border-slate-100">
             <div className="flex items-center justify-between px-2 py-1">
-              <span className="text-[10px] font-semibold text-slate-400 truncate">{brandingSettings.appName || 'Dental Solutions'}</span>
-              <span className="text-[10px] font-mono text-slate-400">v{currentVersion()}</span>
+              <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 truncate">
+                <Clock3 className="w-3 h-3 text-emerald-500" />
+                <span className="truncate">{brandingSettings.appName || 'Dental Solutions'}</span>
+              </span>
+              <span className="text-[10px] font-mono text-slate-400 tabular-nums">v{currentVersion()}</span>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="p-3 border-t border-slate-100 flex justify-center">
+            <span className="text-[10px] font-mono text-slate-400" title={`v${currentVersion()}`}>v{currentVersion()}</span>
+          </div>
+        )}
       </aside>
 
       {/* Mobile Bottom Bar navigation */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 px-2 py-1 flex items-center justify-around shadow-lg">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 px-2 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] flex items-center justify-around shadow-lg" aria-label="Mobile navigation">
         {[
           { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
           { id: 'cases', label: 'Cases', icon: FolderKanban },
@@ -230,19 +259,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenNewCaseModal }) => {
             <button
               key={item.id}
               onClick={() => setCurrentView(item.id)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg relative ${
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg relative transition-colors ${
                 isActive ? 'text-indigo-600 font-bold' : 'text-slate-500'
               }`}
             >
+              <span className={`absolute -top-1 h-0.5 w-8 rounded-full ${isActive ? 'bg-indigo-600' : 'bg-transparent'}`} aria-hidden="true" />
               <Icon className="w-5 h-5" />
               <span className="text-[10px]">{item.label}</span>
               {item.badge ? (
-                <span className="absolute top-0.5 right-2 w-2 h-2 rounded-full bg-rose-500" />
+                <span className="absolute top-0.5 right-2 w-2 h-2 rounded-full bg-rose-500" aria-hidden="true" />
               ) : null}
             </button>
           );
         })}
-      </div>
+      </nav>
     </>
   );
 };
