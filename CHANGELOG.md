@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.3] — 2026-09-21
+
+### Fixed
+- **Classic job-slip voucher download restored** — Save & Download File again
+  produces the DS VOUCHER-style document (bordered sheet, badge + monospace
+  case number, label/value rows); download and Print Card remain separate
+  actions.
+- **Printing unified across the app** — job slips, bulk prints, invoices,
+  payment receipts, clinic statements, ledgers, and the catalog all print
+  through one isolation class, so paper output matches the on-screen preview
+  and never prints a blank page. Transitions are disabled on paper.
+- **Case wizard** — Save as Draft now appears only on the final Attach &
+  Review step, so every new case passes through document attachment.
+- **Settings** — removed the duplicate legacy update card; the single updates
+  hub lives in Settings → Updates. Thin styled scrollbars on tab strips and
+  the users table.
+- **Sidebar** — removed the fake "enterprise" status card, the hardcoded v2.4
+  diagnostics modal, and quick-filter buttons that only navigated. The footer
+  now shows the real app name and the running version.
+- **Billing** — consistent header button icon colors and `font-bold`
+  typography across all billing screens.
+- Dev: Vite's file watcher no longer watches the Rust `target` directory
+  (fixed `EBUSY` crashes during `tauri dev` on Windows).
+
 ## [2.3.2] — 2026-09-21
 
 ### Fixed
