@@ -97,7 +97,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl xl:max-w-6xl overflow-hidden animate-in fade-in zoom-in-95 my-auto print:shadow-none print:border-none print:m-0 print:max-w-none">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl xl:max-w-6xl overflow-hidden animate-in fade-in zoom-in-95 my-auto print:shadow-none print:border-none print:m-0 print:max-w-none print-area">
         {/* Modal Controls (Hidden in Print) */}
         <div className="px-6 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2">
@@ -167,7 +167,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
           {/* Statement Header */}
           <div className="flex items-start justify-between border-b border-slate-200 pb-6">
             <div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight uppercase">
                 {brandingSettings.lab_name || 'DENTAL SOLUTIONS WORKFLOW'}
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">

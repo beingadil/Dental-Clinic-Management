@@ -113,7 +113,7 @@ export const AuditLogView: React.FC = () => {
   const getActionBadge = (action: string) => {
     if (action.includes('REVERS') || action.includes('VOID')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
           <RotateCcw className="w-3 h-3 text-rose-600" />
           <span>{action}</span>
         </span>
@@ -219,25 +219,25 @@ export const AuditLogView: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-5 border-t border-slate-100">
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Logged Events</span>
-            <span className="text-xl font-black text-slate-900 mt-1 block">{metrics.total}</span>
+            <span className="text-xl font-bold text-slate-900 mt-1 block">{metrics.total}</span>
             <span className="text-[10px] text-slate-500">Forensic history</span>
           </div>
 
           <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200">
             <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Collections & Deposits</span>
-            <span className="text-xl font-black text-emerald-950 mt-1 block">{metrics.payments}</span>
+            <span className="text-xl font-bold text-emerald-950 mt-1 block">{metrics.payments}</span>
             <span className="text-[10px] text-emerald-700">Cash, Bank, Advance</span>
           </div>
 
           <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-200">
             <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider block">Reversals & Voids</span>
-            <span className="text-xl font-black text-rose-950 mt-1 block">{metrics.reversals}</span>
+            <span className="text-xl font-bold text-rose-950 mt-1 block">{metrics.reversals}</span>
             <span className="text-[10px] text-rose-700">Strictly non-destructive</span>
           </div>
 
           <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-200">
             <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider block">Adjustments & Reconciliations</span>
-            <span className="text-xl font-black text-purple-950 mt-1 block">{metrics.adjustments + metrics.reconciliations}</span>
+            <span className="text-xl font-bold text-purple-950 mt-1 block">{metrics.adjustments + metrics.reconciliations}</span>
             <span className="text-[10px] text-purple-700">Bank verified & credit notes</span>
           </div>
         </div>

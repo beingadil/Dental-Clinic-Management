@@ -8,7 +8,7 @@ import {
   applyRestoredBytes,
   APP_VERSION,
 } from '../../services/backupService';
-import { checkForUpdates, parseOfflineUpdate, currentVersion, downloadUpdate, UpdateStatus } from '../../services/updateService';
+import { currentVersion } from '../../services/updateService';
 import { exportSqliteFile } from '../../services/sqliteStorage';
 import { initEngineFromBytes, getDatabase } from '../../db';
 import { 
@@ -142,7 +142,6 @@ export const SettingsView: React.FC = () => {
 
   // ---- Backup / restore / update state (Phase 8 & 9) ----
   const [busy, setBusy] = useState<null | 'backup' | 'restore' | 'check'>(null);
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [pendingRestore, setPendingRestore] = useState<{
     pkg: ReturnType<typeof parseBackupFile>;
     errors: string[];
@@ -307,32 +306,6 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  // ---- Phase 9: update check + offline package import ----
-  const handleCheckUpdates = async () => {
-    setBusy('check');
-    const status = await checkForUpdates();
-    setUpdateStatus(status);
-    setBusy(null);
-  };
-
-  const handleOfflineUpdateFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    const text = await file.text();
-    const parsed: { ok: true; manifest: { version: string } } | { ok: false; error: string } =
-      await parseOfflineUpdate(text);
-    if (parsed.ok === false) {
-      setBackupMessage({ type: 'error', text: parsed.error });
-      return;
-    }
-    setBackupMessage({
-      type: 'success',
-      text: `Update package v${parsed.manifest.version} verified (checksum OK). It will be applied by the desktop installer — in-browser installs are handled on next release.`,
-    });
-    setTimeout(() => setBackupMessage(null), 6000);
-  };
-
   // SQLite .SQL Dump Export
   const handleExportSqliteDump = () => {
     try {
@@ -417,7 +390,7 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {/* Category Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto space-x-1">
+      <div className="flex flex-wrap border-b border-slate-200 space-x-1">
         <button
           onClick={() => setActiveTab('branding')}
           className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
@@ -1156,7 +1129,7 @@ export const SettingsView: React.FC = () => {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs whitespace-nowrap">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold text-[10px] bg-slate-50/50">
                   <th className="p-3">User & Name</th>
@@ -1407,53 +1380,6 @@ export const SettingsView: React.FC = () => {
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Software Version & Updates (Phase 9) */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
-                <RefreshCw className="w-4 h-4 text-indigo-600" />
-                <span>Software Version & Updates</span>
-              </div>
-              <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
-                v{currentVersion()}
-              </span>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <button
-                onClick={handleCheckUpdates}
-                disabled={busy === 'check'}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${busy === 'check' ? 'animate-spin' : ''}`} />
-                Check for Updates (online)
-              </button>
-              <label className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5">
-                <Upload className="w-3.5 h-3.5" />
-                Import Offline Update (.dentalupdate)
-                <input type="file" accept=".dentalupdate,.json" onChange={handleOfflineUpdateFile} className="hidden" />
-              </label>
-            </div>
-            {updateStatus.state === 'up_to_date' && (
-              <p className="text-[11px] font-semibold text-emerald-700">✓ You are running the latest version (v{updateStatus.version}).</p>
-            )}
-            {updateStatus.state === 'available' && (
-              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-[11px] text-amber-900">
-                <p className="font-bold">Update available: v{updateStatus.version}</p>
-                {updateStatus.notes && <p className="mt-1">{updateStatus.notes}</p>}
-                <button
-                  onClick={() => downloadUpdate(updateStatus.download_url)}
-                  className="mt-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
-                >
-                  <Upload className="w-3.5 h-3.5 rotate-180" />
-                  Download Installer v{updateStatus.version}
-                </button>
-              </div>
-            )}
-            {updateStatus.state === 'error' && (
-              <p className="text-[11px] font-semibold text-slate-500">{updateStatus.message}</p>
-            )}
           </div>
 
           {/* SQLite Relational Tables Inspector */}

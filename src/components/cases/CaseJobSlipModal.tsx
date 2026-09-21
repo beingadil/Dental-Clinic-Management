@@ -31,7 +31,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
     setTimeout(() => setSavedSuccess(false), 4000);
 
     if (shouldDownloadFile) {
-      // Direct File Download
+      // Direct File Download (classic voucher style)
       const teethStr = caseData.selected_teeth.map(t => `#${t}`).join(', ');
       const htmlContent = `<!DOCTYPE html>
 <html>
@@ -48,7 +48,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
   </style>
 </head>
 <body>
-  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; pb-12; padding-bottom: 12px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px;">
     <div>
       <h1>DENTAL SOLUTIONS LAB</h1>
       <p style="margin: 4px 0 0 0; color: #4f46e5; font-weight: bold; font-size: 12px;">WORKSTATION JOB SLIP VOUCHER</p>
@@ -68,7 +68,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
   <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
     <strong>Instructions:</strong> ${caseData.instructions || 'Standard anatomical contours & high-gloss polish.'}
   </div>
-  <div style="margin-top: 30px; font-size: 11px; text-align: center; color: #64748b; border-top: 1px solid #e2e8f0; pt-8; padding-top: 8px;">
+  <div style="margin-top: 30px; font-size: 11px; text-align: center; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
     Dental Solutions Laboratory • Contact: 0333-0473797 • info@dentalsolutions.pk
   </div>
 </body>
@@ -83,6 +83,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      return; // Download only — printing is the separate "Print Card" action.
     }
 
     // Trigger Print
@@ -93,7 +94,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6 overflow-y-auto no-print-backdrop">
-      <div className="bg-white rounded-3xl max-w-3xl lg:max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area my-auto">
+      <div className="bg-white rounded-3xl max-w-3xl lg:max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area print-area my-auto">
         {/* Header Actions (hidden on print) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
@@ -139,7 +140,6 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
           </div>
         </div>
 
-        {/* PRINTABLE SLIP CONTAINER */}
         <div className="flex justify-center">
           <LabCardSlip caseData={caseData} />
         </div>
@@ -151,29 +151,13 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
             <span>Vouchers are automatically saved in system database logs.</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSaveAndPrint(true)}
-              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <Download className="w-4 h-4" /> Save & Download Voucher
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSaveAndPrint(false)}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <Printer className="w-4 h-4" /> Print Card
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>

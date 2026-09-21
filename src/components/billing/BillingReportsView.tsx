@@ -163,7 +163,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                   <div className="bg-slate-900 text-white px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-indigo-400" />
-                      <span className="font-black text-sm">Billing Month: {month}</span>
+                      <span className="font-bold text-sm">Billing Month: {month}</span>
                       <span className="text-xs text-slate-400 font-normal">
                         ({Object.keys(labMap).length} Active Clinics)
                       </span>
