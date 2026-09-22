@@ -6,11 +6,17 @@ import {
   parseBackupFile,
   validateBackup,
   applyRestoredBytes,
+  createSafetySnapshot,
   APP_VERSION,
 } from '../../services/backupService';
-import { checkForUpdates, parseOfflineUpdate, currentVersion, UpdateStatus } from '../../services/updateService';
+import { checkForUpdates, parseOfflineUpdate, currentVersion, downloadUpdate, UpdateStatus } from '../../services/updateService';
 import { exportSqliteFile } from '../../services/sqliteStorage';
 import { initEngineFromBytes, getDatabase } from '../../db';
+
+/** Import guards: a .dentalbackup carries the whole SQLite file, so a hard cap
+    stops a malformed or hostile file from exhausting memory. */
+const MAX_RESTORE_BYTES = 512 * 1024 * 1024;
+const MAX_UPDATE_BYTES = 64 * 1024 * 1024;
 import { 
   Settings, 
   ShieldCheck, 
@@ -183,6 +189,11 @@ export const SettingsView: React.FC = () => {
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+      if (!allowed.includes(file.type)) {
+        alert('Logo must be a PNG, JPEG, WebP or GIF image.');
+        return;
+      }
       if (file.size > 2 * 1024 * 1024) {
         alert('Logo image size must be under 2MB.');
         return;
@@ -234,6 +245,14 @@ export const SettingsView: React.FC = () => {
   const handleSelectRestoreFile = async (file: File) => {
     setBusy('restore');
     try {
+      if (!file.name.toLowerCase().endsWith('.dentalbackup')) {
+        setBackupMessage({ type: 'error', text: 'Only .dentalbackup packages can be restored.' });
+        return;
+      }
+      if (file.size > MAX_RESTORE_BYTES) {
+        setBackupMessage({ type: 'error', text: `Backup file is too large (max ${MAX_RESTORE_BYTES / (1024 * 1024)} MB).` });
+        return;
+      }
       const text = await file.text();
       const pkg = parseBackupFile(text);
       const verdict = await validateBackup(pkg);
@@ -258,6 +277,8 @@ export const SettingsView: React.FC = () => {
     if (!pendingRestore || pendingRestore.errors.length > 0) return;
     setBusy('restore');
     try {
+      // Safety snapshot FIRST: the pre-restore database must stay recoverable.
+      await createSafetySnapshot();
       await applyRestoredBytes(pendingRestore.pkg, (bytes) =>
         initEngineFromBytes(bytes)
       );
@@ -287,6 +308,10 @@ export const SettingsView: React.FC = () => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (file.size > MAX_UPDATE_BYTES) {
+      setBackupMessage({ type: 'error', text: `Update package is too large (max ${MAX_UPDATE_BYTES / (1024 * 1024)} MB).` });
+      return;
+    }
     const text = await file.text();
     const parsed: { ok: true; manifest: { version: string } } | { ok: false; error: string } =
       await parseOfflineUpdate(text);
@@ -1386,7 +1411,13 @@ export const SettingsView: React.FC = () => {
               <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-[11px] text-amber-900">
                 <p className="font-bold">Update available: v{updateStatus.version}</p>
                 {updateStatus.notes && <p className="mt-1">{updateStatus.notes}</p>}
-                {updateStatus.download_url && <p className="mt-1 font-mono break-all">{updateStatus.download_url}</p>}
+                <button
+                  onClick={() => downloadUpdate(updateStatus.download_url)}
+                  className="mt-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
+                >
+                  <Upload className="w-3.5 h-3.5 rotate-180" />
+                  Download Installer v{updateStatus.version}
+                </button>
               </div>
             )}
             {updateStatus.state === 'error' && (
@@ -1750,11 +1781,15 @@ export const SettingsView: React.FC = () => {
                   alert('Username already exists. Please choose a different username.');
                   return;
                 }
+                if (newUserForm.password.length < 8) {
+                  alert('Password must be at least 8 characters long.');
+                  return;
+                }
 
                 addUser({
                   name: newUserForm.name.trim(),
                   username: newUserForm.username.trim().toLowerCase(),
-                  email: newUserForm.email.trim() || `${newUserForm.username.trim().toLowerCase()}@dentalsolutions.pk`,
+                  email: newUserForm.email.trim() || `${newUserForm.username.trim().toLowerCase()}@localhost`,
                   role: newUserForm.role,
                   password: newUserForm.password
                 });

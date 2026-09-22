@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { DentalCase, CaseStatus } from '../../types';
+import { DentalCase, CaseStatus, QcReasonCode } from '../../types';
+import { QC_REASON_CODES, QC_REASON_LABELS, qcReasonLabel } from '../../services/qcDomain';
 import { PaymentModal } from '../billing/PaymentModal';
 import { SHADE_COLORS, TOOTH_NAMES } from './Odontogram';
 import { CaseAttachmentsPanel } from './CaseAttachmentsPanel';
@@ -9,6 +10,8 @@ import { CaseProgressIndicator } from './CaseProgressIndicator';
 import {
   X,
   Trash2,
+  ShieldCheck,
+  CheckCircle2,
   Pencil,
   Wallet,
   Printer,
@@ -59,11 +62,28 @@ export const CaseDetailPanel: React.FC<CaseDetailPanelProps> = ({
   onDeleted,
   onPrint,
 }) => {
-  const { invoices, deleteCase } = useApp();
+  const { invoices, deleteCase, recordQcCase, qcInspections, getQcState } = useApp();
   const [activeTab, setActiveTab] = useState<'overview' | 'teeth' | 'financials' | 'attachments' | 'notes'>('overview');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteText, setDeleteText] = useState('');
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [qcFailOpen, setQcFailOpen] = useState(false);
+  const [qcReason, setQcReason] = useState<QcReasonCode>('occlusion');
+  const [qcNote, setQcNote] = useState('');
+
+  /* Live quality state + full inspection trail, both derived from the stream. */
+  const qcState = getQcState(caseData.id);
+  const qcHistory = useMemo(
+    () =>
+      qcInspections
+        .filter((q) => q.case_id === caseData.id)
+        .sort(
+          (a, b) =>
+            String(b.created_at).localeCompare(String(a.created_at)) ||
+            b.inspection_no - a.inspection_no
+        ),
+    [qcInspections, caseData.id]
+  );
 
   const caseInvoices = useMemo(
     () => invoices.filter((inv) => inv.case_id === caseData.id || inv.case_number === caseData.case_number),
@@ -148,6 +168,115 @@ export const CaseDetailPanel: React.FC<CaseDetailPanelProps> = ({
                   <span className="text-[11px] text-slate-500 font-medium">{CASE_STATUS_LABELS[caseData.status]}</span>
                 </div>
                 <CaseProgressIndicator status={caseData.status} variant="detailed" showLabels={true} />
+              </div>
+
+              {/* Quality Check — one click to pass, one reason to fail. Every result is
+                  appended to the QC stream; the derived state gates 'ready'. */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-600" /> Quality Check
+                  </h3>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      qcState.passed
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : qcState.attempts > 0
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {qcState.passed ? 'Passed' : qcState.attempts > 0 ? 'Failed — rework' : 'Not inspected'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-500 mb-3">
+                  {qcState.attempts === 0
+                    ? 'No inspection recorded — a passing inspection is required before this case can be marked ready.'
+                    : `Attempt #${qcState.attempts} · ${
+                        qcState.last_result === 'pass'
+                          ? 'Passed'
+                          : `Failed (${qcReasonLabel(qcState.last_reason_code)})`
+                      }${qcState.first_pass ? ' · first-pass' : ''}${
+                        qcState.last_inspector ? ` · ${qcState.last_inspector}` : ''
+                      }`}
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => recordQcCase({ action: 'record', case_id: caseData.id, result: 'pass' })}
+                    className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Pass QC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQcFailOpen((v) => !v)}
+                    className="px-3 py-1.5 text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" /> Fail QC
+                  </button>
+                </div>
+
+                {qcFailOpen && (
+                  <div className="mt-3 p-3 rounded-xl bg-rose-50/60 border border-rose-100 space-y-2">
+                    <select
+                      value={qcReason}
+                      onChange={(e) => setQcReason(e.target.value as QcReasonCode)}
+                      className="w-full px-3 py-2 text-xs bg-white border border-rose-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-400 font-medium"
+                    >
+                      {QC_REASON_CODES.map((code) => (
+                        <option key={code} value={code}>
+                          {QC_REASON_LABELS[code]}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={qcNote}
+                      onChange={(e) => setQcNote(e.target.value)}
+                      placeholder="Note (optional)"
+                      className="w-full px-3 py-2 text-xs bg-white border border-rose-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        recordQcCase({
+                          action: 'record',
+                          case_id: caseData.id,
+                          result: 'fail',
+                          reason_code: qcReason,
+                          notes: qcNote || undefined,
+                        });
+                        setQcFailOpen(false);
+                        setQcNote('');
+                      }}
+                      className="w-full py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer"
+                    >
+                      Confirm QC failure &amp; return for rework
+                    </button>
+                  </div>
+                )}
+
+                {qcHistory.length > 0 && (
+                  <ul className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+                    {qcHistory.map((h) => (
+                      <li key={h.id} className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="text-slate-600 truncate">
+                          #{h.inspection_no} ·{' '}
+                          {h.kind === 'correction'
+                            ? 'Correction'
+                            : h.result === 'pass'
+                              ? 'Passed'
+                              : `Failed — ${qcReasonLabel(h.reason_code)}`}
+                        </span>
+                        <span className="text-slate-400 shrink-0">
+                          {h.inspector} · {h.created_at}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -34,7 +34,12 @@ import {
   PaymentAllocation,
   InvoiceStatusV2,
   PaymentStatusV2,
-  AdvanceCreditStatus
+  AdvanceCreditStatus,
+  QcInspection,
+  QcCaseState,
+  QcMetrics,
+  QcCommand,
+  QcReceipt
 } from '../types';
 import {
   INITIAL_CASES,
@@ -68,6 +73,16 @@ import {
   formatPKR,
   getAgingBucket
 } from '../services/financeDomain';
+import {
+  computeQcMetrics,
+  deriveQcCaseState,
+  nextInspectionNo,
+  qcDedupeKey,
+  qcGateSatisfied,
+  qcReasonLabel,
+  statusAfterQc,
+  QC_GATED_STATUSES,
+} from '../services/qcDomain';
 import { getTodayStr } from '../utils/dateUtils';
 import { sqliteDb } from '../services/sqliteDbService';
 import { isDatabaseReady, getDatabase } from '../db/core';
@@ -77,7 +92,9 @@ import {
   caseTemplatesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo,
   notificationsRepo, settingsRepo, notificationConfigRepo, emailTemplatesRepo, vouchersRepo, auditRepo,
   sessionsRepo,
+  qcInspectionsRepo,
 } from '../db/repos';
+import type { UserRow } from '../db/repos';
 import { hashPassword, verifyPassword } from '../db/crypto';
 
 
@@ -196,6 +213,11 @@ interface AppContextType {
   emailTemplates: EmailTemplate[];
   userPreferences: UserPreferences;
   caseAttachments: Record<string, CaseAttachment[]>;
+  /* Quality control — append-only stream, one command, derived reads. */
+  qcInspections: QcInspection[];
+  recordQcCase: (command: QcCommand) => QcReceipt;
+  getQcState: (caseId: string) => QcCaseState;
+  getQcMetrics: () => QcMetrics;
   caseNotes: Record<string, CaseNote[]>;
   brandingSettings: BrandingSettings;
   savedVouchers: SavedVoucher[];
@@ -440,41 +462,28 @@ interface AppContextType {
 }
 
 /**
- * Password-free fallback user identities (used only if the DB has no users yet).
- * Bootstrap passwords are hashed by seeds.ts from `BOOTSTRAP_USERS` in src/db/defaults.ts;
- * plaintext values never live in this file.
+ * Fallback user list when the database has no accounts yet — intentionally
+ * EMPTY. Identities, emails and passwords are never hardcoded: the first Super
+ * Admin is created through the login screen's setup flow.
  */
-export const INITIAL_USERS: UserProfile[] = [
-  {
-    id: 'u-super',
-    username: 'adil',
-    email: 'adil@dentalsolutions.pk',
-    name: 'Adil (Super Admin)',
-    role: 'Super Admin',
-    isSuperAdmin: true,
-    created_at: '2026-01-01'
-  },
-  {
-    id: 'u-1',
-    username: 'admin',
-    email: 'admin@dentalsolutions.pk',
-    name: 'Dr. Zeeshan (Admin)',
-    role: 'Lab Admin',
-    isSuperAdmin: false,
-    created_at: '2026-01-01'
-  },
-  {
-    id: 'u-2',
-    username: 'hamza',
-    email: 'hamza@dentalsolutions.pk',
-    name: 'Hamza Tech',
-    role: 'Technician',
-    isSuperAdmin: false,
-    created_at: '2026-01-02'
-  }
-];
+export const INITIAL_USERS: UserProfile[] = [];
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+/**
+ * Hex token from the platform CSPRNG. The Math.random fallback only ever runs on
+ * a runtime that exposes no WebCrypto at all (neither is acceptable for tokens,
+ * but a missing crypto object must not crash the boot path).
+ */
+function randomToken(bytes = 16): string {
+  const buf = new Uint8Array(bytes);
+  try {
+    crypto.getRandomValues(buf);
+  } catch {
+    for (let i = 0; i < buf.length; i += 1) buf[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 // Safe LocalStorage Reader Helper to prevent uncaught runtime JSON crashes
 function safeGetJSON<T>(key: string, fallback: T): T {
@@ -553,7 +562,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedCaseForModal, setSelectedCaseForModal] = useState<DentalCase | null>(null);
 
   // Helper for generating unique IDs
-  const genId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const genId = (prefix: string): string => {
+    const uuid = globalThis.crypto?.randomUUID?.();
+    return uuid ? `${prefix}-${uuid}` : `${prefix}-${Date.now()}-${randomToken(9)}`;
+  };
 
   // Persistent Collections — hydrated from SQLite at mount (legacy fallback pre-boot)
   const [cases, setCases] = useState<DentalCase[]>(() => {
@@ -613,6 +625,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return safeGetJSON('dsw_case_notes', {});
   });
 
+  /* Quality control: the append-only inspection stream (SQLite is authoritative,
+     React state mirrors it and the write-through sync persists it). */
+  const [qcInspections, setQcInspections] = useState<QcInspection[]>(() => {
+    if (isDatabaseReady()) {
+      try { return qcInspectionsRepo.all(); } catch { /* fall through */ }
+    }
+    return [];
+  });
+
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>(() => {
     if (isDatabaseReady()) {
       try { return settingsRepo.get('branding', 'settings') as BrandingSettings || DEFAULT_BRANDING; } catch { /* fall through */ }
@@ -652,13 +673,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cases, labs, caseTypes, invoices, advancePayments, accountAdjustments,
       journalEntries, reconciliationItems, notifications, savedVouchers, auditEvents,
       templates, labContacts, labAddresses, pricingOverrides, labReviews, doctorPreferences,
-      caseNotes, caseAttachments,
+      caseNotes, caseAttachments, qcInspections,
     });
   }, [
     cases, labs, caseTypes, invoices, advancePayments, accountAdjustments,
     journalEntries, reconciliationItems, notifications, savedVouchers, auditEvents,
     templates, labContacts, labAddresses, pricingOverrides, labReviews, doctorPreferences,
-    caseNotes, caseAttachments,
+    caseNotes, caseAttachments, qcInspections,
   ]);
 
   // Settings persist ONLY into the namespaced settings store (SQLite) —
@@ -692,7 +713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (token) sessionsRepo.delete(token);
           const newToken: string =
             (crypto as any)?.randomUUID?.() ??
-            `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            `sess-${Date.now()}-${randomToken()}`;
           sessionsRepo.create(newToken, user.id, new Date(Date.now() + 30 * 86400000).toISOString());
           safeSetJSON('dsw_session_token', newToken);
         }
@@ -773,15 +794,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const closeConfirmModal = () => {
     setConfirmModal(null);
   };  // First-run admin provisioning (hashed like any other user)
+  // First-run admin provisioning (hashed like any other user)
   const createInitialAdmin = async (name: string, username: string, password: string): Promise<void> => {
     if (!isDatabaseReady()) return;
+    if (!password || password.length < 8) {
+      showToast('Choose a password of at least 8 characters for the administrator account', 'error');
+      return;
+    }
     const id = genId('usr');
     const hash = await hashPassword(password);
+    // Local account identifier: no lab domain or identity is assumed or leaked.
+    const email = `${username}@localhost`;
     dbWrite(() =>
       usersRepo.insert({
         id,
         username,
-        email: `${username}@dentalsolutions.pk`,
+        email,
         name,
         role: 'Super Admin',
         password_hash: hash,
@@ -791,7 +819,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     setUsers((prev) => [
       ...prev,
-      { id, username, email: `${username}@dentalsolutions.pk`, name, role: 'Super Admin' as const, isSuperAdmin: true, created_at: new Date().toISOString().split('T')[0] },
+      { id, username, email, name, role: 'Super Admin' as const, isSuperAdmin: true, created_at: new Date().toISOString().split('T')[0] },
     ]);
   };
 
@@ -851,9 +879,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addUser = async (newUser: Omit<UserProfile, 'id' | 'created_at'>) => {
+    if (!newUser.password || newUser.password.length < 8) {
+      showToast('A password of at least 8 characters is required to create a user', 'error');
+      return;
+    }
     const created_at = new Date().toISOString().split('T')[0];
     const id = genId('usr');
-    const hash = await hashPassword(newUser.password || 'changeme123');
+    const hash = await hashPassword(newUser.password);
 
     dbWrite(() =>
       usersRepo.insert({
@@ -873,18 +905,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers((prev) => [...prev, createdUser]);
   };
 
-  const updateUser = (id: string, updates: Partial<UserProfile>) => {
+  const updateUser = async (id: string, updates: Partial<UserProfile>) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === id ? { ...u, ...updates } : u))
     );
     if (user && user.id === id) {
       setUser((prev) => (prev ? { ...prev, ...updates } : null));
     }
+
+    // Persist to SQLite: profile edits AND password resets must survive a restart.
+    if (!isDatabaseReady()) return;
+    const persisted: Partial<UserRow> = {};
+    if (updates.username !== undefined) persisted.username = updates.username;
+    if (updates.email !== undefined) persisted.email = updates.email;
+    if (updates.name !== undefined) persisted.name = updates.name;
+    if (updates.role !== undefined) persisted.role = updates.role;
+    if (updates.isSuperAdmin !== undefined) persisted.is_super_admin = updates.isSuperAdmin ? 1 : 0;
+    if (updates.password) {
+      const hash = await hashPassword(updates.password);
+      persisted.password_hash = hash;
+      persisted.password_salt = hash.split('$')[2] ?? '';
+    }
+    if (Object.keys(persisted).length === 0) return;
+
+    dbWrite(() => usersRepo.update(id, persisted));
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, password: undefined } : u)));
   };
 
   const deleteUser = (id: string) => {
-    // Prevent deleting superadmin adil
-    setUsers((prev) => prev.filter((u) => u.id !== id || u.isSuperAdmin || u.username === 'adil'));
+    // The Super Admin account is protected; every other account can be removed.
+    setUsers((prev) => prev.filter((u) => u.id !== id || !!u.isSuperAdmin));
+    if (isDatabaseReady()) {
+      const row = usersRepo.byId(id);
+      if (row && !row.is_super_admin) dbWrite(() => usersRepo.delete(id));
+    }
   };
 
   const changePassword = async (userId: string, currentPasswordAttempt: string, newPassword: string) => {
@@ -1086,6 +1140,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSavedVouchers([]);
     setCaseAttachments({});
     setCaseNotes({});
+
+    // Purge the SQLite tables that the collection sync does not own — the tables
+    // it does own are emptied by the write-through rebuild that follows.
+    if (isDatabaseReady()) {
+      dbWrite(() => {
+        const db = getDatabase();
+        for (const table of ['chairside_appointments', 'clinical_materials', 'clinical_prep_types', 'shade_guides', 'implant_brands']) {
+          try { db.run(`DELETE FROM ${table}`); } catch { /* table absent in this profile */ }
+        }
+      });
+    }
 
     // Purge local storage safely
     try {
@@ -1540,8 +1605,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newCase;
   };
 
-  const updateCase = (id: string, updates: Partial<DentalCase>, note?: string) => {
+  const updateCase = (
+    id: string,
+    updates: Partial<DentalCase>,
+    note?: string,
+    /* Internal: QC events appended in this very call, so the gate sees them
+       before React state has flushed. Callers outside the QC action omit it. */
+    qcEventsInFlight?: QcInspection[]
+  ) => {
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+    /* Quality gate: a case is only released once an inspection has passed. */
+    if (updates.status && QC_GATED_STATUSES.includes(updates.status)) {
+      const gateEvents = qcEventsInFlight ?? qcInspections;
+      if (!qcGateSatisfied(deriveQcCaseState(gateEvents, id))) {
+        showToast(
+          `A passing QC inspection is required before this case can be marked ${updates.status}`,
+          'warning'
+        );
+        /* Refuse only the blocked transition — every other edit in this call
+           still applies (the case keeps its current status). */
+        const rest: Partial<DentalCase> = { ...updates };
+        delete rest.status;
+        updates = rest;
+      }
+    }
 
     setCases((prev) =>
       prev.map((c) => {
@@ -1606,6 +1694,109 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       );
     }
+  };
+
+  /* ─── Quality control (QC) ────────────────────────────────────────────────
+     Single command surface: append an inspection (or a correction of one) and
+     let the derived state drive the case. Nothing in this stream is mutated;
+     a mistake is amended by appending a correction that supersedes it. */
+  const getQcState = (caseId: string): QcCaseState => deriveQcCaseState(qcInspections, caseId);
+
+  const getQcMetrics = (): QcMetrics => computeQcMetrics(qcInspections, cases);
+
+  const recordQcCase = (command: QcCommand): QcReceipt => {
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const actor = user ? user.name : 'System';
+
+    const corrected = command.action === 'correct'
+      ? qcInspections.find((q) => q.id === command.id)
+      : undefined;
+    const caseId = command.action === 'record' ? command.case_id : corrected?.case_id ?? '';
+    const targetCase = cases.find((c) => c.id === caseId);
+
+    if (!targetCase) {
+      showToast('Case not found — the QC result was not recorded', 'error');
+      return { case_state: deriveQcCaseState(qcInspections, caseId), notified: false };
+    }
+
+    const kind = command.action === 'correct' ? 'correction' : 'inspection';
+    const inspectionNo = command.action === 'correct'
+      ? corrected?.inspection_no ?? 1
+      : nextInspectionNo(qcInspections, caseId);
+    const checklist = command.action === 'record' ? command.checklist : undefined;
+
+    const event: QcInspection = {
+      id: genId('qc'),
+      case_id: caseId,
+      case_number: targetCase.case_number,
+      inspection_no: inspectionNo,
+      kind,
+      result: command.result,
+      reason_code: command.result === 'fail' ? command.reason_code ?? 'other' : null,
+      reason_text: command.reason_text ?? null,
+      checklist: checklist && checklist.length ? JSON.stringify(checklist) : null,
+      inspector: command.inspector || actor,
+      notes: command.notes ?? null,
+      supersedes_id: command.action === 'correct' ? command.id : null,
+      dedupe_key: qcDedupeKey(caseId, inspectionNo, command.result, kind),
+      created_at: nowStr,
+    };
+
+    /* Append first: the database is authoritative and its UNIQUE dedupe_key is
+       the idempotency guard — a duplicate posting is refused, never repeated. */
+    try {
+      if (isDatabaseReady()) qcInspectionsRepo.insert(event);
+    } catch (e: any) {
+      const duplicate = String(e?.message || '').toLowerCase().includes('unique');
+      showToast(duplicate ? 'This QC result was already recorded' : 'Could not save the QC inspection', 'error');
+      return { case_state: deriveQcCaseState(qcInspections, caseId), notified: false };
+    }
+
+    const nextEvents = [...qcInspections, event];
+    setQcInspections(nextEvents);
+
+    const status = statusAfterQc(command.result, targetCase.status);
+    updateCase(
+      caseId,
+      { status },
+      command.result === 'pass'
+        ? `QC inspection #${inspectionNo} passed`
+        : `QC inspection #${inspectionNo} failed — ${qcReasonLabel(event.reason_code)}`,
+      nextEvents
+    );
+
+    let notified = false;
+    if (command.result === 'fail') {
+      const notification: AppNotification = {
+        id: genId('notif'),
+        type: 'escalation',
+        title: `QC failed — ${targetCase.case_number}`,
+        message: `${targetCase.case_number} (${targetCase.lab_name}) failed quality inspection #${inspectionNo}: ${qcReasonLabel(event.reason_code)}. Returned for rework.`,
+        case_id: caseId,
+        case_number: targetCase.case_number,
+        lab_id: targetCase.lab_id,
+        is_read: false,
+        is_archived: false,
+        priority: 'high',
+        created_at: nowStr,
+      };
+      setNotifications((n) => [notification, ...n]);
+      notified = true;
+    }
+
+    showToast(
+      command.result === 'pass'
+        ? `QC passed — ${targetCase.case_number} is ready`
+        : `QC failed — ${targetCase.case_number} returned for rework`,
+      command.result === 'pass' ? 'success' : 'warning'
+    );
+
+    return {
+      inspection: event,
+      case_state: deriveQcCaseState(nextEvents, caseId),
+      status_after: status,
+      notified,
+    };
   };
 
   const deleteCase = (id: string) => {
@@ -3168,6 +3359,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         caseNotes,
         brandingSettings,
         savedVouchers,
+        qcInspections,
 
         unreadCount,
         overdueCount,
@@ -3188,6 +3380,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCaseNote,
         addCaseAttachment,
         deleteCaseAttachment,
+
+        recordQcCase,
+        getQcState,
+        getQcMetrics,
 
         saveAsTemplate,
         deleteTemplate,
