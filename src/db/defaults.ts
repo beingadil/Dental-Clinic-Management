@@ -4,7 +4,7 @@ import { BrandingSettings, UserPreferences } from '../types';
  * No bootstrap accounts ship with this build.
  *
  * Earlier revisions exported a `BOOTSTRAP_USERS` array containing documented
- * plaintext passwords (`███████`, `admin123`, …). Those credentials are gone:
+ * plaintext passwords (`███████`, `███████`, …). Those credentials are gone:
  * a fresh profile starts with an EMPTY users table and the login screen runs
  * its first-run setup (`createInitialAdmin`) to provision a Super Admin with a
  * password the operator chooses. Demo/documented credentials must never be
