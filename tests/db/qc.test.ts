@@ -58,11 +58,11 @@ function seedCase(id: string, caseNumber: string): void {
 }
 
 describe('QC persistence — schema', () => {
-  it('ships migration 005 and records schema_version 5', () => {
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5]);
-    expect(MIGRATIONS[4].name).toBe('qc_inspections');
+  it('ships migration 006 and records schema_version 6', () => {
+    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(MIGRATIONS[5].name).toBe('qc_inspections');
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('5');
+    expect(row?.value).toBe('6');
   });
 
   it('re-running migrations is idempotent and preserves QC rows', () => {
