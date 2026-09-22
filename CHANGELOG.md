@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] — 2026-09-23
+
+### Added
+- **Quality Control module** — per-case QC inspections (pass / conditional / fail),
+  reasons, metrics, and re-inspection flow, persisted in a new `qc_inspections`
+  table (migration 006) and backed by its own typed repository.
+- **One-click restore drill** — Settings → Backup now proves the restore
+  pipeline: packs a fresh backup, restores it into a transient in-memory
+  engine, row-checks against the manifest, and reports PASS/FAIL without ever
+  touching the live database (3 new tests).
+
+### Changed
+- **SQLite-only hydration** — boot no longer falls back to legacy `dsw_*`
+  localStorage for business data; all collections hydrate from the database
+  (also fixes a latent desktop hazard where empty localStorage could overwrite
+  SQLite collections). A one-time sweep removes stale legacy keys while
+  preserving active browser-persistence and session keys.
+- Migration numbering: QC inspections renumbered 005 → 006 so installed
+  clients keep the shipped `print_templates` migration (005).
+- Legacy import no longer fabricates a default password for user records
+  missing one — such users are skipped and reported instead of creating a
+  known-credential account.
+
+### Security
+- Plaintext bootstrap credentials removed from docs/comments repo-wide.
+- QC module code reviewed during merge: update engine kept on master's
+  hardened version (allowlisted URLs, Rust-side SHA-256, staged install).
+
 ## [2.4.0] — 2026-09-21
 
 ### Added
