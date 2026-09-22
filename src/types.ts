@@ -562,4 +562,124 @@ export interface SavedVoucher {
   notes?: string;
 }
 
+// ─────────────────────────────────────────────────────────── quality control (QC)
+
+/** Outcome of a single quality inspection. */
+export type QcResult = 'pass' | 'fail';
+
+/** Structured defect categories used by the inspection form and the failure analytics. */
+export type QcReasonCode =
+  | 'occlusion'
+  | 'shade_mismatch'
+  | 'margin_fit'
+  | 'contact_tightness'
+  | 'finish_polish'
+  | 'damage'
+  | 'dimension'
+  | 'other';
+
+/** `inspection` appends a new fact; `correction` amends a mistaken fact without mutating it. */
+export type QcEventKind = 'inspection' | 'correction';
+
+/** One immutable row of the append-only QC stream (`qc_inspections` table). */
+export interface QcInspection {
+  id: string;
+  case_id: string;
+  case_number?: string | null;
+  /** 1-based, per case: the number of the inspection attempt. */
+  inspection_no: number;
+  kind: QcEventKind;
+  result: QcResult;
+  reason_code?: QcReasonCode | null;
+  reason_text?: string | null;
+  /** JSON TEXT: free-form checklist items confirmed during the inspection. */
+  checklist?: string | null;
+  inspector: string;
+  notes?: string | null;
+  /** Set on `correction` events: the event this one replaces. */
+  supersedes_id?: string | null;
+  /** Idempotency guard — the same physical event can never be appended twice. */
+  dedupe_key: string;
+  created_at: string;
+}
+
+/** Derived (never stored) quality state of one case. */
+export interface QcCaseState {
+  case_id: string;
+  /** Number of effective inspections recorded for the case. */
+  inspection_no: number;
+  attempts: number;
+  passed: boolean;
+  /** Passed on the very first inspection, with no rework in between. */
+  first_pass: boolean;
+  failed_attempts: number;
+  last_result?: QcResult;
+  last_reason_code?: QcReasonCode | null;
+  last_inspected_at?: string;
+  last_inspector?: string;
+  /** True when the case may advance to ready/delivered. */
+  gate_open: boolean;
+}
+
+export interface QcReasonTally {
+  code: QcReasonCode;
+  label: string;
+  count: number;
+}
+
+export interface QcInspectorTally {
+  inspector: string;
+  inspections: number;
+  passes: number;
+  fails: number;
+}
+
+/** Aggregated quality KPIs for the dashboard/analytics surfaces. */
+export interface QcMetrics {
+  inspected_cases: number;
+  passed_cases: number;
+  first_pass_cases: number;
+  /** null when there is no data yet — the UI renders an em dash, never a fabricated number. */
+  first_pass_rate: number | null;
+  inspections: number;
+  failed_inspections: number;
+  rework_cases: number;
+  rework_rate: number | null;
+  top_reasons: QcReasonTally[];
+  inspector_counts: QcInspectorTally[];
+}
+
+/** Union command accepted by `useApp().recordQcCase()` — record or correct, nothing else. */
+export type QcCommand =
+  | {
+      action: 'record';
+      case_id: string;
+      result: QcResult;
+      reason_code?: QcReasonCode;
+      reason_text?: string;
+      checklist?: string[];
+      notes?: string;
+      inspector?: string;
+    }
+  | {
+      action: 'correct';
+      /** id of the inspection being corrected. */
+      id: string;
+      result: QcResult;
+      reason_code?: QcReasonCode;
+      reason_text?: string;
+      notes?: string;
+      inspector?: string;
+    };
+
+export interface QcReceipt {
+  /** The appended event; absent when the write was refused (unknown case, duplicate). */
+  inspection?: QcInspection;
+  case_state: QcCaseState;
+  /** Case status after the QC write (unchanged when the case was locked or not found). */
+  status_after?: CaseStatus;
+  /** True when a notification was pushed to the feed. */
+  notified: boolean;
+}
+
 

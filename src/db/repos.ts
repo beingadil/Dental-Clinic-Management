@@ -1,5 +1,6 @@
 import { getDatabase } from './index';
 import { SqliteEngine, TransactionApi, DbError } from './engine';
+import { QcInspection } from '../types';
 
 /**
  * Typed repository layer. Each repository maps an app domain type to SQLite
@@ -11,7 +12,16 @@ import { SqliteEngine, TransactionApi, DbError } from './engine';
 type Db = SqliteEngine;
 
 const now = () => new Date().toISOString();
-const genId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+/**
+ * Unpredictable identifiers. `crypto.randomUUID()` is available in every target
+ * runtime (browsers + Node 19+); the timestamp+random fallback only exists for
+ * exotic environments that lack a crypto implementation.
+ */
+const genId = (prefix: string): string => {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `${prefix}-${uuid}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 6)}`;
+};
 
 function requireEngine(): Db {
   return getDatabase();
@@ -1805,5 +1815,54 @@ export const statsRepo = {
       out[t] = db.rowCount(t);
     }
     return out;
+  },
+};
+
+// ─────────────────────────────────────────────────────────── quality control (QC)
+
+/**
+ * Append-only quality-control stream. There is deliberately no update() or
+ * delete(): a mistaken inspection is amended by appending a `correction` row
+ * that names the event it replaces (supersedes_id). The UNIQUE dedupe_key is
+ * the idempotency guard — the same physical inspection can never be posted
+ * twice, mirroring `ledger_entries`.
+ */
+export const qcInspectionsRepo = {
+  all(): QcInspection[] {
+    return requireEngine().all<QcInspection>(
+      'SELECT * FROM qc_inspections ORDER BY created_at ASC, inspection_no ASC'
+    );
+  },
+  forCase(caseId: string): QcInspection[] {
+    return requireEngine().all<QcInspection>(
+      'SELECT * FROM qc_inspections WHERE case_id = ? ORDER BY inspection_no ASC, created_at ASC',
+      [caseId]
+    );
+  },
+  byId(id: string): QcInspection | undefined {
+    return requireEngine().get<QcInspection>('SELECT * FROM qc_inspections WHERE id = ?', [id]);
+  },
+  byDedupeKey(key: string): QcInspection | undefined {
+    return requireEngine().get<QcInspection>('SELECT * FROM qc_inspections WHERE dedupe_key = ?', [key]);
+  },
+  insert(qc: QcInspection): QcInspection {
+    requireEngine().run(
+      `INSERT INTO qc_inspections (id, case_id, case_number, inspection_no, kind, result, reason_code, reason_text,
+                                   checklist, inspector, notes, supersedes_id, dedupe_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [qc.id, qc.case_id, qc.case_number ?? null, qc.inspection_no, qc.kind, qc.result,
+       qc.reason_code ?? null, qc.reason_text ?? null, qc.checklist ?? null, qc.inspector,
+       qc.notes ?? null, qc.supersedes_id ?? null, qc.dedupe_key, qc.created_at]
+    );
+    return qc;
+  },
+  count(): number {
+    return requireEngine().rowCount('qc_inspections');
+  },
+  countFailures(): number {
+    const row = requireEngine().get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM qc_inspections WHERE kind = 'inspection' AND result = 'fail'"
+    );
+    return row?.n ?? 0;
   },
 };

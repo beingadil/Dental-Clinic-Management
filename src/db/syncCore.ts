@@ -31,6 +31,7 @@ export interface SyncCollections {
   doctorPreferences: any[];
   caseNotes: Record<string, any[]>;
   caseAttachments: Record<string, any[]>;
+  qcInspections: any[];
 }
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -179,6 +180,21 @@ function syncNow(c: SyncCollections): void {
            null, null, a.file_size ?? null, `cases/${cse.id}/${a.id}`, a.file_url ?? '', a.uploaded_by ?? null, a.uploaded_at ?? now]
         );
       }
+    }
+
+    // ── QC inspections (append-only stream, child of cases) — after cases ──
+    // Rows are never updated: the rebuild deletes and re-inserts every event so
+    // the quality history (and every derived KPI) survives a boot sync.
+    tx.run('DELETE FROM qc_inspections');
+    for (const qc of c.qcInspections || []) {
+      tx.run(
+        `INSERT INTO qc_inspections (id, case_id, case_number, inspection_no, kind, result, reason_code, reason_text,
+                                     checklist, inspector, notes, supersedes_id, dedupe_key, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [qc.id, qc.case_id, qc.case_number ?? null, qc.inspection_no ?? 1, qc.kind ?? 'inspection',
+         qc.result, qc.reason_code ?? null, qc.reason_text ?? null, qc.checklist ?? null,
+         qc.inspector ?? 'System', qc.notes ?? null, qc.supersedes_id ?? null, qc.dedupe_key, qc.created_at ?? now]
+      );
     }
 
     // ── case templates ──
