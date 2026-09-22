@@ -21,12 +21,12 @@ import {
 } from 'lucide-react';
 import { DentalCase, DentalLab } from '../../types';
 import { formatQcRate } from '../../services/qcDomain';
+import { computeAnalytics } from '../../services/analyticsService';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { ShadeGuideModal } from './ShadeGuideModal';
 import { InteractiveDeliveryCalendar } from './InteractiveDeliveryCalendar';
-import { PaymentCollectionModal } from './PaymentCollectionModal';
 import { ClinicStatementModal } from './ClinicStatementModal';
-import { BatchBillingModal } from './BatchBillingModal';
+import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { ClinicNotesModal } from './ClinicNotesModal';
 import { ChairsideCalendarModal } from './ChairsideCalendarModal';
 import { UpdateStatusPill } from '../common/UpdateStatusPill';
@@ -52,13 +52,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
 
   // Banner State
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const dashboardAnalytics = useMemo(() => computeAnalytics(), [cases, invoices]);
   const [selectedCaseModal, setSelectedCaseModal] = useState<DentalCase | null>(null);
 
   // Modal states
   const [showShadeGuide, setShowShadeGuide] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState<{ open: boolean; clinic?: DentalLab | any }>({ open: false });
+  const [showPaymentModal, setShowPaymentModal] = useState<{ open: boolean; clinicId?: string }>({ open: false });
   const [showStatementModal, setShowStatementModal] = useState<{ open: boolean; clinicName?: string }>({ open: false });
-  const [showBatchBilling, setShowBatchBilling] = useState(false);
   const [showClinicNotes, setShowClinicNotes] = useState(false);
   const [showChairsideModal, setShowChairsideModal] = useState(false);
 
@@ -160,7 +160,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
             </div>
             
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              Welcome back, {user?.name || 'Dr. Adil'}!
+              Welcome back, {user?.name || 'Dr.'}!
             </h1>
           </div>
 
@@ -564,16 +564,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
               <div className="text-center">
                 <span className="text-[10px] text-slate-400 uppercase block">Avg Turnaround</span>
                 <span className="font-bold text-slate-800">
-                  {(() => {
-                    const delivered = cases.filter(c => c.status === 'delivered');
-                    if (delivered.length === 0) return '—';
-                    const avg = delivered.reduce((s, c) => {
-                      const start = c.created_at ? new Date(c.created_at).getTime() : NaN;
-                      const end = c.delivery_date ? new Date(c.delivery_date).getTime() : NaN;
-                      return s + (Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, Math.round((end - start) / 86400000)) : 0);
-                    }, 0) / delivered.length;
-                    return `${avg.toFixed(1)} Days`;
-                  })()}
+                  {dashboardAnalytics.overall.avgDays === null ? '—' : `${dashboardAnalytics.overall.avgDays} Days`}
                 </span>
               </div>
               <div className="h-6 w-px bg-slate-200" />
@@ -611,9 +602,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
             </div>
             
             <div className="space-y-3 text-xs">
-              {cases.slice(0, 2).map((c, idx) => (
+              {cases.filter((c) => (c.instructions || '').trim()).slice(0, 2).map((c) => (
                 <div 
-                  key={c.id || idx}
+                  key={c.id}
                   onClick={() => setSelectedCaseModal(c)}
                   className="p-3 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-100 transition cursor-pointer"
                 >
@@ -622,10 +613,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
                     <span className="text-[10px] text-slate-400 font-normal">#{c.case_number}</span>
                   </div>
                   <p className="text-slate-500 text-[11px] leading-relaxed line-clamp-2">
-                    {c.instructions || `Patient ${c.patient_name} - Standard ${c.case_type_name} with shade ${c.shade || 'A2'}.`}
+                    {c.instructions}
                   </p>
                 </div>
               ))}
+              {cases.filter((c) => (c.instructions || '').trim()).length === 0 && (
+                <p className="text-[11px] text-slate-400 text-center py-3">No clinic instructions recorded yet.</p>
+              )}
             </div>
           </div>
 
@@ -654,18 +648,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
           </div>
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => setShowStatementModal({ open: true, clinicName: 'Apex Dental Care & Clinic' })}
+              onClick={() => setShowStatementModal({ open: true })}
               className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 transition cursor-pointer flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
               <span>Download PDF Statements</span>
-            </button>
-            <button 
-              onClick={() => setShowBatchBilling(true)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition shadow-xs cursor-pointer flex items-center gap-1.5"
-            >
-              <Receipt className="w-3.5 h-3.5" />
-              <span>Generate Batch Billing</span>
             </button>
           </div>
         </div>
@@ -710,7 +697,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
-                        onClick={() => setShowPaymentModal({ open: true, clinic: account.lab })}
+                        onClick={() => setShowPaymentModal({ open: true, clinicId: account.lab?.id })}
                         className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 cursor-pointer"
                       >
                         Collect Payment
@@ -751,19 +738,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
         />
       )}
 
-      {/* Payment Collection Modal */}
+      {/* Record Transaction Modal (unified, DB-backed) */}
       {showPaymentModal.open && (
-        <PaymentCollectionModal
-          clinic={showPaymentModal.clinic}
-          invoices={invoices}
+        <RecordTransactionModal
+          isOpen
           onClose={() => setShowPaymentModal({ open: false })}
-          onSubmitPayment={(clinicName, amount, method, ref, note) => {
-            const matchingInvoices = invoices.filter(i => (i.lab_name || '').toLowerCase() === clinicName.toLowerCase());
-            if (matchingInvoices.length > 0) {
-              matchingInvoices[0].amount_paid = matchingInvoices[0].final_amount;
-              matchingInvoices[0].payment_status = 'paid';
-            }
-          }}
+          initialMode="payment"
+          initialClinicId={showPaymentModal.clinicId}
         />
       )}
 
@@ -775,18 +756,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
           cases={cases}
           labs={labs}
           onClose={() => setShowStatementModal({ open: false })}
-        />
-      )}
-
-      {/* Batch Billing Modal */}
-      {showBatchBilling && (
-        <BatchBillingModal
-          cases={cases}
-          invoices={invoices}
-          onClose={() => setShowBatchBilling(false)}
-          onGenerateInvoices={(caseIds) => {
-            // Handled with visual confirmation
-          }}
         />
       )}
 

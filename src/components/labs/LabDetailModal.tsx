@@ -6,7 +6,7 @@ import { LabPricingManager } from './LabPricingManager';
 import { LabReviewsManager } from './LabReviewsManager';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
-import { PaymentModal } from '../billing/PaymentModal';
+import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { PaymentProofModal } from '../billing/PaymentProofModal';
 import { PaymentReceiptModal } from '../billing/PaymentReceiptModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
@@ -791,12 +791,17 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       )}
 
       {/* Payment Recording Modal */}
-      {paymentModalInvoice && (
-        <PaymentModal
-          invoice={paymentModalInvoice}
+      {!!paymentModalInvoice && (
+        <RecordTransactionModal
+          isOpen
           onClose={() => setPaymentModalInvoice(null)}
-          onPaymentRecorded={(pay) => {
-            setSelectedReceiptPayment({ payment: pay, invoice: paymentModalInvoice });
+          initialMode="payment"
+          initialInvoiceId={paymentModalInvoice.id}
+          onSuccess={(res) => {
+            if (res.receiptNumber) {
+              const pay = allPayments.find((p) => p.receipt_number === res.receiptNumber);
+              if (pay) setSelectedReceiptPayment({ payment: pay, invoice: paymentModalInvoice });
+            }
           }}
         />
       )}

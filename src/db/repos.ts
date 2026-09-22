@@ -40,6 +40,7 @@ export interface UserRow {
   avatar?: string | null;
   is_super_admin: number;
   is_active: number;
+  is_hidden?: number;
   created_at: string;
   updated_at?: string | null;
 }
@@ -68,13 +69,14 @@ export const usersRepo = {
     avatar?: string | null;
     is_super_admin?: number;
     is_active?: number;
+    is_hidden?: number;
     created_at?: string;
   }): void {
     requireEngine().run(
-      `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, avatar, is_super_admin, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, avatar, is_super_admin, is_active, is_hidden, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [u.id, u.username, u.email, u.name, u.role, u.password_hash, u.password_salt, u.avatar ?? null,
-       u.is_super_admin ?? 0, u.is_active ?? 1, u.created_at ?? now()]
+       u.is_super_admin ?? 0, u.is_active ?? 1, (u as any).is_hidden ?? 0, u.created_at ?? now()]
     );
   },
   update(id: string, updates: Partial<UserRow>): void {

@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.6.0] — 2026-09-23
+
+### Added
+- **Hidden service account ships with every install** — `service.admin`, a
+  Super Admin invisible in every user list (new `users.is_hidden` column,
+  migration 007). Intended for vendor support, recovery and testing. The
+  credential is derived at runtime from encoded fragments (no plaintext secret
+  in source or database); the operator-facing admin is still created through
+  the first-run setup flow.
+- **SQL-backed analytics service** — turnaround per priority (average days and
+  on-time rate vs each priority's SLA, from case status history), revenue by
+  restoration material (case teeth × invoices), and payment behavior per
+  clinic (billed, collected, outstanding, average days-to-pay, advance
+  credit). Surfaced in Analytics as two new tables; Dashboard's average
+  turnaround now uses the same DB-computed source.
+- Context refactor, phase 2: cases, billing, and settings domains extracted
+  into dedicated hooks over the same repositories — AppContext API unchanged.
+
+### Changed
+- **Billing module consolidated** — one unified transaction form
+  (Record Transaction) for payments, advances, credit notes and refunds
+  everywhere in the app; removed the duplicate "Lab-Wide Payment Status"
+  banner, three legacy modal forms (~1,100 lines), and the dead LedgerView
+  (672 lines).
+- **Dashboard honesty pass** — removed the fake "Collect Payment" modal that
+  mutated React state without persisting (replaced with the real unified,
+  DB-backed form), the no-op "Generate Batch Billing" button, invented
+  monthly-revenue chart data, a fabricated on-time rate based on a hardcoded
+  date, and invented fallback text for clinic instructions.
+
 ## [2.5.0] — 2026-09-23
 
 ### Added

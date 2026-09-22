@@ -3,12 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord } from '../../types';
 import { InvoiceStatementModal } from './InvoiceStatementModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
-import { PaymentModal } from './PaymentModal';
 import { PaymentProofModal } from './PaymentProofModal';
 import { PaymentReceiptModal } from './PaymentReceiptModal';
-import { AdvancePaymentModal } from './AdvancePaymentModal';
-import { AccountAdjustmentModal } from './AccountAdjustmentModal';
-import { LedgerView } from './LedgerView';
 import { TransactionRegister } from './TransactionRegister';
 import { BillingReportsView } from './BillingReportsView';
 import { AccountsFinancialHome } from './AccountsFinancialHome';
@@ -82,17 +78,6 @@ export const BillingView: React.FC = () => {
   const [unifiedModalInvoiceId, setUnifiedModalInvoiceId] = useState<string | undefined>(undefined);
   const [clinicStatementModalId, setClinicStatementModalId] = useState<string | null>(null);
 
-  // Legacy/Compatibility Modals state
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
-  const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
-  const [paymentModalLabId, setPaymentModalLabId] = useState<string | undefined>(undefined);
-
-  const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState<boolean>(false);
-  const [advanceModalLabId, setAdvanceModalLabId] = useState<string | undefined>(undefined);
-
-  const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState<boolean>(false);
-  const [adjustmentModalLabId, setAdjustmentModalLabId] = useState<string | undefined>(undefined);
-  const [adjustmentModalType, setAdjustmentModalType] = useState<'credit_note' | 'debit_adjustment' | 'refund' | undefined>(undefined);
 
   const [printModalInvoice, setPrintModalInvoice] = useState<Invoice | null>(null);
   const [viewSlipCase, setViewSlipCase] = useState<any>(null);
@@ -623,151 +608,6 @@ export const BillingView: React.FC = () => {
               </div>
             </div>
 
-            {/* Dynamic Lab Payment Status Auto-Tell Banner */}
-            <div className={`p-3.5 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
-              selectedLabSummary
-                ? selectedLabSummary.outstanding_balance > 0
-                  ? 'bg-amber-50/90 border-amber-300 text-amber-950 shadow-2xs'
-                  : selectedLabSummary.advance_balance > 0
-                  ? 'bg-purple-50/90 border-purple-300 text-purple-950 shadow-2xs'
-                  : 'bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs'
-                : metrics.overdueCount > 0
-                ? 'bg-rose-50/80 border-rose-300 text-rose-950 shadow-2xs'
-                : 'bg-slate-50 border-slate-200 text-slate-800'
-            }`}>
-              {selectedLabSummary && selectedLab ? (
-                <>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-xs flex items-center gap-1.5">
-                        <Building2 className="w-4 h-4 text-slate-700" />
-                        {selectedLab.name}
-                      </span>
-                      {selectedLabSummary.outstanding_balance > 0 ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300">
-                          RECEIVABLES DUE (OWES LAB)
-                        </span>
-                      ) : selectedLabSummary.advance_balance > 0 ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-200 text-purple-900 border border-purple-300">
-                          CREDIT SURPLUS / ADVANCE HELD
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-900 border border-emerald-300">
-                          FULLY CLEARED / ZERO BALANCE
-                        </span>
-                      )}
-                      {metrics.overdueCount > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900 border border-rose-300">
-                          <AlertTriangle className="w-3 h-3 text-rose-600" />
-                          {metrics.overdueCount} OVERDUE
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs">
-                      {(selectedLabSummary.outstanding_balance || 0) > 0 ? (
-                        <span>
-                          Clinic currently owes <strong className="font-extrabold text-amber-950">PKR {(selectedLabSummary.outstanding_balance || 0).toLocaleString()}</strong> in unpaid case work across {selectedLabSummary.unpaid_invoices_count + selectedLabSummary.partial_invoices_count} open invoice(s).
-                        </span>
-                      ) : (selectedLabSummary.advance_balance || 0) > 0 ? (
-                        <span>
-                          All invoices cleared! Clinic holds <strong className="font-extrabold text-purple-950">PKR {(selectedLabSummary.advance_balance || 0).toLocaleString()}</strong> in unallocated advance deposit.
-                        </span>
-                      ) : (
-                        <span>
-                          All invoices are fully settled. Account is in good standing with zero balance.
-                        </span>
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Context-aware Button: switches to Receive or Pay/Refund based on lab balance */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    {(selectedLabSummary.outstanding_balance || 0) > 0 ? (
-                      <button
-                        onClick={() => {
-                          setPaymentModalInvoice(null);
-                          setPaymentModalLabId(selectedLab.id);
-                          setIsPaymentModalOpen(true);
-                        }}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-                      >
-                        <ArrowDownLeft className="w-4 h-4 text-emerald-200" />
-                        <span>Receive Payment (PKR {(selectedLabSummary.outstanding_balance || 0).toLocaleString()})</span>
-                      </button>
-                    ) : (selectedLabSummary.advance_balance || 0) > 0 ? (
-                      <button
-                        onClick={() => {
-                          setAdjustmentModalLabId(selectedLab.id);
-                          setAdjustmentModalType('refund');
-                          setIsAdjustmentModalOpen(true);
-                        }}
-                        className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-                      >
-                        <ArrowUpRight className="w-4 h-4 text-purple-200" />
-                        <span>Pay / Refund Clinic (PKR {(selectedLabSummary.advance_balance || 0).toLocaleString()})</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setAdvanceModalLabId(selectedLab.id);
-                          setIsAdvanceModalOpen(true);
-                        }}
-                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-                      >
-                        <Wallet className="w-3.5 h-3.5" />
-                        <span>+ Record Advance</span>
-                      </button>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-slate-800">Lab-Wide Payment Status:</span>
-                      {metrics.overdueCount > 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900 border border-rose-300">
-                          <AlertTriangle className="w-3 h-3 text-rose-600" />
-                          {metrics.overdueCount} Invoices Overdue
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          Accounts Active
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-600">
-                      Total Receivables: <strong className="font-bold text-slate-900">PKR {(metrics.outstandingReceivables || 0).toLocaleString()}</strong> ({metrics.pendingCount} pending, {metrics.overdueCount} overdue) • Available Advances: <strong className="font-bold text-indigo-700">PKR {(metrics.totalAdvanceCredit || 0).toLocaleString()}</strong>
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => {
-                        setPaymentModalInvoice(null);
-                        setPaymentModalLabId(undefined);
-                        setIsPaymentModalOpen(true);
-                      }}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-                    >
-                      <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-200" />
-                      <span>Receive Payment</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAdvanceModalLabId(undefined);
-                        setIsAdvanceModalOpen(true);
-                      }}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-                    >
-                      <Wallet className="w-3.5 h-3.5" />
-                      <span>+ Advance</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
 
           </div>
 
@@ -1171,46 +1011,6 @@ export const BillingView: React.FC = () => {
           isOpen={!!clinicStatementModalId}
           onClose={() => setClinicStatementModalId(null)}
           clinicId={clinicStatementModalId}
-        />
-      )}
-
-      {/* Payment Recording Modal (Universal invoice & clinic settlement legacy modal) */}
-      {isPaymentModalOpen && (
-        <PaymentModal
-          invoice={paymentModalInvoice}
-          initialLabId={paymentModalLabId}
-          onClose={() => {
-            setIsPaymentModalOpen(false);
-            setPaymentModalInvoice(null);
-          }}
-          onPaymentRecorded={(pay) => {
-            const matchedInv = paymentModalInvoice || invoices.find(i => i.id === pay.invoice_id);
-            setSelectedReceiptPayment({ payment: pay, invoice: matchedInv });
-          }}
-          onOpenAdvanceModal={(labId) => {
-            setAdvanceModalLabId(labId);
-            setIsAdvanceModalOpen(true);
-          }}
-        />
-      )}
-
-      {/* Advance Payment Modal */}
-      {isAdvanceModalOpen && (
-        <AdvancePaymentModal
-          initialLabId={advanceModalLabId}
-          onClose={() => setIsAdvanceModalOpen(false)}
-        />
-      )}
-
-      {/* Account Adjustment Modal */}
-      {isAdjustmentModalOpen && (
-        <AccountAdjustmentModal
-          initialLabId={adjustmentModalLabId}
-          initialType={adjustmentModalType}
-          onClose={() => {
-            setIsAdjustmentModalOpen(false);
-            setAdjustmentModalType(undefined);
-          }}
         />
       )}
 

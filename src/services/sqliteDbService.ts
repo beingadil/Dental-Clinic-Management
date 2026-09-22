@@ -655,7 +655,10 @@ export class SqliteDatabaseService {
   // ==========================================
   public users = {
     getAll: (): UserProfile[] => {
-      return readTable<UserProfile[]>(KEYS.USERS, INITIAL_USERS);
+      // Hidden accounts (is_hidden, e.g. the shipped service admin) never
+      // appear in app state or user management — only login resolves them.
+      const all = readTable<UserProfile[]>(KEYS.USERS, INITIAL_USERS);
+      return Array.isArray(all) ? all.filter((u) => !(u as any).is_hidden) : all;
     },
 
     getById: (id: string): UserProfile | undefined => {
