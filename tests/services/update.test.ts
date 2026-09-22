@@ -33,10 +33,17 @@ describe('version comparison (semver)', () => {
   });
 });
 
+/** A version strictly newer than the installed app, so these fixtures never go
+    stale when the release version is bumped. */
+function nextVersion(): string {
+  const [major, minor] = currentVersion().split('.').map((n) => Number(n) || 0);
+  return `${major}.${minor + 1}.0`;
+}
+
 function makeManifest(overrides: Partial<any> = {}) {
   return {
     magic: 'DENTALUPDATE',
-    version: '2.1.0',
+    version: nextVersion(),
     channel: 'stable',
     released_at: '2026-09-17T00:00:00Z',
     notes: 'test update',
@@ -48,7 +55,7 @@ describe('offline .dentalupdate package validation', () => {
   it('accepts a valid, newer package without payload', async () => {
     const result = await parseOfflineUpdate(JSON.stringify(makeManifest()));
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.manifest.version).toBe('2.1.0');
+    if (result.ok) expect(result.manifest.version).toBe(nextVersion());
   });
 
   it('rejects a package with the wrong magic header', async () => {

@@ -104,3 +104,46 @@ jobs:
           # A prior failed run can leave the release as a draft (invisible to
           # the public); always ensure it ends up published.
           gh release edit $tag --draft=false
+
+      # Publishes the auto-update manifest consumed by the in-app updater
+      # (src/services/updateService.ts). Pushed to gh-pages so the manifest is
+      # served at a stable https URL with no API rate limit. Safe on re-runs.
+      - name: Publish update manifest (GitHub Pages)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag.TrimStart('v')
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          $assetName = $exe.Name -replace ' ', '.'
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          $releasedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+          $manifest = @{
+            magic            = 'DENTALUPDATE'
+            version          = $version
+            channel          = 'stable'
+            released_at      = $releasedAt
+            download_url     = "https://github.com/beingadil/Dental-Clinic-Management/releases/download/$tag/$assetName"
+            payload_checksum = "sha256:$hash"
+            notes            = "Dental Solutions $tag installer"
+          } | ConvertTo-Json
+          $manifest | Out-File -Encoding ascii update-manifest.json
+          Get-Content update-manifest.json
+
+          # Ensure the gh-pages branch exists, then commit the manifest onto it.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            git checkout --orphan gh-pages
+            git rm -rf . 2>$null
+          } else {
+            git checkout gh-pages
+          }
+          Copy-Item update-manifest.json . -Force
+          git add update-manifest.json
+          git commit -m "update manifest $tag" 2>$null
+          git push origin gh-pages
+          git checkout -

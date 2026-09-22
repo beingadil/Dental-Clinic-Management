@@ -1,6 +1,5 @@
-import { usersRepo, caseTypesRepo, emailTemplatesRepo, notificationConfigRepo, settingsRepo, clinicalSpecsRepo, appMetaRepo } from './repos';
+import { caseTypesRepo, emailTemplatesRepo, notificationConfigRepo, settingsRepo, clinicalSpecsRepo, appMetaRepo } from './repos';
 import { ensureSequenceTable } from './sequences';
-import { hashPassword } from './crypto';
 import { DEFAULT_MATERIALS, DEFAULT_PREP_TYPES, DEFAULT_SHADE_GUIDES, DEFAULT_IMPLANT_BRANDS } from '../services/clinicalSpecsService';
 import {
   INITIAL_CASE_TYPES,
@@ -8,7 +7,7 @@ import {
   INITIAL_EMAIL_TEMPLATES,
   INITIAL_USER_PREFERENCES,
 } from '../data/initialData';
-import { BOOTSTRAP_USERS, DEFAULT_BRANDING_SETTINGS } from './defaults';
+import { DEFAULT_BRANDING_SETTINGS } from './defaults';
 
 /**
  * Idempotent first-boot seeding. Only fills empty tables — never overwrites
@@ -16,19 +15,11 @@ import { BOOTSTRAP_USERS, DEFAULT_BRANDING_SETTINGS } from './defaults';
  */
 
 export async function seedDatabase(): Promise<void> {
-  // --- users (hashed credentials; replaces plaintext seed) ---
-  if (usersRepo.count() === 0) {
-    for (const u of BOOTSTRAP_USERS) {
-      const { password, ...rest } = u as any;
-      const hash = await hashPassword(password);
-      usersRepo.insert({
-        ...rest,
-        password_hash: hash,
-        password_salt: hash.split('$')[2] ?? '',
-        is_super_admin: u.isSuperAdmin ? 1 : 0,
-      });
-    }
-  }
+  // --- users ---
+  // Deliberately empty: no account (and no password) ships with the app. A fresh
+  // profile provisions its first Super Admin through the login screen's setup
+  // flow, so the operator chooses the credential. Legacy users are imported by
+  // legacyMigrator when old data exists.
 
   // --- case types / catalog ---
   if (caseTypesRepo.all().length === 0) {

@@ -14,11 +14,11 @@
 
 - `src/db/migrations.ts` — ordered, append-only; each runs inside a transaction.
 - Applied versions recorded in `schema_migrations`; re-runs skip applied versions (idempotent).
-- Current: `001_initial_schema`, `002_pragmas_and_fts` (ledger table), `003_demo_fixtures` (reserved), `004_app_version`.
+- Current: `001_initial_schema`, `002_pragmas_and_fts` (ledger table), `003_demo_fixtures` (reserved), `004_app_version`, `005_qc_inspections` (append-only quality stream).
 - **Never edit an applied migration.** Add a new numbered one.
 - `PRAGMA foreign_keys = ON` is set on every connection open.
 
-## Schema (v4)
+## Schema (v5)
 
 ```
 users ─┬─< sessions
@@ -26,6 +26,7 @@ users ─┬─< sessions
 labs (clinics) ─┬─< lab_contacts / lab_addresses / lab_pricing_overrides / lab_reviews
                 ├─< cases ─┬─< case_teeth (FDI per-tooth detail)
                 │          ├─< case_status_history
+                │          ├─< qc_inspections (append-only quality stream)
                 │          ├─< case_notes
                 │          └─< attachments (metadata + blob)
                 ├─< invoices ─┬─< invoice_items
@@ -46,7 +47,9 @@ Key integrity rules: FKs with CASCADE on child tables; CHECK constraints on all 
 (> 0 on payments, ≥ 0 on invoices); UNIQUE on all document numbers and clinic names
 (case-insensitive); `ledger_entries` UNIQUE guard prevents double-posting the same source
 transaction; `doc_sequences` guarantees gap-free-ish numbering (DS-, INV-, PAY-, ADV-, CR-…)
-without collisions.
+without collisions. `qc_inspections` is append-only with `UNIQUE(dedupe_key)` as the retry
+guard: an inspection is never updated in place — a mistake is amended by a `correction`
+row carrying `supersedes_id`, and QC state/metrics are derived from the stream.
 
 ## Migration from old localStorage data (Phase 3)
 

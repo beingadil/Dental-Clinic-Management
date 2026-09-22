@@ -18,5 +18,11 @@ export default defineConfig(() => {
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    build: {
+      // Production hardening: never ship source maps (they leak source) and keep
+      // the minifier explicit so a config edit cannot silently disable it.
+      sourcemap: false,
+      minify: 'esbuild',
+    },
   };
 });

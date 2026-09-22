@@ -9,6 +9,9 @@
  * - Full database backup, restore, and integrity checks
  */
 
+import { usersRepo } from '../db/repos';
+import { isDatabaseReady } from '../db/core';
+
 export interface SqliteTableInfo {
   name: string;
   rowCount: number;
@@ -21,17 +24,17 @@ export interface SqliteExportOptions {
   labName?: string;
 }
 
-// SQL helper to sanitize strings
+// SQL helper to sanitize strings (quotes, backslashes and NUL bytes)
 function escapeSqlString(val: any): string {
   if (val === null || val === undefined) return 'NULL';
   if (typeof val === 'number') return isNaN(val) ? 'NULL' : val.toString();
   if (typeof val === 'boolean') return val ? '1' : '0';
   if (typeof val === 'object') {
-    const json = JSON.stringify(val);
-    return `'${json.replace(/'/g, "''")}'`;
+    const json = JSON.stringify(val).replace(/\u0000/g, '');
+    return `'${json.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
   }
-  const str = String(val);
-  return `'${str.replace(/'/g, "''")}'`;
+  const str = String(val).replace(/\u0000/g, '');
+  return `'${str.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
 }
 
 export const SQLITE_DDL_SCHEMA = `
@@ -42,16 +45,19 @@ export const SQLITE_DDL_SCHEMA = `
 
 PRAGMA foreign_keys = ON;
 
--- 1. Users Table
+-- 1. Users Table (credentials are PBKDF2 hashes — never plaintext)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
-  email TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   role TEXT NOT NULL,
-  password TEXT NOT NULL,
-  is_super_admin INTEGER DEFAULT 0,
-  created_at TEXT NOT NULL
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  is_super_admin INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT
 );
 
 -- 2. Dental Labs (Clinics) Table
@@ -286,8 +292,17 @@ export function generateSqliteExport(appData: {
   // 1. Users
   if (appData.users && appData.users.length > 0) {
     sql += `-- 1. Users (${appData.users.length} records)\n`;
+    // Credential hashes are read from the database itself: the UI profile objects
+    // never carry them, and a plaintext password must never reach a dump.
+    const credentialsById = new Map<string, { hash: string; salt: string }>();
+    if (isDatabaseReady()) {
+      for (const row of usersRepo.all()) {
+        credentialsById.set(row.id, { hash: row.password_hash, salt: row.password_salt });
+      }
+    }
     for (const u of appData.users) {
-      sql += `INSERT OR REPLACE INTO users (id, username, email, name, role, password, is_super_admin, created_at) VALUES (${escapeSqlString(u.id)}, ${escapeSqlString(u.username)}, ${escapeSqlString(u.email)}, ${escapeSqlString(u.name)}, ${escapeSqlString(u.role)}, ${escapeSqlString(u.password)}, ${u.isSuperAdmin ? 1 : 0}, ${escapeSqlString(u.created_at)});\n`;
+      const credentials = credentialsById.get(u.id);
+      sql += `INSERT OR REPLACE INTO users (id, username, email, name, role, password_hash, password_salt, is_super_admin, is_active, created_at) VALUES (${escapeSqlString(u.id)}, ${escapeSqlString(u.username)}, ${escapeSqlString(u.email)}, ${escapeSqlString(u.name)}, ${escapeSqlString(u.role)}, ${escapeSqlString(credentials?.hash ?? '')}, ${escapeSqlString(credentials?.salt ?? '')}, ${u.isSuperAdmin ? 1 : 0}, 1, ${escapeSqlString(u.created_at)});\n`;
     }
     sql += `\n`;
   }

@@ -45,14 +45,16 @@ describe('boot simulation (migrate → seed → legacy import)', () => {
     engine = await freshBoot();
   });
 
-  it('fresh profile: seeds defaults, import scan finds nothing to bring over', async () => {
-    expect(usersRepo.count()).toBeGreaterThanOrEqual(3);
+  it('fresh profile: seeds defaults, ships no accounts, import scan finds nothing to bring over', async () => {
+    // Secure by default — an empty users table forces the first-run setup flow.
+    expect(usersRepo.count()).toBe(0);
+    expect(usersRepo.byUsername('adil')).toBeUndefined();
     const report = await runLegacyMigration();
     expect(report.ran).toBe(true); // scan executes once, finds nothing
     const totalImported = Object.values(report.tables).reduce((s, t) => s + t.imported, 0);
     expect(totalImported).toBe(0);
-    expect(usersRepo.byUsername('adil')).toBeTruthy();
-    expect(await verifySuperAdmin()).toBe(true);
+    // the legacy scan must not fabricate an administrator either
+    expect(usersRepo.count()).toBe(0);
   });
 
   it('legacy profile: imports patients, cases, invoices, payments with proof images', async () => {
@@ -146,8 +148,3 @@ describe('boot simulation (migrate → seed → legacy import)', () => {
   });
 });
 
-async function verifySuperAdmin(): Promise<boolean> {
-  const { verifyPassword } = await import('../../src/db/crypto');
-  const u = usersRepo.byUsername('adil')!;
-  return verifyPassword('adil123', u.password_hash);
-}

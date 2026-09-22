@@ -4,8 +4,6 @@ import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { seedDatabase } from '../../src/db/seeds';
 import { usersRepo, caseTypesRepo, settingsRepo, clinicalSpecsRepo, emailTemplatesRepo, notificationConfigRepo, appMetaRepo } from '../../src/db/repos';
-import { verifyPassword } from '../../src/db/crypto';
-
 let engine: SqliteEngine;
 
 beforeAll(async () => {
@@ -25,15 +23,12 @@ beforeAll(async () => {
 });
 
 describe('seedDatabase', () => {
-  it('seeds hashed users, catalog, clinical specs, settings and templates', async () => {
+  it('seeds catalog, clinical specs, settings and templates — but no accounts', async () => {
     await seedDatabase();
 
-    expect(usersRepo.count()).toBeGreaterThanOrEqual(3);
-    const adil = usersRepo.byUsername('adil');
-    expect(adil).toBeTruthy();
-    expect(adil!.password_hash.startsWith('pbkdf2$')).toBe(true);
-    expect(await verifyPassword('adil123', adil!.password_hash)).toBe(true);
-    // plaintext must not be stored
+    // No credentials ship with the app: the first Super Admin is provisioned
+    // through the login screen's setup flow with an operator-chosen password.
+    expect(usersRepo.count()).toBe(0);
     expect(JSON.stringify(usersRepo.all())).not.toContain('adil123');
 
     expect(caseTypesRepo.all().length).toBeGreaterThanOrEqual(8);

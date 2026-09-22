@@ -4,6 +4,69 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Quality Control module** — QC recording and the case quality gate, the
+  feature the dashboard's "First-Pass QC" KPI was waiting on.
+  - `qc_inspections` (migration **005**): an append-only inspection stream with
+    a `UNIQUE(dedupe_key)` idempotency guard, FK cascade to the case, and CHECK
+    constraints on `kind` and `result` — the same discipline as `ledger_entries`.
+    Corrections are appended (`kind = 'correction'` + `supersedes_id`); nothing
+    is ever mutated or deleted.
+  - `src/services/qcDomain.ts`: pure, storage-agnostic rules — reason codes,
+    derived per-case QC state (attempts, first-pass, last failure), the release
+    gate, and KPIs (First-Pass QC %, rework rate, top failure reasons, inspector
+    throughput). Rates are `null` — never a fabricated 0% — when uninspected.
+  - `src/db/repos.ts`: `qcInspectionsRepo` (all, forCase, byId, byDedupeKey,
+    insert, count, countFailures) and no update/delete by design.
+  - `src/db/syncCore.ts`: QC rows participate in the write-through rebuild, so
+    the quality history survives every boot sync.
+  - `useApp()` surface: `qcInspections`, `recordQcCase(command)`, `getQcState`,
+    `getQcMetrics`; `updateCase` now refuses `ready`/`delivered` without a
+    passing inspection (other edits in the same call still apply).
+  - Case detail panel: "Quality Check" block — one-click **Pass QC**, **Fail QC**
+    with structured reason + optional note, and the full inspection trail.
+  - Dashboard: "First-Pass QC" now renders the real derived rate (em dash only
+    when there is genuinely no QC data).
+
+### Security
+- **No credentials ship with the build.** The `BOOTSTRAP_USERS` array (plaintext
+  `adil123`/`admin123`/`tech123`/`bill123` plus the lab's real emails) is deleted; seeding
+  and the legacy importer no longer create accounts, so a fresh profile provisions its
+  first Super Admin through the login screen with an operator-chosen password.
+  `addUser`/`createInitialAdmin` reject passwords under 8 characters (no `changeme123`
+  fallback), and the unused quick-fill credential helper is gone from the login page.
+- **User management persists.** `updateUser` now writes through `usersRepo.update()`
+  (including PBKDF2 re-hash on password reset, which the Settings reset path uses) and
+  `deleteUser` calls `usersRepo.delete()`, protecting the Super Admin by role rather than
+  by the hardcoded username `adil`.
+- **CSP enabled** for the desktop shell (`tauri.conf.json`) and the web build
+  (`index.html`), with `referrer: no-referrer`; connect-src is limited to the update
+  endpoints.
+- **SQL export fixed**: the dumped `users` DDL/INSERT now match the real schema
+  (`password_hash`/`password_salt`) and read hashes from the database; `escapeSqlString`
+  escapes backslashes and strips NUL bytes.
+- **Import hardening**: `.dentalbackup` restore enforces the extension and a 512 MB cap and
+  takes a safety snapshot first; `.dentalupdate` import caps at 64 MB; the logo upload
+  validates an image MIME allow-list.
+- **Wipe actually wipes**: `wipeAllData` also purges the SQLite tables outside the
+  collection sync (chairside, clinical specs).
+- Random IDs and session tokens now use the platform CSPRNG; `vite.config.ts` disables
+  source maps and pins the minifier.
+
+### Fixed
+- `tests/services/update.test.ts` fixtures were pinned to `2.1.0` and had been failing since
+  the app version reached 2.2.0 (every package was rejected as "not newer"); they now derive
+  a version above the installed one.
+- `tests/db/seeds.test.ts`, `tests/db/boot.test.ts` and `tests/db/engine.test.ts` updated for
+  the security change (no accounts are seeded; the migration list is now 1–5).
+
+### Tests
+- `tests/services/qc.test.ts` (15 cases) and `tests/db/qc.test.ts` (8 cases)
+  covering derivation, corrections, gate rules, honest-null metrics, migration
+  005, the dedupe guard, CHECK enforcement, cascade delete and sync survival.
+
 ## [2.0.1] — 2026-09-18
 
 ### Fixed
