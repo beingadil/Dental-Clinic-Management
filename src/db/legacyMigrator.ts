@@ -113,7 +113,14 @@ async function importLegacyUser(u: any, report: ReportBuilder): Promise<void> {
       report.skip(`duplicate username ${username}`);
       return;
     }
-    const hash = await hashPassword(String(u.password ?? 'changeme123'));
+    // A legacy record without a password cannot be imported safely: fabricating
+    // a known credential would create an account anyone could log into. The
+    // user is skipped (and reported) instead of seeded with a default password.
+    if (typeof u.password !== 'string' || !u.password) {
+      report.skip(`user ${username} has no password recorded — not imported`, u);
+      return;
+    }
+    const hash = await hashPassword(u.password);
     usersRepo.insert({
       id: String(u.id),
       username,
