@@ -80,8 +80,12 @@ import {
   QC_GATED_STATUSES,
 } from '../services/qcDomain';
 import { getTodayStr } from '../utils/dateUtils';
-import { sqliteDb } from '../services/sqliteDbService';
+import { sqliteDb } from '../services/sqliteDbService';import { useSettingsDomain } from './hooks/useSettingsDomain';
+import { useCasesDomain } from './hooks/useCasesDomain';
+import { useBillingDomain } from './hooks/useBillingDomain';
+import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, mirrorSet, groupByCase, attachmentsByCase } from './hooks/domainState';
 import { isDatabaseReady, getDatabase } from '../db/core';
+import { DEFAULT_BRANDING_SETTINGS } from '../db/defaults';
 import { syncCollectionsToDb } from '../db/syncCore';
 import {
   usersRepo, labsRepo, caseTypesRepo, casesRepo, caseNotesRepo, attachmentsRepo,
@@ -98,84 +102,17 @@ import { hashPassword, verifyPassword } from '../db/crypto';
 // SQLite sync: hydration, DB writes, mirror cache, diagnostics
 // ─────────────────────────────────────────────────────────────
 
+// Shared hydration helpers (mirror, dbRows, groupers) live in ./hooks/domainState
+// so every domain hook and this context share ONE dbMirror instance.
 let dbReflected = false;
 export function getDbReflected(): boolean {
   return dbReflected;
 }
 
-/**
- * Memory mirror: maps collection keys to the last arrays loaded from SQLite.
- * Keeps hydration O(1) for collection reads before effects run.
- */
-const dbMirror: Record<string, any[]> = {};
-
-function mirrorGet(key: string): any[] | undefined {
-  return dbMirror[key];
-}
-
-function mirrorSet(key: string, rows: any[]): void {
-  dbMirror[key] = rows;
-}
-
-/**
- * Loads every collection from SQLite into React state (the mirror), marking
- * the sync effect dirty so DB and mirror stay coherent. Safe pre-boot.
- */
-/** Group flat child rows (case_id-keyed) into the per-case maps state uses. */
-function groupByCase<T extends { case_id: string }>(rows: T[]): Record<string, T[]> {
-  const out: Record<string, T[]> = {};
-  for (const r of rows) (out[r.case_id] ||= []).push(r);
-  return out;
-}
-
-/** AttachmentRow (entity-keyed, DB column names) → per-case CaseAttachment map. */
-function attachmentsByCase(rows: any[]): Record<string, any[]> {
-  const out: Record<string, any[]> = {};
-  for (const r of rows) {
-    (out[r.entity_id] ||= []).push({
-      id: r.id,
-      case_id: r.entity_id,
-      filename: r.original_filename,
-      file_type: r.mime_type,
-      file_url: r.data_url || '',
-      uploaded_at: r.created_at,
-      uploaded_by: r.uploaded_by || 'System',
-      file_size: r.description ?? undefined, // syncCore stores size here
-    });
-  }
-  return out;
-}
-
 function hydrateAllFromDb(): boolean {
-  if (!isDatabaseReady()) return false;
-  try {
-    mirrorSet('cases', casesRepo.all());
-    mirrorSet('labs', labsRepo.all());
-    mirrorSet('caseTypes', caseTypesRepo.all());
-    mirrorSet('invoices', invoicesRepo.all());
-    mirrorSet('advancePayments', advancePaymentsRepo.all());
-    mirrorSet('accountAdjustments', adjustmentsRepo.all());
-    mirrorSet('journalEntries', journalRepo.all());
-    mirrorSet('notifications', notificationsRepo.all());
-    mirrorSet('users', usersRepo.all());
-    mirrorSet('templates', caseTemplatesRepo.all());
-    mirrorSet('savedVouchers', vouchersRepo.all());
-    mirrorSet('auditEvents', auditRepo.all());
-    mirrorSet('labContacts', labContactsRepo.all());
-    mirrorSet('labAddresses', labAddressesRepo.all());
-    mirrorSet('pricingOverrides', labPricingOverridesRepo.all());
-    mirrorSet('labReviews', labReviewsRepo.all());
-    mirrorSet('doctorPreferences', doctorPreferredLabsRepo.all());
-    mirrorSet('caseNotes', groupByCase(caseNotesRepo.all()) as any);
-    mirrorSet('caseAttachments', attachmentsByCase(attachmentsRepo.all()) as any);
-    mirrorSet('reconciliationItems', reconciliationRepo.all());
-    dbReflected = true;
-    return true;
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[cutover] hydration unavailable:', e);
-    return false;
-  }
+  const ok = hydrateAllFromDbShared();
+  if (ok) dbReflected = true;
+  return ok;
 }
 
 /** DB write helper — no-ops when the engine is not booted (tests). */
@@ -189,35 +126,7 @@ function dbWrite(fn: () => void): void {
   }
 }
 
-/** Hydrate from the boot mirror, else read the repo directly (fallback safe when engine not booted, e.g. tests). */
-function dbRows<T>(key: string, read: () => T): T {
-  if (dbMirror[key]) return dbMirror[key] as T;
-  try {
-    return read();
-  } catch {
-    return [] as unknown as T;
-  }
-}
-
-export const DEFAULT_BRANDING: BrandingSettings = {
-  appName: 'Dental Solutions',
-  tagline: 'Serving Smiles • Digital Dental Laboratory',
-  logoUrl: '',
-  primaryColor: '#4f46e5',
-  phone: '0333-0473797',
-  address: 'Batala Street Near Railway Park, Gill Road, Gujranwala.',
-  email: 'info@dentalsolutions.pk',
-  facebook: 'Dental Solutions',
-  bankName: 'Meezan Bank Ltd',
-  bankAccountTitle: 'Dental Solutions Lab',
-  bankAccountNumber: '01020304050607',
-  bankIban: 'PK36MEZN0001020304050607',
-  enable24hWarning: true,
-  warningThresholdHours: 24,
-  warningHighlightColor: 'rose',
-  warningHighlightStyle: 'border',
-  cardBgColor: '#ffffff'
-};
+export const DEFAULT_BRANDING = DEFAULT_BRANDING_SETTINGS;
 
 interface AppContextType {
   // Navigation & User
@@ -604,38 +513,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Persistent Collections — hydrated from the SQLite mirror at mount.
   // Legacy dsw_* keys are read ONLY by the one-time legacyMigrator; the app's
   // active persistence layer is SQLite alone.
-  const [cases, setCases] = useState<DentalCase[]>(() => {
-    if (hydrateAllFromDb() && dbMirror['cases']) return dbMirror['cases'] as DentalCase[];
-    return sqliteDb.cases.getAll();
-  });
-  const [labs, setLabs] = useState<DentalLab[]>(() => {
-    if (dbMirror['labs']) return dbMirror['labs'] as DentalLab[];
-    return sqliteDb.labs.getAll();
-  });
-  const [caseTypes, setCaseTypes] = useState<CaseType[]>(() => {
-    if (dbMirror['caseTypes']) return dbMirror['caseTypes'] as CaseType[];
-    return sqliteDb.caseTypes.getAll();
-  });
-  const [invoices, setInvoices] = useState<Invoice[]>(() => {
-    if (dbMirror['invoices']) return dbMirror['invoices'] as Invoice[];
-    return sqliteDb.invoices.getAll();
-  });
-
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    if (dbMirror['notifications']) return dbMirror['notifications'] as AppNotification[];
-    const fromDb = sqliteDb.notifications.getAll();
-    const parsed: AppNotification[] = fromDb.length > 0 ? fromDb : INITIAL_NOTIFICATIONS;
-    const seen = new Set<string>();
-    const safeList = Array.isArray(parsed) ? parsed : INITIAL_NOTIFICATIONS;
-    return safeList.map((n, idx) => {
-      let id = n.id;
-      if (!id || seen.has(id)) {
-        id = `notif-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-      }
-      seen.add(id);
-      return { ...n, id };
-    });
-  });
+  // Cases + billing domains live in their own hooks (same surface, same
+  // hydration order); settings in useSettingsDomain. Persistence and the
+  // restore/wipe flows below are unchanged — they consume the identical names.
+  const {
+    cases, setCases, labs, setLabs, caseTypes, setCaseTypes,
+    caseAttachments, setCaseAttachments, caseNotes, setCaseNotes,
+    qcInspections, setQcInspections,
+  } = useCasesDomain();
+  const {
+    invoices, setInvoices, notifications, setNotifications,
+    savedVouchers, setSavedVouchers, advancePayments, setAdvancePayments,
+    accountAdjustments, setAccountAdjustments, journalEntries, setJournalEntries,
+    auditEvents, setAuditEvents, reconciliationItems, setReconciliationItems,
+  } = useBillingDomain();
 
   const [templates, setTemplates] = useState<CaseTemplate[]>(() => dbRows('templates', () => caseTemplatesRepo.all() as unknown as CaseTemplate[]));
   const [labContacts, setLabContacts] = useState<LabContact[]>(() => dbRows('labContacts', () => labContactsRepo.all() as LabContact[]));
@@ -643,50 +534,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [pricingOverrides, setPricingOverrides] = useState<LabPricingOverride[]>(() => dbRows('pricingOverrides', () => labPricingOverridesRepo.all() as LabPricingOverride[]));
   const [labReviews, setLabReviews] = useState<LabReview[]>(() => dbRows('labReviews', () => labReviewsRepo.all() as LabReview[]));
   const [doctorPreferences, setDoctorPreferences] = useState<DoctorPreferredLab[]>(() => dbRows('doctorPreferences', () => doctorPreferredLabsRepo.all() as DoctorPreferredLab[]));
-  const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
-    return sqliteDb.settings.getPreferences() || INITIAL_USER_PREFERENCES;
-  });
-
-  const [caseAttachments, setCaseAttachments] = useState<Record<string, CaseAttachment[]>>(() => dbRows('caseAttachments', () => attachmentsByCase(attachmentsRepo.all())));
-
-  const [caseNotes, setCaseNotes] = useState<Record<string, CaseNote[]>>(() => dbRows('caseNotes', () => groupByCase(caseNotesRepo.all()) as unknown as Record<string, CaseNote[]>));
-
-  /* Quality control: the append-only inspection stream (SQLite is authoritative,
-     React state mirrors it and the write-through sync persists it). */
-  const [qcInspections, setQcInspections] = useState<QcInspection[]>(() => {
-    if (isDatabaseReady()) {
-      try { return qcInspectionsRepo.all(); } catch { /* fall through */ }
-    }
-    return [];
-  });
-
-  const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>(() => {
-    if (isDatabaseReady()) {
-      try { return settingsRepo.get('branding', 'settings') as BrandingSettings || DEFAULT_BRANDING; } catch { /* fall through */ }
-    }
-    return sqliteDb.settings.getBranding() || DEFAULT_BRANDING;
-  });
-  const [savedVouchers, setSavedVouchers] = useState<SavedVoucher[]>(() => {
-    if (dbMirror['savedVouchers']) return dbMirror['savedVouchers'] as SavedVoucher[];
-    return sqliteDb.vouchers.getAll();
-  });
-  const [advancePayments, setAdvancePayments] = useState<AdvancePayment[]>(() => {
-    if (dbMirror['advancePayments']) return dbMirror['advancePayments'] as AdvancePayment[];
-    return sqliteDb.advancePayments.getAll();
-  });
-  const [accountAdjustments, setAccountAdjustments] = useState<AccountAdjustment[]>(() => {
-    if (dbMirror['accountAdjustments']) return dbMirror['accountAdjustments'] as AccountAdjustment[];
-    return sqliteDb.adjustments.getAll();
-  });
-  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>(() => {
-    if (dbMirror['journalEntries']) return dbMirror['journalEntries'] as JournalEntry[];
-    return sqliteDb.journalEntries.getAll();
-  });
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>(() => {
-    if (dbMirror['auditEvents']) return dbMirror['auditEvents'] as AuditEvent[];
-    return sqliteDb.audit.getAll();
-  });
-  const [reconciliationItems, setReconciliationItems] = useState<ReconciliationItem[]>(() => dbRows('reconciliationItems', () => reconciliationRepo.all() as ReconciliationItem[]));
+  // Settings domain (branding + preferences) lives in useSettingsDomain —
+  // identical surface, same SQLite write-through behavior.
+  const { brandingSettings, setBrandingSettings, userPreferences, setUserPreferences } = useSettingsDomain();
 
   // ─── SQLite write-through sync (replaces all dsw_* localStorage writes) ───
   // React state = UI mirror; SQLite = authoritative store.
@@ -702,16 +552,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     journalEntries, reconciliationItems, notifications, savedVouchers, auditEvents,
     templates, labContacts, labAddresses, pricingOverrides, labReviews, doctorPreferences,
     caseNotes, caseAttachments, qcInspections,
-  ]);
-
-  // Settings persist ONLY into the namespaced settings store (SQLite) —
-  // the legacy dsw_* keys are no longer written (single source of truth).
-  useEffect(() => {
-    dbWrite(() => settingsRepo.set('branding', 'settings', brandingSettings));
-  }, [brandingSettings]);
-  useEffect(() => {
-    dbWrite(() => settingsRepo.set('preferences', 'global', userPreferences));
-  }, [userPreferences]);
+  ]);  // Settings persist ONLY into the namespaced settings store (SQLite) —
+  // handled inside useSettingsDomain (single source of truth).
 
   // One-time legacy sweep: business data lives in SQLite only. Once the
   // migrator marker is set (import done), every other dsw_* key is dead
@@ -1115,7 +957,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (tables.caseNotes) setCaseNotes(tables.caseNotes);
       if (tables.brandingSettings) setBrandingSettings(tables.brandingSettings);
       if (Array.isArray(tables.savedVouchers)) setSavedVouchers(tables.savedVouchers);
-      if (Array.isArray(tables.users)) setUsers(tables.users);
+      if (Array.isArray(tables.users)) setUsers(tables.users.filter((u: any) => !u.is_hidden));
       return true;
     } catch (err) {
       console.error('Failed to restore database backup:', err);

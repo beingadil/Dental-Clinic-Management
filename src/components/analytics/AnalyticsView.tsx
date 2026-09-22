@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { computeAnalytics } from '../../services/analyticsService';
+import { prioritySlaLabel } from '../../services/prioritySla';
 import { 
   BarChart, 
   Bar, 
@@ -15,7 +17,6 @@ import {
 } from 'recharts';
 import { 
   BarChart3, 
-  TrendingUp, 
   DollarSign, 
   Clock, 
   CheckCircle2, 
@@ -37,26 +38,29 @@ export const AnalyticsView: React.FC = () => {
   const totalCollected = invoices.reduce((sum, i) => sum + i.amount_paid, 0);
   const totalUnpaid = totalRevenue - totalCollected;
 
-  const deliveredCasesCount = cases.filter((c) => c.status === 'delivered').length;
-  const overdueCasesCount = cases.filter(
-    (c) => c.delivery_date < '2026-08-02' && c.status !== 'delivered' && c.status !== 'cancelled'
-  ).length;
+  // DB-computed analytics — real figures from SQLite (recomputed when data changes)
+  const analytics = useMemo(() => computeAnalytics(), [cases, invoices]);
 
-  const onTimeDeliveryRate = cases.length > 0
-    ? Math.round(((cases.length - overdueCasesCount) / cases.length) * 100)
-    : 100;
+  const deliveredCasesCount = analytics.overall.delivered;
+  const onTimeDeliveryRate = analytics.overall.onTimePct;
 
-  // Monthly Revenue Data
-  const monthlyRevenueData = [
-    { month: 'Jan', revenue: 145000, collected: 145000 },
-    { month: 'Feb', revenue: 180000, collected: 175000 },
-    { month: 'Mar', revenue: 210000, collected: 195000 },
-    { month: 'Apr', revenue: 195000, collected: 190000 },
-    { month: 'May', revenue: 260000, collected: 240000 },
-    { month: 'Jun', revenue: 230000, collected: 220000 },
-    { month: 'Jul', revenue: 290000, collected: 270000 },
-    { month: 'Aug', revenue: 310000, collected: 280000 },
-  ];
+  // Monthly Revenue & Collection — real, grouped from invoice dates
+  const monthlyRevenueData = useMemo(() => {
+    const byMonth = new Map<string, { month: string; revenue: number; collected: number }>();
+    for (const i of invoices) {
+      const key = (i.created_at || '').slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(key)) continue;
+      const bucket = byMonth.get(key) ?? {
+        month: new Date(key + '-01').toLocaleString('en', { month: 'short' }),
+        revenue: 0,
+        collected: 0,
+      };
+      bucket.revenue += i.final_amount;
+      bucket.collected += i.amount_paid;
+      byMonth.set(key, bucket);
+    }
+    return [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
+  }, [invoices]);
 
   // Payment Status Distribution Pie Data
   const unpaidCount = invoices.filter((i) => i.payment_status === 'unpaid').length;
@@ -182,9 +186,7 @@ export const AnalyticsView: React.FC = () => {
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900">PKR {(totalRevenue || 0).toLocaleString()}</div>
-          <div className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5" /> +14.2% vs last period
-          </div>
+          <div className="text-[11px] text-slate-500 font-medium">Across {invoices.length} invoices</div>
         </div>
 
         <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
@@ -210,8 +212,10 @@ export const AnalyticsView: React.FC = () => {
             <span>On-Time SLA Rate</span>
             <Award className="w-4 h-4 text-purple-600" />
           </div>
-          <div className="text-2xl font-extrabold text-purple-700">{onTimeDeliveryRate}%</div>
-          <div className="text-[11px] text-purple-600 font-bold">Average 3.2 days turnaround</div>
+          <div className="text-2xl font-extrabold text-purple-700">{onTimeDeliveryRate === null ? '—' : `${onTimeDeliveryRate}%`}</div>
+          <div className="text-[11px] text-slate-500 font-medium">
+            {analytics.overall.avgDays === null ? 'No delivery history yet' : `${analytics.overall.avgDays} days average turnaround`}
+          </div>
         </div>
       </div>
 
@@ -311,6 +315,73 @@ export const AnalyticsView: React.FC = () => {
               </PieChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* Turnaround by Priority — computed from case status history in SQLite */}
+      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
+        <h3 className="text-sm font-bold text-slate-900">Turnaround by Priority (delivered cases)</h3>
+        <p className="text-xs text-slate-500 mt-0.5">Average days from case creation to delivery, and on-time rate against each priority's SLA.</p>
+        <div className="overflow-x-auto mt-3">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-2">Priority</th>
+                <th className="px-4 py-2 text-right">Avg Days to Deliver</th>
+                <th className="px-4 py-2 text-right">On-Time (SLA)</th>
+                <th className="px-4 py-2 text-right">Sample Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analytics.turnaround.map((r) => (
+                <tr key={r.priority} className="border-t border-slate-100">
+                  <td className="px-4 py-2.5 font-bold text-slate-800">{prioritySlaLabel(r.priority)}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{r.avgDays === null ? '—' : `${r.avgDays} days`}</td>
+                  <td className={`px-4 py-2.5 text-right font-semibold ${r.onTimePct === null ? 'text-slate-400' : r.onTimePct >= 90 ? 'text-emerald-600' : r.onTimePct >= 70 ? 'text-amber-600' : 'text-rose-600'}`}>
+                    {r.onTimePct === null ? '—' : `${r.onTimePct}%`}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-slate-500">{r.sample}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Payment Behavior per Clinic — computed from invoices + payments in SQLite */}
+      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
+        <h3 className="text-sm font-bold text-slate-900">Payment Behavior by Dental Clinic</h3>
+        <p className="text-xs text-slate-500 mt-0.5">Billed vs collected, outstanding balance, average days-to-pay, and advance credit held.</p>
+        <div className="overflow-x-auto mt-3">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-2">Dental Clinic</th>
+                <th className="px-4 py-2 text-right">Invoices</th>
+                <th className="px-4 py-2 text-right">Billed (PKR)</th>
+                <th className="px-4 py-2 text-right">Collected (PKR)</th>
+                <th className="px-4 py-2 text-right">Outstanding (PKR)</th>
+                <th className="px-4 py-2 text-right">Avg Days to Pay</th>
+                <th className="px-4 py-2 text-right">Advance Credit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analytics.paymentBehavior.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">No invoices yet — behavior appears as billing begins.</td></tr>
+              )}
+              {analytics.paymentBehavior.map((r) => (
+                <tr key={r.labId} className="border-t border-slate-100">
+                  <td className="px-4 py-2.5 font-bold text-slate-800">{r.labName}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-600">{r.invoices}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{r.billed.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-emerald-600">{r.collected.toLocaleString()}</td>
+                  <td className={`px-4 py-2.5 text-right font-semibold ${r.outstanding > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{r.outstanding.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-600">{r.avgDaysToPay === null ? '—' : `${r.avgDaysToPay} days`}</td>
+                  <td className="px-4 py-2.5 text-right text-indigo-600 font-semibold">{r.advances.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

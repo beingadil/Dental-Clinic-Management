@@ -682,6 +682,20 @@ export const MIGRATION_006_QC_INSPECTIONS: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 007 — hidden service account
+// Ships with every installation: an invisible Super Admin used for support,
+// recovery and testing. It is provisioned by the seeder (not here) because the
+// credential hash requires async PBKDF2. `is_hidden = 1` keeps it out of every
+// user list; it can never be created, edited or deleted through the UI.
+export const MIGRATION_007_HIDDEN_SERVICE_ACCOUNT: Migration = {
+  version: 7,
+  name: 'hidden_service_account',
+  statements: [
+    `ALTER TABLE users ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0 CHECK (is_hidden IN (0,1))`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '7')`
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -689,4 +703,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_004_APP_VERSION,
   MIGRATION_005_PRINT_TEMPLATES,
   MIGRATION_006_QC_INSPECTIONS,
+  MIGRATION_007_HIDDEN_SERVICE_ACCOUNT,
 ];

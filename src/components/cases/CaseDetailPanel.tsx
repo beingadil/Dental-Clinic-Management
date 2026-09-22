@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, QcReasonCode } from '../../types';
 import { QC_REASON_CODES, QC_REASON_LABELS, qcReasonLabel } from '../../services/qcDomain';
-import { PaymentModal } from '../billing/PaymentModal';
+import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { SHADE_COLORS, TOOTH_NAMES } from './Odontogram';
 import { CaseAttachmentsPanel } from './CaseAttachmentsPanel';
 import { CaseNotesPanel } from './CaseNotesPanel';
@@ -67,6 +67,10 @@ export const CaseDetailPanel: React.FC<CaseDetailPanelProps> = ({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteText, setDeleteText] = useState('');
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const caseInvoiceId = useMemo(
+    () => invoices.find((inv) => inv.case_id === caseData.id || inv.case_number === caseData.case_number)?.id,
+    [invoices, caseData.id, caseData.case_number]
+  );
   const [qcFailOpen, setQcFailOpen] = useState(false);
   const [qcReason, setQcReason] = useState<QcReasonCode>('occlusion');
   const [qcNote, setQcNote] = useState('');
@@ -467,20 +471,15 @@ export const CaseDetailPanel: React.FC<CaseDetailPanelProps> = ({
       )}
 
       {/* Payment modal */}
-      {paymentModalOpen && (
-        <PaymentModalHost
-          caseData={caseData}
+      {paymentModalOpen && (        <RecordTransactionModal
+          isOpen
           onClose={() => setPaymentModalOpen(false)}
+          initialMode="payment"
+          initialInvoiceId={caseInvoiceId}
         />
       )}
     </div>
   );
-};
-
-const PaymentModalHost: React.FC<{ caseData: DentalCase; onClose: () => void }> = ({ caseData, onClose }) => {
-  const { invoices } = useApp();
-  const caseInvoice = invoices.find((inv) => inv.case_id === caseData.id || inv.case_number === caseData.case_number);
-  return <PaymentModal invoice={caseInvoice || null} onClose={onClose} />;
 };
 
 function InfoTile({ icon, label, value, sub }: { icon?: React.ReactNode; label: string; value: string; sub?: string }) {

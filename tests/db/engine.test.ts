@@ -14,13 +14,13 @@ beforeAll(async () => {
 describe('migrations', () => {
   it('applies all migrations once and records versions', () => {
     const versions = engine.all<{ version: number }>('SELECT version FROM schema_migrations ORDER BY version');
-    expect(versions.map((v) => v.version)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(versions.map((v) => v.version)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
   it('is idempotent on re-run', () => {
     const { applied, skipped } = engine.migrate();
     expect(applied).toHaveLength(0);
-    expect(skipped).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(skipped).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
   it('creates the expected core tables', () => {

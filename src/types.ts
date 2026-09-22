@@ -504,6 +504,7 @@ export interface UserProfile {
   password?: string;
   avatar?: string;
   isSuperAdmin?: boolean; // Superadmin account is hidden from User Management list
+  is_hidden?: number; // DB flag: never shown in any user list (service account)
   created_at?: string;
 }
 
