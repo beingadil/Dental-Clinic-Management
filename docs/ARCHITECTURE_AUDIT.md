@@ -94,7 +94,7 @@ Two divergent copies of business data exist in the same browser profile.
 ## 4. Authentication (current)
 
 - Local username/password against user records; **plaintext passwords** in `src/data/initialData.ts`.
-- **Hardcoded super-admin backdoor** in `login()`: `adil` / `adil123` bypasses the user list.
+- **Hardcoded super-admin backdoor** in `login()`: `adil` / `███████` bypasses the user list.
 - Session persisted as full user object (incl. password) in localStorage; remember-me supported.
 - Roles: `Super Admin`, `Lab Admin`, `Technician`, `Billing Manager` with view-level gating.
 - On login, non-Technician users are auto-logged-in as `INITIAL_USERS[0]` if nothing persisted.
@@ -139,7 +139,7 @@ AI Studio tooling files (P2 hygiene).
 ## 7. Security Findings (Phase 0 scan)
 
 1. Plaintext passwords in seed data (`initialData.ts`, duplicated in `AppContext.tsx`).
-2. Hardcoded credential backdoor (`adil/adil123`) in `AppContext.login()`.
+2. Hardcoded credential backdoor (`adil/███████`) in `AppContext.login()`.
 3. Full user object (with password) persisted in localStorage session keys.
 4. Attachments embedded as base64 in JSON — no size/type validation beyond UI; quota failures are swallowed with `console.warn` (silent data loss on quota breach).
 5. `metadata.json` advertises a server-side Gemini capability the code does not use (stale).

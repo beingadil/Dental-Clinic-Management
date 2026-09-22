@@ -20,6 +20,7 @@ import {
   FileText
 } from 'lucide-react';
 import { DentalCase, DentalLab } from '../../types';
+import { formatQcRate } from '../../services/qcDomain';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { ShadeGuideModal } from './ShadeGuideModal';
 import { InteractiveDeliveryCalendar } from './InteractiveDeliveryCalendar';
@@ -45,7 +46,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
     updateCase,
     overdueCount, 
     dueTodayCount, 
-    dueThisWeekCount
+    dueThisWeekCount,
+    getQcMetrics
   } = useApp();
 
   // Banner State
@@ -65,6 +67,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
   const totalBilled = invoices.reduce((sum, inv) => sum + (inv.final_amount || 0), 0);
   const totalOutstanding = totalBilled - totalRevenue;
   const pendingBillingInvoices = invoices.filter(i => i.payment_status !== 'paid');
+
+  /* Quality KPIs derived from the append-only QC stream (em dash while there is
+     genuinely no inspection data — never a fabricated number). */
+  const qcMetrics = getQcMetrics();
   const pendingBillingAmount = pendingBillingInvoices.reduce((sum, inv) => sum + ((inv.final_amount || 0) - (inv.amount_paid || 0)), 0);
   const activeCases = cases.filter(c => c.status !== 'delivered' && c.status !== 'cancelled');
 
@@ -573,7 +579,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
               <div className="h-6 w-px bg-slate-200" />
               <div className="text-center">
                 <span className="text-[10px] text-slate-400 uppercase block">First-Pass QC</span>
-                <span className="font-bold text-emerald-600">—</span>
+                <span
+                  className="font-bold text-emerald-600"
+                  title={
+                    qcMetrics.inspected_cases === 0
+                      ? 'No QC inspection recorded yet'
+                      : `${qcMetrics.first_pass_cases} of ${qcMetrics.passed_cases} released cases passed on their first inspection`
+                  }
+                >
+                  {formatQcRate(qcMetrics.first_pass_rate)}
+                </span>
               </div>
               <div className="h-6 w-px bg-slate-200" />
               <div className="text-center">

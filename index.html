@@ -9,6 +9,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
     <meta name="theme-color" content="#4f46e5" />
+    <meta name="referrer" content="no-referrer" />
+    <!-- Offline-first SPA: no remote scripts, no frames, no form posts. The
+         same policy is enforced for the desktop build in tauri.conf.json. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://beingadil.github.io https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+    />
     <meta name="description" content="Offline-first dental laboratory case, lab, billing, reporting, and notification management system." />
     <meta property="og:title" content="Dental Solutions Web" />
     <meta property="og:description" content="Offline-first dental laboratory case, lab, billing, reporting, and notification management system." />

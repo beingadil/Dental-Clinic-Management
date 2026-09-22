@@ -2,7 +2,6 @@ import { getDatabase } from './index';
 import { appMetaRepo, usersRepo, labsRepo, caseTypesRepo, casesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo, notificationsRepo, settingsRepo, notificationConfigRepo, emailTemplatesRepo, clinicalSpecsRepo, chairsideRepo, auditRepo, caseNotesRepo, attachmentsRepo, vouchersRepo } from './repos';
 import { ensureSequenceTable, ensureCounterAtLeast, SEQ_KEYS } from './sequences';
 import { hashPassword } from './crypto';
-import { BOOTSTRAP_USERS } from './defaults';
 import { DEFAULT_MATERIALS, DEFAULT_PREP_TYPES, DEFAULT_SHADE_GUIDES, DEFAULT_IMPLANT_BRANDS } from '../services/clinicalSpecsService';
 import { DEFAULT_BRANDING_SETTINGS } from './defaults';
 
@@ -218,21 +217,8 @@ export async function runLegacyMigration(): Promise<LegacyMigrationReport> {
     seenUsernames.add(String(u.username).toLowerCase());
     await importLegacyUser(u, report);
   }
-  // guarantee the super-admin exists even on fresh profiles (hashed bootstrap credential)
-  if (!usersRepo.byUsername('adil')) {
-    const superBootstrap = BOOTSTRAP_USERS.find((u) => u.username === 'adil')!;
-    const hash = await hashPassword(superBootstrap.password);
-    usersRepo.insert({
-      id: superBootstrap.id,
-      username: superBootstrap.username,
-      email: superBootstrap.email,
-      name: superBootstrap.name,
-      role: superBootstrap.role,
-      password_hash: hash,
-      password_salt: hash.split('$')[2] ?? '',
-      is_super_admin: 1,
-    });
-  }
+  // No super-admin is fabricated here: a profile with no users provisions its
+  // first administrator through the login screen's setup flow.
 
   // ---------------- labs ----------------
   report.start('labs');

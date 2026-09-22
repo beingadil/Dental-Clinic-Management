@@ -24,7 +24,7 @@ live in raw localStorage with no service at all. No module touches a real databa
 - **Features:** login (username/email + password), remember-me, logout, role-based routing
   (Technician → cases), add/edit/delete users, change password, hidden super-admin.
 - **Current data source:** `dsw_sqlite_users` + `dsw_users` (dup), plaintext passwords, hardcoded
-  `adil/adil123` backdoor, session user object (with password) in localStorage.
+  `adil/███████` backdoor, session user object (with password) in localStorage.
 - **Entities:** `users` (+ future `sessions`, password hashes).
 - **Migration status:** NOT STARTED — **Offline status:** OFFLINE (network-free already).
 - **Problems:** plaintext secrets (D4); backdoor must be replaced by hashed credential check +

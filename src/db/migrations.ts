@@ -650,10 +650,43 @@ const MIGRATION_005_PRINT_TEMPLATES: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 006 — quality control (QC) recording
+// ---------------------------------------------------------------- 006 — quality control (QC) recording
+export const MIGRATION_006_QC_INSPECTIONS: Migration = {
+  version: 6,
+  name: 'qc_inspections',
+  statements: [
+    // Append-only QC stream: rows are never mutated or deleted. A mistaken
+    // inspection is amended by appending a `correction` row that names the
+    // event it replaces (supersedes_id), so every metric stays derivable.
+    `CREATE TABLE qc_inspections (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL,
+      case_number TEXT,
+      inspection_no INTEGER NOT NULL CHECK (inspection_no >= 1),
+      kind TEXT NOT NULL DEFAULT 'inspection' CHECK (kind IN ('inspection','correction')),
+      result TEXT NOT NULL CHECK (result IN ('pass','fail')),
+      reason_code TEXT,
+      reason_text TEXT,
+      checklist TEXT,
+      inspector TEXT NOT NULL,
+      notes TEXT,
+      supersedes_id TEXT,
+      dedupe_key TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX idx_qc_case ON qc_inspections(case_id)`,
+    `CREATE INDEX idx_qc_created ON qc_inspections(created_at)`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '6')`
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
   MIGRATION_003_DEMO_FIXTURES,
   MIGRATION_004_APP_VERSION,
   MIGRATION_005_PRINT_TEMPLATES,
+  MIGRATION_006_QC_INSPECTIONS,
 ];

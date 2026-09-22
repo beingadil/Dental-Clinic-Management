@@ -1,53 +1,15 @@
 import { BrandingSettings, UserPreferences } from '../types';
 
 /**
- * First-login bootstrap accounts. The DATABASE NEVER STORES these values —
- * seeds.ts hashes them with PBKDF2 at first boot. They are documented default
- * credentials (like router admin pages) and MUST be changed on first login by
- * each account (Settings → My Account & Security).
+ * No bootstrap accounts ship with this build.
+ *
+ * Earlier revisions exported a `BOOTSTRAP_USERS` array containing documented
+ * plaintext passwords (`███████`, `admin123`, …). Those credentials are gone:
+ * a fresh profile starts with an EMPTY users table and the login screen runs
+ * its first-run setup (`createInitialAdmin`) to provision a Super Admin with a
+ * password the operator chooses. Demo/documented credentials must never be
+ * reintroduced here.
  */
-export const BOOTSTRAP_USERS = [
-  {
-    id: 'u-super',
-    username: 'adil',
-    email: 'adil@dentalsolutions.pk',
-    name: 'Adil (Super Admin)',
-    role: 'Super Admin',
-    password: 'adil123',
-    isSuperAdmin: true,
-    created_at: '2026-01-01',
-  },
-  {
-    id: 'u-1',
-    username: 'admin',
-    email: 'admin@dentalsolutions.pk',
-    name: 'Dr. Zeeshan (Admin)',
-    role: 'Lab Admin',
-    password: 'admin123',
-    isSuperAdmin: false,
-    created_at: '2026-01-01',
-  },
-  {
-    id: 'u-2',
-    username: 'hamza',
-    email: 'hamza@dentalsolutions.pk',
-    name: 'Hamza Tech',
-    role: 'Technician',
-    password: 'tech123',
-    isSuperAdmin: false,
-    created_at: '2026-01-01',
-  },
-  {
-    id: 'u-3',
-    username: 'billing',
-    email: 'billing@dentalsolutions.pk',
-    name: 'Sana Billing',
-    role: 'Billing Manager',
-    password: 'bill123',
-    isSuperAdmin: false,
-    created_at: '2026-01-01',
-  },
-] as const;
 
 /**
  * Dependency-free defaults shared by the DB layer (seeds, legacy migrator).
