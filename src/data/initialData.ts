@@ -126,7 +126,7 @@ export const INITIAL_USER_PREFERENCES: UserPreferences = {
  * fresh installs via the legacy localStorage fallback; the legacy migrator
  * then carried them into SQLite. Fresh profiles now start with an EMPTY users
  * table — the login screen's first-run setup provisions the operator's own
- * Super Admin, and the hidden service account is seeded by `serviceAccount.ts`.
+ * Super Admin. Migration 009 removed the retired hidden service account.
  * Kept as an empty password-free shape so legacy import code still typechecks.
  */
 export const INITIAL_USERS: UserProfile[] = [];

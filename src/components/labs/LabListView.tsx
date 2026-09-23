@@ -6,18 +6,13 @@ import {
   Building2, 
   PlusCircle, 
   Search, 
-  Star, 
   Phone, 
   Mail, 
   MapPin, 
   FolderOpen, 
   ArrowUpDown, 
   X, 
-  Check,
-  ChevronRight,
-  Clock,
-  Sparkles,
-  Calendar
+  ChevronRight
 } from 'lucide-react';
 
 export const LabListView: React.FC = () => {
@@ -26,7 +21,7 @@ export const LabListView: React.FC = () => {
   const [selectedLab, setSelectedLab] = useState<DentalLab | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'rating' | 'cases'>('cases');
+  const [sortBy, setSortBy] = useState<'name' | 'cases'>('cases');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Create Form State
@@ -95,8 +90,6 @@ export const LabListView: React.FC = () => {
     let comparison = 0;
     if (sortBy === 'name') {
       comparison = a.name.localeCompare(b.name);
-    } else if (sortBy === 'rating') {
-      comparison = b.rating - a.rating;
     } else if (sortBy === 'cases') {
       const countA = cases.filter((c) => c.lab_id === a.id).length;
       const countB = cases.filter((c) => c.lab_id === b.id).length;
@@ -132,7 +125,7 @@ export const LabListView: React.FC = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search clinic name, contact person, phone, email, address..."
+            placeholder="Search clinic name, contact person, email, address..."
             className="w-full pl-10 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white transition-all font-medium text-slate-900"
           />
         </div>
@@ -145,7 +138,6 @@ export const LabListView: React.FC = () => {
           >
             <option value="cases">Sort by Total Cases</option>
             <option value="name">Sort by Name</option>
-            <option value="rating">Sort by Rating</option>
           </select>
           <button
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
@@ -183,7 +175,7 @@ export const LabListView: React.FC = () => {
                 className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between gap-4 group"
               >
                 <div>
-                  {/* Top Row: Icon, Name & Rating */}
+                  {/* Top Row: Icon, Name & Case Activity */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm shrink-0 border border-slate-200 group-hover:bg-slate-900 group-hover:text-white transition-colors">
@@ -195,11 +187,6 @@ export const LabListView: React.FC = () => {
                         </h3>
                         <p className="text-xs text-slate-500 font-medium">Contact: {lab.contact_person}</p>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 border border-amber-200">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{lab.rating}</span>
                     </div>
                   </div>
 
@@ -289,7 +276,7 @@ export const LabListView: React.FC = () => {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Apex Dental Care & Clinic"
+                  placeholder="e.g. Malik Dental Care & Clinic"
                   className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
                 />
                 {errors.name && <p className="text-[11px] text-rose-500 mt-0.5">{errors.name}</p>}
@@ -304,7 +291,7 @@ export const LabListView: React.FC = () => {
                     type="text"
                     value={contactPerson}
                     onChange={(e) => setContactPerson(e.target.value)}
-                    placeholder="Dr. Tariq Mahmood"
+                    placeholder="Dr. Faisal Mahmood"
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
                   />
                   {errors.contactPerson && <p className="text-[11px] text-rose-500 mt-0.5">{errors.contactPerson}</p>}
@@ -333,7 +320,7 @@ export const LabListView: React.FC = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="contact@apexdental.pk"
+                  placeholder="contact@malikdental.pk"
                   className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
                 />
                 {errors.email && <p className="text-[11px] text-rose-500 mt-0.5">{errors.email}</p>}

@@ -45,18 +45,17 @@ describe('boot simulation (migrate → seed → legacy import)', () => {
     engine = await freshBoot();
   });
 
-  it('fresh profile: ships only the hidden service account, no operator accounts; import scan finds nothing', async () => {
-    // The shipped hidden service account is the only seeded user; operator
-    // Super Admins still come exclusively from the first-run setup flow.
-    expect(usersRepo.count()).toBe(1);
-    expect(usersRepo.byUsername('service.admin')?.is_hidden).toBeTruthy();
+  it('fresh profile: ships zero accounts; import scan finds nothing and fabricates no admin', async () => {
+    // No seeded accounts of any kind — the operator's Super Admin comes
+    // exclusively from the login screen's first-run setup flow.
+    expect(usersRepo.count()).toBe(0);
+    expect(usersRepo.byUsername('service.admin')).toBeUndefined();
     expect(usersRepo.byUsername('adil')).toBeUndefined();
     const report = await runLegacyMigration();
     expect(report.ran).toBe(true); // scan executes once, finds nothing
     const totalImported = Object.values(report.tables).reduce((s, t) => s + t.imported, 0);
     expect(totalImported).toBe(0);
-    // the legacy scan must not fabricate an administrator either
-    expect(usersRepo.count()).toBe(1);
+    expect(usersRepo.count()).toBe(0);
   });
 
   it('legacy profile: imports patients, cases, invoices, payments with proof images', async () => {

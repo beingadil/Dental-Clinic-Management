@@ -23,16 +23,13 @@ beforeAll(async () => {
 });
 
 describe('seedDatabase', () => {
-  it('seeds catalog, clinical specs, settings, templates — and only the hidden service account', async () => {
+  it('seeds catalog, clinical specs, settings, templates — and zero accounts', async () => {
     await seedDatabase();
 
-    // Exactly one shipped account: the hidden service admin (support /
-    // recovery / testing). No operator credentials ship — the first visible
-    // Super Admin is provisioned through the login screen's setup flow with
-    // an operator-chosen password.
-    expect(usersRepo.count()).toBe(1);
-    expect(usersRepo.byUsername('service.admin')?.is_hidden).toBeTruthy();
-    expect(JSON.stringify(usersRepo.all())).not.toContain('adil123');
+    // No shipped accounts of any kind. The operator's Super Admin is
+    // provisioned through the login screen's setup flow with an
+    // operator-chosen password.
+    expect(usersRepo.count()).toBe(0);
 
     expect(caseTypesRepo.all().length).toBeGreaterThanOrEqual(8);
     expect(clinicalSpecsRepo.materials.all().length).toBeGreaterThanOrEqual(8);

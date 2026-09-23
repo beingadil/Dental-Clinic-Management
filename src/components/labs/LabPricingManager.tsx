@@ -12,14 +12,14 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [caseTypeId, setCaseTypeId] = useState(caseTypes[0]?.id || '');
-  const [customPrice, setCustomPrice] = useState<number>(13500);
-  const [discountPercent, setDiscountPercent] = useState<number>(10);
+  const [customPrice, setCustomPrice] = useState<number | ''>('');
+  const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (customPrice <= 0 || isNaN(customPrice)) {
+    if (customPrice === '' || customPrice <= 0 || isNaN(customPrice)) {
       errs.customPrice = 'Custom price must be a positive number';
     }
     if (discountPercent < 0 || discountPercent > 100 || isNaN(discountPercent)) {
@@ -44,7 +44,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
       case_type_id: caseTypeId,
       case_type_name: selectedCT.name,
       standard_price: selectedCT.base_price,
-      custom_price: customPrice,
+      custom_price: customPrice as number,
       discount_percentage: discountPercent,
       effective_date: effectiveDate
     });

@@ -215,8 +215,6 @@ interface AppContextType {
   deleteLabAddress: (id: string) => void;
   addPricingOverride: (override: Omit<LabPricingOverride, 'id'>) => void;
   deletePricingOverride: (id: string) => void;
-  addLabReview: (review: Omit<LabReview, 'id' | 'created_at'>) => void;
-  deleteLabReview: (id: string) => void;
 
   // Doctor Preferences
   setDoctorPreferredLab: (doctorName: string, labId: string, labName: string) => void;
@@ -1878,30 +1876,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPricingOverrides((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const addLabReview = (review: Omit<LabReview, 'id' | 'created_at'>) => {
-    const newRev: LabReview = {
-      ...review,
-      id: `lr-${Date.now()}`,
-      created_at: new Date().toISOString().split('T')[0]
-    };
-    setLabReviews((prev) => [newRev, ...prev]);
-
-    // Recalculate average rating for lab
-    const labRevs = [newRev, ...labReviews.filter((r) => r.lab_id === review.lab_id)];
-    const avg = labRevs.reduce((acc, curr) => acc + curr.rating, 0) / labRevs.length;
-    updateLab(review.lab_id, { rating: Number(avg.toFixed(1)), reviews_count: labRevs.length });
-  };
-
-  const deleteLabReview = (id: string) => {
-    const rev = labReviews.find((r) => r.id === id);
-    if (!rev) return;
-    setLabReviews((prev) => prev.filter((r) => r.id !== id));
-
-    const labRevs = labReviews.filter((r) => r.lab_id === rev.lab_id && r.id !== id);
-    const avg = labRevs.length ? labRevs.reduce((acc, curr) => acc + curr.rating, 0) / labRevs.length : 5.0;
-    updateLab(rev.lab_id, { rating: Number(avg.toFixed(1)), reviews_count: labRevs.length });
-  };
-
   // Doctor Preferred Lab
   const setDoctorPreferredLab = (doctorName: string, labId: string, labName: string) => {
     if (!doctorName || !doctorName.trim()) return;
@@ -3333,8 +3307,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteLabAddress,
         addPricingOverride,
         deletePricingOverride,
-        addLabReview,
-        deleteLabReview,
 
         setDoctorPreferredLab,
         getDoctorPreferredLab,

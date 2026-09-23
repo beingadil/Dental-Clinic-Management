@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.0] — 2026-09-23
+
+### Added
+- **Zero-account shipping (migration 009)** — the hidden `service.admin`
+  support account is removed entirely. Fresh installs boot with zero users;
+  the login screen's first-run setup creates the operator's real Super Admin
+  with a proper PBKDF2-hashed password. Existing installs drop hidden account
+  rows automatically on first launch of this version.
+
+### Changed
+- **Dental Clinics audit** — the fabricated 5.0★ rating badge (no reviews
+  exist) is gone along with the entire Performance Reviews feature; the
+  pricing form no longer prefills fictional money (PKR 13,500 / 10%);
+  deleting a clinic with linked cases is blocked with the exact case count
+  (protects case history); ledger money values use monospace figures;
+  hardcoded `'adil'` username filter removed from Settings → User Management.
+
 ## [2.7.0] — 2026-09-23
 
 ### Added
