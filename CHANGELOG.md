@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.1] — 2026-09-23
+
+### Fixed
+- **First-run admin now persists across restarts** — the login screen's user
+  list was initialized from the dead legacy localStorage source, so every
+  relaunch resurfaced "Create the administrator" even though the created
+  Super Admin was correctly saved to SQLite. Accounts now load from the live
+  database; a regression test proves the admin survives an app restart.
+
 ## [2.8.0] — 2026-09-23
 
 ### Added
