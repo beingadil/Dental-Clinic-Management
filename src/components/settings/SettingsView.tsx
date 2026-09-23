@@ -178,7 +178,8 @@ export const SettingsView: React.FC = () => {
   const [wipeSuccess, setWipeSuccess] = useState(false);
 
   const isAdmin = user?.role === 'Lab Admin' || user?.role === 'Super Admin' || user?.isSuperAdmin;
-  const visibleUsers = users.filter((u) => !u.isSuperAdmin && u.username !== 'adil');
+  // Super Admins manage accounts; hidden service rows never enter app state.
+  const visibleUsers = users.filter((u) => !u.isSuperAdmin);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);

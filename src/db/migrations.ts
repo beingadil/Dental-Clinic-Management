@@ -712,6 +712,15 @@ export const MIGRATION_008_PURGE_DEMO_USERS: Migration = {
   ],
 };
 
+export const MIGRATION_009_DROP_SERVICE_ACCOUNT: Migration = {
+  version: 9,
+  name: 'drop_service_account',
+  statements: [
+    `DELETE FROM users WHERE is_hidden = 1`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '9')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -721,4 +730,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_006_QC_INSPECTIONS,
   MIGRATION_007_HIDDEN_SERVICE_ACCOUNT,
   MIGRATION_008_PURGE_DEMO_USERS,
+  MIGRATION_009_DROP_SERVICE_ACCOUNT,
 ];

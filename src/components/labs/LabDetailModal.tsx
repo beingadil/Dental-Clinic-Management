@@ -3,7 +3,6 @@ import { useApp } from '../../context/AppContext';
 import { DentalLab, DentalCase, PaymentRecord, Invoice } from '../../types';
 import { LabContactsManager } from './LabContactsManager';
 import { LabPricingManager } from './LabPricingManager';
-import { LabReviewsManager } from './LabReviewsManager';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { RecordTransactionModal } from '../billing/RecordTransactionModal';
@@ -19,7 +18,6 @@ import {
   Phone, 
   Mail, 
   MapPin, 
-  Star, 
   FolderOpen, 
   DollarSign, 
   ShieldAlert, 
@@ -43,13 +41,13 @@ import {
 interface LabDetailModalProps {
   lab: DentalLab;
   onClose: () => void;
-  initialTab?: 'cases' | 'ledger' | 'info' | 'contacts' | 'pricing' | 'reviews';
+  initialTab?: 'cases' | 'ledger' | 'info' | 'contacts' | 'pricing';
 }
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
   const { cases, invoices, updateLab, deleteLab, getLabFinancialSummary, getLedgerEntries, allPayments } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing' | 'reviews'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing'>(initialTab);
   const [isFullScreen, setIsFullScreen] = useState(true);
   const [selectedCaseForDetail, setSelectedCaseForDetail] = useState<DentalCase | null>(null);
   const [selectedCaseForSlip, setSelectedCaseForSlip] = useState<DentalCase | null>(null);
@@ -132,6 +130,8 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
   const handleDeleteConfirmed = () => {
     if (confirmInput.trim() !== 'DELETE') return;
+    // Integrity guard: never orphan cases under a deleted clinic.
+    if (labCases.length > 0) return;
     deleteLab(lab.id);
     setDeleteModalOpen(false);
     onClose();
@@ -174,10 +174,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-bold text-base md:text-lg text-white">{lab.name}</h2>
-                <div className="flex items-center gap-1 bg-slate-800 text-slate-200 border border-slate-700 px-2.5 py-0.5 rounded-full text-xs font-semibold">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  <span>{lab.rating} ({lab.reviews_count} reviews)</span>
-                </div>
               </div>
               <p className="text-xs text-slate-300">Contact Person: {lab.contact_person} • Phone: {lab.phone}</p>
             </div>
@@ -217,7 +213,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             { id: 'info', label: 'General Info', icon: Building2 },
             { id: 'contacts', label: 'Contacts & Locations', icon: UserCheck },
             { id: 'pricing', label: 'Custom Pricing', icon: Tag },
-            { id: 'reviews', label: 'Performance Reviews', icon: Star },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -375,7 +370,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Billed (Debits)</span>
-                  <div className="text-lg font-black text-slate-900 mt-0.5">
+                  <div className="text-lg font-bold font-mono text-slate-900 mt-0.5">
                     PKR {(labFinancials?.total_invoiced || 0).toLocaleString()}
                   </div>
                   <span className="text-[10px] text-slate-500">Gross clinic charges</span>
@@ -383,7 +378,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
                 <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Total Collected</span>
-                  <div className="text-lg font-black text-emerald-700 mt-0.5">
+                  <div className="text-lg font-bold font-mono text-emerald-700 mt-0.5">
                     PKR {(labFinancials?.total_paid || 0).toLocaleString()}
                   </div>
                   <span className="text-[10px] text-emerald-600">Credits settled</span>
@@ -393,7 +388,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   <span className={`text-[10px] font-bold uppercase tracking-wider block ${(labFinancials?.outstanding_balance || 0) > 0 ? 'text-amber-700' : 'text-slate-500'}`}>
                     Net Outstanding
                   </span>
-                  <div className={`text-lg font-black mt-0.5 ${(labFinancials?.outstanding_balance || 0) > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
+                  <div className={`text-lg font-bold font-mono mt-0.5 ${(labFinancials?.outstanding_balance || 0) > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
                     PKR {(labFinancials?.outstanding_balance || 0).toLocaleString()}
                   </div>
                   <span className="text-[10px] text-slate-500">
@@ -403,7 +398,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
                 <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl">
                   <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Invoices Status</span>
-                  <div className="text-lg font-black text-indigo-700 mt-0.5">
+                  <div className="text-lg font-bold font-mono text-indigo-700 mt-0.5">
                     {labFinancials?.unpaid_invoices_count || 0} <span className="text-xs font-semibold">Unpaid</span>
                   </div>
                   <span className="text-[10px] text-indigo-600">Of {labFinancials?.invoices_count || 0} total invoices</span>
@@ -473,7 +468,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                           <th className="py-2.5 px-2.5">Description</th>
                           <th className="py-2.5 px-2.5 text-right">Debit (PKR)</th>
                           <th className="py-2.5 px-2.5 text-right">Credit (PKR)</th>
-                          <th className="py-2.5 px-3 text-right font-black">Balance (PKR)</th>
+                          <th className="py-2.5 px-3 text-right font-bold">Balance (PKR)</th>
                           <th className="py-2.5 px-2 text-center">Proof</th>
                           <th className="py-2.5 px-2 text-center">Voucher</th>
                         </tr>
@@ -504,7 +499,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                               <td className="py-2.5 px-2.5 text-slate-700 max-w-[200px] truncate">{entry.description}</td>
                               <td className="py-2.5 px-2.5 text-right font-bold text-indigo-600 whitespace-nowrap">{entry.debit > 0 ? `PKR ${(entry.debit || 0).toLocaleString()}` : '—'}</td>
                               <td className="py-2.5 px-2.5 text-right font-bold text-emerald-600 whitespace-nowrap">{entry.credit > 0 ? `PKR ${(entry.credit || 0).toLocaleString()}` : '—'}</td>
-                              <td className={`py-2.5 px-3 text-right font-black whitespace-nowrap ${entry.running_balance > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>
+                              <td className={`py-2.5 px-3 text-right font-bold font-mono whitespace-nowrap ${entry.running_balance > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>
                                 PKR {(entry.running_balance || 0).toLocaleString()}
                               </td>
                               <td className="py-2.5 px-2 text-center whitespace-nowrap">
@@ -731,7 +726,13 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <span className="text-xs text-rose-600 font-semibold">Danger Zone</span>
                 <button
                   onClick={() => setDeleteModalOpen(true)}
-                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                  disabled={labCases.length > 0}
+                  title={
+                    labCases.length > 0
+                      ? `This clinic has ${labCases.length} case${labCases.length === 1 ? '' : 's'} — resolve or reassign them before deleting`
+                      : 'Delete this clinic record'
+                  }
+                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" /> Delete Clinic Record
                 </button>
@@ -741,7 +742,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
           {activeTab === 'contacts' && <LabContactsManager labId={lab.id} />}
           {activeTab === 'pricing' && <LabPricingManager labId={lab.id} />}
-          {activeTab === 'reviews' && <LabReviewsManager labId={lab.id} />}
         </div>
       </div>
 
@@ -841,8 +841,13 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               <h3 className="font-bold text-base text-slate-900">Type DELETE to Confirm</h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              This action cannot be undone. All associated clinic contacts, custom pricing overrides, and ratings will be permanently removed.
+              This action cannot be undone. All associated clinic contacts and custom pricing overrides will be permanently removed.
             </p>
+            {labCases.length > 0 && (
+              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2.5 leading-relaxed">
+                This clinic still has <strong>{labCases.length}</strong> linked case{labCases.length === 1 ? '' : 's'} — deleting is blocked to protect case history. Resolve or reassign the cases first.
+              </p>
+            )}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Type <span className="text-rose-600 font-mono">DELETE</span> below:
