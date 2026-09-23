@@ -4,6 +4,40 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.7.0] — 2026-09-23
+
+### Added
+- **Demo-user purge migration (008)** — installs that still carried the old
+  seeded demo accounts (`admin`, `billing`, `hamza`, …) are cleaned at first
+  launch of this version. Fresh installs were already clean. New users created
+  in Settings no longer default to the purgeable `@dentalsolutions.pk` emails.
+- **QC correction flow UI** — inspection rows in Case Detail can be amended
+  via the domain's `correct` action; amended rows are badged, corrections are
+  audit-kept, and the UNIQUE dedupe still blocks double-posting.
+- **Enhanced date-range picker** (`DatePickerRange`) — calendar popup with
+  month/year navigation, quick ranges, manual entry, and clear. Wired into
+  Payments & Transactions (defaults to today), Invoices & Receivables (all
+  time), Analytics, and the General Ledger.
+
+### Changed
+- **Billing integrity** — Void Invoice now refuses while active payments
+  exist, reverses the issuance journal, and writes an `INVOICE_VOIDED` audit
+  event. The transaction register's silent-delete path was removed; reversal
+  with compensating journal is the only removal path. Payment-proof uploads
+  record real file size, type, and operator.
+- **Invoice voucher ported to the print engine** — live paper preview,
+  section toggles, payment-history section, teeth on line items, and
+  blank-safe branding on every print surface (no fabricated lab identity).
+- **Interface polish** — single-accent chrome (header, sidebar, dashboard
+  hero as an editorial header), fill-width equal tabs in Billing, shared
+  StatCard across billing tabs, honest identity card in Settings, and the
+  demo-reset control removed from production.
+- **Bundle** — duplicate `build:` key in vite config fixed; view modules are
+  lazy-loaded (eager bundle 1604 KB → ~252 KB; no chunk warnings).
+
+### Removed- Sidebar "Log New Case" and dashboard hero "New Dental Case" duplicates —
+  the header-area dashboard module is the single case-entry point.
+
 ## [2.6.0] — 2026-09-23
 
 ### Added

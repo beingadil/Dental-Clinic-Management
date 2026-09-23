@@ -52,7 +52,29 @@ const mean = (xs: number[]): number | null =>
   xs.length === 0 ? null : Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10;
 
 export function computeAnalytics(): AnalyticsBundle {
+  return computeAnalyticsForPeriod(null, null);
+}
+
+/**
+ * Period-bounded analytics. `from`/`to` are inclusive YYYY-MM-DD bounds on the
+ * EVENT that each metric measures — invoice creation for revenue, delivery
+ * (status-history timestamp) for turnaround, payment date for behavior.
+ * `null, null` = all time (identical to `computeAnalytics()`).
+ */
+export function computeAnalyticsForPeriod(from: string | null, to: string | null): AnalyticsBundle {
   const db = getDatabase();
+  // Date filters compose as SQL WHERE fragments so aggregation stays in SQLite.
+  const invoiceWhere: string[] = [];
+  const invoiceParams: string[] = [];
+  if (from) { invoiceWhere.push('i.created_at >= ?'); invoiceParams.push(from); }
+  if (to) { invoiceWhere.push("substr(i.created_at, 1, 10) <= ?"); invoiceParams.push(to); }
+  const invoiceWhereSql = invoiceWhere.length ? `WHERE ${invoiceWhere.join(' AND ')}` : '';
+
+  const caseWhere: string[] = [];
+  const caseParams: string[] = [];
+  if (from) { caseWhere.push('h.timestamp >= ?'); caseParams.push(from); }
+  if (to) { caseWhere.push("substr(h.timestamp, 1, 10) <= ?"); caseParams.push(to); }
+  const caseWhereSql = caseWhere.length ? `AND ${caseWhere.join(' AND ')}` : '';
 
   // ---- Turnaround per priority (delivery vs. created / SLA due date) ----
   const delivered = db.all<{ priority: string; created_at: string; delivery_date: string | null; first_delivery: string | null }>(`
@@ -69,6 +91,9 @@ export function computeAnalytics(): AnalyticsBundle {
   for (const r of delivered) {
     const p: PriorityLevel = (PRIORITY_ORDER as string[]).includes(r.priority) ? (r.priority as PriorityLevel) : 'normal';
     if (!r.first_delivery) continue;
+    const deliveryDay = r.first_delivery.slice(0, 10);
+    if (from && deliveryDay < from) continue;
+    if (to && deliveryDay > to) continue;
     const bucket = byPriority.get(p) ?? { days: [], onTime: [] };
     const days = Math.max(0, daysBetween(r.created_at, r.first_delivery));
     // On-time = delivered by the case's promised date, or by its SLA date when
@@ -107,7 +132,11 @@ export function computeAnalytics(): AnalyticsBundle {
   );
   const caseRevenue = new Map(
     db.all<{ case_id: string; amt: number }>(
-      `SELECT case_id, SUM(final_amount) AS amt FROM invoices WHERE case_id IS NOT NULL GROUP BY case_id`
+      `SELECT i.case_id AS case_id, SUM(i.final_amount) AS amt
+       FROM invoices i
+       ${invoiceWhereSql ? invoiceWhereSql + ' AND' : 'WHERE'} i.case_id IS NOT NULL
+       GROUP BY i.case_id`,
+      invoiceParams
     ).map((r) => [r.case_id, r.amt])
   );
   const byMaterial = new Map<string, { cases: number; revenue: number }>();
@@ -125,7 +154,10 @@ export function computeAnalytics(): AnalyticsBundle {
   const labAgg = db.all<{ lab_id: string; lab_name: string; invoices: number; billed: number; collected: number }>(
     `SELECT lab_id, MAX(lab_name) AS lab_name, COUNT(*) AS invoices,
             SUM(final_amount) AS billed, SUM(amount_paid) AS collected
-     FROM invoices GROUP BY lab_id`
+     FROM invoices i
+     ${invoiceWhereSql}
+     GROUP BY lab_id`,
+    invoiceParams
   );
   const invoiceCreated = new Map(
     db.all<{ id: string; created_at: string }>(`SELECT id, created_at FROM invoices WHERE created_at IS NOT NULL`)
@@ -137,6 +169,8 @@ export function computeAnalytics(): AnalyticsBundle {
   )) {
     const created = p.invoice_id ? invoiceCreated.get(p.invoice_id) : undefined;
     if (!p.lab_id || !created) continue;
+    if (from && p.payment_date.slice(0, 10) < from) continue;
+    if (to && p.payment_date.slice(0, 10) > to) continue;
     const list = payDays.get(p.lab_id) ?? [];
     list.push(Math.max(0, daysBetween(created, p.payment_date)));
     payDays.set(p.lab_id, list);

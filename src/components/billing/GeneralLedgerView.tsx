@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { LedgerEntry, DentalLab } from '../../types';
+import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { 
   Search, 
   Calendar, 
@@ -74,6 +75,39 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         (lab.code && lab.code.toLowerCase().includes(q))
     );
   }, [labs, clinicSearchText]);
+
+  // Quick-range helpers for the shared DatePickerRange
+  const mondayThisWeek = () => {
+    const now = new Date();
+    const dow = now.getDay() || 7;
+    const mon = new Date(now);
+    mon.setDate(now.getDate() - (dow - 1));
+    return mon.toISOString().slice(0, 10);
+  };
+  const firstOfMonth = () => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10);
+  };
+  const endOfMonth = () => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().slice(0, 10);
+  };
+  const firstOfLastMonth = () => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth() - 1, 1).toISOString().slice(0, 10);
+  };
+  const endOfLastMonth = () => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), 0).toISOString().slice(0, 10);
+  };
+  const firstOfYear = () => {
+    const n = new Date();
+    return new Date(n.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  };
+  const endOfYear = () => {
+    const n = new Date();
+    return new Date(n.getFullYear(), 11, 31).toISOString().slice(0, 10);
+  };
 
   // Quick date presets
   const applyDatePreset = (preset: 'all' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year') => {
@@ -534,38 +568,30 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
             </div>
           </div>
 
-          {/* Enhanced Datepicker (Col 4) */}
+          {/* Enhanced Datepicker (Col 4) — shared calendar picker */}
           <div className="lg:col-span-4">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-blue-600" />
               Date Range
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="relative">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => {
-                    setStartDate(e.target.value);
-                    setActiveDatePreset('custom');
-                  }}
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
-                  title="From Date"
-                />
-              </div>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value);
-                    setActiveDatePreset('custom');
-                  }}
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
-                  title="To Date"
-                />
-              </div>
-            </div>
+            <DatePickerRange
+              from={startDate}
+              to={endDate}
+              className="w-full [&>button]:w-full [&>button]:justify-start"
+              quickRanges={[
+                { label: 'All Time', from: '', to: '' },
+                { label: 'Today', from: todayISO(), to: todayISO() },
+                { label: 'This Week', from: mondayThisWeek(), to: todayISO() },
+                { label: 'This Month', from: firstOfMonth(), to: endOfMonth() },
+                { label: 'Last Month', from: firstOfLastMonth(), to: endOfLastMonth() },
+                { label: 'This Year', from: firstOfYear(), to: endOfYear() },
+              ]}
+              onChange={(f, t) => {
+                setStartDate(f);
+                setEndDate(t);
+                setActiveDatePreset('custom');
+              }}
+            />
           </div>
 
           {/* Preview Button (Col 2) */}

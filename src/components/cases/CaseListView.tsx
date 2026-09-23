@@ -28,8 +28,36 @@ import {
   Printer,
   CheckSquare,
   Receipt,
-  Pencil
+  Pencil,
+  ShieldCheck
 } from 'lucide-react';
+
+/** Compact QC state chip for kanban cards — shows why the ready/delivered gate may refuse. */
+function QcChip({ caseId, status, getQcState }: { caseId: string; status: CaseStatus; getQcState: (id: string) => { gate_open: boolean; last_result?: string; passed: boolean } }) {
+  if (status === 'ready' || status === 'delivered') {
+    return (
+      <span title="QC passed" className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 ml-1">
+        <ShieldCheck className="w-2.5 h-2.5" />QC
+      </span>
+    );
+  }
+  if (status === 'qc') {
+    const st = getQcState(caseId);
+    if (st.gate_open) {
+      return (
+        <span title="QC passed — may advance" className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 ml-1">
+          <ShieldCheck className="w-2.5 h-2.5" />QC OK
+        </span>
+      );
+    }
+    return (
+      <span title={st.last_result === 'fail' ? 'QC failed — must pass inspection to advance' : 'Awaiting QC inspection'} className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 ml-1">
+        <ShieldCheck className="w-2.5 h-2.5" />{st.last_result === 'fail' ? 'QC FAIL' : 'QC PENDING'}
+      </span>
+    );
+  }
+  return null;
+}
 
 const KANBAN_STAGES: { id: CaseStatus; title: string; color: string; badgeBg: string; headerBg: string }[] = [
   { id: 'received', title: 'Received', color: 'bg-slate-500', badgeBg: 'bg-slate-100 text-slate-700', headerBg: 'border-slate-200 bg-slate-50' },
@@ -41,7 +69,7 @@ const KANBAN_STAGES: { id: CaseStatus; title: string; color: string; badgeBg: st
 ];
 
 export const CaseListView: React.FC = () => {
-  const { cases, labs, caseTypes, searchTerm, setSearchTerm, updateCase, brandingSettings } = useApp();
+  const { cases, labs, caseTypes, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, getQcState } = useApp();
 
   // State (Default to Table View)
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>(() => {
@@ -84,9 +112,6 @@ export const CaseListView: React.FC = () => {
   const [dueSoonOnly, setDueSoonOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'delivery_date' | 'priority' | 'created_at'>('delivery_date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-
-  // Today baseline date
-  const todayStr = '2026-08-02';
 
   // Helper for 24-Hour Visual Warning System
   const checkCaseWarning = (c: DentalCase) => {
@@ -413,7 +438,7 @@ export const CaseListView: React.FC = () => {
                 onChange={(e) => setDueSoonOnly(e.target.checked)}
                 className="rounded text-rose-600 focus:ring-rose-500"
               />
-              <Clock className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
+              <Clock className="w-3.5 h-3.5 text-rose-600" />
               <span>Due Within {brandingSettings?.warningThresholdHours || 24}h ({warningCasesCount})</span>
             </label>
 
@@ -430,15 +455,6 @@ export const CaseListView: React.FC = () => {
                   : 'Select All Filtered'}
               </span>
             </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 font-medium text-[11px] hidden sm:inline">
-              Tip: Select cases using checkboxes for batch printing
-            </span>
-            <span className="text-slate-500">
-              Showing <strong className="text-slate-900">{filteredCases.length}</strong> of {cases.length} cases
-            </span>
           </div>
         </div>
       </div>
@@ -579,7 +595,7 @@ export const CaseListView: React.FC = () => {
                         >
                           {/* Optional Solid Top Banner */}
                           {isWarning && styleMode === 'solid' && (
-                            <div className="bg-rose-600 text-white text-[10px] font-black px-3 py-1 rounded-t-xl -mx-4 -mt-4 mb-2.5 flex items-center justify-between shadow-xs">
+                            <div className="bg-rose-600 text-white text-[10px] font-bold px-3 py-1 rounded-t-xl -mx-4 -mt-4 mb-2.5 flex items-center justify-between shadow-xs">
                               <span className="flex items-center gap-1 uppercase">
                                 <AlertTriangle className="w-3 h-3 animate-bounce" />
                                 DUE WITHIN {brandingSettings?.warningThresholdHours || 24}H
@@ -608,7 +624,7 @@ export const CaseListView: React.FC = () => {
                               <span className="font-extrabold text-xs text-slate-900 tracking-tight">{c.case_number}</span>
                               
                               {isWarning && (
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white uppercase tracking-wider animate-pulse flex items-center gap-1">
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-600 text-white uppercase tracking-wider animate-pulse flex items-center gap-1">
                                   <Clock className="w-2.5 h-2.5" />
                                   {isOverdue ? 'OVERDUE' : `<${brandingSettings?.warningThresholdHours || 24}H`}
                                 </span>
@@ -656,6 +672,7 @@ export const CaseListView: React.FC = () => {
                             <div className="flex items-center gap-1 text-slate-500">
                               <Calendar className="w-3 h-3 text-slate-400" />
                               <span className={isOverdue ? 'text-amber-700 font-bold' : ''}>{c.delivery_date}</span>
+                              <QcChip caseId={c.id} status={c.status} getQcState={getQcState} />
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -667,6 +684,9 @@ export const CaseListView: React.FC = () => {
                                   e.stopPropagation();
                                   updateCase(c.id, { status: e.target.value as CaseStatus });
                                 }}
+                                title={c.status === 'qc' && !getQcState(c.id).gate_open
+                                  ? 'QC pending — the gate will refuse ready/delivered until inspection passes'
+                                  : 'Change stage'}
                                 className="text-[10px] bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-medium text-slate-700 focus:outline-none"
                               >
                                 <option value="received">Recv</option>
@@ -784,7 +804,7 @@ export const CaseListView: React.FC = () => {
                           <div className="flex items-center gap-1.5">
                             <span className="tracking-tight">{c.case_number}</span>
                             {isWarning && (
-                              <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[9px] font-black rounded-full uppercase tracking-wider animate-pulse">
+                              <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[9px] font-bold rounded-full uppercase tracking-wider animate-pulse">
                                 {isOverdue ? 'OVERDUE' : `<${brandingSettings?.warningThresholdHours || 24}H`}
                               </span>
                             )}

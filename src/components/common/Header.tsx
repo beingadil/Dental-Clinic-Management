@@ -4,7 +4,6 @@ import {
   Bell, 
   Search, 
   Menu, 
-  PlusCircle, 
   User, 
   LogOut, 
   CheckCheck, 
@@ -15,7 +14,6 @@ import {
   Building2,
   Receipt,
   ChevronRight,
-  Sparkles,
   UserCheck,
   Stethoscope,
   Hash,
@@ -26,10 +24,11 @@ import {
 import { DentalCase } from '../../types';
 
 interface HeaderProps {
-  onOpenNewCaseModal: () => void;
+  /** Reserved for future global actions; the header intentionally hosts no case-creation entry. */
+  onOpenNewCaseModal?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
+export const Header: React.FC<HeaderProps> = () => {
   const { 
     user, 
     logout, 
@@ -59,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
   const userMenuContainerRef = useRef<HTMLDivElement>(null);
 
   const getUserInitials = (name?: string) => {
-    if (!name) return 'AD';
+    if (!name) return '?';
     const parts = name.trim().split(/\s+/);
     if (parts.length >= 2) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -96,6 +95,25 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
   ).slice(0, 3) : [];
 
   const totalResultsCount = matchedCases.length + matchedLabs.length + matchedInvoices.length;
+
+  // Search suggestions derived from the operator's real data — never hardcoded names.
+  const quickSuggestions = React.useMemo(() => {
+    const urgentCount = cases.filter((c) => c.priority === 'urgent').length;
+    const sugg: string[] = [];
+    if (urgentCount > 0) sugg.push('Urgent Priority');
+    const doctors = Array.from(new Set(cases.map((c) => c.doctor_name).filter(Boolean)))
+      .slice(0, 2);
+    sugg.push(...doctors as string[]);
+    const materials = Array.from(new Set(cases.map((c) => c.case_type_name).filter(Boolean)))
+      .slice(0, 2);
+    sugg.push(...materials as string[]);
+    const latestCase = cases
+      .map((c) => c.case_number)
+      .sort()
+      .pop();
+    if (latestCase) sugg.push(latestCase);
+    return Array.from(new Set(sugg)).slice(0, 6);
+  }, [cases]);
 
   // Determine which specific field matched for high-clarity user feedback
   const getCaseMatchBadge = (c: DentalCase) => {
@@ -177,7 +195,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
         <div className="flex items-center gap-3 lg:hidden">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            className="w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 cursor-pointer"
             title="Toggle Navigation"
             aria-label="Toggle Navigation"
           >
@@ -195,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
                 className="w-8 h-8 rounded-xl object-contain bg-slate-100 p-0.5 border border-slate-200"
               />
             ) : (
-              <div className="w-8 h-8 rounded-xl bg-slate-950 text-indigo-400 font-bold flex items-center justify-center text-xs">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
                 {brandingSettings.appName ? brandingSettings.appName.substring(0, 2).toUpperCase() : 'DS'}
               </div>
             )}
@@ -221,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
             }}
             onKeyDown={handleSearchKeyDown}
             placeholder="Search cases by Patient Name, Case ID (e.g. DS-0001), or Doctor Name..."
-            className="w-full h-10 pl-10 pr-14 text-xs md:text-sm bg-slate-50/80 hover:bg-slate-100/70 focus:bg-white border border-slate-200/90 focus:border-indigo-600 rounded-xl focus:outline-none focus:ring-3 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400 font-medium text-slate-900 shadow-2xs"
+            className="w-full h-10 pl-10 pr-14 text-xs md:text-sm bg-slate-50/80 hover:bg-slate-100/70 focus:bg-white border border-slate-200/90 focus:border-indigo-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/15 transition-all placeholder:text-slate-400 font-medium text-slate-900 shadow-2xs"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
             {searchTerm ? (
@@ -250,7 +268,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
           <div className="absolute left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-3 z-50 max-h-[520px] overflow-y-auto space-y-3">
             {/* Header info bar */}
             <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Search className="w-3.5 h-3.5 text-slate-500" />
                 {cleanTerm ? `Search Results (${totalResultsCount})` : 'Quick Case Lookup'}
               </span>
@@ -259,12 +277,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
               </span>
             </div>
 
-            {/* If no search term entered yet: Show Suggested Quick Search terms */}
+            {/* If no search term entered yet: suggest real entries from the operator's own data */}
             {!cleanTerm && (
               <div className="p-4 space-y-3">
                 <div className="text-xs font-semibold text-slate-500">Quick Filters & Popular Searches:</div>
                 <div className="flex flex-wrap gap-2">
-                  {['Urgent Priority', 'Dr. Tariq', 'Dr. Imran', 'Fatima', 'DS-0001', 'Zirconia', 'Apex Dental'].map((tag) => (
+                  {quickSuggestions.map((tag) => (
                     <button
                       key={tag}
                       onClick={() => {
@@ -325,8 +343,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
                 {/* 1. DENTAL CASES (Primary focus) */}
                 {matchedCases.length > 0 && (
                   <div>
-                    <div className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
-                      <span>DENTAL CASES ({matchedCases.length})</span>
+                    <div className="px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                      <span>Dental cases ({matchedCases.length})</span>
                       <span className="text-[10px] font-normal text-indigo-600">Enter to open • Click card</span>
                     </div>
 
@@ -406,8 +424,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
                 {/* 2. DENTAL CLINICS */}
                 {matchedLabs.length > 0 && (
                   <div className="pt-2 border-t border-slate-100">
-                    <div className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
-                      DENTAL CLINICS ({matchedLabs.length})
+                    <div className="px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      Dental clinics ({matchedLabs.length})
                     </div>
                     <div className="space-y-1">
                       {matchedLabs.map((l) => (
@@ -438,8 +456,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
                 {/* 3. INVOICES */}
                 {matchedInvoices.length > 0 && (
                   <div className="pt-2 border-t border-slate-100">
-                    <div className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
-                      INVOICES & BILLING ({matchedInvoices.length})
+                    <div className="px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      Invoices &amp; billing ({matchedInvoices.length})
                     </div>
                     <div className="space-y-1">
                       {matchedInvoices.map((inv) => (
@@ -495,15 +513,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
       </div>
 
       {/* ZONE C: Right Action Area - Unified Coherent Action Group */}
-      <div className="flex items-center gap-5 shrink-0">
-        {/* Quick New Case Action */}
-        <button
-          onClick={onOpenNewCaseModal}
-          className="h-11 px-4 sm:px-5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs md:text-sm font-semibold rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-2"
-        >
-          <PlusCircle className="w-4 h-4 text-white shrink-0" />
-          <span>New Case</span>
-        </button>
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
 
         {/* Notification Bell Dropdown */}
         <div ref={notifContainerRef} className="relative shrink-0">
@@ -512,12 +522,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
               setShowNotifMenu(!showNotifMenu);
               setShowUserMenu(false);
             }}
-            className="relative w-11 h-11 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
+            className="relative w-11 h-11 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 cursor-pointer shrink-0"
             title="Notifications"
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-2 right-2 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full animate-pulse pointer-events-none">
+              <span className="absolute top-2 right-2 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full pointer-events-none">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -561,13 +571,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
                       }}
                       className="p-3.5 hover:bg-slate-50 cursor-pointer transition-colors flex gap-3 items-start"
                     >
-                      <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
+                      <div className="p-2 rounded-lg bg-slate-100 text-slate-600 shrink-0">
                         {n.type === 'overdue_case' ? (
-                          <AlertTriangle className="w-4 h-4 text-amber-500" />
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
                         ) : n.type === 'escalation' ? (
-                          <ShieldCheck className="w-4 h-4 text-rose-500" />
+                          <ShieldCheck className="w-4 h-4 text-rose-600" />
                         ) : (
-                          <FileText className="w-4 h-4 text-indigo-500" />
+                          <FileText className="w-4 h-4 text-slate-500" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -602,17 +612,17 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
               setShowUserMenu(!showUserMenu);
               setShowNotifMenu(false);
             }}
-            className="h-11 flex items-center gap-2.5 p-1 pr-2.5 hover:bg-slate-100 rounded-xl transition-colors text-left cursor-pointer shrink-0"
+            className="h-11 flex items-center gap-2.5 p-1 pr-2.5 hover:bg-slate-100 rounded-xl transition-colors active:scale-[0.98] text-left cursor-pointer shrink-0"
           >
             <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs shadow-inner border border-indigo-200/60 shrink-0">
               {getUserInitials(user?.name)}
             </div>
             <div className="hidden md:flex flex-col justify-center text-left">
               <span className="font-semibold text-xs text-slate-900 leading-tight truncate max-w-[150px]">
-                {user?.name || 'Adil (Super Admin)'}
+                {user?.name || 'My Account'}
               </span>
               <span className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5 truncate max-w-[150px]">
-                {user?.role || 'Super Admin'}
+                {user?.role}
               </span>
             </div>
           </button>
@@ -620,10 +630,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNewCaseModal }) => {
           {showUserMenu && (
             <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50">
               <div className="px-4 py-2 border-b border-slate-100">
-                <div className="font-semibold text-sm text-slate-900">{user?.name || 'Adil (Super Admin)'}</div>
-                <div className="text-xs text-slate-500">{user?.email || 'admin@dentalsolutions.pk'}</div>
+                <div className="font-semibold text-sm text-slate-900">{user?.name || 'My Account'}</div>
+                <div className="text-xs text-slate-500">{user?.email}</div>
                 <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-600 rounded">
-                  {user?.role || 'Super Admin'}
+                  {user?.role}
                 </span>
               </div>
               <button

@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PaymentRecord, AdvancePayment, AccountAdjustment, Invoice, PaymentMethod } from '../../types';
+import { StatCard } from '../common/ui';
+import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { 
   DollarSign, 
   Wallet, 
@@ -8,7 +10,6 @@ import {
   Search, 
   Filter, 
   Printer, 
-  Trash2, 
   Image as ImageIcon, 
   Building2, 
   Calendar, 
@@ -81,11 +82,8 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
 }) => {
   const { 
     allPayments, 
-    deletePayment, 
     advancePayments, 
-    deleteAdvancePayment, 
     accountAdjustments, 
-    deleteAccountAdjustment, 
     invoices, 
     labs 
   } = useApp();
@@ -94,6 +92,11 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
   const [selectedLabId, setSelectedLabId] = useState<string>('all');
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  // This tab is the daily working surface: entries made TODAY by default;
+  // the enhanced date-range picker rewinds to any previous day/range.
+  const today = todayISO();
+  const [fromDate, setFromDate] = useState<string>(today);
+  const [toDate, setToDate] = useState<string>(today);
 
   // Map and unify all financial transactions into a single feed
   const unifiedTransactions = useMemo<UnifiedTransaction[]>(() => {
@@ -193,6 +196,11 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
   // Filtered transactions
   const filteredTransactions = useMemo(() => {
     return unifiedTransactions.filter((txn) => {
+      // Date range (YYYY-MM-DD compare works even on 'YYYY-MM-DD HH:mm' values)
+      const day = txn.date.slice(0, 10);
+      if (fromDate && day < fromDate) return false;
+      if (toDate && day > toDate) return false;
+
       // Category filter
       if (categoryFilter !== 'all' && txn.sourceType !== categoryFilter) {
         return false;
@@ -225,7 +233,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
 
       return true;
     });
-  }, [unifiedTransactions, categoryFilter, selectedLabId, methodFilter, searchTerm]);
+  }, [unifiedTransactions, categoryFilter, selectedLabId, methodFilter, searchTerm, fromDate, toDate]);
 
   // Aggregate Metrics for transactions
   const totalCollections = useMemo(() => {
@@ -274,51 +282,39 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
   return (
     <div className="space-y-5">
       
-      {/* KPI Cards Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Total Payments Collected</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <DollarSign className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-slate-900 mt-1">PKR {(totalCollections || 0).toLocaleString()}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">{allPayments.length} direct invoice payments</p>
-        </div>
+      {/* KPI Cards Strip — same StatCard component as the Invoices tab */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total Payments Collected"
+          value={`PKR ${(totalCollections || 0).toLocaleString()}`}
+          subtitle={`${allPayments.length} direct invoice payments`}
+          icon={DollarSign}
+          variant="emerald"
+        />
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Advance Deposits Received</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Wallet className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-indigo-700 mt-1">PKR {(totalAdvanceDeposits || 0).toLocaleString()}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">{advancePayments.length} clinic deposit records</p>
-        </div>
+        <StatCard
+          title="Advance Deposits Received"
+          value={`PKR ${(totalAdvanceDeposits || 0).toLocaleString()}`}
+          subtitle={`${advancePayments.length} clinic deposit records`}
+          icon={Wallet}
+          variant="indigo"
+        />
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Available Advance Credit</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-emerald-600 mt-1">PKR {(totalAdvanceCreditRemaining || 0).toLocaleString()}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Holding in clinic prepaid wallets</p>
-        </div>
+        <StatCard
+          title="Available Advance Credit"
+          value={`PKR ${(totalAdvanceCreditRemaining || 0).toLocaleString()}`}
+          subtitle="Holding in clinic prepaid wallets"
+          icon={CheckCircle2}
+          variant="cyan"
+        />
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Credit Notes & Adjustments</span>
-            <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-              <Percent className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-purple-700 mt-1">PKR {(totalCreditNotes || 0).toLocaleString()}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">{accountAdjustments.length} adjustment records</p>
-        </div>
+        <StatCard
+          title="Credit Notes & Adjustments"
+          value={`PKR ${(totalCreditNotes || 0).toLocaleString()}`}
+          subtitle={`${accountAdjustments.length} adjustment records`}
+          icon={Percent}
+          variant="rose"
+        />
       </div>
 
       {/* Control Strip & Sub-Filters */}
@@ -356,31 +352,16 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
             })}
           </div>
 
-          {/* Quick Action Buttons */}
+          {/* Date Range (defaults to today — rewind to view previous entries) */}
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => onOpenPaymentModal(null, selectedLabId !== 'all' ? selectedLabId : undefined)}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <DollarSign className="w-3.5 h-3.5" />
-              <span>+ Record Payment</span>
-            </button>
-
-            <button
-              onClick={() => onOpenAdvanceModal(selectedLabId !== 'all' ? selectedLabId : undefined)}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>+ Advance Deposit</span>
-            </button>
-
-            <button
-              onClick={() => onOpenAdjustmentModal(selectedLabId !== 'all' ? selectedLabId : undefined)}
-              className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <FileCheck2 className="w-3.5 h-3.5" />
-              <span>+ Adjustment</span>
-            </button>
+            <DatePickerRange
+              from={fromDate}
+              to={toDate}
+              onChange={(f, t) => {
+                setFromDate(f);
+                setToDate(t);
+              }}
+            />
 
             <button
               onClick={handleExportCSV}
@@ -645,7 +626,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                             </button>
                           )}
 
-                          {/* Audit-Compliant Reversal */}
+                          {/* Audit-Compliant Reversal (the only removal path — no silent deletes) */}
                           {!txn.isReversed && onReverseTransaction ? (
                             <button
                               type="button"
@@ -664,28 +645,6 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                               title="Reverse Transaction (Compensating Journal)"
                             >
                               <ArrowLeftRight className="w-3.5 h-3.5" />
-                            </button>
-                          ) : !txn.isReversed ? (
-                            <button
-                              onClick={() => {
-                                if (isPayment) {
-                                  if (confirm(`Void payment ${txn.txnNumber} of PKR ${(txn.amount || 0).toLocaleString()}? This will restore the invoice balance.`)) {
-                                    deletePayment(txn.id);
-                                  }
-                                } else if (isAdvance) {
-                                  if (confirm(`Void advance deposit ${txn.txnNumber} of PKR ${(txn.amount || 0).toLocaleString()} for ${txn.labName}?`)) {
-                                    deleteAdvancePayment(txn.id);
-                                  }
-                                } else if (isAdjustment) {
-                                  if (confirm(`Void adjustment ${txn.txnNumber} of PKR ${(txn.amount || 0).toLocaleString()} for ${txn.labName}?`)) {
-                                    deleteAccountAdjustment(txn.id);
-                                  }
-                                }
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Void / Delete Transaction"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           ) : null}
                         </div>

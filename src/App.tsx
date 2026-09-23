@@ -1,22 +1,48 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
 import { UpdateBanner } from './components/common/UpdateBanner';
 import { Sidebar } from './components/common/Sidebar';
-import { DashboardView } from './components/dashboard/DashboardView';
-import { CaseListView } from './components/cases/CaseListView';
-import { CaseDetailModal } from './components/cases/CaseDetailModal';
-import { LabListView } from './components/labs/LabListView';
-import { BillingView } from './components/billing/BillingView';
-import { AnalyticsView } from './components/analytics/AnalyticsView';
-import { NotificationsView } from './components/notifications/NotificationsView';
-import { SettingsView } from './components/settings/SettingsView';
-import { CatalogView } from './components/catalog/CatalogView';
-import { PrintStudioView } from './components/print/PrintStudioView';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
 import { ConfirmationModal } from './components/common/ConfirmationModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+
+// View modules are code-split: each mounts only when its tab is opened. The
+// app shell (auth, sidebar, header, toasts) stays in the eager chunk so first
+// paint doesn't download every screen. Fallback is an empty block on purpose —
+// chunks are local files and resolve in milliseconds; a spinner here would
+// flash on every tab switch.
+const DashboardView = lazy(() =>
+  import('./components/dashboard/DashboardView').then((m) => ({ default: m.DashboardView }))
+);
+const CaseListView = lazy(() =>
+  import('./components/cases/CaseListView').then((m) => ({ default: m.CaseListView }))
+);
+const CaseDetailModal = lazy(() =>
+  import('./components/cases/CaseDetailModal').then((m) => ({ default: m.CaseDetailModal }))
+);
+const LabListView = lazy(() =>
+  import('./components/labs/LabListView').then((m) => ({ default: m.LabListView }))
+);
+const BillingView = lazy(() =>
+  import('./components/billing/BillingView').then((m) => ({ default: m.BillingView }))
+);
+const AnalyticsView = lazy(() =>
+  import('./components/analytics/AnalyticsView').then((m) => ({ default: m.AnalyticsView }))
+);
+const NotificationsView = lazy(() =>
+  import('./components/notifications/NotificationsView').then((m) => ({ default: m.NotificationsView }))
+);
+const SettingsView = lazy(() =>
+  import('./components/settings/SettingsView').then((m) => ({ default: m.SettingsView }))
+);
+const CatalogView = lazy(() =>
+  import('./components/catalog/CatalogView').then((m) => ({ default: m.CatalogView }))
+);
+const PrintStudioView = lazy(() =>
+  import('./components/print/PrintStudioView').then((m) => ({ default: m.PrintStudioView }))
+);
 
 const MainAppContent: React.FC = () => {
   const { user, currentView, selectedCaseForModal, setSelectedCaseForModal } = useApp();
@@ -49,25 +75,27 @@ const MainAppContent: React.FC = () => {
         <main className="flex-1 p-3 sm:p-5 md:p-8 overflow-y-auto dental-grid-bg">
           <div className="w-full max-w-[1880px] 2xl:max-w-[2100px] mx-auto space-y-6">
             <ErrorBoundary>
-              {currentView === 'dashboard' && (
-                <DashboardView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
-              )}
+              <Suspense fallback={null}>
+                {currentView === 'dashboard' && (
+                  <DashboardView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
+                )}
 
-              {currentView === 'cases' && <CaseListView />}
+                {currentView === 'cases' && <CaseListView />}
 
-              {currentView === 'labs' && <LabListView />}
+                {currentView === 'labs' && <LabListView />}
 
-              {currentView === 'billing' && <BillingView />}
+                {currentView === 'billing' && <BillingView />}
 
-              {currentView === 'catalog' && <CatalogView />}
+                {currentView === 'catalog' && <CatalogView />}
 
-              {currentView === 'print' && <PrintStudioView />}
+                {currentView === 'print' && <PrintStudioView />}
 
-              {currentView === 'analytics' && <AnalyticsView />}
+                {currentView === 'analytics' && <AnalyticsView />}
 
-              {currentView === 'notifications' && <NotificationsView />}
+                {currentView === 'notifications' && <NotificationsView />}
 
-              {currentView === 'settings' && <SettingsView />}
+                {currentView === 'settings' && <SettingsView />}
+              </Suspense>
             </ErrorBoundary>
           </div>
         </main>
@@ -83,9 +111,9 @@ const MainAppContent: React.FC = () => {
       {/* Case Detail Modal triggered from Global Search or Notifications */}
       {selectedCaseForModal && (
         <ErrorBoundary>
-          <CaseDetailModal 
-            initialCase={selectedCaseForModal} 
-            onClose={() => setSelectedCaseForModal(null)} 
+          <CaseDetailModal
+            initialCase={selectedCaseForModal}
+            onClose={() => setSelectedCaseForModal(null)}
           />
         </ErrorBoundary>
       )}

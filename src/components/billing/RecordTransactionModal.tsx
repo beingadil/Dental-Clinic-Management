@@ -47,7 +47,8 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     recordTransactionV2, 
     recordAdvanceDepositV2, 
     issueCreditNoteV2,
-    recordAccountAdjustment
+    recordAccountAdjustment,
+    user
   } = useApp();
 
   const [mode, setMode] = useState<'payment' | 'advance' | 'credit_note' | 'refund'>(
@@ -62,6 +63,8 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const [saveRemainingAsAdvance, setSaveRemainingAsAdvance] = useState<boolean>(true);
   const [proofUrl, setProofUrl] = useState<string>('');
   const [proofName, setProofName] = useState<string>('');
+  const [proofSize, setProofSize] = useState<string>('');
+  const [proofType, setProofType] = useState<string>('');
   const [isVerified, setIsVerified] = useState<boolean>(true);
 
   // Credit Note specific
@@ -176,6 +179,10 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         setProofUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
+      // Honest metadata: record the real size and type, not placeholders.
+      const sizeKb = file.size / 1024;
+      setProofSize(sizeKb >= 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(sizeKb))} KB`);
+      setProofType(file.type);
     }
   };
 
@@ -191,10 +198,10 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       payment_id: '',
       file_name: proofName || 'payment_proof.png',
       file_url: proofUrl,
-      file_type: 'image/png',
-      file_size: '0.5 MB',
+      file_type: proofType || 'image/png',
+      file_size: proofSize || '—',
       uploaded_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      uploaded_by: 'Cashier'
+      uploaded_by: user?.name || 'Staff'
     }] : [];
 
     if (mode === 'payment') {

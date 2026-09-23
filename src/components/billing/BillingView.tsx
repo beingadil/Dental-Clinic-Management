@@ -16,6 +16,7 @@ import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
 import { PageHeader, StatCard, EmptyState, TabsNav, Badge } from '../common/ui';
+import { DatePickerRange } from '../common/DatePickerRange';
 import { 
   DollarSign, 
   Wallet, 
@@ -67,6 +68,9 @@ export const BillingView: React.FC = () => {
   const [clinicFilter, setClinicFilter] = useState<string>('all');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'overdue' | 'paid'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Invoice history window: '' = All Time. Dates compare on the billing day.
+  const [invFromDate, setInvFromDate] = useState<string>('');
+  const [invToDate, setInvToDate] = useState<string>('');
 
   // Finance 2.0 Unified & Inspection Modals
   const [selectedDrawerInvoice, setSelectedDrawerInvoice] = useState<Invoice | null>(null);
@@ -203,6 +207,11 @@ export const BillingView: React.FC = () => {
   // Filtered Invoices
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
+      // Date range on the billing day (created_at is 'YYYY-MM-DD HH:mm')
+      const day = (inv.created_at || '').slice(0, 10);
+      if (invFromDate && (!day || day < invFromDate)) return false;
+      if (invToDate && (!day || day > invToDate)) return false;
+
       // Clinic filter
       if (clinicFilter !== 'all' && inv.lab_id !== clinicFilter) {
         return false;
@@ -239,7 +248,7 @@ export const BillingView: React.FC = () => {
 
       return true;
     });
-  }, [invoices, clinicFilter, invoiceStatusFilter, searchTerm]);
+  }, [invoices, clinicFilter, invoiceStatusFilter, searchTerm, invFromDate, invToDate]);
 
   const toggleSelectAll = () => {
     if (selectedIds.length === filteredInvoices.length) {
@@ -298,9 +307,9 @@ export const BillingView: React.FC = () => {
     if (inv.payment_status === 'paid' || remaining <= 0) {
       return (
         <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-            <span>PAID</span>
+            <span>Paid</span>
           </span>
           <span className="text-[9px] text-slate-400 mt-0.5">Paid in Full</span>
         </div>
@@ -311,11 +320,11 @@ export const BillingView: React.FC = () => {
     if (isOverdue) {
       return (
         <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
             <AlertTriangle className="w-3 h-3 text-rose-600" />
-            <span>OVERDUE</span>
+            <span>Overdue</span>
           </span>
-          <span className="text-[9px] font-extrabold text-rose-600 mt-0.5 whitespace-nowrap">
+          <span className="text-[9px] font-bold text-rose-600 mt-0.5 whitespace-nowrap">
             {diffDays === 1 ? '1 day late' : `${diffDays} days late`}
           </span>
         </div>
@@ -325,9 +334,9 @@ export const BillingView: React.FC = () => {
     if (inv.payment_status === 'partial' || (inv.amount_paid || 0) > 0) {
       return (
         <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
             <Clock className="w-3 h-3 text-blue-600" />
-            <span>PARTIAL</span>
+            <span>Partial</span>
           </span>
           <span className="text-[9px] font-semibold text-blue-600 mt-0.5 whitespace-nowrap">
             PKR {(inv.amount_paid || 0).toLocaleString()} paid
@@ -352,9 +361,9 @@ export const BillingView: React.FC = () => {
 
     return (
       <div className="inline-flex flex-col items-center">
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
           <Clock className="w-3 h-3 text-amber-600" />
-          <span>PENDING</span>
+          <span>Pending</span>
         </span>
         <span className="text-[9px] font-semibold text-amber-700 mt-0.5 whitespace-nowrap">
           {dueSubtext}
@@ -396,10 +405,10 @@ export const BillingView: React.FC = () => {
                   setUnifiedModalMode('refund');
                   setIsUnifiedRecordModalOpen(true);
                 }}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
                 title="Lab holds advance credit for this clinic. Pay refund or apply debit adjustment"
               >
-                <ArrowUpRight className="w-4 h-4 text-slate-300" />
+                <ArrowUpRight className="w-4 h-4 shrink-0" />
                 <span>Pay / Refund Clinic (PKR {(selectedLabSummary.advance_balance || 0).toLocaleString()})</span>
               </button>
             ) : (
@@ -411,13 +420,13 @@ export const BillingView: React.FC = () => {
                   setUnifiedModalMode('payment');
                   setIsUnifiedRecordModalOpen(true);
                 }}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
               >
-                <ArrowDownLeft className="w-4 h-4 text-slate-300" />
+                <ArrowDownLeft className="w-4 h-4 shrink-0" />
                 <span>
                   {selectedLabSummary && (selectedLabSummary.outstanding_balance || 0) > 0
                     ? `Receive Payment (PKR ${(selectedLabSummary.outstanding_balance || 0).toLocaleString()})`
-                    : '+ Receive Payment'}
+                    : 'Receive Payment'}
                 </span>
               </button>
             )}
@@ -430,10 +439,10 @@ export const BillingView: React.FC = () => {
                 setUnifiedModalMode('advance_deposit');
                 setIsUnifiedRecordModalOpen(true);
               }}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
             >
-              <Wallet className="w-4 h-4 text-slate-600" />
-              <span>+ Advance Deposit</span>
+              <Wallet className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Advance Deposit</span>
             </button>
 
             <button
@@ -444,19 +453,19 @@ export const BillingView: React.FC = () => {
                 setUnifiedModalMode('credit_note');
                 setIsUnifiedRecordModalOpen(true);
               }}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
             >
-              <FileCheck2 className="w-4 h-4 text-slate-600" />
-              <span>+ Credit Note / Adjustment</span>
+              <FileCheck2 className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Credit Note / Adjustment</span>
             </button>
 
             {selectedIds.length > 0 && activeTab === 'invoices' && (
               <button
                 type="button"
                 onClick={handleBulkPay}
-                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-slate-300" />
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>Bulk Mark Paid ({selectedIds.length})</span>
               </button>
             )}
@@ -471,7 +480,8 @@ export const BillingView: React.FC = () => {
           setActiveTab(tabId as any);
           setSelectedIds([]);
         }}
-        variant="contained"
+        fit="fill"
+        variant="pills"
         tabs={[
           { id: 'invoices', label: 'Invoices & Receivables', badge: metrics.totalInvoicesCount, icon: FileText },
           { id: 'transactions', label: 'Payments & Transactions', badge: metrics.allTransactionsCount, icon: DollarSign },
@@ -569,14 +579,24 @@ export const BillingView: React.FC = () => {
                 })}
               </div>
 
-              {/* Action: Export CSV */}
-              <button
-                onClick={handleExportInvoicesCSV}
-                className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-500" />
-                <span>Export Invoices CSV</span>
-              </button>
+              {/* Action: Date Range + Export CSV */}
+              <div className="flex items-center gap-2 shrink-0">
+                <DatePickerRange
+                  from={invFromDate}
+                  to={invToDate}
+                  onChange={(f, t) => {
+                    setInvFromDate(f);
+                    setInvToDate(t);
+                  }}
+                />
+                <button
+                  onClick={handleExportInvoicesCSV}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Export Invoices CSV</span>
+                </button>
+              </div>
 
             </div>
 
@@ -612,7 +632,7 @@ export const BillingView: React.FC = () => {
           </div>
 
           {/* Invoices Table */}
-          <div className="glass-panel border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
+          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
             {filteredInvoices.length === 0 ? (
               <div className="p-6">
                 <EmptyState
@@ -739,17 +759,17 @@ export const BillingView: React.FC = () => {
                           </td>
 
                           {/* Total Amount */}
-                          <td className="py-3 px-3 text-right font-bold text-slate-900 whitespace-nowrap">
+                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                             PKR {(inv.final_amount || 0).toLocaleString()}
                           </td>
 
                           {/* Paid Amount */}
-                          <td className="py-3 px-3 text-right font-semibold text-emerald-600 whitespace-nowrap">
+                          <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-600 whitespace-nowrap">
                             PKR {(inv.amount_paid || 0).toLocaleString()}
                           </td>
 
                           {/* Remaining Due */}
-                          <td className={`py-3 px-3 text-right font-bold whitespace-nowrap ${
+                          <td className={`py-3 px-3 text-right font-mono font-bold whitespace-nowrap ${
                             remaining > 0 ? (isOverdue ? 'text-rose-600 font-bold' : 'text-amber-600') : 'text-slate-400'
                           }`}>
                             PKR {(remaining || 0).toLocaleString()}

@@ -696,6 +696,22 @@ export const MIGRATION_007_HIDDEN_SERVICE_ACCOUNT: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 008 — purge demo users
+// Historical builds seeded demo accounts (adil / admin / billing / hamza /
+// Sana, all @dentalsolutions.pk) and the legacy migrator carried them into
+// SQLite on machines that upgraded from the localStorage era. Accounts
+// created by the app itself use @localhost emails, so this purge matches
+// exactly the shipped demo identities — real operator and staff accounts
+// can never match. Fresh installs are already clean (empty seeds).
+export const MIGRATION_008_PURGE_DEMO_USERS: Migration = {
+  version: 8,
+  name: 'purge_demo_users',
+  statements: [
+    `DELETE FROM users WHERE email LIKE '%@dentalsolutions.pk'`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '8')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -704,4 +720,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_005_PRINT_TEMPLATES,
   MIGRATION_006_QC_INSPECTIONS,
   MIGRATION_007_HIDDEN_SERVICE_ACCOUNT,
+  MIGRATION_008_PURGE_DEMO_USERS,
 ];

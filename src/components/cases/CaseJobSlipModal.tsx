@@ -10,7 +10,7 @@ interface CaseJobSlipModalProps {
 }
 
 export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, onClose }) => {
-  const { saveVoucherToSystem } = useApp();
+  const { saveVoucherToSystem, brandingSettings } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSaveAndPrint = (shouldDownloadFile = false) => {
@@ -50,7 +50,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
 <body>
   <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px;">
     <div>
-      <h1>DENTAL SOLUTIONS LAB</h1>
+      <h1>${brandingSettings.appName || 'Dental Lab'}</h1>
       <p style="margin: 4px 0 0 0; color: #4f46e5; font-weight: bold; font-size: 12px;">WORKSTATION JOB SLIP VOUCHER</p>
     </div>
     <div style="text-align: right;">
@@ -69,7 +69,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
     <strong>Instructions:</strong> ${caseData.instructions || 'Standard anatomical contours & high-gloss polish.'}
   </div>
   <div style="margin-top: 30px; font-size: 11px; text-align: center; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-    Dental Solutions Laboratory • Contact: 0333-0473797 • info@dentalsolutions.pk
+    ${brandingSettings.appName || 'Dental Solutions'} Laboratory • Contact: ${brandingSettings.phone || '—'} • ${brandingSettings.email || '—'}
   </div>
 </body>
 </html>`;

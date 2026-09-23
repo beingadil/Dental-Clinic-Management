@@ -10,14 +10,12 @@ import {
   Calendar,
   X,
   ChevronRight,
-  Activity,
   Building2,
   Receipt,
   Sparkles,
   Cpu,
   Truck,
-  Download,
-  FileText
+  Download
 } from 'lucide-react';
 import { DentalCase, DentalLab } from '../../types';
 import { formatQcRate } from '../../services/qcDomain';
@@ -54,6 +52,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const dashboardAnalytics = useMemo(() => computeAnalytics(), [cases, invoices]);
   const [selectedCaseModal, setSelectedCaseModal] = useState<DentalCase | null>(null);
+  /** Shade picked in the dashboard shade guide → pre-fills the new-case wizard. */
+  const [pendingShade, setPendingShade] = useState<string | null>(null);
+  const [isNewCaseOpen, setIsNewCaseOpen] = useState(false);
 
   // Modal states
   const [showShadeGuide, setShowShadeGuide] = useState(false);
@@ -74,23 +75,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
   const pendingBillingAmount = pendingBillingInvoices.reduce((sum, inv) => sum + ((inv.final_amount || 0) - (inv.amount_paid || 0)), 0);
   const activeCases = cases.filter(c => c.status !== 'delivered' && c.status !== 'cancelled');
 
-  // Dynamic Material Statistics (real data only — zeros when no cases exist)
+  /* Material share from the SQL analytics bundle (charted case materials ×
+     revenue) — one source of truth, shared with Analytics. Percentages are
+     share of BILLED REVENUE, not guessed substrings of case names. */
   const materialStats = useMemo(() => {
-    const total = cases.length;
-    const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
-    const zirconiaCount = cases.filter(c => (c.material || '').toLowerCase().includes('zirconia') || (c.case_type_name || '').toLowerCase().includes('zirconia')).length;
-    const emaxCount = cases.filter(c => (c.material || '').toLowerCase().includes('e-max') || (c.case_type_name || '').toLowerCase().includes('e-max') || (c.case_type_name || '').toLowerCase().includes('veneer')).length;
-    const implantCount = cases.filter(c => (c.material || '').toLowerCase().includes('titanium') || (c.case_type_name || '').toLowerCase().includes('implant')).length;
-    const alignerCount = cases.filter(c => (c.case_type_name || '').toLowerCase().includes('aligner') || (c.material || '').toLowerCase().includes('aligner')).length;
-
-    return {
-      total,
-      zirconia: pct(zirconiaCount),
-      emax: pct(emaxCount),
-      implants: pct(implantCount),
-      aligners: pct(alignerCount),
+    const rows = dashboardAnalytics.restorationRevenue.filter((r) => r.revenue > 0);
+    const totalRev = rows.reduce((s, r) => s + r.revenue, 0);
+    const pick = (match: (m: string) => boolean) => {
+      const hit = rows.filter((r) => match(r.material.toLowerCase()));
+      const rev = hit.reduce((s, r) => s + r.revenue, 0);
+      return totalRev > 0 ? Math.round((rev / totalRev) * 100) : 0;
     };
-  }, [cases]);
+    const zirconia = pick((m) => m.includes('zirconia'));
+    const emax = pick((m) => m.includes('e.max') || m.includes('e-max') || m.includes('lithium') || m.includes('veneer') || m.includes('empress'));
+    const implants = pick((m) => m.includes('implant') || m.includes('titanium') || m.includes('abutment'));
+    const aligners = pick((m) => m.includes('aligner') || m.includes('ortho'));
+    const other = Math.max(0, 100 - zirconia - emax - implants - aligners);
+    return { total: rows.length, zirconia, emax, implants, aligners, other };
+  }, [dashboardAnalytics.restorationRevenue]);
 
   // Real chairside queue: active cases sorted by delivery date (no fabricated times)
   const chairsideToday = useMemo(() =>
@@ -144,48 +146,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
       {/* Auto-update status pill (checks on mount, silent when up to date) */}
       <UpdateStatusPill />
 
-      {/* BEGIN: Hero Operations Banner */}
-      <section 
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-6 sm:p-8 shadow-xl"
+      {/* BEGIN: Hero Operations Banner — light editorial header, not a boxed
+          banner: hairline dividers, asymmetric whitespace, real data inline. */}
+      <section
+        className="border-b border-slate-200/80 pb-6"
         data-purpose="hero-operations-banner"
       >
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-200 border border-blue-400/30 backdrop-blur-md">
-                <Activity className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-                <span>Live Lab Operations Pulse</span>
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                <span className="relative flex w-1.5 h-1.5" aria-hidden="true">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+                <span>Operations live</span>
               </span>
-              <span className="text-xs text-slate-300 font-medium">{currentFormattedDate}</span>
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span className="text-[11px] text-slate-400 font-medium">{currentFormattedDate}</span>
             </div>
-            
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              Welcome back, {user?.name || 'Dr.'}!
+
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+              Welcome back, {user?.name || 'there'}
             </h1>
+
+            <p className="text-xs text-slate-500 mt-1">
+              <span className="font-semibold text-slate-700 tabular-nums">{overdueCount}</span>
+              {' '}{overdueCount === 1 ? 'case needs' : 'cases need'} attention
+              <span className="text-slate-300 mx-1.5" aria-hidden="true">·</span>
+              <span className="font-semibold text-slate-700 tabular-nums">{dueTodayCount}</span>
+              {' '}due for delivery today
+            </p>
           </div>
 
-          {/* Quick Workstation Actions */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button 
-              onClick={onOpenNewCaseModal}
-              className="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 transition-all duration-200 flex items-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Dental Case</span>
-            </button>
-            <button 
+          {/* Quick Workstation Action */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
               onClick={() => setCurrentView('cases')}
-              className="px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/20 backdrop-blur-md transition-all duration-200 flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer"
             >
-              <FolderKanban className="w-4 h-4 text-blue-300" />
+              <FolderKanban className="w-4 h-4 text-slate-300" />
               <span>Case Workstation</span>
             </button>
           </div>
         </div>
-
-        {/* Ambient background decoration */}
-        <div className="absolute -right-16 -top-16 w-80 h-80 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute right-1/3 -bottom-20 w-64 h-64 rounded-full bg-indigo-500/10 blur-2xl pointer-events-none" />
       </section>
       {/* END: Hero Operations Banner */}
 
@@ -198,13 +202,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-rose-800">
-                  Urgent Action Required: {overdueCount} Cases Exceeding SLA
+                <h4 className="text-xs font-bold text-rose-800">
+                  {overdueCount} {overdueCount === 1 ? 'case is' : 'cases are'} past the promised delivery date
                 </h4>
-                <span className="text-[10px] bg-rose-200 text-rose-900 font-bold px-2 py-0.5 rounded-full">High Priority</span>
               </div>
               <p className="text-xs text-rose-700 mt-1">
-                Remake cases and expedited units require sintering acceleration and shade clearance before courier dispatch.
+                These cases have passed their promised delivery date and are still in production — review and update their status or delivery schedule.
               </p>
               <div className="flex items-center gap-3 mt-2.5">
                 <button 
@@ -309,8 +312,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
             </p>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>Current Month</span>
-            <span className="font-bold text-slate-700">PKR {totalRevenue.toLocaleString()} Paid</span>
+            <span>Total Collected</span>
+            <span className="font-bold text-slate-700">PKR {totalRevenue.toLocaleString()}</span>
           </div>
         </div>
 
@@ -360,7 +363,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
             <p className="text-[11px] text-slate-400 mt-1 font-medium">Cases with delivery due today</p>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>Delivery Calendar</span>
+            <span>{dueThisWeekCount} more due within 7 days</span>
             <span className="font-bold text-purple-700">View Schedule →</span>
           </div>
         </div>
@@ -432,15 +435,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
             <h3 className="text-sm font-bold text-slate-900 mb-3">Dental Lab Quick Modules</h3>
             <div className="grid grid-cols-3 gap-2.5">
               
-              {/* Module 1: FDI Chart */}
+              {/* Module 1: New Case (same single entry as the header button) */}
               <button 
                 onClick={onOpenNewCaseModal}
                 className="p-3 rounded-2xl bg-blue-50/60 hover:bg-blue-100/60 border border-blue-100 flex flex-col items-center justify-center text-center transition group cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-xl bg-white text-blue-600 shadow-xs flex items-center justify-center mb-1.5 group-hover:scale-110 transition-transform">
-                  <FileText className="w-4 h-4" />
+                  <Plus className="w-4 h-4" />
                 </div>
-                <span className="text-[11px] font-bold text-slate-700 leading-tight">FDI Chart</span>
+                <span className="text-[11px] font-bold text-slate-700 leading-tight">New Case</span>
               </button>
 
               {/* Module 2: Shade Guide */}
@@ -517,11 +520,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
               </span>
             </div>
 
-            {/* Donut Chart Visual */}
+            {/* Donut Chart Visual — ring is generated from the real revenue shares */}
             <div className="flex items-center justify-center my-4">
-              <div className="relative w-36 h-36 rounded-full donut-chart flex items-center justify-center shadow-inner">
+              <div
+                className="relative w-36 h-36 rounded-full flex items-center justify-center shadow-inner"
+                style={{
+                  background:
+                    materialStats.total === 0
+                      ? 'conic-gradient(#e2e8f0 0% 100%)'
+                      : `conic-gradient(
+                          #2563eb 0% ${materialStats.zirconia}%,
+                          #0284c7 ${materialStats.zirconia}% ${materialStats.zirconia + materialStats.emax}%,
+                          #10b981 ${materialStats.zirconia + materialStats.emax}% ${materialStats.zirconia + materialStats.emax + materialStats.implants}%,
+                          #f59e0b ${materialStats.zirconia + materialStats.emax + materialStats.implants}% ${materialStats.zirconia + materialStats.emax + materialStats.implants + materialStats.aligners}%,
+                          #94a3b8 ${materialStats.zirconia + materialStats.emax + materialStats.implants + materialStats.aligners}% 100%
+                        )`,
+                }}
+              >
                 <div className="w-24 h-24 rounded-full bg-white flex flex-col items-center justify-center shadow-xs">
-                  <span className="text-xl font-extrabold text-slate-800">{materialStats.zirconia}%</span>
+                  <span className="text-xl font-extrabold text-slate-800">
+                    {materialStats.total === 0 ? '—' : `${materialStats.zirconia}%`}
+                  </span>
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Zirconia</span>
                 </div>
               </div>
@@ -557,6 +576,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
                 <span className="text-slate-600 font-medium">Aligners ({materialStats.aligners}%)</span>
               </button>
+              {materialStats.other > 0 && (
+                <button 
+                  onClick={() => setCurrentView('cases')}
+                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition cursor-pointer text-left"
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#94a3b8]" />
+                  <span className="text-slate-600 font-medium">Other ({materialStats.other}%)</span>
+                </button>
+              )}
             </div>
 
             {/* Benchmark stats */}
@@ -678,7 +706,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
                   </td>
                   <td className="py-3.5 px-3">
                     <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
-                      {account.activeCases.length} Cases ({account.activeCases.map(c => `DS-${c.case_number}`).join(', ') || 'In Queue'})
+                      {account.activeCases.length} Cases ({account.activeCases.map(c => c.case_number).join(', ') || 'In Queue'})
                     </span>
                   </td>
                   <td className="py-3.5 px-3 font-medium">{account.turnaround}</td>
@@ -727,13 +755,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
         />
       )}
 
-      {/* VITA Shade Guide Modal */}
-      {showShadeGuide && (
-        <ShadeGuideModal
-          onClose={() => setShowShadeGuide(false)}
-          onSelectShade={(shade) => {
-            setShowShadeGuide(false);
-            onOpenNewCaseModal();
+      {/* New Case wizard — carries a shade pre-picked in the shade guide */}
+      {isNewCaseOpen && (
+        <CaseDetailModal
+          initialShade={pendingShade}
+          onClose={() => {
+            setIsNewCaseOpen(false);
+            setPendingShade(null);
           }}
         />
       )}

@@ -40,7 +40,11 @@ describe('seedDatabase', () => {
     expect(clinicalSpecsRepo.shadeGuides.all().length).toBeGreaterThanOrEqual(3);
     expect(clinicalSpecsRepo.implantBrands.all().length).toBeGreaterThanOrEqual(6);
 
-    expect(settingsRepo.get('branding', 'settings')?.appName).toBeTruthy();
+    // Identity fields ship blank by design — the operator configures them in
+    // Settings → Branding. The settings row itself must still be seeded.
+    const branding = settingsRepo.get('branding', 'settings');
+    expect(branding).toBeDefined();
+    expect(branding?.primaryColor).toBeTruthy();
     expect(notificationConfigRepo.get()?.overdue_frequencies.length).toBeGreaterThan(0);
     expect(emailTemplatesRepo.all().length).toBe(4);
   });

@@ -31,6 +31,7 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'invoiceMeta', label: 'Invoice meta', hint: 'Invoice #, issue & due date' },
     { id: 'lineItems', label: 'Line items', hint: 'Case units & pricing' },
     { id: 'totals', label: 'Totals & balance', hint: 'Amount, paid, balance' },
+    { id: 'paymentHistory', label: 'Payment history', hint: 'Recorded payments (hidden when none)' },
     { id: 'bank', label: 'Bank payment details', hint: 'From Settings > Branding' },
     { id: 'terms', label: 'Payment terms note', hint: 'Due-on-receipt note' },
     { id: 'signature', label: 'Authorized signature', hint: 'Signatory line' },
@@ -254,6 +255,9 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   <td className="border border-slate-400 px-2 py-1">
                     {invoice.case_type_name}
                     {invoice.case_number && <span className="text-slate-500"> · Case {invoice.case_number}</span>}
+                    {caseData?.selected_teeth && caseData.selected_teeth.length > 0 && (
+                      <div className="text-slate-500">Units: {caseData.selected_teeth.map((t) => `#${t}`).join(', ')}</div>
+                    )}
                   </td>
                   <td className="border border-slate-400 px-2 py-1">1</td>
                   <td className="border border-slate-400 px-2 py-1 text-right">{money(invoice.amount)}</td>
@@ -279,6 +283,30 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   <tr className="border-t border-slate-400"><td className="py-0.5 font-bold">Net Payable</td><td className="py-0.5 text-right font-bold">{money(invoice.final_amount)}</td></tr>
                   <tr><td className="py-0.5 text-slate-600">Paid</td><td className="py-0.5 text-right text-emerald-700">{money(invoice.amount_paid || 0)}</td></tr>
                   <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Balance Due</td><td className="py-1 text-right font-bold">{money(invoice.final_amount - (invoice.amount_paid || 0))}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+          {on(sections, 'paymentHistory') && (invoice.payments || []).filter((p) => !p.is_reversed).length > 0 && (
+            <div className="mb-4">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Payment History</div>
+              <table className="w-full border-collapse text-[10px]">
+                <thead>
+                  <tr>
+                    {['Date', 'Receipt #', 'Method', 'Amount'].map((h) => (
+                      <th key={h} className={`border border-slate-300 bg-slate-50 px-2 py-1 font-bold ${h === 'Amount' ? 'text-right' : 'text-left'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.payments.filter((p) => !p.is_reversed).map((p) => (
+                    <tr key={p.id}>
+                      <td className="border border-slate-300 px-2 py-1">{p.payment_date || '—'}</td>
+                      <td className="border border-slate-300 px-2 py-1">{p.receipt_number || p.payment_number || '—'}</td>
+                      <td className="border border-slate-300 px-2 py-1 capitalize">{p.payment_method || '—'}</td>
+                      <td className="border border-slate-300 px-2 py-1 text-right">{money(p.amount)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
