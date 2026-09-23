@@ -14,7 +14,7 @@ beforeAll(async () => {
   setDatabase(engine);
 });
 
-function seedDeliveredCase(id: string, opts: { priority: string; created: string; delivered: string; material: string; price: number }) {
+function seedDeliveredCase(id: string, opts: { priority: string; created: string; delivered: string; promised: string; material: string; price: number }) {
   if (!labsRepo.byId('lab-a')) labsRepo.insert({ id: 'lab-a', name: 'Analytics Clinic A' });
   if (!labsRepo.byId('lab-b')) labsRepo.insert({ id: 'lab-b', name: 'Analytics Clinic B' });
   // Realistic lifecycle: cases are registered first, then delivered later —
@@ -27,7 +27,7 @@ function seedDeliveredCase(id: string, opts: { priority: string; created: string
     doctor_name: 'Dr. Test',
     patient_name: 'Analytics Patient',
     selected_teeth: [11],
-    delivery_date: opts.delivered,
+    delivery_date: opts.promised,
     price: opts.price,
     discount: 0,
     final_price: opts.price,
@@ -47,11 +47,11 @@ function seedDeliveredCase(id: string, opts: { priority: string; created: string
 describe('analyticsService — computed from SQLite', () => {
   it('turnaround per priority: avg days + on-time vs delivery date', () => {
     // urgent SLA = 1 day: created 09-01, delivered 09-02 → 1 day, on time
-    seedDeliveredCase('an-u1', { priority: 'urgent', created: '2026-09-01', delivered: '2026-09-02', material: 'Zirconia', price: 10000 });
-    // urgent delivered late (3 days)
-    seedDeliveredCase('an-u2', { priority: 'urgent', created: '2026-09-03', delivered: '2026-09-06', material: 'Zirconia', price: 12000 });
+    seedDeliveredCase('an-u1', { priority: 'urgent', created: '2026-09-01', delivered: '2026-09-02', promised: '2026-09-02', material: 'Zirconia', price: 10000 });
+    // urgent delivered day 3 against promised 09-04 (SLA due date) → late
+    seedDeliveredCase('an-u2', { priority: 'urgent', created: '2026-09-03', delivered: '2026-09-06', promised: '2026-09-04', material: 'Zirconia', price: 12000 });
     // normal SLA = 4 days: delivered on day 3 → on time
-    seedDeliveredCase('an-n1', { priority: 'normal', created: '2026-09-01', delivered: '2026-09-04', material: 'E.max', price: 8000 });
+    seedDeliveredCase('an-n1', { priority: 'normal', created: '2026-09-01', delivered: '2026-09-04', promised: '2026-09-05', material: 'E.max', price: 8000 });
 
     const { turnaround } = computeAnalytics();
     const urgent = turnaround.find((r) => r.priority === 'urgent')!;
