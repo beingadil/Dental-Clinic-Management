@@ -17,7 +17,8 @@ import {
   AccountAdjustment,
   JournalEntry,
   AuditEvent,
-  ReconciliationItem
+  ReconciliationItem,
+  UserProfile
 } from '../types';
 
 // Standard Production Dental Laboratory Case Types & Material Catalog
@@ -119,46 +120,14 @@ export const INITIAL_USER_PREFERENCES: UserPreferences = {
 };
 
 /**
- * @deprecated Bootstrap users now live in `src/db/defaults.ts` (BOOTSTRAP_USERS);
- * the database stores only PBKDF2 hashes. Kept as a password-free shape so any
- * legacy import code still typechecks.
+ * No demo/bootstrap users ship with this build.
+ *
+ * Earlier revisions seeded demo accounts (adil / Zeeshan / hamza / Sana) into
+ * fresh installs via the legacy localStorage fallback; the legacy migrator
+ * then carried them into SQLite. Fresh profiles now start with an EMPTY users
+ * table — the login screen's first-run setup provisions the operator's own
+ * Super Admin, and the hidden service account is seeded by `serviceAccount.ts`.
+ * Kept as an empty password-free shape so legacy import code still typechecks.
  */
-export const INITIAL_USERS = [
-  {
-    id: 'u-super',
-    username: 'adil',
-    email: 'adil@dentalsolutions.pk',
-    name: 'Adil (Super Admin)',
-    role: 'Super Admin' as const,
-    isSuperAdmin: true,
-    created_at: '2026-01-01'
-  },
-  {
-    id: 'u-1',
-    username: 'admin',
-    email: 'admin@dentalsolutions.pk',
-    name: 'Dr. Zeeshan (Admin)',
-    role: 'Lab Admin' as const,
-    isSuperAdmin: false,
-    created_at: '2026-01-01'
-  },
-  {
-    id: 'u-2',
-    username: 'hamza',
-    email: 'hamza@dentalsolutions.pk',
-    name: 'Hamza Tech',
-    role: 'Technician' as const,
-    isSuperAdmin: false,
-    created_at: '2026-01-01'
-  },
-  {
-    id: 'u-3',
-    username: 'billing',
-    email: 'billing@dentalsolutions.pk',
-    name: 'Sana Billing',
-    role: 'Billing Manager' as const,
-    isSuperAdmin: false,
-    created_at: '2026-01-01'
-  }
-];
+export const INITIAL_USERS: UserProfile[] = [];
 

@@ -421,9 +421,9 @@ export const SettingsView: React.FC = () => {
             {user?.name ? user.name.charAt(0).toUpperCase() : 'D'}
           </div>
           <div>
-            <h3 className="font-bold text-slate-900 text-sm">{user?.name || 'Dr. Zeeshan (Admin)'}</h3>
+            <h3 className="font-bold text-slate-900 text-sm">{user?.name || 'My Account'}</h3>
             <p className="text-xs text-slate-500">
-              {user?.email || 'admin@dentalsolutions.pk'} • Role: <strong className="uppercase text-indigo-600">{user?.role || 'Lab Admin'}</strong>
+              {user?.email || 'Not set'} • Role: <strong className="uppercase text-indigo-600">{user?.role || '—'}</strong>
             </p>
           </div>
         </div>
