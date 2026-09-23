@@ -402,13 +402,6 @@ interface AppContextType {
   sqliteDb: typeof sqliteDb;
 }
 
-/**
- * Fallback user list when the database has no accounts yet — intentionally
- * EMPTY. Identities, emails and passwords are never hardcoded: the first Super
- * Admin is created through the login screen's setup flow.
- */
-export const INITIAL_USERS: UserProfile[] = [];
-
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 /**
@@ -465,9 +458,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [users, setUsers] = useState<UserProfile[]>(() => {
     if (dbMirror['users']) return dbMirror['users'] as UserProfile[];
-    const loadedUsers: UserProfile[] = sqliteDb.users.getAll();
-    if (Array.isArray(loadedUsers) && loadedUsers.length > 0) return loadedUsers;
-    return INITIAL_USERS; // password-free identity fallback (DB seeds real hashed users)
+    // Read the live engine directly. The legacy localStorage-backed service
+    // always returned empty here, which resurfaced the first-run setup form
+    // on every relaunch even though the created admin was persisted.
+    return (usersRepo.all() as UserRow[])
+      .filter((u) => !u.is_hidden)
+      .map((row) => {
+        const safe = { ...row } as Record<string, unknown>;
+        delete safe.password_hash;
+        delete safe.password_salt;
+        delete safe.password;
+        safe.isSuperAdmin = !!row.is_super_admin;
+        return safe as unknown as UserProfile;
+      });
   });
 
   const [user, setUser] = useState<UserProfile | null>(() => {
