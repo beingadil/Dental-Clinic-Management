@@ -15,7 +15,7 @@ import { installAutoPersistence } from '../db/persistence';
 
 export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_MAGIC = 'DENTALBACKUP';
-export const APP_VERSION = '2.8.0';
+export const APP_VERSION = '2.8.1';
 
 export interface BackupManifest {
   magic: string;
