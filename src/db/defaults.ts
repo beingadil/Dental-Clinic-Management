@@ -18,19 +18,26 @@ import { BrandingSettings, UserPreferences } from '../types';
  * (which touches window.localStorage at module load and breaks tests/SSR).
  */
 
+/**
+ * Fresh installs start with EMPTY identity fields — the operator enters their
+ * own lab name, contacts and bank details in Settings → Branding. Print
+ * documents and UI surfaces must treat blank fields gracefully (fallbacks or
+ * "not configured" hints), never ship this build's real lab identity.
+ * `primaryColor` and the warning toggles are product defaults, not identity.
+ */
 export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
-  appName: 'Dental Solutions',
-  tagline: 'Serving Smiles • Digital Dental Laboratory',
+  appName: '',
+  tagline: '',
   logoUrl: '',
   primaryColor: '#4f46e5',
-  phone: '0333-0473797',
-  address: 'Batala Street Near Railway Park, Gill Road, Gujranwala.',
-  email: 'info@dentalsolutions.pk',
-  facebook: 'Dental Solutions',
-  bankName: 'Meezan Bank Ltd',
-  bankAccountTitle: 'Dental Solutions Lab',
-  bankAccountNumber: '01020304050607',
-  bankIban: 'PK36MEZN0001020304050607',
+  phone: '',
+  address: '',
+  email: '',
+  facebook: '',
+  bankName: '',
+  bankAccountTitle: '',
+  bankAccountNumber: '',
+  bankIban: '',
   enable24hWarning: true,
   warningThresholdHours: 24,
   warningHighlightColor: 'rose',

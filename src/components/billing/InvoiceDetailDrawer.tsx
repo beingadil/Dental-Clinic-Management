@@ -205,7 +205,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-500 block">Doctor / Surgeon</span>
-                  <span className="font-semibold text-slate-900">{linkedCase.doctor_name || 'Dr. Tariq'}</span>
+                  <span className="font-semibold text-slate-900">Dr. {linkedCase.doctor_name || '—'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Case Type</span>

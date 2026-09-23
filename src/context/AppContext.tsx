@@ -2181,7 +2181,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteInvoice = (id: string) => {
+    const target = invoices.find((inv) => inv.id === id);
+    if (!target) return;
+
+    // Money integrity: an invoice with active (non-reversed) payments cannot
+    // silently vanish — its payments, allocations and journals must be dealt
+    // with through the reversal flow first.
+    const activePayments = (target.payments || []).filter((p) => !p.is_reversed);
+    if (activePayments.length > 0) {
+      showToast(
+        `Cannot void ${target.invoice_number}: it has ${activePayments.length} active payment(s). Reverse them first.`,
+        'error'
+      );
+      return;
+    }
+
+    // Voiding = removing the invoice AND reversing its issuance journal so the
+    // ledger stays balanced. The audit trail records who voided what, when.
+    const actor = user ? user.name : 'Staff';
+    const origJournal = journalEntries.find(
+      (j) => j.reference_type === 'invoice' && j.reference_id === id
+    );
+    if (origJournal) {
+      const revJournal = buildReversalJournal(
+        origJournal,
+        `Invoice ${target.invoice_number} voided`,
+        actor
+      );
+      setJournalEntries((prev) => [revJournal, ...prev]);
+    }
+
+    const auditEvt: AuditEvent = {
+      id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      actor,
+      action: 'INVOICE_VOIDED',
+      entity_type: 'Invoice',
+      entity_id: id,
+      entity_ref: target.invoice_number,
+      notes: `Voided invoice ${target.invoice_number} (PKR ${target.final_amount.toLocaleString()}) for ${target.lab_name}`
+    };
+    setAuditEvents((prev) => [auditEvt, ...prev]);
+
     setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    showToast(`Invoice ${target.invoice_number} voided — ledger reversed and audit trail updated.`, 'success');
   };
 
   // Advance Payments & Account Adjustments Actions

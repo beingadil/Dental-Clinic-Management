@@ -72,22 +72,25 @@ const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-white p-6 shadow-[ins
 interface CaseDetailModalProps {
   initialCase?: DentalCase | null; // null if creating new case
   appliedTemplate?: CaseTemplate | null;
+  /** Pre-selected shade for a NEW case (e.g. picked in the dashboard shade guide). */
+  initialShade?: string | null;
   onClose: () => void;
 }
 
-/* Wizard step definitions */
-type StepKey = 'basics' | 'chart' | 'schedule' | 'attach';
+/* Wizard step definitions — attachments are NOT a creation gate: they are
+   managed after creation from the case detail's Attachments tab. */
+type StepKey = 'basics' | 'chart' | 'schedule';
 
 const STEPS: { key: StepKey; numeral: string; label: string; caption: string }[] = [
   { key: 'basics', numeral: '01', label: 'Procedure', caption: 'Clinic, doctor & case type' },
   { key: 'chart', numeral: '02', label: 'Teeth & Shade', caption: 'FDI charting & aesthetics' },
-  { key: 'schedule', numeral: '03', label: 'Schedule & Price', caption: 'SLA, delivery & billing' },
-  { key: 'attach', numeral: '04', label: 'Attach & Review', caption: 'Scans, photos & confirmation' },
+  { key: 'schedule', numeral: '03', label: 'Schedule & Price', caption: 'SLA, delivery, billing & review' },
 ];
 
 export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   initialCase,
   appliedTemplate,
+  initialShade,
   onClose,
 }) => {
   const {
@@ -126,7 +129,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [material, setMaterial] = useState<string>(
     initialCase?.material || 'Zirconia (Multi-layer 3D Pro)'
   );
-  const [shade, setShade] = useState(initialCase?.shade || appliedTemplate?.shade || 'A2');
+  const [shade, setShade] = useState(initialCase?.shade || appliedTemplate?.shade || initialShade || 'A2');
   const [clinicalSpecs, setClinicalSpecs] = useState(getClinicalSpecs());
 
   useEffect(() => {
@@ -153,7 +156,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     file_size?: string;
     id?: string;
   } | null>(null);
-  const [dragActive, setDragActive] = useState(false);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
 
   const [price, setPrice] = useState<number>(
@@ -191,7 +193,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       discount >= 0 &&
       !isNaN(discount) &&
       discount <= price,
-    attach: true,
   };
 
   const stepError: Record<StepKey, string | null> = {
@@ -216,7 +217,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       : discount > price
       ? 'Discount cannot exceed case price'
       : null,
-    attach: null,
   };
 
   const goToStep = (i: number) => {
@@ -522,12 +522,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       updateCase(
         initialCase.id,
         {
-          patient_name: patientName.trim() || initialCase.patient_name || 'Draft Patient',
+          patient_name: patientName.trim() || initialCase.patient_name || '',
           lab_id: labId || labs[0]?.id || '',
-          lab_name: selectedLab ? selectedLab.name : initialCase.lab_name || 'Draft Lab',
+          lab_name: selectedLab ? selectedLab.name : initialCase.lab_name || '',
           case_type_id: caseTypeId,
           case_type_name: selectedCT ? selectedCT.name : initialCase.case_type_name || 'Dental Case',
-          doctor_name: doctorName.trim() || initialCase.doctor_name || 'Draft Doctor',
+          doctor_name: doctorName.trim() || initialCase.doctor_name || '',
           selected_teeth: selectedTeeth,
           tooth_details: toothDetails,
           shade: shade.trim() || 'A2',
@@ -545,12 +545,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       );
     } else {
       const newCase = addCase({
-        patient_name: patientName.trim() || 'Draft Patient',
+        patient_name: patientName.trim(),
         lab_id: labId || labs[0]?.id || '',
-        lab_name: selectedLab ? selectedLab.name : 'Draft Lab',
+        lab_name: selectedLab ? selectedLab.name : '',
         case_type_id: caseTypeId || caseTypes[0]?.id || '',
         case_type_name: selectedCT ? selectedCT.name : 'Dental Case',
-        doctor_name: doctorName.trim() || 'Unassigned Doctor',
+        doctor_name: doctorName.trim(),
         selected_teeth: selectedTeeth.length > 0 ? selectedTeeth : [11],
         tooth_details: toothDetails,
         shade: shade.trim() || 'A2',
@@ -941,6 +941,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Final review — last step doubles as the confirmation before Create. */}
+      <div className="lg:col-span-12">{renderReviewSummary()}</div>
     </div>
   );
 
@@ -948,7 +951,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     <div className="rounded-[1.5rem] bg-slate-900 p-6 shadow-[0_24px_48px_-16px_rgba(15,23,42,0.4)]">
       <div className="flex items-center justify-between">
         <Eyebrow className="text-slate-400">Final review</Eyebrow>
-        <span className="font-mono text-[10px] tracking-widest text-slate-400">READY TO FABRICATE</span>
+        <span className="font-mono text-[10px] tracking-widest text-slate-400">REVIEW &amp; CREATE</span>
       </div>
       <div className="mt-4 space-y-2.5">
         {[
@@ -993,170 +996,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     </div>
   );
 
-  const renderAttachSection = () => (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-      <div className="lg:col-span-7">
-        <div className={`${bezelCard} h-full`}>
-          <div className={`${bezelCardInner} h-full`}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <Eyebrow>04 · Attachments</Eyebrow>
-                <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                  Patient photos, shade guides, 3D STL scans, DICOM files or prescriptions.
-                </p>
-              </div>
-              {pendingAttachments.length > 0 && (
-                <span className="rounded-full bg-indigo-50 px-3 py-1 font-mono text-[11px] font-bold text-indigo-800 ring-1 ring-indigo-600/20">
-                  {pendingAttachments.length} READY
-                </span>
-              )}
-            </div>
-
-            <div
-              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragActive(false);
-                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                  handleLocalFileUpload(e.dataTransfer.files);
-                }
-              }}
-              className={`mt-4 rounded-2xl border-2 border-dashed p-6 text-center transition-all duration-500 ${EASE} ${
-                dragActive
-                  ? 'scale-[1.01] border-indigo-600/50 bg-indigo-50/70'
-                  : 'border-slate-300 bg-white hover:border-indigo-500/40 hover:bg-indigo-50/20'
-              }`}
-            >
-              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600/10 text-indigo-800">
-                <Upload className="h-5 w-5" />
-              </div>
-              <p className="text-xs font-bold text-slate-900">
-                Drag & drop files here, or browse from your computer
-              </p>
-              <p className="mt-1 text-[11px] text-slate-400">
-                JPG · PNG · WEBP · STL · OBJ · PLY · DCM · PDF · DOCX
-              </p>
-              <label className={`mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-[0_10px_24px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
-                <Upload className="h-3.5 w-3.5" />
-                Browse files
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => handleLocalFileUpload(e.target.files)}
-                />
-              </label>
-            </div>
-
-            {uploadNotice && (
-              <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span className="font-semibold">{uploadNotice}</span>
-              </div>
-            )}
-
-            {pendingAttachments.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                  Ready to attach on creation
-                </div>
-                <div className="space-y-2.5">
-                  {pendingAttachments.map((att, i) => {
-                    const cat = getAttachmentCategory(att?.filename, att?.file_type);
-                    const isImage = (att?.file_type || '').startsWith('image/');
-                    const isMainPhoto = photoUrl === att.file_url;
-
-                    return (
-                      <div
-                        key={i}
-                        className={`flex items-center justify-between gap-2.5 rounded-xl bg-white p-2.5 ring-1 transition-all duration-500 ${EASE} ${
-                          isMainPhoto ? 'ring-2 ring-indigo-500/50' : 'ring-slate-200 hover:ring-slate-300'
-                        }`}
-                      >
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <div
-                            onClick={() => setPreviewModalAttachment(att)}
-                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200"
-                            title="Click to inspect metadata & preview"
-                          >
-                            {isImage ? (
-                              <img src={att.file_url} alt={att.filename} className="h-full w-full object-cover" />
-                            ) : cat.kind === 'cad' ? (
-                              <Box className="h-5 w-5 text-indigo-700" />
-                            ) : (
-                              <File className="h-5 w-5 text-slate-400" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-xs font-bold text-slate-900" title={att.filename}>
-                              {att.filename}
-                            </div>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                              <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${cat.badge}`}>
-                                {cat.category}
-                              </span>
-                              <span className="font-mono text-[10px] text-slate-400">{att.file_size || ''}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-1">
-                          {isImage && (
-                            <button
-                              type="button"
-                              onClick={() => setPhotoUrl(att.file_url)}
-                              className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition-all duration-500 ${EASE} ${
-                                isMainPhoto
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
-                              }`}
-                              title={isMainPhoto ? 'Primary case picture' : 'Set as primary case picture'}
-                            >
-                              {isMainPhoto ? 'Main' : 'Set main'}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => openFileInBrowser(att.file_url, att.filename, att.file_type)}
-                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
-                            title="Open file in browser tab"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPreviewModalAttachment(att)}
-                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
-                            title="Inspect metadata & preview"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPendingAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                            title="Remove from upload queue"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="lg:col-span-5">{renderReviewSummary()}</div>
-    </div>
-  );
-
   /* ================================================================== */
   /*  Modal shell                                                        */
   /* ================================================================== */
@@ -1171,7 +1010,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     renderBasicsSection,
     renderChartSection,
     renderScheduleSection,
-    renderAttachSection,
   ][step];
 
   return (

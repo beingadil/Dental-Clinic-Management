@@ -64,19 +64,21 @@ const KEYS = {
   DB_META: `${STORAGE_PREFIX}metadata`
 };
 
+// Mirrors DEFAULT_BRANDING_SETTINGS in src/db/defaults.ts — identity fields
+// ship blank; the operator configures them in Settings → Branding.
 export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
-  appName: 'Dental Solutions',
-  tagline: 'Serving Smiles • Digital Dental Laboratory',
+  appName: '',
+  tagline: '',
   logoUrl: '',
   primaryColor: '#4f46e5',
-  phone: '0333-0473797',
-  address: 'Batala Street Near Railway Park, Gill Road, Gujranwala.',
-  email: 'info@dentalsolutions.pk',
-  facebook: 'Dental Solutions',
-  bankName: 'Meezan Bank Ltd',
-  bankAccountTitle: 'Dental Solutions Lab',
-  bankAccountNumber: '01020304050607',
-  bankIban: 'PK36MEZN0001020304050607',
+  phone: '',
+  address: '',
+  email: '',
+  facebook: '',
+  bankName: '',
+  bankAccountTitle: '',
+  bankAccountNumber: '',
+  bankIban: '',
   enable24hWarning: true,
   warningThresholdHours: 24,
   warningHighlightColor: 'rose',

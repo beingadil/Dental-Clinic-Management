@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { DentalCase, CaseStatus, QcReasonCode } from '../../types';
+import { DentalCase, CaseStatus, QcReasonCode, QcResult } from '../../types';
 import { QC_REASON_CODES, QC_REASON_LABELS, qcReasonLabel } from '../../services/qcDomain';
 import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { SHADE_COLORS, TOOTH_NAMES } from './Odontogram';
@@ -74,6 +74,31 @@ export const CaseDetailPanel: React.FC<CaseDetailPanelProps> = ({
   const [qcFailOpen, setQcFailOpen] = useState(false);
   const [qcReason, setQcReason] = useState<QcReasonCode>('occlusion');
   const [qcNote, setQcNote] = useState('');
+  /* Correction flow: which inspection row is being amended, and the pending form values. */
+  const [qcAmendId, setQcAmendId] = useState<string | null>(null);
+  const [qcAmendResult, setQcAmendResult] = useState<QcResult>('pass');
+  const [qcAmendReason, setQcAmendReason] = useState<QcReasonCode>('occlusion');
+  const [qcAmendNote, setQcAmendNote] = useState('');
+
+  const openQcAmend = (id: string, current: QcResult) => {
+    setQcAmendId(id);
+    setQcAmendResult(current);
+    setQcAmendReason('occlusion');
+    setQcAmendNote('');
+  };
+
+  const submitQcAmend = () => {
+    if (!qcAmendId) return;
+    recordQcCase({
+      action: 'correct',
+      id: qcAmendId,
+      result: qcAmendResult,
+      reason_code: qcAmendResult === 'fail' ? qcAmendReason : undefined,
+      notes: qcAmendNote || undefined,
+    });
+    setQcAmendId(null);
+    setQcAmendNote('');
+  };
 
   /* Live quality state + full inspection trail, both derived from the stream. */
   const qcState = getQcState(caseData.id);
@@ -264,22 +289,98 @@ export const CaseDetailPanel: React.FC<CaseDetailPanelProps> = ({
 
                 {qcHistory.length > 0 && (
                   <ul className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
-                    {qcHistory.map((h) => (
-                      <li key={h.id} className="flex items-center justify-between gap-2 text-[11px]">
-                        <span className="text-slate-600 truncate">
-                          #{h.inspection_no} ·{' '}
-                          {h.kind === 'correction'
-                            ? 'Correction'
-                            : h.result === 'pass'
-                              ? 'Passed'
-                              : `Failed — ${qcReasonLabel(h.reason_code)}`}
-                        </span>
-                        <span className="text-slate-400 shrink-0">
-                          {h.inspector} · {h.created_at}
-                        </span>
-                      </li>
-                    ))}
+                    {qcHistory.map((h) => {
+                      const amended = qcInspections.some(
+                        (c) => c.kind === 'correction' && c.supersedes_id === h.id
+                      );
+                      return (
+                        <li key={h.id} className="flex items-center justify-between gap-2 text-[11px]">
+                          <span className="text-slate-600 truncate">
+                            #{h.inspection_no} ·{' '}
+                            {h.kind === 'correction'
+                              ? 'Correction'
+                              : h.result === 'pass'
+                                ? 'Passed'
+                                : `Failed — ${qcReasonLabel(h.reason_code)}`}
+                            {amended && (
+                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-wide">
+                                Amended
+                              </span>
+                            )}
+                          </span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-slate-400">
+                              {h.inspector} · {h.created_at}
+                            </span>
+                            {h.kind === 'inspection' && !amended && (
+                              <button
+                                type="button"
+                                onClick={() => openQcAmend(h.id, h.result)}
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 cursor-pointer"
+                                title="Record a correction — the original stays in the audit trail"
+                              >
+                                Amend
+                              </button>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
+                )}
+
+                {qcAmendId && (
+                  <div className="mt-3 p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">
+                      Correct inspection #{qcHistory.find((h) => h.id === qcAmendId)?.inspection_no} — the
+                      original stays in the audit trail
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={qcAmendResult}
+                        onChange={(e) => setQcAmendResult(e.target.value as QcResult)}
+                        className="flex-1 px-3 py-2 text-xs bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium"
+                      >
+                        <option value="pass">Pass</option>
+                        <option value="fail">Fail</option>
+                      </select>
+                      {qcAmendResult === 'fail' && (
+                        <select
+                          value={qcAmendReason}
+                          onChange={(e) => setQcAmendReason(e.target.value as QcReasonCode)}
+                          className="flex-1 px-3 py-2 text-xs bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium"
+                        >
+                          {QC_REASON_CODES.map((code) => (
+                            <option key={code} value={code}>
+                              {QC_REASON_LABELS[code]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <input
+                      value={qcAmendNote}
+                      onChange={(e) => setQcAmendNote(e.target.value)}
+                      placeholder="Why is this being corrected? (recorded in the audit trail)"
+                      className="w-full px-3 py-2 text-xs bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={submitQcAmend}
+                        className="flex-1 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg cursor-pointer"
+                      >
+                        Append correction
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQcAmendId(null)}
+                        className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 

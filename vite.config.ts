@@ -12,6 +12,10 @@ export default defineConfig(() => {
       },
     },
     build: {
+      // Production hardening: never ship source maps (they leak source) and keep
+      // the minifier explicit so a config edit cannot silently disable it.
+      sourcemap: false,
+      minify: 'esbuild',
       rollupOptions: {
         output: {
           // Split heavyweight vendors out of the main bundle so the app shell
@@ -40,12 +44,6 @@ export default defineConfig(() => {
       // to watch .dll/.exe files that cargo is actively writing, which kills
       // the dev server mid `tauri dev`.
       watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/src-tauri/target/**'] },
-    },
-    build: {
-      // Production hardening: never ship source maps (they leak source) and keep
-      // the minifier explicit so a config edit cannot silently disable it.
-      sourcemap: false,
-      minify: 'esbuild',
     },
   };
 });

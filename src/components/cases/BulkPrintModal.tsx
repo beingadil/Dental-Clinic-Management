@@ -244,7 +244,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                       <span className="font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5 text-[10px]">
                         <Landmark className="w-3.5 h-3.5 text-indigo-600" /> BANK REMITTANCE
                       </span>
-                      <div className="font-mono text-[11px]">Meezan Bank Ltd • IBAN: PK88 MEZN 0002 0109 4829 1100</div>
+                      <div className="font-mono text-[11px]">{brandingSettings.bankName || 'Bank details not configured'} {brandingSettings.bankIban ? `• IBAN: ${brandingSettings.bankIban}` : ''}</div>
                     </div>
 
                     <div className="w-full sm:w-1/2 space-y-1.5 text-xs">

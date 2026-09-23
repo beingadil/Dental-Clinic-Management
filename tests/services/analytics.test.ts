@@ -3,7 +3,7 @@ import initSqlJs from 'sql.js';
 import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { labsRepo, casesRepo, invoicesRepo } from '../../src/db/repos';
-import { computeAnalytics } from '../../src/services/analyticsService';
+import { computeAnalytics, computeAnalyticsForPeriod } from '../../src/services/analyticsService';
 
 let engine: SqliteEngine;
 
@@ -102,5 +102,28 @@ describe('analyticsService — computed from SQLite', () => {
     expect(a.collected).toBe(10000);
     expect(a.outstanding).toBe(12000);
     expect(a.avgDaysToPay).toBe(4); // invoice created 09-02, paid 09-06
+  });
+
+  it('period bounds filter by event date: revenue by invoice date, turnaround by delivery date', () => {
+    // All-time: 2 Zirconia invoices (09-02, 09-04) = 22000
+    expect(computeAnalyticsForPeriod(null, null).restorationRevenue.find((r) => r.material === 'Zirconia')!.revenue).toBe(22000);
+
+    // September window covering both invoices
+    const sep = computeAnalyticsForPeriod('2026-09-01', '2026-09-30');
+    expect(sep.restorationRevenue.find((r) => r.material === 'Zirconia')!.revenue).toBe(22000);
+    expect(sep.overall.delivered).toBe(3); // all deliveries are in September
+
+    // Narrow window covering only the first invoice (09-02) and first delivery (09-02)
+    const early = computeAnalyticsForPeriod('2026-09-01', '2026-09-02');
+    expect(early.restorationRevenue.find((r) => r.material === 'Zirconia')!.revenue).toBe(10000);
+    expect(early.overall.delivered).toBe(1);
+
+    // Window before any data → zeros/empty, never fake numbers. Material case
+    // counts are a population snapshot (all-time by design); only revenue is
+    // event-bounded, so Zirconia shows 2 cases at 0 revenue for the period.
+    const empty = computeAnalyticsForPeriod('2025-01-01', '2025-01-31');
+    expect(empty.overall.delivered).toBe(0);
+    expect(empty.restorationRevenue.find((r) => r.material === 'Zirconia')).toEqual({ material: 'Zirconia', cases: 2, revenue: 0 });
+    expect(empty.paymentBehavior).toEqual([]);
   });
 });

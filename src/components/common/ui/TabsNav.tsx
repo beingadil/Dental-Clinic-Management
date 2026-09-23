@@ -14,6 +14,8 @@ export interface TabsNavProps<T extends string = string> {
   activeTab: T;
   onChange: (tabId: T) => void;
   variant?: 'pills' | 'underline' | 'contained';
+  /** 'fill' = full-width strip, every tab equal width (grid). */
+  fit?: 'content' | 'fill';
   className?: string;
   id?: string;
 }
@@ -23,9 +25,52 @@ export function TabsNav<T extends string = string>({
   activeTab,
   onChange,
   variant = 'pills',
+  fit = 'content',
   className = '',
   id
 }: TabsNavProps<T>) {
+  // Equal-width full-strip mode: CSS Grid keeps every tab identical in size
+  // and the strip spans the container; collapses to a scrollable row on small
+  // screens so labels never truncate mid-word.
+  if (fit === 'fill') {
+    return (
+      <div
+        id={id}
+        className={`grid grid-flow-col auto-cols-fr gap-1 overflow-x-auto no-scrollbar ${className}`}
+      >
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          const Icon = tab.icon;
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onChange(tab.id)}
+              className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer active:scale-[0.99] ${
+                isActive
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
+              }`}
+            >
+              {Icon && <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />}
+              <span className="truncate">{tab.label}</span>
+              {tab.badge !== undefined && (
+                <span
+                  className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   if (variant === 'contained') {
     return (
       <div

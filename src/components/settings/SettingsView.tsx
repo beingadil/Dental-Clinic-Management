@@ -63,6 +63,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { loadPrintSettings, savePrintSettings, PrintSettings } from '../../services/printSettings';
+import { TabsNav } from '../common/ui';
 import {
   runAutoUpdate,
   onAutoUpdatePhase,
@@ -94,7 +95,6 @@ export const SettingsView: React.FC = () => {
     updateBrandingSettings, 
     getBackupData, 
     restoreBackupData, 
-    resetToDemoData,
     wipeAllData
   } = useApp();
 
@@ -368,17 +368,6 @@ export const SettingsView: React.FC = () => {
   };
 
   // Reset to Demo Data
-  const handleResetDemo = () => {
-    if (confirm('Reset system to default demo state? This restores sample lab cases, partner labs, catalog pricing, and demo invoices.')) {
-      resetToDemoData();
-      setBackupMessage({
-        type: 'success',
-        text: 'System state restored to fresh initial demo data.'
-      });
-      setTimeout(() => setBackupMessage(null), 4000);
-    }
-  };
-
   // Total Data Wipe for Software Testing
   const handleExecuteFullWipe = () => {
     wipeAllData();
@@ -414,130 +403,39 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Admin Authorization Card */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Identity card — one honest glassmorphic card, real role only */}
+      <div className="bg-white/70 backdrop-blur-md border border-white/60 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_24px_-12px_rgba(15,23,42,0.12)] p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white font-bold text-lg flex items-center justify-center shadow-md shadow-indigo-600/20">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white font-bold text-lg flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
             {user?.name ? user.name.charAt(0).toUpperCase() : 'D'}
           </div>
           <div>
             <h3 className="font-bold text-slate-900 text-sm">{user?.name || 'My Account'}</h3>
-            <p className="text-xs text-slate-500">
-              {user?.email || 'Not set'} • Role: <strong className="uppercase text-indigo-600">{user?.role || '—'}</strong>
-            </p>
+            <p className="text-xs text-slate-500">{user?.email || 'Not set'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3.5 py-1.5 rounded-full text-xs font-bold border border-emerald-200 self-start md:self-auto">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" /> Master System Administrator Authorized
+        <div className="flex items-center gap-1.5 bg-white/60 text-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-white/80 self-start md:self-auto">
+          <ShieldCheck className={`w-4 h-4 ${isAdmin ? 'text-indigo-600' : 'text-slate-400'}`} />
+          <span>Role: <strong className="text-slate-900">{user?.role || '—'}</strong></span>
         </div>
       </div>
 
-      {/* Category Tabs */}
-      <div className="flex flex-wrap border-b border-slate-200 space-x-1">
-        <button
-          onClick={() => setActiveTab('branding')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'branding'
-              ? 'border-slate-900 text-slate-900 bg-slate-50'
-              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Palette className="w-4 h-4" />
-          <span>Branding & Identity</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('account')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'account'
-              ? 'border-slate-900 text-slate-900 bg-slate-50'
-              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <User className="w-4 h-4" />
-          <span>My Account & Security</span>
-        </button>
-
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-              activeTab === 'users'
-                ? 'border-slate-900 text-slate-900 bg-slate-50'
-                : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>User Management</span>
-            <span className="px-1.5 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold uppercase rounded">
-              Admin
-            </span>
-          </button>
-        )}
-
-        <button
-          onClick={() => setActiveTab('backup')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'backup'
-              ? 'border-slate-900 text-slate-900 bg-slate-50'
-              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Database className="w-4 h-4" />
-          <span>Database & Backup</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('testing')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'testing'
-              ? 'border-slate-900 text-slate-900 bg-slate-50'
-              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Trash2 className="w-4 h-4 text-slate-600" />
-          <span>System Reset</span>
-          <span className="px-1.5 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold uppercase rounded">
-            Danger
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('preferences')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'preferences'
-              ? 'border-slate-900 text-slate-900 bg-slate-50'
-              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Sliders className="w-4 h-4" />
-          <span>Application Defaults</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('print')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'print'
-              ? 'border-slate-900 text-slate-900 bg-slate-50'
-              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Printer className="w-4 h-4" />
-          <span>Print & Documents</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('updates')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'updates'
-              ? 'border-slate-900 text-slate-900 bg-slate-50'
-              : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <ArrowUpCircle className="w-4 h-4" />
-          <span>Updates</span>
-        </button>
-      </div>
+      {/* Category Tabs — shared TabsNav, same as every other module */}
+      <TabsNav
+        activeTab={activeTab}
+        onChange={(t) => setActiveTab(t as typeof activeTab)}
+        variant="pills"
+        tabs={[
+          { id: 'branding', label: 'Branding & Identity', icon: Palette },
+          { id: 'account', label: 'My Account & Security', icon: User },
+          ...(isAdmin ? [{ id: 'users', label: 'User Management', icon: Users }] : []),
+          { id: 'backup', label: 'Database & Backup', icon: Database },
+          { id: 'testing', label: 'System Reset', icon: Trash2 },
+          { id: 'preferences', label: 'Application Defaults', icon: Sliders },
+          { id: 'print', label: 'Print & Documents', icon: Printer },
+          { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
+        ]}
+      />
 
       {/* Global Message Alert */}
       {backupMessage && (
@@ -573,31 +471,35 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <form onSubmit={handleSaveBranding} className="space-y-6">
-            {/* Live Preview Bar */}
-            <div className="p-4 bg-slate-900 rounded-xl text-white flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Live Preview — mirrors the real white header exactly (WYSIWYG,
+                blank-safe: no fabricated contact details) */}
+            <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 {brandingForm.logoUrl ? (
                   <img 
                     src={brandingForm.logoUrl} 
                     alt="Logo Preview" 
-                    className="w-12 h-12 rounded-lg object-contain bg-white p-1 border border-slate-700 shrink-0"
+                    className="w-8 h-8 rounded-xl object-contain bg-slate-100 p-0.5 border border-slate-200 shrink-0"
                   />
                 ) : (
-                  <div className="w-12 h-12 rounded-lg bg-indigo-600 text-white font-bold text-lg flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
                     {brandingForm.appName ? brandingForm.appName.substring(0, 2).toUpperCase() : 'DS'}
                   </div>
                 )}
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Live Header Preview</span>
-                  <span className="text-sm font-bold text-white block">{brandingForm.appName || 'Dental Solutions'}</span>
-                  <span className="text-xs text-slate-400 block">{brandingForm.tagline || 'Serving Smiles • Digital Dental Laboratory'}</span>
+                  <span className="text-sm font-bold text-slate-900 block">{brandingForm.appName || 'Dental Solutions'}</span>
+                  {brandingForm.tagline && (
+                    <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">{brandingForm.tagline}</span>
+                  )}
                 </div>
               </div>
 
-              <div className="text-right text-xs text-slate-300 font-mono hidden md:block border-l border-slate-800 pl-4">
-                <p>{brandingForm.phone || '0333-0473797'}</p>
-                <p className="text-[11px] text-slate-400">{brandingForm.email || 'info@dentalsolutions.pk'}</p>
-              </div>
+              {(brandingForm.phone || brandingForm.email) && (
+                <div className="text-right text-xs text-slate-500 hidden md:block border-l border-slate-200 pl-4">
+                  {brandingForm.phone && <p>{brandingForm.phone}</p>}
+                  {brandingForm.email && <p className="text-[11px] text-slate-400">{brandingForm.email}</p>}
+                </div>
+              )}
             </div>
 
             {/* Logo Upload Section */}
@@ -907,7 +809,7 @@ export const SettingsView: React.FC = () => {
               {/* LIVE CARD PREVIEW IN SETTINGS */}
               <div className="mt-3 p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 block">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300 block">
                     Live Workstation Card Highlighting Preview
                   </span>
                   <span className="text-[11px] text-slate-400">
@@ -951,7 +853,7 @@ export const SettingsView: React.FC = () => {
                     }}
                   >
                     {brandingForm.warningHighlightStyle === 'solid' && (
-                      <div className="bg-rose-600 text-white text-[10px] font-black px-2.5 py-1 rounded-t-xl -mx-3.5 -mt-3.5 mb-2 flex items-center justify-between">
+                      <div className="bg-rose-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-t-xl -mx-3.5 -mt-3.5 mb-2 flex items-center justify-between">
                         <span>DUE WITHIN {brandingForm.warningThresholdHours || 24} HOURS</span>
                         <span className="uppercase text-[9px] bg-white/20 px-1.5 py-0.2 rounded">URGENT</span>
                       </div>
@@ -1210,7 +1112,7 @@ export const SettingsView: React.FC = () => {
                           {u.role}
                         </span>
                       </td>
-                      <td className="p-3 text-slate-400 text-[11px]">{u.created_at || '2026-01-01'}</td>
+                      <td className="p-3 text-slate-400 text-[11px]">{u.created_at || '—'}</td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -1576,13 +1478,10 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-slate-900">System Entity & Storage Diagnostics</h2>
-                  <p className="text-xs text-slate-500">Current live counts of database entities currently stored in local browser state</p>
+                  <p className="text-xs text-slate-500">Live counts of records in the SQLite database on this machine</p>
                 </div>
               </div>
 
-              <span className="px-3 py-1 bg-indigo-100 text-indigo-800 font-mono text-xs font-bold rounded-full">
-                Storage: {storageMetrics.totalKb} KB
-              </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -1590,7 +1489,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
                   <FileText className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xl font-black text-slate-900 block">{storageMetrics.casesCount}</span>
+                <span className="text-xl font-bold text-slate-900 block">{storageMetrics.casesCount}</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Cases</span>
               </div>
 
@@ -1598,7 +1497,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
                   <Building className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xl font-black text-slate-900 block">{storageMetrics.labsCount}</span>
+                <span className="text-xl font-bold text-slate-900 block">{storageMetrics.labsCount}</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Partner Labs</span>
               </div>
 
@@ -1606,7 +1505,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
                   <DollarSign className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xl font-black text-slate-900 block">{storageMetrics.invoicesCount}</span>
+                <span className="text-xl font-bold text-slate-900 block">{storageMetrics.invoicesCount}</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Invoices</span>
               </div>
 
@@ -1614,7 +1513,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
                   <BookmarkCheck className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xl font-black text-slate-900 block">{storageMetrics.vouchersCount}</span>
+                <span className="text-xl font-bold text-slate-900 block">{storageMetrics.vouchersCount}</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Vouchers</span>
               </div>
 
@@ -1622,7 +1521,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
                   <CheckSquare className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xl font-black text-slate-900 block">{storageMetrics.catalogCount}</span>
+                <span className="text-xl font-bold text-slate-900 block">{storageMetrics.catalogCount}</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Catalog Items</span>
               </div>
 
@@ -1630,7 +1529,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
                   <Paperclip className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xl font-black text-slate-900 block">{storageMetrics.attachmentsCount}</span>
+                <span className="text-xl font-bold text-slate-900 block">{storageMetrics.attachmentsCount}</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Attachments</span>
               </div>
 
@@ -1638,7 +1537,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
                   <FileText className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xl font-black text-slate-900 block">{storageMetrics.notesCount}</span>
+                <span className="text-xl font-bold text-slate-900 block">{storageMetrics.notesCount}</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Case Notes</span>
               </div>
             </div>
@@ -1661,28 +1560,8 @@ export const SettingsView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Option 1: Reset to Demo Data */}
-              <div className="p-6 bg-slate-50 border border-amber-200 rounded-3xl space-y-4 flex flex-col justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-amber-700 font-extrabold text-xs uppercase tracking-wider">
-                    <RefreshCw className="w-4 h-4 text-amber-600" /> Factory Demo Reset
-                  </div>
-                  <h3 className="font-bold text-slate-900 text-base">Reset to Standard Demo State</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Restores baseline initial demo data (sample cases, partner labs, standard catalog prices, and demo billing invoices). Use this if you want to restore standard demo content.
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleResetDemo}
-                  className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>Restore Factory Demo State</span>
-                </button>
-              </div>
-
-              {/* Option 2: Complete System Data Wipe / Delete Everything */}
+              {/* Complete System Data Wipe / Delete Everything — the only reset path;
+                  demo-data injection was removed for production (fresh installs stay clean) */}
               <div className="p-6 bg-rose-50/80 border border-rose-300 rounded-3xl space-y-4 flex flex-col justify-between">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-rose-700 font-extrabold text-xs uppercase tracking-wider">
@@ -1696,10 +1575,10 @@ export const SettingsView: React.FC = () => {
 
                 <button
                   onClick={() => setShowWipeModal(true)}
-                  className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 cursor-pointer"
+                  className="w-full py-3 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>RESET / DELETE EVERYTHING</span>
+                  <span>Delete everything — wipe all data</span>
                 </button>
               </div>
             </div>
@@ -1821,7 +1700,7 @@ export const SettingsView: React.FC = () => {
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
-                Type <span className="font-mono text-rose-600 font-black">DELETE</span> below to confirm:
+                Type <span className="font-mono text-rose-600 font-bold">DELETE</span> below to confirm:
               </label>
               <input
                 type="text"
@@ -1896,7 +1775,7 @@ export const SettingsView: React.FC = () => {
                 addUser({
                   name: newUserForm.name.trim(),
                   username: newUserForm.username.trim().toLowerCase(),
-                  email: newUserForm.email.trim() || `${newUserForm.username.trim().toLowerCase()}@dentalsolutions.pk`,
+                  email: newUserForm.email.trim() || `${newUserForm.username.trim().toLowerCase()}@localhost`,
                   role: newUserForm.role,
                   password: newUserForm.password
                 });
@@ -1935,7 +1814,7 @@ export const SettingsView: React.FC = () => {
                 <label className="block font-bold text-slate-700 mb-1">Email Address</label>
                 <input
                   type="email"
-                  placeholder="e.g. usman@dentalsolutions.pk"
+                  placeholder="e.g. usman@localhost (optional)"
                   value={newUserForm.email}
                   onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:bg-white"
