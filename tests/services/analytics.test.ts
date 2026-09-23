@@ -17,6 +17,8 @@ beforeAll(async () => {
 function seedDeliveredCase(id: string, opts: { priority: string; created: string; delivered: string; material: string; price: number }) {
   if (!labsRepo.byId('lab-a')) labsRepo.insert({ id: 'lab-a', name: 'Analytics Clinic A' });
   if (!labsRepo.byId('lab-b')) labsRepo.insert({ id: 'lab-b', name: 'Analytics Clinic B' });
+  // Realistic lifecycle: cases are registered first, then delivered later —
+  // matching how casesRepo.insert auto-logs the initial status at creation.
   casesRepo.insert({
     id,
     case_number: `DS-${id.slice(-4)}`,
@@ -25,15 +27,15 @@ function seedDeliveredCase(id: string, opts: { priority: string; created: string
     doctor_name: 'Dr. Test',
     patient_name: 'Analytics Patient',
     selected_teeth: [11],
-    delivery_date: '2026-12-31',
+    delivery_date: opts.delivered,
     price: opts.price,
     discount: 0,
     final_price: opts.price,
-    status: 'delivered',
+    status: 'received',
     priority: opts.priority,
     created_at: opts.created,
   });
-  engine.run(`UPDATE cases SET created_at = ? WHERE id = ?`, [opts.created, id]);
+  engine.run(`UPDATE cases SET status = 'delivered' WHERE id = ?`, [id]);
   engine.run(
     `INSERT OR REPLACE INTO case_status_history (id, case_id, status, notes, timestamp, updated_by)
      VALUES (?, ?, 'delivered', NULL, ?, 'Vitest')`,
