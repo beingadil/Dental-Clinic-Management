@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.1] — 2026-09-25
+
+### Added
+- **Case archive** — completed (delivered) cases can be moved out of the
+  workstation into a new Archive tab without deleting anything. The tab
+  filters by delivery-date range (shared date picker), clinic dropdown, and
+  case-ID / patient / doctor search. Archived cases can be restored to the
+  active board or permanently deleted through a typed confirmation that
+  keeps the linked invoice so the money trail stays complete (migration
+  011). Archived state survives restarts.
+
+### Fixed
+- **Scale past 1000 records** — the dashboard clinic ledger matched
+  invoices/cases by lowercased clinic name per clinic and rendered one row
+  per clinic; the Dental Clinics directory re-scanned all cases per clinic
+  twice; the cases table mounted all rows at once. All three are now
+  Map-indexed / memoized, the dashboard shows the 12 accounts needing
+  attention (with an honest footer count), and the cases table loads 300
+  rows at a time with a Show More step. Verified with 1000 clinics, 1000
+  cases, 1000 invoices and 466 payments live in the app.
+
 ## [2.9.0] — 2026-09-25
 
 ### Fixed
