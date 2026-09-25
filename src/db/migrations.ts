@@ -738,6 +738,19 @@ export const MIGRATION_010_CATALOG_DETAIL: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 011 — case archive
+// Completed cases can be archived out of the active workstation without being
+// deleted. `archived_at` NULL = active; set = archived on that timestamp.
+export const MIGRATION_011_CASE_ARCHIVE: Migration = {
+  version: 11,
+  name: 'case_archive',
+  statements: [
+    `ALTER TABLE cases ADD COLUMN archived_at TEXT`,
+    `CREATE INDEX idx_cases_archived ON cases(archived_at)`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '11')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -749,4 +762,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_008_PURGE_DEMO_USERS,
   MIGRATION_009_DROP_SERVICE_ACCOUNT,
   MIGRATION_010_CATALOG_DETAIL,
+  MIGRATION_011_CASE_ARCHIVE,
 ];

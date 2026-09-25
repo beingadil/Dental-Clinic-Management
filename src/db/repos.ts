@@ -427,6 +427,7 @@ export interface CaseRow {
   instructions?: string | null;
   photo_url?: string | null;
   status: string;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -459,6 +460,7 @@ function caseToDomain(row: CaseRow, db: Db): any {
     instructions: row.instructions ?? undefined,
     photo_url: row.photo_url ?? undefined,
     status: row.status,
+    archived_at: row.archived_at ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     history,
@@ -487,12 +489,12 @@ export const casesRepo = {
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
                             selected_teeth, tooth_details, shade, material, delivery_date, priority, price, discount, final_price,
-                            instructions, photo_url, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            instructions, photo_url, status, archived_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, c.case_number, c.patient_name ?? null, c.lab_id, c.lab_name, c.case_type_id ?? null, c.case_type_name ?? null,
          c.units_count ?? null, c.doctor_name, JSON.stringify(c.selected_teeth ?? []), c.tooth_details ? JSON.stringify(c.tooth_details) : null,
          c.shade ?? null, c.material ?? null, c.delivery_date, c.priority ?? 'normal', c.price ?? 0, c.discount ?? 0, c.final_price ?? 0,
-         c.instructions ?? null, c.photo_url ?? null, c.status ?? 'received', c.created_at ?? now(), now()]
+         c.instructions ?? null, c.photo_url ?? null, c.status ?? 'received', c.archived_at ?? null, c.created_at ?? now(), now()]
       );
       // normalize teeth
       const details = c.tooth_details || {};
@@ -517,7 +519,7 @@ export const casesRepo = {
     const db = requireEngine();
     return db.withTransaction((tx) => {
       const allowed = ['patient_name', 'lab_id', 'lab_name', 'case_type_id', 'case_type_name', 'units_count', 'doctor_name',
-        'shade', 'material', 'delivery_date', 'priority', 'price', 'discount', 'final_price', 'instructions', 'photo_url', 'status'] as const;
+        'shade', 'material', 'delivery_date', 'priority', 'price', 'discount', 'final_price', 'instructions', 'photo_url', 'status', 'archived_at'] as const;
       const sets: string[] = [];
       const params: any[] = [];
       for (const key of allowed) {
@@ -578,6 +580,26 @@ export const casesRepo = {
   },
   countByStatus(status: string): number {
     return Number(requireEngine().scalar('SELECT COUNT(*) FROM cases WHERE status = ?', [status]) ?? 0);
+  },
+  /* Archive lifecycle — SQL-level so it works even when the case is not in
+     React state yet (fresh boot hydration races). */
+  setArchived(id: string, archivedAt: string | null): boolean {
+    requireEngine().run('UPDATE cases SET archived_at = ?, updated_at = ? WHERE id = ?', [archivedAt, now(), id]);
+    return true;
+  },
+  /** Hard delete with children — for permanent removal from the archive. */
+  deleteCascade(id: string): boolean {
+    const before = requireEngine().rowCount('cases');
+    const db = requireEngine();
+    db.withTransaction((tx) => {
+      tx.run('DELETE FROM case_teeth WHERE case_id = ?', [id]);
+      tx.run('DELETE FROM case_status_history WHERE case_id = ?', [id]);
+      tx.run('DELETE FROM case_notes WHERE case_id = ?', [id]);
+      tx.run("DELETE FROM attachments WHERE entity_type = 'case' AND entity_id = ?", [id]);
+      tx.run('DELETE FROM qc_inspections WHERE case_id = ?', [id]);
+      tx.run('DELETE FROM cases WHERE id = ?', [id]);
+    });
+    return requireEngine().rowCount('cases') < before;
   },
 };
 

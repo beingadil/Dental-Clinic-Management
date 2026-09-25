@@ -141,14 +141,14 @@ function syncNow(c: SyncCollections): void {
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
                             selected_teeth, tooth_details, shade, material, delivery_date, priority, price, discount, final_price,
-                            instructions, photo_url, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            instructions, photo_url, status, archived_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [cse.id, cse.case_number, cse.patient_name ?? null, cse.lab_id, cse.lab_name,
          cse.case_type_id ?? null, cse.case_type_name ?? null, cse.units_count ?? null, cse.doctor_name ?? '',
          JSON.stringify(cse.selected_teeth ?? []), cse.tooth_details ? JSON.stringify(cse.tooth_details) : null,
          cse.shade ?? null, cse.material ?? null, cse.delivery_date, cse.priority ?? 'normal',
          cse.price ?? 0, cse.discount ?? 0, cse.final_price ?? 0, cse.instructions ?? null,
-         cse.photo_url ?? null, cse.status ?? 'received', cse.created_at ?? now, cse.updated_at ?? now]
+         cse.photo_url ?? null, cse.status ?? 'received', cse.archived_at ?? null, cse.created_at ?? now, cse.updated_at ?? now]
       );
       const details = cse.tooth_details || {};
       for (const tooth of cse.selected_teeth || []) {
