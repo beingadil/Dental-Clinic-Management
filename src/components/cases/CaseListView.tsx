@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
@@ -143,7 +143,7 @@ export const CaseListView: React.FC = () => {
   };
 
   // Filtered and Sorted cases
-  const filteredCases = cases.filter((c) => {
+  const filteredCases = useMemo(() => cases.filter((c) => {
     // Search
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -188,7 +188,7 @@ export const CaseListView: React.FC = () => {
       comparison = pMap[b.priority] - pMap[a.priority];
     }
     return sortOrder === 'asc' ? comparison : -comparison;
-  });
+  }), [cases, searchTerm, statusFilter, labFilter, priorityFilter, overdueOnly, dueSoonOnly, sortBy, sortOrder, todayStr]);
 
   // Bulk selection helper functions
   const toggleSelectCase = (id: string) => {

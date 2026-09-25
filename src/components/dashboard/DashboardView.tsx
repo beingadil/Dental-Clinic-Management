@@ -18,7 +18,7 @@ import {
   Truck,
   Download
 } from 'lucide-react';
-import { DentalCase, DentalLab } from '../../types';
+import { DentalCase, DentalLab, Invoice } from '../../types';
 import { computeAnalytics } from '../../services/analyticsService';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { ShadeGuideModal } from './ShadeGuideModal';
@@ -108,11 +108,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
       })),
   [activeCases]);
 
-  // Clinic accounts ledger with calculated balances
+  /* Clinic accounts ledger with calculated balances. Indexed by id, not by
+     name matching (name lookups were O(clinics × cases) and stalled the
+     dashboard at a few hundred clinics). Rows are ordered by outstanding
+     balance and capped — every clinic remains in Dental Clinics. */
   const clinicAccounts = useMemo(() => {
+    const invoicesByLab = new Map<string, Invoice[]>();
+    for (const inv of invoices) {
+      const bucket = invoicesByLab.get(inv.lab_id);
+      if (bucket) bucket.push(inv); else invoicesByLab.set(inv.lab_id, [inv]);
+    }
+    const casesByLab = new Map<string, DentalCase[]>();
+    for (const c of cases) {
+      if (c.status === 'delivered' || c.status === 'cancelled') continue;
+      const bucket = casesByLab.get(c.lab_id);
+      if (bucket) bucket.push(c); else casesByLab.set(c.lab_id, [c]);
+    }
     return labs.map(lab => {
-      const labInvoices = invoices.filter(i => (i.lab_name || '').toLowerCase() === lab.name.toLowerCase());
-      const labCases = cases.filter(c => (c.lab_name || '').toLowerCase() === lab.name.toLowerCase() && c.status !== 'delivered' && c.status !== 'cancelled');
+      const labInvoices = invoicesByLab.get(lab.id) || [];
+      const labCases = casesByLab.get(lab.id) || [];
       const billed = labInvoices.reduce((sum, i) => sum + i.final_amount, 0);
       const paid = labInvoices.reduce((sum, i) => sum + i.amount_paid, 0);
       const balance = billed - paid;
@@ -129,8 +143,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
         hasOverdue,
         status: balance === 0 ? 'Settled' : hasOverdue ? 'Overdue' : 'Partial / Active',
       };
-    });
+    }).sort((a, b) => b.balance - a.balance);
   }, [labs, invoices, cases, todayStr]);
+
+  /* The dashboard table shows the accounts that need attention, not the whole
+     directory — 1000 rendered rows made the home screen crawl. */
+  const VISIBLE_CLINIC_ACCOUNTS = 12;
+  const visibleClinicAccounts = clinicAccounts.slice(0, VISIBLE_CLINIC_ACCOUNTS);
+  const hiddenClinicAccounts = Math.max(0, clinicAccounts.length - VISIBLE_CLINIC_ACCOUNTS);
 
   const currentFormattedDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -686,7 +706,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {clinicAccounts.map(account => (
+              {visibleClinicAccounts.map(account => (
                 <tr key={account.lab.id} className="hover:bg-slate-50/60 transition">
                   <td className="py-3.5 px-4 font-semibold text-slate-900">
                     {account.name}
@@ -694,7 +714,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
                   </td>
                   <td className="py-3.5 px-3">
                     <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
-                      {account.activeCases.length} Cases ({account.activeCases.map(c => c.case_number).join(', ') || 'In Queue'})
+                      {account.activeCases.length} Active
                     </span>
                   </td>
                   <td className="py-3.5 px-3 font-medium">{account.turnaround}</td>
@@ -731,6 +751,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
               ))}
             </tbody>
           </table>
+          {hiddenClinicAccounts > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+              <span>
+                Showing {visibleClinicAccounts.length} of {clinicAccounts.length} clinics — ordered by outstanding balance
+              </span>
+              <button
+                onClick={() => setCurrentView('labs')}
+                className="font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+              >
+                Open Dental Clinics →
+              </button>
+            </div>
+          )}
         </div>
       </section>
       {/* END: Dental Clinics Accounts & Invoicing Ledger Table */}
