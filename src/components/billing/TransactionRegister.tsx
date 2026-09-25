@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PaymentRecord, AdvancePayment, AccountAdjustment, Invoice, PaymentMethod } from '../../types';
-import { StatCard } from '../common/ui';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { 
   DollarSign, 
@@ -16,11 +15,9 @@ import {
   ArrowUpRight, 
   ArrowDownLeft, 
   PlusCircle, 
-  Percent, 
   RotateCcw,
   Receipt,
   Download,
-  CheckCircle2,
   Scale,
   ArrowLeftRight
 } from 'lucide-react';
@@ -235,23 +232,6 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
     });
   }, [unifiedTransactions, categoryFilter, selectedLabId, methodFilter, searchTerm, fromDate, toDate]);
 
-  // Aggregate Metrics for transactions
-  const totalCollections = useMemo(() => {
-    return allPayments.reduce((s, p) => s + p.amount, 0);
-  }, [allPayments]);
-
-  const totalAdvanceDeposits = useMemo(() => {
-    return advancePayments.reduce((s, a) => s + a.amount, 0);
-  }, [advancePayments]);
-
-  const totalAdvanceCreditRemaining = useMemo(() => {
-    return advancePayments.reduce((s, a) => s + a.remaining_amount, 0);
-  }, [advancePayments]);
-
-  const totalCreditNotes = useMemo(() => {
-    return accountAdjustments.filter(a => a.type === 'credit_note').reduce((s, a) => s + a.amount, 0);
-  }, [accountAdjustments]);
-
   // Handle Export CSV
   const handleExportCSV = () => {
     const headers = ['Transaction #', 'Date', 'Dental Clinic', 'Type / Category', 'Detail / Notes', 'Method', 'Reference #', 'Amount (PKR)', 'Staff'];
@@ -281,41 +261,6 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
 
   return (
     <div className="space-y-5">
-      
-      {/* KPI Cards Strip — same StatCard component as the Invoices tab */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Payments Collected"
-          value={`PKR ${(totalCollections || 0).toLocaleString()}`}
-          subtitle={`${allPayments.length} direct invoice payments`}
-          icon={DollarSign}
-          variant="emerald"
-        />
-
-        <StatCard
-          title="Advance Deposits Received"
-          value={`PKR ${(totalAdvanceDeposits || 0).toLocaleString()}`}
-          subtitle={`${advancePayments.length} clinic deposit records`}
-          icon={Wallet}
-          variant="indigo"
-        />
-
-        <StatCard
-          title="Available Advance Credit"
-          value={`PKR ${(totalAdvanceCreditRemaining || 0).toLocaleString()}`}
-          subtitle="Holding in clinic prepaid wallets"
-          icon={CheckCircle2}
-          variant="cyan"
-        />
-
-        <StatCard
-          title="Credit Notes & Adjustments"
-          value={`PKR ${(totalCreditNotes || 0).toLocaleString()}`}
-          subtitle={`${accountAdjustments.length} adjustment records`}
-          icon={Percent}
-          variant="rose"
-        />
-      </div>
 
       {/* Control Strip & Sub-Filters */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">

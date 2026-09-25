@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
-import { CaseDetailPanel } from './CaseDetailPanel';
 import { CaseTemplateModal } from './CaseTemplateModal';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
@@ -28,36 +27,9 @@ import {
   Printer,
   CheckSquare,
   Receipt,
-  Pencil,
-  ShieldCheck
+  Pencil
 } from 'lucide-react';
 
-/** Compact QC state chip for kanban cards — shows why the ready/delivered gate may refuse. */
-function QcChip({ caseId, status, getQcState }: { caseId: string; status: CaseStatus; getQcState: (id: string) => { gate_open: boolean; last_result?: string; passed: boolean } }) {
-  if (status === 'ready' || status === 'delivered') {
-    return (
-      <span title="QC passed" className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 ml-1">
-        <ShieldCheck className="w-2.5 h-2.5" />QC
-      </span>
-    );
-  }
-  if (status === 'qc') {
-    const st = getQcState(caseId);
-    if (st.gate_open) {
-      return (
-        <span title="QC passed — may advance" className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 ml-1">
-          <ShieldCheck className="w-2.5 h-2.5" />QC OK
-        </span>
-      );
-    }
-    return (
-      <span title={st.last_result === 'fail' ? 'QC failed — must pass inspection to advance' : 'Awaiting QC inspection'} className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 ml-1">
-        <ShieldCheck className="w-2.5 h-2.5" />{st.last_result === 'fail' ? 'QC FAIL' : 'QC PENDING'}
-      </span>
-    );
-  }
-  return null;
-}
 
 const KANBAN_STAGES: { id: CaseStatus; title: string; color: string; badgeBg: string; headerBg: string }[] = [
   { id: 'received', title: 'Received', color: 'bg-slate-500', badgeBg: 'bg-slate-100 text-slate-700', headerBg: 'border-slate-200 bg-slate-50' },
@@ -69,7 +41,7 @@ const KANBAN_STAGES: { id: CaseStatus; title: string; color: string; badgeBg: st
 ];
 
 export const CaseListView: React.FC = () => {
-  const { cases, labs, caseTypes, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, getQcState } = useApp();
+  const { cases, labs, caseTypes, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr } = useApp();
 
   // State (Default to Table View)
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>(() => {
@@ -91,7 +63,7 @@ export const CaseListView: React.FC = () => {
     }
   };
   const [selectedCase, setSelectedCase] = useState<DentalCase | null>(null);
-  const [detailCase, setDetailCase] = useState<DentalCase | null>(null);
+
   const [printSlipCase, setPrintSlipCase] = useState<DentalCase | null>(null);
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [bulkPrintModalOpen, setBulkPrintModalOpen] = useState(false);
@@ -672,7 +644,6 @@ export const CaseListView: React.FC = () => {
                             <div className="flex items-center gap-1 text-slate-500">
                               <Calendar className="w-3 h-3 text-slate-400" />
                               <span className={isOverdue ? 'text-amber-700 font-bold' : ''}>{c.delivery_date}</span>
-                              <QcChip caseId={c.id} status={c.status} getQcState={getQcState} />
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -684,9 +655,7 @@ export const CaseListView: React.FC = () => {
                                   e.stopPropagation();
                                   updateCase(c.id, { status: e.target.value as CaseStatus });
                                 }}
-                                title={c.status === 'qc' && !getQcState(c.id).gate_open
-                                  ? 'QC pending — the gate will refuse ready/delivered until inspection passes'
-                                  : 'Change stage'}
+                                title="Change stage"
                                 className="text-[10px] bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-medium text-slate-700 focus:outline-none"
                               >
                                 <option value="received">Recv</option>
@@ -708,16 +677,6 @@ export const CaseListView: React.FC = () => {
                                 <Printer className="w-3.5 h-3.5" />
                               </button>
 
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDetailCase(c);
-                                }}
-                                className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition-colors"
-                                title="View Details"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
                             </div>
                           </div>
                         </div>
@@ -782,7 +741,7 @@ export const CaseListView: React.FC = () => {
                     return (
                       <tr
                         key={c.id}
-                        onClick={() => setDetailCase(c)}
+                        onClick={() => setSelectedCase(c)}
                         className={`hover:bg-indigo-50/40 cursor-pointer transition-colors ${
                           isSelected 
                             ? 'bg-indigo-50/60' 
@@ -869,22 +828,12 @@ export const CaseListView: React.FC = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setDetailCase(c);
-                              }}
-                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <Eye className="w-3.5 h-3.5" /> View
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
                                 setSelectedCase(c);
                               }}
-                              className="px-2.5 py-1 bg-white hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 hover:border-indigo-600 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
-                              title="Edit case"
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              title="Open this case in the case form"
                             >
-                              <Pencil className="w-3.5 h-3.5" /> Edit
+                              <Pencil className="w-3.5 h-3.5" /> Open
                             </button>
                           </div>
                         </td>
@@ -896,23 +845,6 @@ export const CaseListView: React.FC = () => {
             </div>
           )}
         </div>
-      )}
-
-      {/* Case Job Detail Panel (read-first view) */}
-      {detailCase && (
-        <CaseDetailPanel
-          caseData={detailCase}
-          onClose={() => setDetailCase(null)}
-          onEdit={(c) => {
-            setDetailCase(null);
-            setSelectedCase(c);
-          }}
-          onDeleted={() => setDetailCase(null)}
-          onPrint={(c) => {
-            setDetailCase(null);
-            setPrintSlipCase(c);
-          }}
-        />
       )}
 
       {/* Case Detail / Create Modal */}

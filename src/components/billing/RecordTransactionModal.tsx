@@ -60,7 +60,10 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
-  const [saveRemainingAsAdvance, setSaveRemainingAsAdvance] = useState<boolean>(true);
+  /* Opt-IN: cash left unallocated only becomes clinic credit when the cashier
+     says so. Default OFF — a partial payment must never silently become an
+     advance deposit (this was the "rest of the invoice shows as advance" bug). */
+  const [saveRemainingAsAdvance, setSaveRemainingAsAdvance] = useState<boolean>(false);
   const [proofUrl, setProofUrl] = useState<string>('');
   const [proofName, setProofName] = useState<string>('');
   const [proofSize, setProofSize] = useState<string>('');
@@ -108,37 +111,42 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     }, 0);
   }, [clinicInvoices]);
 
-  // Initialize or adjust allocations whenever amount or clinic changes
+  /* Keep the cash amount and the allocation table as ONE consistent state: the
+     amount is what the cashier actually collected, the allocations split it.
+     The table rebalances on every amount change (target invoice first, then
+     oldest-first) so the two can never drift apart. */
   useEffect(() => {
-    if (mode === 'payment') {
-      if (selectedInvoiceId && clinicInvoices.some((i) => i.id === selectedInvoiceId)) {
-        const target = clinicInvoices.find((i) => i.id === selectedInvoiceId);
-        if (target) {
-          const due = target.final_amount - (target.amount_paid || 0) - (target.credit_notes_total || 0);
-          if (amount === 0) {
-            setAmount(due);
-            setAllocations({ [target.id]: due });
-          } else {
-            setAllocations({ [target.id]: Math.min(amount, due) });
-          }
-        }
-      } else if (clinicInvoices.length > 0 && amount > 0) {
-        // Auto-allocate FIFO
-        let remaining = amount;
-        const newAlloc: { [id: string]: number } = {};
-        for (const inv of clinicInvoices) {
-          if (remaining <= 0) break;
-          const due = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
-          const take = Math.min(due, remaining);
-          if (take > 0) {
-            newAlloc[inv.id] = take;
-            remaining -= take;
-          }
-        }
-        setAllocations(newAlloc);
+    if (mode !== 'payment') return;
+
+    const target = selectedInvoiceId
+      ? clinicInvoices.find((i) => i.id === selectedInvoiceId) || null
+      : null;
+
+    if (amount === 0) {
+      // Nothing typed yet: opening from an invoice pre-fills its full balance.
+      if (target) {
+        const due = Math.max(0, target.final_amount - (target.amount_paid || 0) - (target.credit_notes_total || 0));
+        setAmount(due);
+        setAllocations({ [target.id]: due });
+      }
+      return;
+    }
+
+    let remaining = amount;
+    const next: { [id: string]: number } = {};
+    const ordered = target ? [target, ...clinicInvoices.filter((i) => i.id !== target.id)] : clinicInvoices;
+
+    for (const inv of ordered) {
+      if (remaining <= 0) break;
+      const due = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+      const take = Math.min(due, remaining);
+      if (take > 0) {
+        next[inv.id] = take;
+        remaining -= take;
       }
     }
-  }, [clinicId, selectedInvoiceId]);
+    setAllocations(next);
+  }, [mode, clinicId, selectedInvoiceId, amount, clinicInvoices]);
 
   const totalAllocated = useMemo(() => {
     return Object.values(allocations).reduce((sum: number, v: number) => sum + (v || 0), 0);
@@ -163,10 +171,16 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     setAllocations(newAlloc);
   };
 
+  /* An allocation can never exceed the invoice balance nor the cash received. */
   const handleAllocationChange = (invId: string, val: number) => {
+    const inv = clinicInvoices.find((i) => i.id === invId);
+    const due = inv
+      ? Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0))
+      : 0;
+    const cap = Math.min(due, amount);
     setAllocations((prev) => ({
       ...prev,
-      [invId]: Math.max(0, val || 0)
+      [invId]: Math.max(0, Math.min(val || 0, cap))
     }));
   };
 
@@ -191,6 +205,22 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     if (amount <= 0 && mode !== 'credit_note') {
       alert('Please enter a valid amount greater than 0.');
       return;
+    }
+
+    if (mode === 'payment') {
+      if (totalAllocated > amount + 0.001) {
+        alert(
+          `Allocated ${formatPKR(totalAllocated)} is more than the ${formatPKR(amount)} received. Reduce the allocations first.`
+        );
+        return;
+      }
+      if (unappliedRemainder > 0 && !saveRemainingAsAdvance) {
+        alert(
+          `${formatPKR(unappliedRemainder)} is not applied to any invoice.\n\n` +
+            'Allocate it to an invoice, or tick "Save to Wallet" to keep it as a clinic advance deposit.'
+        );
+        return;
+      }
     }
 
     const attachments: PaymentAttachment[] = proofUrl ? [{
@@ -435,39 +465,6 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
             </div>
           </div>
 
-          {/* Reference & Verification */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Reference / Cheque # / Deposit Slip ID
-              </label>
-              <input
-                type="text"
-                value={referenceNumber}
-                onChange={(e) => setReferenceNumber(e.target.value)}
-                placeholder="e.g. TR-998234 or CHQ-0021"
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Bank Statement Reconciliation Status
-              </label>
-              <div className="flex items-center gap-3 pt-1">
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isVerified}
-                    onChange={(e) => setIsVerified(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                  />
-                  <span>Mark as verified / settled immediately</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
           {/* Mode-Specific Body */}
           {mode === 'payment' && (
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
@@ -551,9 +548,9 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               )}
 
               {unappliedRemainder > 0 && (
-                <div className="p-3 bg-indigo-50/50 rounded-lg border border-indigo-100 text-xs flex items-center justify-between">
+                <div className="p-3 bg-amber-50/60 rounded-lg border border-amber-200 text-xs flex items-center justify-between">
                   <span className="text-slate-700">
-                    Save unallocated amount (<strong>{formatPKR(unappliedRemainder)}</strong>) as advance deposit in clinic wallet?
+                    Unapplied cash (<strong>{formatPKR(unappliedRemainder)}</strong>) — keep it as a clinic advance deposit?
                   </span>
                   <label className="flex items-center gap-2 cursor-pointer font-medium text-indigo-700">
                     <input
@@ -629,6 +626,44 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
             </div>
           )}
 
+          {/* Secondary fields stay folded away, so the form leads with the
+              transaction itself instead of five stacked sections. */}
+          <details className="rounded-lg border border-slate-200 bg-white">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-xs font-bold text-slate-700">
+              <span>Reference, reconciliation, proof &amp; notes</span>
+              <span className="text-[10px] font-semibold text-slate-400">Optional</span>
+            </summary>
+            <div className="space-y-5 border-t border-slate-200 p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Reference / Cheque # / Deposit Slip ID
+                  </label>
+                  <input
+                    type="text"
+                    value={referenceNumber}
+                    onChange={(e) => setReferenceNumber(e.target.value)}
+                    placeholder="e.g. TR-998234 or CHQ-0021"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Bank Statement Reconciliation Status
+                  </label>
+                  <label className="flex items-center gap-2 pt-1 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isVerified}
+                      onChange={(e) => setIsVerified(e.target.checked)}
+                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                    />
+                    <span>Mark as verified / settled immediately</span>
+                  </label>
+                </div>
+              </div>
+
           {/* Payment Proof Uploader */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -667,6 +702,8 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
             />
           </div>
+            </div>
+          </details>
 
           {/* Live Double-Entry Ledger Preview */}
           <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs flex items-center justify-between text-slate-600">

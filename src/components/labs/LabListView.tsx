@@ -33,22 +33,24 @@ export const LabListView: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  /* Only the clinic name and the doctor name are mandatory. Phone, email and
+     address are optional: they are format-checked only when actually filled. */
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!name.trim() || name.trim().length < 2 || name.trim().length > 200) {
-      errs.name = 'Lab name must be between 2 and 200 characters';
+      errs.name = 'Clinic name must be between 2 and 200 characters';
     }
     if (!contactPerson.trim() || contactPerson.trim().length < 2 || contactPerson.trim().length > 100) {
-      errs.contactPerson = 'Contact person must be between 2 and 100 characters';
+      errs.contactPerson = 'Doctor name must be between 2 and 100 characters';
     }
-    if (!phone.trim() || !/^[0-9+\s\-()]{7,25}$/.test(phone.trim())) {
-      errs.phone = 'Valid phone number required (7-25 digits/symbols)';
+    if (phone.trim() && !/^[0-9+\s\-()]{7,25}$/.test(phone.trim())) {
+      errs.phone = 'Phone must be 7-25 digits/symbols — or leave it blank';
     }
-    if (!email.trim() || !/\S+@\S+\.\S+/.test(email.trim())) {
-      errs.email = 'Valid email address required';
+    if (email.trim() && !/\S+@\S+\.\S+/.test(email.trim())) {
+      errs.email = 'Enter a valid email address — or leave it blank';
     }
-    if (!address.trim() || address.trim().length < 5 || address.trim().length > 500) {
-      errs.address = 'Address must be between 5 and 500 characters';
+    if (address.trim() && (address.trim().length < 5 || address.trim().length > 500)) {
+      errs.address = 'Address must be 5-500 characters — or leave it blank';
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -185,7 +187,7 @@ export const LabListView: React.FC = () => {
                         <h3 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
                           {lab.name}
                         </h3>
-                        <p className="text-xs text-slate-500 font-medium">Contact: {lab.contact_person}</p>
+                        <p className="text-xs text-slate-500 font-medium">Doctor: {lab.contact_person || '—'}</p>
                       </div>
                     </div>
                   </div>
@@ -194,15 +196,15 @@ export const LabListView: React.FC = () => {
                   <div className="mt-3.5 text-xs space-y-1.5 text-slate-600 border-t border-slate-100 pt-3">
                     <div className="flex items-center gap-2">
                       <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>{lab.phone}</span>
+                      <span>{lab.phone || '—'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{lab.email}</span>
+                      <span className="truncate">{lab.email || '—'}</span>
                     </div>
                     <div className="flex items-start gap-2 pt-0.5">
                       <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                      <span className="text-slate-500 line-clamp-1">{lab.address}</span>
+                      <span className="text-slate-500 line-clamp-1">{lab.address || 'No address on file'}</span>
                     </div>
                   </div>
 
@@ -267,6 +269,10 @@ export const LabListView: React.FC = () => {
               </button>
             </div>
 
+            <p className="text-[11px] text-slate-500 -mt-1">
+              Clinic name and doctor name are required — everything else can be filled in later.
+            </p>
+
             <form onSubmit={handleCreateSubmit} className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -285,13 +291,13 @@ export const LabListView: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Contact Person Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={contactPerson}
-                    onChange={(e) => setContactPerson(e.target.value)}
-                    placeholder="Dr. Faisal Mahmood"
+                  Doctor Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={contactPerson}
+                  onChange={(e) => setContactPerson(e.target.value)}
+                  placeholder="Dr. Faisal Mahmood"
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
                   />
                   {errors.contactPerson && <p className="text-[11px] text-rose-500 mt-0.5">{errors.contactPerson}</p>}
@@ -299,8 +305,8 @@ export const LabListView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Phone Number <span className="text-rose-500">*</span>
-                  </label>
+                  Phone Number <span className="text-slate-400">(optional)</span>
+                </label>
                   <input
                     type="text"
                     value={phone}
@@ -314,7 +320,7 @@ export const LabListView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Address <span className="text-rose-500">*</span>
+                  Email Address <span className="text-slate-400">(optional)</span>
                 </label>
                 <input
                   type="email"
@@ -328,7 +334,7 @@ export const LabListView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Facility Address <span className="text-rose-500">*</span>
+                  Facility Address <span className="text-slate-400">(optional)</span>
                 </label>
                 <textarea
                   value={address}

@@ -14,7 +14,6 @@ import {
   ChevronRight,
   Activity,
   BookOpen,
-  Printer,
   Clock3
 } from 'lucide-react';
 
@@ -70,7 +69,6 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           badgeColor: 'bg-indigo-50 text-indigo-700 border border-indigo-100' 
         },
         { id: 'catalog', label: 'Price List & Catalog', icon: BookOpen },
-        { id: 'print', label: 'Print Studio', icon: Printer },
       ]
     },
     {

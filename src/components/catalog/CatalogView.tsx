@@ -14,6 +14,7 @@ import {
   Award,
   CheckCircle2,
   DollarSign,
+  Layers,
   X
 } from 'lucide-react';
 
@@ -32,6 +33,11 @@ export const CatalogView: React.FC = () => {
   const [leadDays, setLeadDays] = useState<number>(3);
   const [warrantyMonths, setWarrantyMonths] = useState<number>(60);
   const [description, setDescription] = useState('');
+  const [materialSystem, setMaterialSystem] = useState('');
+  const [unitBasis, setUnitBasis] = useState('');
+  const [shadeGuide, setShadeGuide] = useState('');
+  const [indications, setIndications] = useState('');
+  const [contraindications, setContraindications] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
@@ -47,24 +53,24 @@ export const CatalogView: React.FC = () => {
     e.preventDefault();
     if (!validate()) return;
 
+    const payload = {
+      name: name.trim(),
+      category,
+      base_price: Number(basePrice),
+      lead_time_days: Number(leadDays),
+      warranty_months: Number(warrantyMonths),
+      description: description.trim(),
+      material_system: materialSystem.trim(),
+      unit_basis: unitBasis.trim(),
+      shade_guide: shadeGuide.trim(),
+      indications: indications.trim(),
+      contraindications: contraindications.trim(),
+    };
+
     if (editingItem) {
-      updateCaseType(editingItem.id, {
-        name: name.trim(),
-        category,
-        base_price: Number(basePrice),
-        lead_time_days: Number(leadDays),
-        warranty_months: Number(warrantyMonths),
-        description: description.trim()
-      });
+      updateCaseType(editingItem.id, payload);
     } else {
-      addCaseType({
-        name: name.trim(),
-        category,
-        base_price: Number(basePrice),
-        lead_time_days: Number(leadDays),
-        warranty_months: Number(warrantyMonths),
-        description: description.trim()
-      });
+      addCaseType(payload);
     }
 
     resetForm();
@@ -78,6 +84,11 @@ export const CatalogView: React.FC = () => {
     setLeadDays(item.lead_time_days || 3);
     setWarrantyMonths(item.warranty_months || 60);
     setDescription(item.description || '');
+    setMaterialSystem(item.material_system || '');
+    setUnitBasis(item.unit_basis || '');
+    setShadeGuide(item.shade_guide || '');
+    setIndications(item.indications || '');
+    setContraindications(item.contraindications || '');
     setShowAddModal(true);
   };
 
@@ -88,6 +99,11 @@ export const CatalogView: React.FC = () => {
     setLeadDays(3);
     setWarrantyMonths(60);
     setDescription('');
+    setMaterialSystem('');
+    setUnitBasis('');
+    setShadeGuide('');
+    setIndications('');
+    setContraindications('');
     setErrors({});
     setEditingItem(null);
     setShowAddModal(false);
@@ -244,10 +260,46 @@ export const CatalogView: React.FC = () => {
                 {item.name}
               </h3>
 
+              {item.material_system && (
+                <p className="text-[11px] text-slate-600 font-semibold flex items-start gap-1.5">
+                  <Layers className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                  <span>{item.material_system}</span>
+                </p>
+              )}
+
               {item.description && (
                 <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
                   {item.description}
                 </p>
+              )}
+
+              {(item.indications || item.contraindications || item.shade_guide || item.unit_basis) && (
+                <div className="space-y-1.5 pt-1 print-flow">
+                  {item.indications && (
+                    <p className="text-[10.5px] leading-snug text-slate-600">
+                      <span className="font-bold text-emerald-700 uppercase tracking-wide">Indications: </span>
+                      {item.indications}
+                    </p>
+                  )}
+                  {item.contraindications && (
+                    <p className="text-[10.5px] leading-snug text-slate-600">
+                      <span className="font-bold text-rose-700 uppercase tracking-wide">Contraindications: </span>
+                      {item.contraindications}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {item.unit_basis && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9.5px] font-semibold text-slate-600">
+                        {item.unit_basis}
+                      </span>
+                    )}
+                    {item.shade_guide && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9.5px] font-semibold text-slate-600">
+                        Shades: {item.shade_guide}
+                      </span>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -381,6 +433,69 @@ export const CatalogView: React.FC = () => {
                   placeholder="Indicated for anterior aesthetic crowns, veneers, high strength posterior bridges..."
                   className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
                 />
+              </div>
+
+              <div className="pt-1 border-t border-slate-100">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Technical Specification <span className="normal-case font-medium text-slate-400">(optional — printed on the price list)</span>
+                </p>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Material System</label>
+                      <input
+                        type="text"
+                        value={materialSystem}
+                        onChange={(e) => setMaterialSystem(e.target.value)}
+                        placeholder="e.g. 3Y-TZP zirconia, lithium disilicate"
+                        className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Unit Basis</label>
+                      <input
+                        type="text"
+                        value={unitBasis}
+                        onChange={(e) => setUnitBasis(e.target.value)}
+                        placeholder="e.g. per unit, per arch"
+                        className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Default Shade Guide</label>
+                    <input
+                      type="text"
+                      value={shadeGuide}
+                      onChange={(e) => setShadeGuide(e.target.value)}
+                      placeholder="e.g. VITA Classical A1–D4"
+                      className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Indications</label>
+                    <textarea
+                      rows={2}
+                      value={indications}
+                      onChange={(e) => setIndications(e.target.value)}
+                      placeholder="When to prescribe this restoration..."
+                      className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Contraindications</label>
+                    <textarea
+                      rows={2}
+                      value={contraindications}
+                      onChange={(e) => setContraindications(e.target.value)}
+                      placeholder="When this material should not be used..."
+                      className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">

@@ -29,15 +29,12 @@ export function TabsNav<T extends string = string>({
   className = '',
   id
 }: TabsNavProps<T>) {
-  // Equal-width full-strip mode: CSS Grid keeps every tab identical in size
-  // and the strip spans the container; collapses to a scrollable row on small
-  // screens so labels never truncate mid-word.
+  // Full-strip mode: every tab gets the same comfortable width, and the strip
+  // WRAPS to a second row on narrow screens instead of squeezing labels into
+  // "Inv…" style ellipses — a half-readable tab name is worse than a second row.
   if (fit === 'fill') {
     return (
-      <div
-        id={id}
-        className={`grid grid-flow-col auto-cols-fr gap-1 overflow-x-auto no-scrollbar ${className}`}
-      >
+      <div id={id} className={`flex flex-wrap gap-1.5 ${className}`}>
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
@@ -47,18 +44,18 @@ export function TabsNav<T extends string = string>({
               key={tab.id}
               type="button"
               onClick={() => onChange(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer active:scale-[0.99] ${
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all whitespace-nowrap cursor-pointer active:scale-[0.99] min-w-[9.5rem] ${
                 isActive
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
               }`}
             >
               {Icon && <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />}
-              <span className="truncate">{tab.label}</span>
+              <span>{tab.label}</span>
               {tab.badge !== undefined && (
                 <span
-                  className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full shrink-0 tabular-nums ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
                   }`}
                 >
                   {tab.badge}
@@ -113,7 +110,7 @@ export function TabsNav<T extends string = string>({
   return (
     <div
       id={id}
-      className={`flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 ${className}`}
+      className={`flex flex-wrap items-center gap-1.5 pb-0.5 ${className}`}
     >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
