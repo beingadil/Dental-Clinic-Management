@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { DentalLab } from '../../types';
+import { DentalCase, DentalLab } from '../../types';
 import { LabDetailModal } from './LabDetailModal';
 import { 
   Building2, 
@@ -79,26 +79,43 @@ export const LabListView: React.FC = () => {
     setSelectedLab(newLab);
   };
 
-  const filteredLabs = labs.filter((l) => {
-    if (!searchTerm.trim()) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      (l.name || '').toLowerCase().includes(term) ||
-      (l.contact_person || '').toLowerCase().includes(term) ||
-      (l.email || '').toLowerCase().includes(term) ||
-      (l.address || '').toLowerCase().includes(term)
-    );
-  }).sort((a, b) => {
-    let comparison = 0;
-    if (sortBy === 'name') {
-      comparison = a.name.localeCompare(b.name);
-    } else if (sortBy === 'cases') {
-      const countA = cases.filter((c) => c.lab_id === a.id).length;
-      const countB = cases.filter((c) => c.lab_id === b.id).length;
-      comparison = countB - countA;
+  /* Cases indexed once by clinic id — the sort and the per-card "latest case"
+     lookup used to scan the whole cases array per clinic, which visibly
+     stalled the directory past a few hundred clinics. */
+  const casesByLab = useMemo(() => {
+    const byLab = new Map<string, DentalCase[]>();
+    for (const c of cases) {
+      const bucket = byLab.get(c.lab_id);
+      if (bucket) bucket.push(c); else byLab.set(c.lab_id, [c]);
     }
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
+    for (const bucket of byLab.values()) {
+      bucket.sort((a, b) =>
+        new Date(b.created_at || b.delivery_date).getTime() -
+        new Date(a.created_at || a.delivery_date).getTime());
+    }
+    return byLab;
+  }, [cases]);
+
+  const filteredLabs = useMemo(() => {
+    return labs.filter((l) => {
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        (l.name || '').toLowerCase().includes(term) ||
+        (l.contact_person || '').toLowerCase().includes(term) ||
+        (l.email || '').toLowerCase().includes(term) ||
+        (l.address || '').toLowerCase().includes(term)
+      );
+    }).sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'name') {
+        comparison = a.name.localeCompare(b.name);
+      } else if (sortBy === 'cases') {
+        comparison = (casesByLab.get(b.id)?.length || 0) - (casesByLab.get(a.id)?.length || 0);
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [labs, searchTerm, sortBy, sortOrder, casesByLab]);
 
   return (
     <div className="space-y-6">
@@ -159,14 +176,8 @@ export const LabListView: React.FC = () => {
           </div>
         ) : (
           filteredLabs.map((lab) => {
-            // Get all cases for this lab sorted MOST RECENT FIRST
-            const labCases = cases
-              .filter((c) => c.lab_id === lab.id)
-              .sort((a, b) => {
-                const timeA = new Date(a.created_at || a.delivery_date).getTime();
-                const timeB = new Date(b.created_at || b.delivery_date).getTime();
-                return timeB - timeA;
-              });
+            // All cases for this lab, most recent first (pre-indexed above)
+            const labCases = casesByLab.get(lab.id) || [];
 
             const recentCase = labCases[0];
 
