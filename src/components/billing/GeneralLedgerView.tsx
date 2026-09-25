@@ -174,15 +174,23 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
   // Compute opening balance before startDate and active entries within date range
   const { openingBalance, ledgerItems, totalDebits, totalCredits, closingBalance } = useMemo(() => {
-    // Sort chronologically ascending
+    /* Order strictly by POSTING TIME (the engine's exact sequence), never by
+       document number: sorting by reference string interleaved same-day rows
+       and made the running balance jump up and down. The source array arrives
+       newest-first, so equal timestamps fall back to reversed engine order. */
     const safeEntries = Array.isArray(rawLedgerEntries) ? rawLedgerEntries : [];
-    const sorted = [...safeEntries].sort((a, b) => {
-      const timeA = a?.date ? new Date(a.date).getTime() : 0;
-      const timeB = b?.date ? new Date(b.date).getTime() : 0;
-      const dateDiff = (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
-      if (dateDiff !== 0) return dateDiff;
-      return String(a?.reference_number || '').localeCompare(String(b?.reference_number || ''));
-    });
+    const indexed = safeEntries.map((entry, index) => ({ entry, index }));
+    const sorted = indexed
+      .sort((a, b) => {
+        const ta = Date.parse(a.entry?.posted_at || '');
+        const tb = Date.parse(b.entry?.posted_at || '');
+        if (!isNaN(ta) && !isNaN(tb) && ta !== tb) return ta - tb;
+        const da = String(a.entry?.date || '').slice(0, 10);
+        const db = String(b.entry?.date || '').slice(0, 10);
+        if (da !== db) return da.localeCompare(db);
+        return b.index - a.index;
+      })
+      .map((x) => x.entry);
 
     let openBal = 0;
     const activeEntries: LedgerEntry[] = [];
@@ -651,8 +659,9 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
       {/* PREVIEW CONTAINER */}
       {isPreviewActive && (
         <div className="space-y-4 print-flow">
-          {/* Summary Strip Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Summary Strip Cards — the closing balance is deliberately NOT here:
+              it belongs at the END of the sequence, after the last entry. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
                 Opening Balance
@@ -689,19 +698,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               </span>
             </div>
 
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
-                Closing Balance
-              </span>
-              <span className={`text-sm md:text-base font-bold mt-1 block ${
-                closingBalance > 0 ? 'text-amber-700' : closingBalance < 0 ? 'text-blue-700' : 'text-emerald-700'
-              }`}>
-                PKR {closingBalance.toLocaleString()} {closingBalance > 0 ? 'Dr' : closingBalance < 0 ? 'Cr' : ''}
-              </span>
-              <span className="text-[10px] text-slate-500 font-semibold">
-                {closingBalance > 0 ? 'Receivable from clinic' : closingBalance < 0 ? 'Advance clinic credit' : 'Fully settled'}
-              </span>
-            </div>
           </div>
 
           {/* Selected Clinic Banner if specific clinic chosen */}
@@ -741,7 +737,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 </span>
               </div>
               <div className="text-[11px] text-slate-500">
-                Sorted chronologically by transaction date
+                Oldest first · ordered by posting time, closing balance on the last line
               </div>
             </div>
 
@@ -874,12 +870,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                   )}
                 </tbody>
 
-                {/* Grand Total Footer Row */}
+                {/* Period activity totals only — the closing balance is the
+                    final line of the statement, below everything else. */}
                 {ledgerItems.length > 0 && (
                   <tfoot>
                     <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-xs text-slate-900">
                       <td colSpan={4} className="py-3.5 px-4 text-right uppercase tracking-wider font-bold">
-                        Total Period Activity & Net Closing Balance:
+                        Total Period Activity:
                       </td>
                       <td className="py-3.5 px-3 text-right font-bold font-mono text-blue-900 whitespace-nowrap">
                         PKR {totalDebits.toLocaleString()}
@@ -887,13 +884,31 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                       <td className="py-3.5 px-3 text-right font-bold font-mono text-emerald-700 whitespace-nowrap">
                         PKR {totalCredits.toLocaleString()}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold font-mono text-slate-950 whitespace-nowrap text-sm bg-slate-200/60">
-                        PKR {closingBalance.toLocaleString()} {closingBalance > 0 ? 'Dr' : closingBalance < 0 ? 'Cr' : ''}
-                      </td>
+                      <td className="py-3.5 px-4 text-right text-slate-400 whitespace-nowrap">—</td>
                     </tr>
                   </tfoot>
                 )}
               </table>
+            </div>
+
+            {/* Final line of the statement: the closing balance, after the last
+                chronologically ordered entry. */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-slate-300 bg-slate-900 px-4 py-3.5 text-white">
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Closing Balance{startDate || endDate ? ` · ${startDate || 'Beginning'} → ${endDate || 'Present'}` : ''}
+                </span>
+                <span className="text-[11px] text-slate-300">
+                  {closingBalance > 0
+                    ? 'Receivable from clinic'
+                    : closingBalance < 0
+                    ? 'Advance credit held for clinic'
+                    : 'Fully settled'}
+                </span>
+              </div>
+              <span className="font-mono text-lg font-bold tracking-tight">
+                PKR {closingBalance.toLocaleString()} {closingBalance > 0 ? 'Dr' : closingBalance < 0 ? 'Cr' : ''}
+              </span>
             </div>
           </div>
         </div>

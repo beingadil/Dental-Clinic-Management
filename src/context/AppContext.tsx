@@ -74,10 +74,8 @@ import {
   deriveQcCaseState,
   nextInspectionNo,
   qcDedupeKey,
-  qcGateSatisfied,
   qcReasonLabel,
   statusAfterQc,
-  QC_GATED_STATUSES,
 } from '../services/qcDomain';
 import { getTodayStr } from '../utils/dateUtils';
 import { sqliteDb } from '../services/sqliteDbService';import { useSettingsDomain } from './hooks/useSettingsDomain';
@@ -1438,6 +1436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           debit: evt.debit,
           credit: evt.credit,
           running_balance: runningBalance,
+          posted_at: new Date(evt.timestamp).toISOString(),
           payment_method: evt.payment_method,
           attachments_count: evt.attachments_count,
           attachments: evt.attachments,
@@ -1518,28 +1517,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateCase = (
     id: string,
     updates: Partial<DentalCase>,
-    note?: string,
-    /* Internal: QC events appended in this very call, so the gate sees them
-       before React state has flushed. Callers outside the QC action omit it. */
-    qcEventsInFlight?: QcInspection[]
+    note?: string
   ) => {
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
-    /* Quality gate: a case is only released once an inspection has passed. */
-    if (updates.status && QC_GATED_STATUSES.includes(updates.status)) {
-      const gateEvents = qcEventsInFlight ?? qcInspections;
-      if (!qcGateSatisfied(deriveQcCaseState(gateEvents, id))) {
-        showToast(
-          `A passing QC inspection is required before this case can be marked ${updates.status}`,
-          'warning'
-        );
-        /* Refuse only the blocked transition — every other edit in this call
-           still applies (the case keeps its current status). */
-        const rest: Partial<DentalCase> = { ...updates };
-        delete rest.status;
-        updates = rest;
-      }
-    }
 
     setCases((prev) =>
       prev.map((c) => {
@@ -1671,8 +1651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       { status },
       command.result === 'pass'
         ? `QC inspection #${inspectionNo} passed`
-        : `QC inspection #${inspectionNo} failed — ${qcReasonLabel(event.reason_code)}`,
-      nextEvents
+        : `QC inspection #${inspectionNo} failed — ${qcReasonLabel(event.reason_code)}`
     );
 
     let notified = false;
@@ -2437,6 +2416,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const paymentId = `pay-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const totalAllocated = command.allocations.reduce((sum, a) => sum + a.amount, 0);
+
+    /* Money invariant: a payment can never be allocated beyond what was
+       actually received. Callers validate first (the record modal blocks it
+       and explains why); this is the last-line guard. */
+    if (totalAllocated > command.amount + 0.001) {
+      throw new Error(
+        `Payment allocation error: PKR ${totalAllocated.toLocaleString()} allocated from a payment of PKR ${command.amount.toLocaleString()}.`
+      );
+    }
+
     const unappliedAmount = Math.max(0, command.amount - totalAllocated);
 
     // Prepare allocations list
@@ -2522,8 +2511,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    // 2. If unapplied remainder exists and user opted to save to credit wallet
-    if (unappliedAmount > 0 && command.saveRemainingAsAdvance !== false) {
+    // 2. Unapplied cash becomes clinic credit ONLY when the caller explicitly
+    //    asked for it. Never inferred: an unapplied remainder must not turn a
+    //    partial payment into an advance deposit behind the cashier's back.
+    if (unappliedAmount > 0 && command.saveRemainingAsAdvance === true) {
       const advId = `adv-rem-${Date.now()}`;
       const advNum = `ADV-${currentYear}-${String(advancePayments.length + 1).padStart(4, '0')}`;
       const newAdvanceFromRemainder: AdvancePayment = {

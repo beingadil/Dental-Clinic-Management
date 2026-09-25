@@ -78,7 +78,8 @@ interface CaseDetailModalProps {
 }
 
 /* Wizard step definitions — attachments are NOT a creation gate: they are
-   managed after creation from the case detail's Attachments tab. */
+   managed inside the Teeth & Shade step once the case exists. There is no
+   fourth "review" step: step 3 is the last one and it ends with Create. */
 type StepKey = 'basics' | 'chart' | 'schedule';
 
 const STEPS: { key: StepKey; numeral: string; label: string; caption: string }[] = [
@@ -169,7 +170,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [photoUrl, setPhotoUrl] = useState<string>(initialCase?.photo_url || '');
 
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'attachments' | 'notes'>('details');
   const [statusNote, setStatusNote] = useState('');
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateNameInput, setTemplateNameInput] = useState('');
@@ -177,8 +177,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   /* ---------------------------- wizard state ---------------------------- */
+  const STEP_SETTLE_MS = 350;
+  const stepEnteredAtRef = React.useRef(0);
   const [step, setStep] = useState(0);
-  const [maxVisited, setMaxVisited] = useState(0);
+  /* Editing jumps straight to any step — the record already exists, so nothing
+     is being bypassed. Creating starts locked to step 1. */
+  const [maxVisited, setMaxVisited] = useState(isEdit ? STEPS.length - 1 : 0);
   const [attempted, setAttempted] = useState(false);
 
   const stepValid: Record<StepKey, boolean> = {
@@ -434,17 +438,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     if (!stepValid.schedule) { setStep(2); return; }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Wizard guard: on any non-final step, a form submission means "advance".
-    // This makes it impossible for a stale-element hit, double click, or Enter
-    // key on "Continue" to land on the freshly-mounted "Create Dental Case"
-    // submit button — creation can only ever happen from the final review step.
-    if (!isEdit && step < STEPS.length - 1) {
-      goNext();
-      return;
-    }
+  /* The only place a case is ever written. Reachable from the last step only,
+     and never within a moment of arriving there: a fast double click used to
+     let the second press land on the freshly mounted submit button and save a
+     half-filled case (the "saves on step 2" report). */
+  const commitCase = () => {
+    if (step < STEPS.length - 1) return;
+    if (Date.now() - stepEnteredAtRef.current < STEP_SETTLE_MS) return;
 
     if (!validate()) {
       jumpToFirstInvalidStep();
@@ -512,65 +512,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     onClose();
   };
 
-  const handleSaveDraft = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const selectedLab = labs.find((l) => l.id === labId);
-    const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
-    const finalPrice = Math.max(0, (price || 0) - (discount || 0));
-
-    if (isEdit && initialCase) {
-      updateCase(
-        initialCase.id,
-        {
-          patient_name: patientName.trim() || initialCase.patient_name || '',
-          lab_id: labId || labs[0]?.id || '',
-          lab_name: selectedLab ? selectedLab.name : initialCase.lab_name || '',
-          case_type_id: caseTypeId,
-          case_type_name: selectedCT ? selectedCT.name : initialCase.case_type_name || 'Dental Case',
-          doctor_name: doctorName.trim() || initialCase.doctor_name || '',
-          selected_teeth: selectedTeeth,
-          tooth_details: toothDetails,
-          shade: shade.trim() || 'A2',
-          material: material.trim(),
-          delivery_date: deliveryDate,
-          priority,
-          price: isNaN(price) ? 0 : price,
-          discount: isNaN(discount) ? 0 : discount,
-          final_price: finalPrice,
-          instructions: instructions.trim(),
-          status: 'draft',
-          photo_url: photoUrl
-        },
-        'Saved as draft'
-      );
-    } else {
-      const newCase = addCase({
-        patient_name: patientName.trim(),
-        lab_id: labId || labs[0]?.id || '',
-        lab_name: selectedLab ? selectedLab.name : '',
-        case_type_id: caseTypeId || caseTypes[0]?.id || '',
-        case_type_name: selectedCT ? selectedCT.name : 'Dental Case',
-        doctor_name: doctorName.trim(),
-        selected_teeth: selectedTeeth.length > 0 ? selectedTeeth : [11],
-        tooth_details: toothDetails,
-        shade: shade.trim() || 'A2',
-        material: material.trim(),
-        delivery_date: deliveryDate,
-        priority,
-        price: isNaN(price) ? 0 : price,
-        discount: isNaN(discount) ? 0 : discount,
-        final_price: finalPrice,
-        instructions: instructions.trim(),
-        photo_url: photoUrl,
-        status: 'draft',
-      });
-
-      if (newCase && pendingAttachments.length > 0) {
-        pendingAttachments.forEach(att => addCaseAttachment(newCase.id, att));
-      }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Enter key / stray submit on a non-final step means "advance", never save.
+    if (step < STEPS.length - 1) {
+      goNext();
+      return;
     }
-
-    onClose();
+    commitCase();
   };
 
   const handleSaveAsTemplate = () => {
@@ -612,6 +561,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
   const selectedLab = labs.find((l) => l.id === labId);
   const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
+
+  /* Tracks when the wizard landed on the current step so the final submit can
+     ignore a click that was really aimed at the "Continue" button. */
+  useEffect(() => {
+    stepEnteredAtRef.current = Date.now();
+  }, [step]);
 
   /* Priority visual mapping */
   const priorityDot: Record<PriorityLevel, string> = {
@@ -701,7 +656,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               >
                 {labs.map((l) => (
                   <option key={l.id} value={l.id}>
-                    {l.name} ({l.phone})
+                    {l.phone ? `${l.name} (${l.phone})` : l.name}
                   </option>
                 ))}
               </select>
@@ -821,6 +776,58 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           )}
         </div>
       </div>
+
+      {!isEdit && (
+        <div className={bezelCard}>
+          <div className={bezelCardInner}>
+            <Eyebrow>02 · Scans &amp; photos</Eyebrow>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
+                <Upload className="h-3.5 w-3.5" />
+                Add files
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleLocalFileUpload(e.target.files)}
+                />
+              </label>
+              <span className="text-xs text-slate-500">
+                {pendingAttachments.length === 0
+                  ? 'Optional — STL scans, intraoral photos or prescriptions. They attach when the case is created.'
+                  : `${pendingAttachments.length} file${pendingAttachments.length === 1 ? '' : 's'} ready to attach on create.`}
+              </span>
+            </div>
+            {uploadNotice && (
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span className="font-semibold">{uploadNotice}</span>
+              </div>
+            )}
+            {pendingAttachments.length > 0 && (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {pendingAttachments.map((att, i) => (
+                  <li key={`${att.filename}-${i}`} className="flex items-center justify-between gap-3 py-2 text-xs">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="truncate font-semibold text-slate-800" title={att.filename}>{att.filename}</span>
+                      <span className="shrink-0 text-slate-400">{att.file_size}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPendingAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="rounded-full p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                      title="Remove file"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -942,57 +949,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         </div>
       </div>
 
-      {/* Final review — last step doubles as the confirmation before Create. */}
-      <div className="lg:col-span-12">{renderReviewSummary()}</div>
-    </div>
-  );
-
-  const renderReviewSummary = () => (
-    <div className="rounded-[1.5rem] bg-slate-900 p-6 shadow-[0_24px_48px_-16px_rgba(15,23,42,0.4)]">
-      <div className="flex items-center justify-between">
-        <Eyebrow className="text-slate-400">Final review</Eyebrow>
-        <span className="font-mono text-[10px] tracking-widest text-slate-400">REVIEW &amp; CREATE</span>
-      </div>
-      <div className="mt-4 space-y-2.5">
-        {[
-          ['Clinic', selectedLab?.name || '—'],
-          ['Doctor', doctorName.trim() || '—'],
-          ['Patient', patientName.trim() || 'Optional / not provided'],
-          ['Procedure', selectedCT ? `${selectedCT.name}` : '—'],
-          ['Units', `${selectedTeeth.length} · ${selectedTeeth.join(', ')}`],
-          ['Shade / Material', `${shade} · ${material}`],
-          ['Priority', `${priority === 'normal' ? 'Medium' : priority.charAt(0).toUpperCase() + priority.slice(1)} · ${PRIORITY_SLA_DAYS[priority]}d SLA`],
-          ['Delivery', deliveryDate || '—'],
-        ].map(([k, v]) => (
-          <div key={k} className="flex items-baseline justify-between gap-4 border-b border-white/10 pb-2">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{k}</span>
-            <span className="max-w-[60%] truncate text-right text-xs font-semibold text-white" title={v}>{v}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-5 flex items-end justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Final Price</span>
-        <span className="font-mono text-3xl font-bold tracking-tight text-white">
-          PKR {finalComputedPrice.toLocaleString()}
-        </span>
-      </div>
-      {discount > 0 && (
-        <div className="mt-1 text-right font-mono text-[11px] text-indigo-300">base PKR {price.toLocaleString()} − discount PKR {discount.toLocaleString()}</div>
-      )}
-      <div className="mt-5 flex items-center justify-between rounded-2xl bg-white/[0.06] p-3.5">
-        <span className="flex items-center gap-2 text-[11px] font-semibold text-slate-300">
-          <Paperclip className="h-3.5 w-3.5 text-indigo-300" />
-          {pendingAttachments.length} file{pendingAttachments.length === 1 ? '' : 's'} will be attached
-        </span>
-        <button
-          type="button"
-          onClick={() => setTemplateModalOpen(true)}
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-300 ring-1 ring-white/20 transition-all duration-500 hover:bg-white/10 hover:text-white ${EASE}`}
-        >
-          <Bookmark className="h-3 w-3" />
-          Save as preset
-        </button>
-      </div>
     </div>
   );
 
@@ -1031,7 +987,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <p className="mt-0.5 truncate text-xs text-slate-400">
                 {isEdit
                   ? 'Workflow, charting, attachments & history'
-                  : 'Four focused steps — review before it hits the bench'}
+                  : 'Three focused steps — procedure, charting, schedule'}
               </p>
             </div>
 
@@ -1059,6 +1015,17 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Job Slip
                 </button>
               )}
+              {!isEdit && (
+                <button
+                  type="button"
+                  onClick={() => setTemplateModalOpen(true)}
+                  className={`hidden items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-white/20 active:scale-[0.97] md:inline-flex ${EASE}`}
+                  title="Save the current teeth, shade and instructions as a reusable preset"
+                >
+                  <Bookmark className="h-4 w-4" />
+                  Save preset
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsFullScreen(!isFullScreen)}
@@ -1078,33 +1045,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           </div>
         </div>
 
-        {/* ---------------------------- Edit tabs ---------------------------- */}
-        {isEdit && (
-          <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-6 py-3">
-            {([
-              ['details', 'Case Details & Chart', <FileText key="i" className="h-3.5 w-3.5" />],
-              ['attachments', 'Attachments', <Paperclip key="i" className="h-3.5 w-3.5" />],
-              ['notes', 'Notes & History', <MessageSquare key="i" className="h-3.5 w-3.5" />],
-            ] as const).map(([key, label, icon]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActiveTab(key as 'details' | 'attachments' | 'notes')}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition-all duration-500 ${EASE} active:scale-[0.97] ${
-                  activeTab === key
-                    ? 'bg-slate-900 text-white shadow-[0_8px_20px_-8px_rgba(15,23,42,0.5)]'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ---------------------------- Wizard stepper ---------------------------- */}
-        {!isEdit && (
+        {/* ------------------ Wizard stepper — identical in create & edit ------------------ */}
+        {(
           <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
             <div className="flex items-center justify-between">
               {/* Desktop rail */}
@@ -1169,24 +1111,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         )}
 
         {/* ---------------------------- Body ---------------------------- */}
-        {isEdit && activeTab === 'attachments' && initialCase && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <CaseAttachmentsPanel caseId={initialCase.id} />
-          </div>
-        )}
-
-        {isEdit && activeTab === 'notes' && initialCase && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <CaseNotesPanel caseId={initialCase.id} />
-          </div>
-        )}
-
-        {(!isEdit || activeTab === 'details') && (
-          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-            <div className={`min-h-0 flex-1 overflow-y-auto ${isEdit ? 'p-6' : 'px-6 py-8 md:px-10 md:py-10'}`}>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 md:px-10 md:py-10">
               {isEdit ? (
                 <div className="space-y-6">
-                  {/* Status stepper (meaningful while editing) */}
+                  {/* Step 3 · live stage control (editing only) */}
+                  {step === 2 && (
                   <div className={bezelCard}>
                     <div className={bezelCardInner}>
                       <div className="mb-3 flex items-center justify-between">
@@ -1203,18 +1133,28 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                         type="text"
                         value={statusNote}
                         onChange={(e) => setStatusNote(e.target.value)}
-                        placeholder="Status change note (optional) — reason, QC verification..."
+                        placeholder="Status change note (optional)"
                         className={`${inputCls} mt-4`}
                       />
                     </div>
                   </div>
+                  )}
 
-                  {renderBasicsSection()}
-                  {renderChartSection()}
-                  {renderScheduleSection()}
+                  {step === 0 && renderBasicsSection()}
+                  {step === 1 && renderChartSection()}
+                  {step === 2 && renderScheduleSection()}
 
-                  {/* History timeline */}
-                  {initialCase && initialCase.history.length > 0 && (
+                  {/* Step 2 · internal case notes (editing only) */}
+                  {step === 2 && initialCase && (
+                    <div className={bezelCard}>
+                      <div className={bezelCardInner}>
+                        <CaseNotesPanel caseId={initialCase.id} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3 · history timeline (editing only) */}
+                  {step === 2 && initialCase && initialCase.history.length > 0 && (
                     <div className={bezelCard}>
                       <div className={bezelCardInner}>
                         <Eyebrow>Status history</Eyebrow>
@@ -1237,8 +1177,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     </div>
                   )}
 
-                  {/* Edit-mode attachments preview */}
-                  {initialCase && (
+                  {/* Step 2 · scans & photos (editing only) */}
+                  {step === 1 && initialCase && (
                     <div className={bezelCard}>
                       <div className={bezelCardInner}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1254,13 +1194,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                 onChange={(e) => handleLocalFileUpload(e.target.files)}
                               />
                             </label>
-                            <button
-                              type="button"
-                              onClick={() => setActiveTab('attachments')}
-                              className={`rounded-full px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:ring-slate-300 active:scale-[0.97] ${EASE}`}
-                            >
-                              All files
-                            </button>
                           </div>
                         </div>
 
@@ -1431,17 +1364,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Delete Case
                 </button>
               ) : (
-                step === STEPS.length - 1 && (
-                  <button
-                    type="button"
-                    onClick={handleSaveDraft}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:bg-slate-100 active:scale-[0.97] ${EASE}`}
-                    title="Save case in Draft state without submitting to production"
-                  >
-                    <Save className="h-4 w-4" />
-                    Save as Draft
-                  </button>
-                )
+                <span className="hidden text-[11px] font-medium text-slate-400 sm:block">
+                  Step {step + 1} of {STEPS.length} · {STEPS[step].label}
+                </span>
               )}
 
               <div className="flex items-center gap-2">
@@ -1453,56 +1378,42 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Cancel
                 </button>
 
-                {isEdit ? (
+                {step > 0 && (
                   <button
-                    type="submit"
-                    className={`group inline-flex items-center gap-2 rounded-full bg-indigo-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.98] ${EASE}`}
+                    type="button"
+                    onClick={goBack}
+                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:ring-slate-300 active:scale-[0.97] ${EASE}`}
                   >
-                    <span>Save Changes</span>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-transform duration-500 group-hover:translate-x-0.5">
-                      <Check className="h-4 w-4" />
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    Back
+                  </button>
+                )}
+                {step < STEPS.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className={`group inline-flex items-center gap-2 rounded-full bg-slate-900 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(15,23,42,0.55)] transition-all duration-500 hover:bg-indigo-600 active:scale-[0.98] ${EASE}`}
+                  >
+                    <span>Continue</span>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
+                      <ArrowRight className="h-4 w-4" />
                     </span>
                   </button>
                 ) : (
-                  <>
-                    {step > 0 && (
-                      <button
-                        type="button"
-                        onClick={goBack}
-                        className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:ring-slate-300 active:scale-[0.97] ${EASE}`}
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" />
-                        Back
-                      </button>
-                    )}
-                    {step < STEPS.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={goNext}
-                        className={`group inline-flex items-center gap-2 rounded-full bg-slate-900 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(15,23,42,0.55)] transition-all duration-500 hover:bg-indigo-600 active:scale-[0.98] ${EASE}`}
-                      >
-                        <span>Continue</span>
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
-                          <ArrowRight className="h-4 w-4" />
-                        </span>
-                      </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        className={`group inline-flex items-center gap-2 rounded-full bg-indigo-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.98] ${EASE}`}
-                      >
-                        <span>Create Dental Case</span>
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
-                          <Check className="h-4 w-4" />
-                        </span>
-                      </button>
-                    )}
-                  </>
+                  <button
+                    type="button"
+                    onClick={commitCase}
+                    className={`group inline-flex items-center gap-2 rounded-full bg-indigo-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.98] ${EASE}`}
+                  >
+                    <span>{isEdit ? 'Save Changes' : 'Create Dental Case'}</span>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
+                      <Check className="h-4 w-4" />
+                    </span>
+                  </button>
                 )}
               </div>
             </div>
-          </form>
-        )}
+        </form>
       </div>
 
       {/* ---------------------------- Attachment preview modal ---------------------------- */}

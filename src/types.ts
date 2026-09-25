@@ -397,6 +397,9 @@ export interface LedgerEntry {
   debit: number; // Receivable increase (Invoice, Debit Adjustment, Refund)
   credit: number; // Receivable decrease (Payment, Advance Payment, Credit Note)
   running_balance: number; // Calculated running outstanding balance
+  /** Exact posting instant (ISO). The single ordering key for the whole ledger:
+      same-day entries keep their true posting sequence instead of colliding. */
+  posted_at?: string;
   payment_method?: PaymentMethod;
   attachments_count?: number;
   attachments?: PaymentAttachment[];
@@ -438,6 +441,12 @@ export interface CaseType {
   lead_time_days?: number;
   warranty_months?: number;
   description?: string;
+  /* Catalog detail (all optional — existing rows simply leave them null). */
+  material_system?: string;   // e.g. '3Y-TZP zirconia', 'lithium disilicate'
+  unit_basis?: string;        // how the base price is counted, e.g. 'per unit'
+  shade_guide?: string;       // default shade system, e.g. 'VITA Classical A1–D4'
+  indications?: string;       // clinical indications
+  contraindications?: string; // when NOT to use
   created_at: string;
 }
 
@@ -513,6 +522,8 @@ export interface BrandingSettings {
   tagline: string;
   lab_name?: string;
   logoUrl?: string;
+  /** Optional second mark — printed beside the primary logo on invoices. */
+  logoUrl2?: string;
   primaryColor?: string;
   phone?: string;
   address?: string;
@@ -530,7 +541,7 @@ export interface BrandingSettings {
   warningHighlightStyle?: 'border' | 'solid' | 'badge' | 'full';
   cardBgColor?: string;
 
-  // Global print defaults (Settings → Print; per-document section toggles live in Print Studio)
+  // Global print defaults (Settings → Print; per-document section toggles live in each print dialog)
   printPaper?: 'a4' | 'letter';
   printMargin?: 'narrow' | 'normal' | 'wide';
   printFontSize?: 'compact' | 'normal' | 'large';

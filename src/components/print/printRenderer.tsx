@@ -110,6 +110,15 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
 
   const toothDetails = (caseData?.tooth_details || {}) as Record<number, any>;
 
+  /* Honest settlement label — read from the invoice itself, never guessed. */
+  const invStatus = (() => {
+    if (!invoice) return null;
+    const due = Math.max(0, invoice.final_amount - (invoice.amount_paid || 0));
+    if (due <= 0) return { label: 'PAID IN FULL', tone: 'paid' as const };
+    if ((invoice.amount_paid || 0) > 0) return { label: 'PARTIALLY PAID', tone: 'partial' as const };
+    return { label: 'PAYMENT DUE', tone: 'due' as const };
+  })();
+
   const invPayments = invoice?.payments || [];
   const latestPayment = payment || invPayments[invPayments.length - 1] || null;
 
@@ -124,18 +133,27 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
     <div className={`print-doc bg-white text-slate-900 print-fs-${fontSize}`} style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
       <style>{pageSetupCss}</style>
       {on(sections, 'brand') && (
-        <div className={`flex items-start ${logoPos === 'center' ? 'flex-col items-center text-center gap-2' : 'justify-between'} border-b-2 border-slate-900 pb-3`}>
+        <div
+          className={`flex items-start gap-4 border-b-2 border-slate-900 pb-3 ${
+            logoPos === 'center' ? 'flex-col items-center text-center' : 'justify-between'
+          }`}
+        >
           <div className="flex items-center gap-3">
-            {showLogo && lab.logoUrl && <img src={lab.logoUrl} alt="" className="h-12 w-12 object-contain" />}
+            {showLogo && lab.logoUrl && <img src={lab.logoUrl} alt="" className="h-14 w-14 object-contain" />}
             <div>
               <div className="text-xl font-bold tracking-tight">{lab.lab_name || lab.appName || 'Dental Lab'}</div>
               {lab.tagline && <div className="text-[11px] italic text-slate-600">{lab.tagline}</div>}
             </div>
           </div>
-          <div className={`${logoPos === 'center' ? 'text-center' : 'text-right'} text-[10px] text-slate-600 leading-relaxed`}>
-            {lab.address && <div>{lab.address}</div>}
-            {lab.phone && <div>Tel: {lab.phone}</div>}
-            {lab.email && <div>{lab.email}</div>}
+          <div className="flex items-center gap-4">
+            <div className={`${logoPos === 'center' ? 'text-center' : 'text-right'} text-[10px] text-slate-600 leading-relaxed`}>
+              {lab.address && <div>{lab.address}</div>}
+              {lab.phone && <div>Tel: {lab.phone}</div>}
+              {lab.email && <div>{lab.email}</div>}
+            </div>
+            {showLogo && lab.logoUrl2 && (
+              <img src={lab.logoUrl2} alt="" className="h-12 w-12 shrink-0 object-contain" />
+            )}
           </div>
         </div>
       )}
@@ -228,17 +246,33 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
       {kind === 'invoice' && invoice && (
         <>
           {on(sections, 'invoiceMeta') && (
-            <div className="grid grid-cols-3 gap-4 mb-3 text-[11px]">
+            <div className="mt-3 mb-4 grid grid-cols-4 gap-3 text-[11px]">
               <Field label="Invoice #" value={invoice.invoice_number} />
+              <Field label="Case #" value={invoice.case_number || '—'} />
               <Field label="Issue Date" value={invoice.issue_date || invoice.created_at?.slice(0, 10) || '—'} />
               <Field label="Due Date" value={invoice.due_date || '—'} />
             </div>
           )}
           {on(sections, 'billTo') && (
-            <div className="grid grid-cols-3 gap-4 mb-4 text-[11px]">
-              <Field label="Bill To (Clinic)" value={invoice.lab_name} />
-              <Field label="Doctor" value={`Dr. ${invoice.doctor_name || '—'}`} />
-              <Field label="Patient" value={invoice.patient_name || '—'} />
+            <div className="mb-4 flex items-start justify-between gap-4 border border-slate-300 p-3">
+              <div className="grid flex-1 grid-cols-3 gap-3 text-[11px]">
+                <Field label="Bill To (Clinic)" value={invoice.lab_name} />
+                <Field label="Doctor" value={`Dr. ${invoice.doctor_name || '—'}`} />
+                <Field label="Patient" value={invoice.patient_name || '—'} />
+              </div>
+              {invStatus && (
+                <span
+                  className={`shrink-0 border px-3 py-1 text-[10px] font-bold tracking-[0.14em] ${
+                    invStatus.tone === 'paid'
+                      ? 'border-emerald-600 text-emerald-700'
+                      : invStatus.tone === 'partial'
+                      ? 'border-amber-600 text-amber-700'
+                      : 'border-slate-900 text-slate-900'
+                  }`}
+                >
+                  {invStatus.label}
+                </span>
+              )}
             </div>
           )}
           {on(sections, 'lineItems') && (
@@ -246,29 +280,34 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               <thead>
                 <tr>
                   {['Description', 'Units', 'Rate', 'Amount'].map((h) => (
-                    <th key={h} className={`border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold ${h === 'Amount' ? 'text-right' : ''}`}>{h}</th>
+                    <th key={h} className={`border border-slate-300 bg-slate-100 px-2 py-1.5 text-[10px] uppercase tracking-wider font-bold ${h === 'Amount' ? 'text-right' : 'text-left'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="border border-slate-400 px-2 py-1">
-                    {invoice.case_type_name}
+                  <td className="border border-slate-300 px-2 py-1.5">
+                    <span className="font-semibold">{invoice.case_type_name}</span>
                     {invoice.case_number && <span className="text-slate-500"> · Case {invoice.case_number}</span>}
                     {caseData?.selected_teeth && caseData.selected_teeth.length > 0 && (
-                      <div className="text-slate-500">Units: {caseData.selected_teeth.map((t) => `#${t}`).join(', ')}</div>
+                      <div className="text-slate-500">Teeth: {caseData.selected_teeth.map((t) => `#${t}`).join(', ')}</div>
+                    )}
+                    {(caseData?.material || caseData?.shade) && (
+                      <div className="text-slate-500">
+                        {[caseData?.material, caseData?.shade && `Shade ${caseData.shade}`].filter(Boolean).join(' · ')}
+                      </div>
                     )}
                   </td>
-                  <td className="border border-slate-400 px-2 py-1">1</td>
-                  <td className="border border-slate-400 px-2 py-1 text-right">{money(invoice.amount)}</td>
-                  <td className="border border-slate-400 px-2 py-1 text-right">{money(invoice.amount)}</td>
+                  <td className="border border-slate-300 px-2 py-1.5">{caseData?.selected_teeth?.length || 1}</td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
                 </tr>
                 {invoice.discount > 0 && (
                   <tr>
-                    <td className="border border-slate-400 px-2 py-1">Discount</td>
-                    <td className="border border-slate-400 px-2 py-1"></td>
-                    <td className="border border-slate-400 px-2 py-1 text-right">-</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right">-{money(invoice.discount)}</td>
+                    <td className="border border-slate-300 px-2 py-1.5">Discount</td>
+                    <td className="border border-slate-300 px-2 py-1.5"></td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-right">-</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-right">-{money(invoice.discount)}</td>
                   </tr>
                 )}
               </tbody>
@@ -276,13 +315,32 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           )}
           {on(sections, 'totals') && (
             <div className="flex justify-end mb-4">
-              <table className="text-[11px] w-64">
+              <table className="w-72 border-collapse text-[11px]">
                 <tbody>
-                  <tr><td className="py-0.5 text-slate-600">Total</td><td className="py-0.5 text-right font-bold">{money(invoice.amount)}</td></tr>
-                  {invoice.discount > 0 && <tr><td className="py-0.5 text-slate-600">Discount</td><td className="py-0.5 text-right">-{money(invoice.discount)}</td></tr>}
-                  <tr className="border-t border-slate-400"><td className="py-0.5 font-bold">Net Payable</td><td className="py-0.5 text-right font-bold">{money(invoice.final_amount)}</td></tr>
-                  <tr><td className="py-0.5 text-slate-600">Paid</td><td className="py-0.5 text-right text-emerald-700">{money(invoice.amount_paid || 0)}</td></tr>
-                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Balance Due</td><td className="py-1 text-right font-bold">{money(invoice.final_amount - (invoice.amount_paid || 0))}</td></tr>
+                  <tr className="border border-slate-300">
+                    <td className="px-3 py-1.5 text-slate-600">Subtotal</td>
+                    <td className="px-3 py-1.5 text-right font-semibold">{money(invoice.amount)}</td>
+                  </tr>
+                  {invoice.discount > 0 && (
+                    <tr className="border border-slate-300 border-t-0">
+                      <td className="px-3 py-1.5 text-slate-600">Discount</td>
+                      <td className="px-3 py-1.5 text-right">-{money(invoice.discount)}</td>
+                    </tr>
+                  )}
+                  <tr className="border border-slate-300 border-t-0">
+                    <td className="px-3 py-1.5 font-bold uppercase tracking-wider">Net Payable</td>
+                    <td className="px-3 py-1.5 text-right font-bold">{money(invoice.final_amount)}</td>
+                  </tr>
+                  <tr className="border border-slate-300 border-t-0">
+                    <td className="px-3 py-1.5 text-slate-600">Amount Paid</td>
+                    <td className="px-3 py-1.5 text-right text-emerald-700">{money(invoice.amount_paid || 0)}</td>
+                  </tr>
+                  <tr className="border-2 border-slate-900 bg-slate-100">
+                    <td className="px-3 py-2 font-bold uppercase tracking-wider">Balance Due</td>
+                    <td className="px-3 py-2 text-right text-sm font-bold">
+                      {money(Math.max(0, invoice.final_amount - (invoice.amount_paid || 0)))}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

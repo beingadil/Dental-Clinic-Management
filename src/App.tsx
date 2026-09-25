@@ -40,9 +40,6 @@ const SettingsView = lazy(() =>
 const CatalogView = lazy(() =>
   import('./components/catalog/CatalogView').then((m) => ({ default: m.CatalogView }))
 );
-const PrintStudioView = lazy(() =>
-  import('./components/print/PrintStudioView').then((m) => ({ default: m.PrintStudioView }))
-);
 
 const MainAppContent: React.FC = () => {
   const { user, currentView, selectedCaseForModal, setSelectedCaseForModal } = useApp();
@@ -87,8 +84,6 @@ const MainAppContent: React.FC = () => {
                 {currentView === 'billing' && <BillingView />}
 
                 {currentView === 'catalog' && <CatalogView />}
-
-                {currentView === 'print' && <PrintStudioView />}
 
                 {currentView === 'analytics' && <AnalyticsView />}
 

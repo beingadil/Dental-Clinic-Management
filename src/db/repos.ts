@@ -332,6 +332,11 @@ export interface CaseTypeRow {
   lead_time_days?: number | null;
   warranty_months?: number | null;
   description?: string | null;
+  material_system?: string | null;
+  unit_basis?: string | null;
+  shade_guide?: string | null;
+  indications?: string | null;
+  contraindications?: string | null;
   created_at: string;
   updated_at?: string | null;
 }
@@ -345,6 +350,11 @@ function caseTypeToDomain(row: CaseTypeRow): any {
     lead_time_days: row.lead_time_days ?? undefined,
     warranty_months: row.warranty_months ?? undefined,
     description: row.description ?? undefined,
+    material_system: row.material_system ?? undefined,
+    unit_basis: row.unit_basis ?? undefined,
+    shade_guide: row.shade_guide ?? undefined,
+    indications: row.indications ?? undefined,
+    contraindications: row.contraindications ?? undefined,
     created_at: row.created_at,
   };
 }
@@ -360,15 +370,17 @@ export const caseTypesRepo = {
   insert(ct: any): any {
     const id = ct.id || genId('ct');
     requireEngine().run(
-      `INSERT INTO case_types (id, name, base_price, category, lead_time_days, warranty_months, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO case_types (id, name, base_price, category, lead_time_days, warranty_months, description, material_system, unit_basis, shade_guide, indications, contraindications, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, ct.name, ct.base_price, ct.category ?? null, ct.lead_time_days ?? null,
-       ct.warranty_months ?? null, ct.description ?? null, ct.created_at ?? now(), now()]
+       ct.warranty_months ?? null, ct.description ?? null, ct.material_system ?? null,
+       ct.unit_basis ?? null, ct.shade_guide ?? null, ct.indications ?? null,
+       ct.contraindications ?? null, ct.created_at ?? now(), now()]
     );
     return this.byId(id);
   },
   update(id: string, updates: any): any | null {
-    const allowed = ['name', 'base_price', 'category', 'lead_time_days', 'warranty_months', 'description'] as const;
+    const allowed = ['name', 'base_price', 'category', 'lead_time_days', 'warranty_months', 'description', 'material_system', 'unit_basis', 'shade_guide', 'indications', 'contraindications'] as const;
     const sets: string[] = [];
     const params: any[] = [];
     for (const key of allowed) {

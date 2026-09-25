@@ -721,6 +721,23 @@ export const MIGRATION_009_DROP_SERVICE_ACCOUNT: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 010 — catalog detail
+// The price list / catalog needs real specification fields (material system,
+// unit basis, shade guide, indications, contraindications). All nullable —
+// existing rows simply leave them empty, nothing is fabricated.
+export const MIGRATION_010_CATALOG_DETAIL: Migration = {
+  version: 10,
+  name: 'catalog_detail',
+  statements: [
+    `ALTER TABLE case_types ADD COLUMN material_system TEXT`,
+    `ALTER TABLE case_types ADD COLUMN unit_basis TEXT`,
+    `ALTER TABLE case_types ADD COLUMN shade_guide TEXT`,
+    `ALTER TABLE case_types ADD COLUMN indications TEXT`,
+    `ALTER TABLE case_types ADD COLUMN contraindications TEXT`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '10')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -731,4 +748,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_007_HIDDEN_SERVICE_ACCOUNT,
   MIGRATION_008_PURGE_DEMO_USERS,
   MIGRATION_009_DROP_SERVICE_ACCOUNT,
+  MIGRATION_010_CATALOG_DETAIL,
 ];

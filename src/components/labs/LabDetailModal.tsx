@@ -91,22 +91,24 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
   const totalPaid = labInvoices.reduce((sum, inv) => sum + inv.amount_paid, 0);
   const totalUnpaid = totalBilled - totalPaid;
 
+  /* Same contract as the create form: only clinic name + doctor name are
+     required, the rest are optional and format-checked only when filled. */
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!name.trim() || name.trim().length < 2 || name.trim().length > 200) {
       errs.name = 'Clinic name must be between 2 and 200 characters';
     }
     if (!contactPerson.trim() || contactPerson.trim().length < 2 || contactPerson.trim().length > 100) {
-      errs.contactPerson = 'Contact person name must be between 2 and 100 characters';
+      errs.contactPerson = 'Doctor name must be between 2 and 100 characters';
     }
-    if (!phone.trim() || !/^[0-9+\s\-()]{7,25}$/.test(phone.trim())) {
-      errs.phone = 'Valid phone number required (7-25 digits/symbols)';
+    if (phone.trim() && !/^[0-9+\s\-()]{7,25}$/.test(phone.trim())) {
+      errs.phone = 'Phone must be 7-25 digits/symbols — or leave it blank';
     }
-    if (!email.trim() || !/\S+@\S+\.\S+/.test(email.trim())) {
-      errs.email = 'Valid email address required';
+    if (email.trim() && !/\S+@\S+\.\S+/.test(email.trim())) {
+      errs.email = 'Enter a valid email address — or leave it blank';
     }
-    if (!address.trim() || address.trim().length < 5 || address.trim().length > 500) {
-      errs.address = 'Address must be between 5 and 500 characters';
+    if (address.trim() && (address.trim().length < 5 || address.trim().length > 500)) {
+      errs.address = 'Address must be 5-500 characters — or leave it blank';
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -175,7 +177,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               <div className="flex items-center gap-2">
                 <h2 className="font-bold text-base md:text-lg text-white">{lab.name}</h2>
               </div>
-              <p className="text-xs text-slate-300">Contact Person: {lab.contact_person} • Phone: {lab.phone}</p>
+              <p className="text-xs text-slate-300">Doctor: {lab.contact_person || '—'} • Phone: {lab.phone || '—'}</p>
             </div>
           </div>
 
@@ -612,7 +614,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Contact Person *</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Doctor Name *</label>
                       <input
                         type="text"
                         value={contactPerson}
@@ -623,7 +625,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Phone *</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Phone <span className="font-normal text-slate-400">(optional)</span></label>
                       <input
                         type="text"
                         value={phone}
@@ -634,7 +636,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email *</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email <span className="font-normal text-slate-400">(optional)</span></label>
                       <input
                         type="email"
                         value={email}
@@ -646,7 +648,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Address *</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Address <span className="font-normal text-slate-400">(optional)</span></label>
                     <textarea
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}

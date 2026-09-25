@@ -44,8 +44,9 @@ export const CaseNotesPanel: React.FC<CaseNotesPanelProps> = ({ caseId }) => {
 
   return (
     <div className="space-y-4">
-      {/* Add New Note Input Form */}
-      <form onSubmit={handleAddNote} className="space-y-2">
+      {/* Add New Note Input — no nested <form>: this panel is embedded inside
+          the case form, so it posts through an explicit handler instead. */}
+      <div className="space-y-2">
         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
           Add Clinical / Technician Note
         </label>
@@ -69,7 +70,8 @@ export const CaseNotesPanel: React.FC<CaseNotesPanelProps> = ({ caseId }) => {
 
         <div className="flex justify-end">
           <button
-            type="submit"
+            type="button"
+            onClick={handleAddNote}
             disabled={!newNoteText.trim()}
             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
           >
@@ -77,7 +79,7 @@ export const CaseNotesPanel: React.FC<CaseNotesPanelProps> = ({ caseId }) => {
             <span>Post Note</span>
           </button>
         </div>
-      </form>
+      </div>
 
       {/* Notes Chronological Timeline */}
       <div className="space-y-3 pt-2">

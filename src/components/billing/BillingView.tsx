@@ -7,15 +7,15 @@ import { PaymentProofModal } from './PaymentProofModal';
 import { PaymentReceiptModal } from './PaymentReceiptModal';
 import { TransactionRegister } from './TransactionRegister';
 import { BillingReportsView } from './BillingReportsView';
-import { AccountsFinancialHome } from './AccountsFinancialHome';
 import { GeneralLedgerView } from './GeneralLedgerView';
+import { BatchInvoicePrintModal } from './BatchInvoicePrintModal';
 import { AuditLogView } from './AuditLogView';
 import { RecordTransactionModal } from './RecordTransactionModal';
 import { JournalEntryModal } from './JournalEntryModal';
 import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
-import { PageHeader, StatCard, EmptyState, TabsNav, Badge } from '../common/ui';
+import { PageHeader, EmptyState, TabsNav, Badge } from '../common/ui';
 import { DatePickerRange } from '../common/DatePickerRange';
 import { 
   DollarSign, 
@@ -42,7 +42,8 @@ import {
   ShieldCheck,
   Eye,
   Activity,
-  CheckCheck
+  CheckCheck,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const BillingView: React.FC = () => {
@@ -60,8 +61,8 @@ export const BillingView: React.FC = () => {
     auditEvents
   } = useApp();
 
-  // Core navigation: 6 simplified tabs for complete dental laboratory ERP accounting
-  const [activeTab, setActiveTab] = useState<'invoices' | 'transactions' | 'accounts' | 'general_ledger' | 'audit_log' | 'reports'>('invoices');
+  // Core navigation: 5 tabs for complete dental laboratory ERP accounting
+  const [activeTab, setActiveTab] = useState<'invoices' | 'transactions' | 'general_ledger' | 'audit_log' | 'reports'>('invoices');
 
   // Invoices tab filter states
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -81,6 +82,7 @@ export const BillingView: React.FC = () => {
   const [unifiedModalLabId, setUnifiedModalLabId] = useState<string | undefined>(undefined);
   const [unifiedModalInvoiceId, setUnifiedModalInvoiceId] = useState<string | undefined>(undefined);
   const [clinicStatementModalId, setClinicStatementModalId] = useState<string | null>(null);
+  const [batchPrintOpen, setBatchPrintOpen] = useState<boolean>(false);
 
 
   const [printModalInvoice, setPrintModalInvoice] = useState<Invoice | null>(null);
@@ -151,58 +153,6 @@ export const BillingView: React.FC = () => {
 
     return { allCount, unpaidCount, partialCount, overdueCount, paidCount };
   }, [invoices, clinicFilter]);
-
-  // Financial KPI Calculations (respects selected clinic)
-  const metrics = useMemo(() => {
-    let totalInvoiced = 0;
-    let totalPaid = 0;
-    let normalPendingDue = 0;
-    let overdueDue = 0;
-    let overdueCount = 0;
-    let pendingCount = 0;
-    let paidCount = 0;
-
-    invoices.forEach((inv) => {
-      if (clinicFilter !== 'all' && inv.lab_id !== clinicFilter) return;
-
-      totalInvoiced += inv.final_amount;
-      const paid = inv.amount_paid || 0;
-      totalPaid += paid;
-      const remaining = Math.max(0, inv.final_amount - paid);
-
-      if (inv.payment_status === 'paid' || remaining <= 0) {
-        paidCount++;
-      } else {
-        const { isOverdue } = isInvoiceOverdue(inv);
-        if (isOverdue) {
-          overdueDue += remaining;
-          overdueCount++;
-        } else {
-          normalPendingDue += remaining;
-          pendingCount++;
-        }
-      }
-    });
-
-    const outstandingReceivables = normalPendingDue + overdueDue;
-    const totalAdvanceCredit = advancePayments
-      .filter((a) => clinicFilter === 'all' || a.lab_id === clinicFilter)
-      .reduce((s, a) => s + (a.remaining_amount || 0), 0);
-
-    return {
-      totalInvoiced,
-      totalPaid,
-      outstandingReceivables,
-      normalPendingDue,
-      pendingCount,
-      overdueDue,
-      overdueCount,
-      paidCount,
-      totalAdvanceCredit,
-      totalInvoicesCount: invoices.filter((i) => clinicFilter === 'all' || i.lab_id === clinicFilter).length,
-      allTransactionsCount: allPayments.length + advancePayments.length + accountAdjustments.length
-    };
-  }, [invoices, advancePayments, allPayments, accountAdjustments, clinicFilter]);
 
   // Filtered Invoices
   const filteredInvoices = useMemo(() => {
@@ -386,8 +336,6 @@ export const BillingView: React.FC = () => {
               ? 'Invoices & Receivables' 
               : activeTab === 'transactions' 
               ? 'Payments & Transactions' 
-              : activeTab === 'accounts' 
-              ? 'Clinic Accounts & Ledger' 
               : activeTab === 'general_ledger' 
               ? 'General Ledger' 
               : activeTab === 'audit_log' 
@@ -428,6 +376,28 @@ export const BillingView: React.FC = () => {
                     ? `Receive Payment (PKR ${(selectedLabSummary.outstanding_balance || 0).toLocaleString()})`
                     : 'Receive Payment'}
                 </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setBatchPrintOpen(true)}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
+              title="Print every unpaid invoice for one clinic over a month or date range"
+            >
+              <Printer className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Batch Print Unpaid</span>
+            </button>
+
+            {clinicFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setClinicStatementModalId(clinicFilter)}
+                className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
+                title="Open the official statement of account for the selected clinic"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Clinic Statement</span>
               </button>
             )}
 
@@ -483,11 +453,10 @@ export const BillingView: React.FC = () => {
         fit="fill"
         variant="pills"
         tabs={[
-          { id: 'invoices', label: 'Invoices & Receivables', badge: metrics.totalInvoicesCount, icon: FileText },
-          { id: 'transactions', label: 'Payments & Transactions', badge: metrics.allTransactionsCount, icon: DollarSign },
-          { id: 'accounts', label: 'Clinic Accounts & Ledger', badge: labs.length, icon: Building2 },
-          { id: 'general_ledger', label: 'General Ledger', badge: labs.length, icon: BookOpen },
-          { id: 'audit_log', label: 'Audit Trail', badge: auditEvents.length, icon: ShieldCheck },
+          { id: 'invoices', label: 'Invoices & Receivables', icon: FileText },
+          { id: 'transactions', label: 'Payments & Transactions', icon: DollarSign },
+          { id: 'general_ledger', label: 'General Ledger', icon: BookOpen },
+          { id: 'audit_log', label: 'Audit Trail', icon: ShieldCheck },
           { id: 'reports', label: 'Reports & Statements', icon: BarChart3 },
         ]}
       />
@@ -495,43 +464,6 @@ export const BillingView: React.FC = () => {
       {/* TAB 1: INVOICES & RECEIVABLES */}
       {activeTab === 'invoices' && (
         <div className="space-y-5">
-          
-          {/* Top 4 KPI Metrics Strip: Invoiced, Collected, Pending, and Overdue */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              title="Total Billed Revenue"
-              value={`PKR ${(metrics.totalInvoiced || 0).toLocaleString()}`}
-              subtitle={`Across ${metrics.totalInvoicesCount} total invoices`}
-              icon={DollarSign}
-              variant="indigo"
-            />
-
-            <StatCard
-              title="Collected Cash (Paid)"
-              value={`PKR ${(metrics.totalPaid || 0).toLocaleString()}`}
-              subtitle={`${metrics.paidCount} fully paid accounts`}
-              icon={CheckCircle2}
-              variant="emerald"
-            />
-
-            <StatCard
-              title="Pending Receivables"
-              value={`PKR ${(metrics.normalPendingDue || 0).toLocaleString()}`}
-              subtitle={`${metrics.pendingCount} accounts within terms`}
-              icon={Clock}
-              variant="amber"
-              onClick={() => setInvoiceStatusFilter('unpaid')}
-            />
-
-            <StatCard
-              title="Overdue Receivables"
-              value={`PKR ${(metrics.overdueDue || 0).toLocaleString()}`}
-              subtitle={metrics.overdueCount > 0 ? `${metrics.overdueCount} overdue invoice(s) • Action required` : 'No overdue invoices'}
-              icon={AlertTriangle}
-              variant="rose"
-              onClick={() => setInvoiceStatusFilter('overdue')}
-            />
-          </div>
 
           {/* Search, Clinic Dropdown & Filter Controls */}
           <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
@@ -917,30 +849,6 @@ export const BillingView: React.FC = () => {
         />
       )}
 
-      {/* TAB 3: CLINIC FINANCIAL PROFILE & ACCOUNTING LEDGER */}
-      {activeTab === 'accounts' && (
-        <AccountsFinancialHome
-          initialClinicId={clinicFilter !== 'all' ? clinicFilter : undefined}
-          onOpenPaymentModal={(clinicId, invId) => {
-            setUnifiedModalLabId(clinicId);
-            setUnifiedModalInvoiceId(invId);
-            setUnifiedModalMode('payment');
-            setIsUnifiedRecordModalOpen(true);
-          }}
-          onOpenAdvanceModal={(clinicId) => {
-            setUnifiedModalLabId(clinicId);
-            setUnifiedModalMode('advance_deposit');
-            setIsUnifiedRecordModalOpen(true);
-          }}
-          onOpenStatementModal={(clinicId) => {
-            setClinicStatementModalId(clinicId);
-          }}
-          onOpenInvoiceDrawer={(inv) => setSelectedDrawerInvoice(inv)}
-          onOpenJournalModal={(refId) => setJournalModalRef(refId)}
-          onViewReceipt={(pay) => setSelectedReceiptPayment({ payment: pay })}
-        />
-      )}
-
       {/* TAB 4: CLINIC GENERAL LEDGER */}
       {activeTab === 'general_ledger' && (
         <GeneralLedgerView
@@ -948,12 +856,12 @@ export const BillingView: React.FC = () => {
         />
       )}
 
-      {/* TAB 6: IMMUTABLE AUDIT TRAIL */}
+      {/* TAB 5: IMMUTABLE AUDIT TRAIL */}
       {activeTab === 'audit_log' && (
         <AuditLogView />
       )}
 
-      {/* TAB 7: MONTHLY REPORTS & STATEMENTS ARCHIVES */}
+      {/* TAB 6: MONTHLY REPORTS & STATEMENTS ARCHIVES */}
       {activeTab === 'reports' && (
         <BillingReportsView
           onPrintInvoice={(inv) => setPrintModalInvoice(inv)}
@@ -1031,6 +939,14 @@ export const BillingView: React.FC = () => {
           isOpen={!!clinicStatementModalId}
           onClose={() => setClinicStatementModalId(null)}
           clinicId={clinicStatementModalId}
+        />
+      )}
+
+      {/* Batch print — every unpaid invoice for a clinic over a period */}
+      {batchPrintOpen && (
+        <BatchInvoicePrintModal
+          initialLabId={clinicFilter !== 'all' ? clinicFilter : undefined}
+          onClose={() => setBatchPrintOpen(false)}
         />
       )}
 

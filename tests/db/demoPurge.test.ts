@@ -42,16 +42,18 @@ function insertUser(
   });
 }
 
-/** Rewind the ledger so migrations 008 and 009 re-apply for the test. */
+/** Rewind the ledger so migrations 008 and 009 re-apply for the test.
+ *  Migration 10 stays in the ledger: its ALTER TABLE is already physically
+ *  applied and cannot be re-run. */
 function rewindToSchema7(): void {
-  engine.run('DELETE FROM schema_migrations WHERE version >= 8');
+  engine.run('DELETE FROM schema_migrations WHERE version >= 8 AND version < 10');
   engine.run("DELETE FROM app_meta WHERE key = 'schema_version'");
   engine.run("INSERT INTO app_meta (key, value) VALUES ('schema_version', '7')");
 }
 
 describe('migrations 008 + 009 — zero shipped accounts', () => {
   it('registers both migrations in the ledger with the right identity', () => {
-    expect(MIGRATIONS.map((x) => x.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(MIGRATIONS.map((x) => x.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(MIGRATIONS[7]).toMatchObject({ version: 8, name: 'purge_demo_users' });
     expect(MIGRATIONS[8]).toMatchObject({ version: 9, name: 'drop_service_account' });
   });

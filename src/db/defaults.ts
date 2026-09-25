@@ -29,6 +29,7 @@ export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
   appName: '',
   tagline: '',
   logoUrl: '',
+  logoUrl2: '',
   primaryColor: '#4f46e5',
   phone: '',
   address: '',

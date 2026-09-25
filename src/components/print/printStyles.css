@@ -68,6 +68,19 @@
     padding: 0.75rem 1rem !important;
   }
 
+  /* The on-screen preview frame is a scroller with a grey backdrop. On paper
+     it must vanish: a `max-height` + `overflow:auto` shell would otherwise
+     clip a long invoice to one screenful. */
+  .print-preview-shell {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+    border-radius: 0 !important;
+  }
+
   /* Full-page views (Ledger, General Ledger, Catalog) print in normal
      document flow: every direct child of .print-page except the marked
      .print-flow content is dropped (chrome above, modals below). Only
@@ -100,3 +113,26 @@
 .print-fs-compact { zoom: 0.9; }
 .print-fs-normal { zoom: 1; }
 .print-fs-large { zoom: 1.08; }
+
+/* =========================================================================
+   Multi-document batches — e.g. every unpaid invoice for one clinic.
+   One document per sheet on paper, stacked with a divider on screen.
+   ========================================================================= */
+
+@media screen {
+  .print-doc-page + .print-doc-page {
+    margin-top: 2.5rem;
+    padding-top: 2.5rem;
+    border-top: 1px dashed #cbd5e1;
+  }
+}
+
+@media print {
+  .print-doc-page {
+    break-inside: avoid;
+  }
+  .print-doc-page + .print-doc-page {
+    break-before: page;
+    page-break-before: always;
+  }
+}

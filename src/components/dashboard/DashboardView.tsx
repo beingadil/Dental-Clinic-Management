@@ -8,6 +8,7 @@ import {
   CheckCircle2, 
   Plus, 
   Calendar,
+  CalendarCheck,
   X,
   ChevronRight,
   Building2,
@@ -18,7 +19,6 @@ import {
   Download
 } from 'lucide-react';
 import { DentalCase, DentalLab } from '../../types';
-import { formatQcRate } from '../../services/qcDomain';
 import { computeAnalytics } from '../../services/analyticsService';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { ShadeGuideModal } from './ShadeGuideModal';
@@ -44,8 +44,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
     updateCase,
     overdueCount, 
     dueTodayCount, 
-    dueThisWeekCount,
-    getQcMetrics
+    dueThisWeekCount
   } = useApp();
 
   // Banner State
@@ -55,6 +54,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
   /** Shade picked in the dashboard shade guide → pre-fills the new-case wizard. */
   const [pendingShade, setPendingShade] = useState<string | null>(null);
   const [isNewCaseOpen, setIsNewCaseOpen] = useState(false);
+
+  /* Today's delivery workload — counted from real case rows only. */
+  const totalCasesToday = cases.filter((c) => c.delivery_date === todayStr).length;
 
   // Modal states
   const [showShadeGuide, setShowShadeGuide] = useState(false);
@@ -67,12 +69,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
   const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.amount_paid || 0), 0);
   const totalBilled = invoices.reduce((sum, inv) => sum + (inv.final_amount || 0), 0);
   const totalOutstanding = totalBilled - totalRevenue;
-  const pendingBillingInvoices = invoices.filter(i => i.payment_status !== 'paid');
 
   /* Quality KPIs derived from the append-only QC stream (em dash while there is
      genuinely no inspection data — never a fabricated number). */
-  const qcMetrics = getQcMetrics();
-  const pendingBillingAmount = pendingBillingInvoices.reduce((sum, inv) => sum + ((inv.final_amount || 0) - (inv.amount_paid || 0)), 0);
   const activeCases = cases.filter(c => c.status !== 'delivered' && c.status !== 'cancelled');
 
   /* Material share from the SQL analytics bundle (charted case materials ×
@@ -235,52 +234,55 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
       {/* BEGIN: Dental KPI Stats Matrix (5 Cards) */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" data-purpose="kpi-metric-cards">
         
-        {/* KPI 1: Active Fabrication */}
+        {/* KPI 1: Pending Cases Today — every case still open whose delivery
+            date is today. Real rows only, no fabricated placeholder number. */}
         <div 
           onClick={() => setCurrentView('cases')}
           className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Active Fabrication</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Cases Today</span>
             <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
               <FolderKanban className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-slate-900">{activeCases.length}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">In Production</span>
+              <span className="text-2xl font-extrabold text-slate-900">{dueTodayCount}</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Still Open</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">CAD/CAM bench units</p>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">Due today, not delivered yet</p>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>Milling & Finishing</span>
+            <span>{activeCases.length} case{activeCases.length === 1 ? '' : 's'} on the bench overall</span>
             <span className="text-blue-600 font-bold group-hover:underline">Open Workstation →</span>
           </div>
         </div>
 
-        {/* KPI 2: Pending Billing */}
+        {/* KPI 2: Total Cases Today — today's full delivery workload (delivered
+            cases included), so pending ÷ total is readable at a glance. */}
         <div 
-          onClick={() => setCurrentView('billing')}
+          onClick={() => setCurrentView('cases')}
           className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-amber-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Billing</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Cases Today</span>
             <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Receipt className="w-4 h-4" />
+              <CalendarCheck className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-slate-900">PKR {pendingBillingAmount.toLocaleString()}</span>
+              <span className="text-2xl font-extrabold text-slate-900">{totalCasesToday}</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Due Today</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">{pendingBillingInvoices.length} unbilled / partial invoices</p>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">
+              {totalCasesToday - dueTodayCount} already delivered today
+            </p>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>Collection Rate</span>
-            <span className="font-bold text-emerald-600">
-              {totalBilled > 0 ? `${Math.round((totalRevenue / totalBilled) * 100)}% Collected` : '—'}
-            </span>
+            <span>{cases.length} case{cases.length === 1 ? '' : 's'} on record</span>
+            <span className="text-amber-700 font-bold group-hover:underline">Review Today →</span>
           </div>
         </div>
 
@@ -593,20 +595,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
                 <span className="text-[10px] text-slate-400 uppercase block">Avg Turnaround</span>
                 <span className="font-bold text-slate-800">
                   {dashboardAnalytics.overall.avgDays === null ? '—' : `${dashboardAnalytics.overall.avgDays} Days`}
-                </span>
-              </div>
-              <div className="h-6 w-px bg-slate-200" />
-              <div className="text-center">
-                <span className="text-[10px] text-slate-400 uppercase block">First-Pass QC</span>
-                <span
-                  className="font-bold text-emerald-600"
-                  title={
-                    qcMetrics.inspected_cases === 0
-                      ? 'No QC inspection recorded yet'
-                      : `${qcMetrics.first_pass_cases} of ${qcMetrics.passed_cases} released cases passed on their first inspection`
-                  }
-                >
-                  {formatQcRate(qcMetrics.first_pass_rate)}
                 </span>
               </div>
               <div className="h-6 w-px bg-slate-200" />

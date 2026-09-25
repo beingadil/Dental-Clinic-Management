@@ -62,7 +62,15 @@ import {
   ArrowUpCircle,
   Loader2
 } from 'lucide-react';
-import { loadPrintSettings, savePrintSettings, PrintSettings } from '../../services/printSettings';
+import {
+  loadPrintSettings,
+  savePrintSettings,
+  loadDocumentSections,
+  saveDocumentSections,
+  PrintSettings,
+} from '../../services/printSettings';
+import { DocumentKind, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
+import { PrintSectionPicker } from '../common/PrintSectionPicker';
 import { TabsNav } from '../common/ui';
 import {
   runAutoUpdate,
@@ -183,6 +191,7 @@ export const SettingsView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const logo2InputRef = useRef<HTMLInputElement>(null);
 
   // ---- Backup / restore / update state (Phase 8 & 9) ----
   const [busy, setBusy] = useState<null | 'backup' | 'restore' | 'check'>(null);
@@ -248,7 +257,7 @@ export const SettingsView: React.FC = () => {
     setBrandingForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, key: 'logoUrl' | 'logoUrl2' = 'logoUrl') => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
@@ -258,7 +267,7 @@ export const SettingsView: React.FC = () => {
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
-        setBrandingForm((prev) => ({ ...prev, logoUrl: base64 }));
+        setBrandingForm((prev) => ({ ...prev, [key]: base64 }));
       };
       reader.readAsDataURL(file);
     }
@@ -269,6 +278,21 @@ export const SettingsView: React.FC = () => {
     updateBrandingSettings(brandingForm);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  /* "What prints" per document kind — stored immediately (no Save needed), and
+     read by the invoice dialog and batch printing, so paper always matches. */
+  const [sectionKind, setSectionKind] = useState<DocumentKind>('invoice');
+  const [docSections, setDocSections] = useState<Record<string, string[]>>(() => ({
+    invoice: loadDocumentSections('invoice', DEFAULT_ENABLED.invoice),
+    job_slip: loadDocumentSections('job_slip', DEFAULT_ENABLED.job_slip),
+    receipt: loadDocumentSections('receipt', DEFAULT_ENABLED.receipt),
+    statement: loadDocumentSections('statement', DEFAULT_ENABLED.statement),
+  }));
+
+  const handleSectionsChange = (next: string[]) => {
+    setDocSections((prev) => ({ ...prev, [sectionKind]: next }));
+    saveDocumentSections(sectionKind, next);
   };
 
   const handleSavePrintSettings = (e: React.FormEvent) => {
@@ -558,6 +582,66 @@ export const SettingsView: React.FC = () => {
                       className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono"
                     />
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Second Logo — optional, printed on the right of the letterhead on
+                invoices, receipts and statements (e.g. partner / B2B mark). */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Second Logo <span className="font-medium normal-case tracking-normal text-slate-400">(optional — printed on invoices)</span>
+              </label>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                {brandingForm.logoUrl2 ? (
+                  <div className="relative group">
+                    <img
+                      src={brandingForm.logoUrl2}
+                      alt="Second Logo"
+                      className="w-16 h-16 rounded-2xl object-contain bg-slate-50 border border-slate-200 p-1 shadow-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBrandingForm((prev) => ({ ...prev, logoUrl2: '' }))}
+                      className="absolute -top-2 -right-2 w-5 h-5 bg-rose-500 text-white rounded-full text-xs font-bold flex items-center justify-center shadow-md hover:bg-rose-600 cursor-pointer"
+                      title="Remove second logo"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 shrink-0">
+                    <ImageIcon className="w-6 h-6" />
+                    <span className="text-[9px] font-bold mt-1">Empty</span>
+                  </div>
+                )}
+
+                <div className="space-y-2 flex-1 w-full">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      ref={logo2InputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleLogoUpload(e, 'logoUrl2')}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => logo2InputRef.current?.click()}
+                      className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs"
+                    >
+                      <Upload className="w-4 h-4 text-indigo-600" />
+                      <span>Upload Second Logo</span>
+                    </button>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Or enter direct logo URL (https://...)"
+                    value={brandingForm.logoUrl2 || ''}
+                    onChange={(e) => handleBrandingChange('logoUrl2', e.target.value)}
+                    className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                  />
                 </div>
               </div>
             </div>
@@ -1927,7 +2011,7 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">Print &amp; Documents</h2>
-              <p className="text-xs text-slate-500">Global defaults for every printed invoice, job slip, receipt and statement. Per-document sections live in the Print Studio module.</p>
+              <p className="text-xs text-slate-500">Global page layout plus the section list for every printed invoice, job slip, receipt and statement. The invoice print dialog edits the same stored list.</p>
             </div>
           </div>
 
@@ -1996,7 +2080,7 @@ export const SettingsView: React.FC = () => {
                   </select>
                 </div>
                 <div className="flex items-end">
-                  <p className="text-[11px] text-slate-500">Upload or replace the logo itself in Branding &amp; Identity. Documents preview live in Print Studio.</p>
+                  <p className="text-[11px] text-slate-500">Upload or replace the logo itself in Branding &amp; Identity. Every invoice and job slip prints live from its own dialog.</p>
                 </div>
                 {printSettingsForm.logoPosition === 'right' && (
                   <p className="md:col-span-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
@@ -2004,6 +2088,55 @@ export const SettingsView: React.FC = () => {
                   </p>
                 )}
               </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Document Content — What Prints
+                </h3>
+                <span className="text-[10px] font-semibold text-slate-400">Saved automatically</span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Choose the sections that appear on each document. These lists are the same ones the
+                print dialogs use — unticking a section here removes it from every future printout.
+              </p>
+
+              <div className="flex flex-wrap gap-1.5">
+                {(['invoice', 'job_slip', 'receipt', 'statement'] as DocumentKind[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setSectionKind(k)}
+                    className={`rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                      sectionKind === k
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {k === 'job_slip' ? 'Job Slip' : k.charAt(0).toUpperCase() + k.slice(1)}
+                    <span className={sectionKind === k ? 'text-white/60' : 'text-slate-400'}>
+                      {' '}· {docSections[k]?.length ?? 0}/{PRINT_SECTIONS[k].length}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    saveDocumentSections(sectionKind, DEFAULT_ENABLED[sectionKind]);
+                    setDocSections((prev) => ({ ...prev, [sectionKind]: [...DEFAULT_ENABLED[sectionKind]] }));
+                  }}
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
+                >
+                  Restore all
+                </button>
+              </div>
+
+              <PrintSectionPicker
+                kind={sectionKind}
+                value={docSections[sectionKind] || []}
+                onChange={handleSectionsChange}
+              />
             </div>
 
             <div className="flex items-center gap-3 pt-2">

@@ -24,6 +24,24 @@ export async function seedDatabase(): Promise<void> {
   // --- case types / catalog ---
   if (caseTypesRepo.all().length === 0) {
     for (const ct of INITIAL_CASE_TYPES) caseTypesRepo.insert(ct);
+  } else {
+    // Upgraded installs: fill ONLY the still-null specification fields on the
+    // known shipped catalog rows. User-created rows and any non-null field are
+    // never touched — real data always wins over shipped defaults.
+    const byName = new Map(INITIAL_CASE_TYPES.map((ct) => [ct.name.toLowerCase(), ct]));
+    for (const existing of caseTypesRepo.all()) {
+      const spec = byName.get(String(existing.name || '').toLowerCase());
+      if (!spec) continue;
+      const patch: Record<string, string | number> = {};
+      for (const key of ['material_system', 'unit_basis', 'shade_guide', 'indications', 'contraindications'] as const) {
+        if (!existing[key] && spec[key]) patch[key] = spec[key];
+      }
+      for (const key of ['lead_time_days', 'warranty_months'] as const) {
+        if ((existing[key] === undefined || existing[key] === null) && spec[key]) patch[key] = spec[key];
+      }
+      if (!existing.category && spec.category) patch.category = spec.category;
+      if (Object.keys(patch).length > 0) caseTypesRepo.update(existing.id, patch);
+    }
   }
 
   // --- clinical specs (materials, prep types, shade guides, implant brands) ---
