@@ -171,6 +171,8 @@ export interface DentalCase {
   updated_at: string;
   history: CaseStatusHistory[];
   attachments?: CaseAttachment[];
+  /* Archive lifecycle: undefined/NULL = active case; ISO string = archived. */
+  archived_at?: string | null;
 }
 
 export interface CaseTemplate {

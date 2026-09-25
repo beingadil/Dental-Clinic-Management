@@ -191,6 +191,12 @@ interface AppContextType {
   addCase: (caseData: Omit<DentalCase, 'id' | 'case_number' | 'created_at' | 'updated_at' | 'history'>) => DentalCase;
   updateCase: (id: string, updates: Partial<DentalCase>, note?: string) => void;
   deleteCase: (id: string) => void;
+  /** Move a delivered/completed case out of the active workstation into the archive. */
+  archiveCase: (id: string) => void;
+  /** Bring an archived case back to the active workstation. */
+  restoreCase: (id: string) => void;
+  /** Permanently remove an archived case (typed-confirmation guard lives in the UI). */
+  deleteCasePermanently: (id: string) => void;
   addCaseNote: (caseId: string, noteText: string, author: string) => void;
   editCaseNote: (caseId: string, noteId: string, noteText: string) => void;
   deleteCaseNote: (caseId: string, noteId: string) => void;
@@ -1695,6 +1701,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications((prev) => prev.filter((n) => n.case_id !== id));
     if (target) {
       triggerAgentWorkflow('CASE_DELETED', { case_id: id, case_number: target.case_number });
+    }
+  };
+
+  /* Archive lifecycle: the case row is kept (history + invoices stay intact),
+     only `archived_at` flips. The sync engine rewrites SQLite from state, so
+     setting the timestamp here is the whole persistence story. */
+  const archiveCase = (id: string) => {
+    const target = cases.find((c) => c.id === id);
+    const stamp = new Date().toISOString();
+    setCases((prev) => prev.map((c) => (c.id === id ? { ...c, archived_at: stamp, updated_at: stamp } : c)));
+    if (target) {
+      showToast(`Case ${target.case_number} moved to archive`, 'success');
+    }
+  };
+
+  const restoreCase = (id: string) => {
+    const target = cases.find((c) => c.id === id);
+    const stamp = new Date().toISOString();
+    setCases((prev) => prev.map((c) => (c.id === id ? { ...c, archived_at: null, updated_at: stamp } : c)));
+    if (target) {
+      showToast(`Case ${target.case_number} restored to the workstation`, 'success');
+    }
+  };
+
+  const deleteCasePermanently = (id: string) => {
+    const target = cases.find((c) => c.id === id);
+    setCases((prev) => prev.filter((c) => c.id !== id));
+    setNotifications((prev) => prev.filter((n) => n.case_id !== id));
+    if (isDatabaseReady()) {
+      try { casesRepo.deleteCascade(id); } catch { /* sync pass will reconcile */ }
+    }
+    if (target) {
+      showToast(`Case ${target.case_number} permanently deleted`, 'success');
     }
   };
 
@@ -3277,6 +3316,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCase,
         updateCase,
         deleteCase,
+        archiveCase,
+        restoreCase,
+        deleteCasePermanently,
         addCaseNote,
         editCaseNote,
         deleteCaseNote,

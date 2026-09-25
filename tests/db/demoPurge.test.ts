@@ -53,7 +53,7 @@ function rewindToSchema7(): void {
 
 describe('migrations 008 + 009 — zero shipped accounts', () => {
   it('registers both migrations in the ledger with the right identity', () => {
-    expect(MIGRATIONS.map((x) => x.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(MIGRATIONS.map((x) => x.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     expect(MIGRATIONS[7]).toMatchObject({ version: 8, name: 'purge_demo_users' });
     expect(MIGRATIONS[8]).toMatchObject({ version: 9, name: 'drop_service_account' });
   });
