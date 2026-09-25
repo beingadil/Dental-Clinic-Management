@@ -4,6 +4,51 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.0] — 2026-09-25
+
+### Fixed
+- **Case workstation form is one wizard** — create and edit now share the
+  exact same form design and flow, editing jumps to the same three steps
+  (no separate edit screen), the phantom 4th step is gone, and the case can
+  only be saved from the final step — a fast double-click on Continue can
+  no longer submit a half-filled case from step 2.
+- **QC inspection gate removed** — the gate demanded a passing inspection
+  before a case could be marked ready/delivered, but no screen could record
+  an inspection, so real cases were permanently stuck. Fabricated QC chips
+  and the dashboard First-Pass QC stat are gone too; status changes apply.
+- **Partial payments no longer become advance credit** — the unapplied
+  remainder of a partial payment was misbooked as the clinic's advance
+  balance in the ledger.
+- **General Ledger ordering** — entries render in strict chronological
+  sequence with the closing balance as the last row, not mixed up/down with
+  the balance on top.
+- **Invoice paper output matches the preview** — the printable sheet no
+  longer sits inside a print-hidden wrapper (invoices printed blank).
+
+### Added
+- **Invoice print settings** — choose exactly which sections appear on the
+  printed invoice (letterhead, bill-to, line items, totals, payment
+  history, bank details, terms, signature, footer). The list is stored in
+  the database and shared by the print dialog, batch printing and
+  Settings → Print, so the preview is exactly what prints.
+- **Batch invoice printing** — select a clinic and a month or date range
+  and print every unpaid invoice in one run.
+- **Two logos on invoices** plus a professional document layout.
+- **Detailed price list & catalog** — materials now carry material system,
+  unit basis, shade guide, indications and contraindications (migration
+  010); cards, the editor form and the printed price list show the full
+  specification, and upgraded installs get the shipped rows backfilled
+  (only empty fields are filled).
+
+### Changed
+- **Billing tabs simplified** — the Clinic Accounts & Ledger tab is removed
+  and every KPI card strip is gone from the Invoices and Transactions
+  tabs; the filter chips carry the counts.
+- **Print Studio module deleted** — its job is covered by the per-document
+  print settings.
+- **Clinic form relaxed** — only clinic name and doctor name are required;
+  every other field is optional and still saves.
+
 ## [2.8.1] — 2026-09-23
 
 ### Fixed
