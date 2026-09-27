@@ -84,7 +84,21 @@ import { useCasesDomain } from './hooks/useCasesDomain';
 import { selectCasesToAutoArchive } from './hooks/autoArchive';
 import { deriveSimpleStatus, buildInvoiceAllocation, buildPaymentSideEffects, buildPaidInFullNotification } from '../services/paymentDomain';
 import { useBillingDomain } from './hooks/useBillingDomain';
-import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, mirrorSet, groupByCase, attachmentsByCase } from './hooks/domainState';
+import { useNotificationsDomain } from './hooks/useNotificationsDomain';
+import { useVoucherLogging } from './hooks/useVoucherLogging';
+import {
+  buildStatusChangeNotification,
+  buildQcFailedNotification,
+  buildOverdueAlerts,
+  buildUnpaidInvoiceAlerts,
+  buildAdvanceDepositNotification,
+  buildAdvanceDepositV2Notification,
+  buildAdvanceSettledInvoiceNotification,
+  buildAdjustmentNotification,
+  buildPaymentReceivedNotification,
+  prependUniqueNotifications,
+} from '../services/notificationDomain';
+import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, groupByCase, attachmentsByCase } from './hooks/domainState';
 import { isDatabaseReady, getDatabase } from '../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../db/defaults';
 import { syncCollectionsToDb, getLastSyncError } from '../db/syncCore';
@@ -92,7 +106,7 @@ import { runIntegrityCheckSafe, IntegrityReport } from '../db/integrityCheck';
 import {
   usersRepo, labsRepo, caseTypesRepo, casesRepo, caseNotesRepo, attachmentsRepo,
   caseTemplatesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo,
-  notificationsRepo, settingsRepo, vouchersRepo, auditRepo,
+  notificationsRepo, settingsRepo, auditRepo,
   sessionsRepo, labContactsRepo, labAddressesRepo, labPricingOverridesRepo, labReviewsRepo,
   doctorPreferredLabsRepo, reconciliationRepo, qcInspectionsRepo,
 } from '../db/repos';
@@ -539,6 +553,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     auditEvents, setAuditEvents, reconciliationItems, setReconciliationItems,
   } = useBillingDomain();
 
+  // Notification list management + voucher logging live in their own domain
+  // hooks (audit F2) — same surface AppContext exposed before the split.
+  const {
+    pushNotifications,
+    markNotificationRead, markNotificationUnread, markAllNotificationsRead,
+    clearReadNotifications, clearAllNotifications,
+    archiveNotification, restoreNotification,
+    deleteNotification, bulkDeleteNotifications, addNotification,
+  } = useNotificationsDomain(notifications, setNotifications, (count) =>
+    showToast(`Removed ${count} notification(s)`, 'info'),
+  );
+
+  const { saveVoucherToSystem } = useVoucherLogging({
+    savedVouchers,
+    setSavedVouchers,
+    setCaseNotes,
+    actorName: user ? user.name : 'Lab Admin',
+    onWorkflowTrigger: (event, payload) => triggerAgentWorkflow(event, payload),
+  });
+
+  // Agents/agent-workflow listener simulation (see triggerAgentWorkflow below).
+
   const [templates, setTemplates] = useState<CaseTemplate[]>(() => dbRows('templates', () => caseTemplatesRepo.all() as unknown as CaseTemplate[]));
   const [labContacts, setLabContacts] = useState<LabContact[]>(() => dbRows('labContacts', () => labContactsRepo.all() as LabContact[]));
   const [labAddresses, setLabAddresses] = useState<LabAddress[]>(() => dbRows('labAddresses', () => labAddressesRepo.all() as LabAddress[]));
@@ -962,46 +998,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: 'Password updated successfully!' };
   };
 
-  // Save Voucher to System Database & History
-  const saveVoucherToSystem = (voucherData: Omit<SavedVoucher, 'id' | 'created_at' | 'saved_by'>): SavedVoucher => {
-    const newId = genId('vouch');
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    const newVoucher: SavedVoucher = {
-      ...voucherData,
-      id: newId,
-      created_at: nowStr,
-      saved_by: user ? user.name : 'Lab Admin'
-    };
-
-    setSavedVouchers((prev) => [newVoucher, ...prev]);
-
-    // Persist to SQLite (mirror-keyed effect does not cover this collection)
-    dbWrite(() => {
-      vouchersRepo.insert(newVoucher);
-      mirrorSet('savedVouchers', vouchersRepo.all());
-    });
-
-    if (voucherData.case_id && voucherData.case_id !== 'temp-new') {
-      const isInv = voucherData.voucher_type === 'invoice';
-      const noteMsg = `[VOUCHER LOGGED] Official ${isInv ? 'Invoice Voucher' : 'Workstation Job Slip'} (${voucherData.voucher_number}) saved to system database.`;
-      
-      // Call note helper
-      const newNote: CaseNote = {
-        id: `note-${Date.now()}`,
-        case_id: voucherData.case_id,
-        note_text: noteMsg,
-        author: user ? user.name : 'System',
-        created_at: nowStr
-      };
-      setCaseNotes((prev) => ({
-        ...prev,
-        [voucherData.case_id]: [newNote, ...(prev[voucherData.case_id] || [])]
-      }));
-    }
-
-    triggerAgentWorkflow('VOUCHER_SAVED', newVoucher);
-    return newVoucher;
-  };
+  // saveVoucherToSystem lives in useVoucherLogging (voucher domain, audit F2)
 
   const deleteSavedVoucher = (id: string) => {
     setSavedVouchers((prev) => prev.filter((v) => v.id !== id));
@@ -1184,24 +1181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auto-generate overdue case alerts
   useEffect(() => {
-    const alerts: AppNotification[] = [];
-
-    (cases || []).forEach((c) => {
-      if (c && c.status !== 'delivered' && c.status !== 'cancelled' && (c.delivery_date || '') < todayStr) {
-        alerts.push({
-          id: `notif-overdue-${c.id}`,
-          type: 'overdue_case',
-          title: `Case ${c.case_number} Overdue Notice`,
-          message: `Case ${c.case_number} (${c.patient_name} - ${c.doctor_name}) missed scheduled delivery on ${c.delivery_date}. Priority triage required.`,
-          case_id: c.id,
-          case_number: c.case_number,
-          lab_id: c.lab_id,
-          is_read: false,
-          read: false,
-          created_at: new Date().toISOString()
-        });
-      }
-    });
+    const alerts = buildOverdueAlerts(cases || [], todayStr, (c) => `notif-overdue-${c.id}`);
 
     if (alerts.length > 0) {
       // Dedupe INSIDE the updater: the render-scope `notifications` snapshot
@@ -1209,11 +1189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // effect fires on, which used to re-insert the same deterministic ids
       // (`notif-overdue-<caseId>`) twice — and a duplicate id aborts the whole
       // SQLite sync transaction, silently stopping ALL persistence.
-      setNotifications((prev) => {
-        const existing = new Set((prev || []).map((n) => n.id));
-        const fresh = alerts.filter((a) => !existing.has(a.id));
-        return fresh.length > 0 ? [...fresh, ...(prev || [])] : prev || [];
-      });
+      setNotifications((prev) => prependUniqueNotifications(prev, alerts));
     }
   }, [cases, todayStr]);
 
@@ -1221,29 +1197,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // is today or past — the app's real, local "payment trigger". Because the
   // alert id is invoice-keyed, once a payment logs, the alert disappears.
   useEffect(() => {
-    const alerts: AppNotification[] = [];
-    (invoices || []).forEach((inv) => {
-      if (!inv || inv.payment_status === 'paid' || inv.status_v2 === 'voided') return;
-      if (!inv.due_date || inv.due_date > todayStr) return;
-      alerts.push({
-        id: `notif-unpaid-${inv.id}`,
-        type: 'unpaid_invoice',
-        title: `Payment Due — Invoice ${inv.invoice_number}`,
-        message: `${inv.final_amount.toLocaleString()} PKR outstanding for ${inv.patient_name || inv.lab_name}. Due ${inv.due_date}.`,
-        invoice_id: inv.id,
-        case_number: inv.case_number,
-        lab_id: inv.lab_id,
-        is_read: false,
-        read: false,
-        created_at: new Date().toISOString(),
-      });
-    });
+    const alerts = buildUnpaidInvoiceAlerts(invoices || [], todayStr, (inv) => `notif-unpaid-${inv.id}`);
     if (alerts.length > 0) {
-      setNotifications((prev) => {
-        const existing = new Set((prev || []).map((n) => n.id));
-        const fresh = alerts.filter((a) => !existing.has(a.id));
-        return fresh.length > 0 ? [...fresh, ...(prev || [])] : prev || [];
-      });
+      setNotifications((prev) => prependUniqueNotifications(prev, alerts));
     }
   }, [invoices, todayStr]);
 
@@ -1666,18 +1622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           // Trigger status change notification
           if (updates.status === 'ready' || updates.status === 'delivered') {
-            const notif: AppNotification = {
-              id: genId('notif'),
-              type: 'status_change',
-              title: `Case ${c.case_number} ${updates.status.toUpperCase()}`,
-              message: `Case ${c.case_number} for ${c.lab_name} status updated to ${updates.status}.`,
-              case_id: c.id,
-              case_number: c.case_number,
-              is_read: false,
-              is_archived: false,
-              created_at: nowStr
-            };
-            setNotifications((n) => [notif, ...n]);
+            pushNotifications(buildStatusChangeNotification({ id: genId('notif'), case: c, status: updates.status, at: nowStr }));
           }
         }
 
@@ -1784,20 +1729,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let notified = false;
     if (command.result === 'fail') {
-      const notification: AppNotification = {
-        id: genId('notif'),
-        type: 'escalation',
-        title: `QC failed — ${targetCase.case_number}`,
-        message: `${targetCase.case_number} (${targetCase.lab_name}) failed quality inspection #${inspectionNo}: ${qcReasonLabel(event.reason_code)}. Returned for rework.`,
-        case_id: caseId,
-        case_number: targetCase.case_number,
-        lab_id: targetCase.lab_id,
-        is_read: false,
-        is_archived: false,
-        priority: 'high',
-        created_at: nowStr,
-      };
-      setNotifications((n) => [notification, ...n]);
+      pushNotifications(
+        buildQcFailedNotification({ id: genId('notif'), case: targetCase, inspectionNo, reasonLabel: qcReasonLabel(event.reason_code), at: nowStr }),
+      );
       notified = true;
     }
 
@@ -2351,17 +2285,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAdvancePayments((prev) => [newAdvance, ...prev]);
 
-    const notif: AppNotification = {
-      id: genId('notif'),
-      type: 'system',
-      title: `Advance Deposit Received: ${advNum}`,
-      message: `Advance deposit of PKR ${(amount || 0).toLocaleString()} received from ${labName} via ${method.toUpperCase()}. Added to clinic credit balance.`,
-      lab_id: labId,
-      is_read: false,
-      is_archived: false,
-      created_at: nowStr
-    };
-    setNotifications((n) => [notif, ...n]);
+    pushNotifications(
+      buildAdvanceDepositNotification({ id: genId('notif'), labId, labName, amount, method, advNum, at: nowStr }),
+    );
 
     triggerAgentWorkflow('ADVANCE_PAYMENT_RECORDED', { labId, labName, amount, advNum });
     return newAdvance;
@@ -2441,18 +2367,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (inv.amount_paid + toApply >= inv.final_amount) {
-      const notif: AppNotification = {
-        id: genId('notif'),
-        type: 'system',
-        title: `Invoice ${inv.invoice_number} Settled via Advance`,
-        message: `Advance credit of PKR ${(toApply || 0).toLocaleString()} applied to ${inv.invoice_number} for ${inv.lab_name}. Invoice is fully settled.`,
-        invoice_id: inv.id,
-        lab_id: inv.lab_id,
-        is_read: false,
-        is_archived: false,
-        created_at: nowStr
-      };
-      setNotifications((n) => [notif, ...n]);
+      pushNotifications(
+        buildAdvanceSettledInvoiceNotification({ id: genId('notif'), invoice: inv, amount: toApply }),
+      );
     }
 
     return true;
@@ -2489,18 +2406,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAccountAdjustments((prev) => [newAdj, ...prev]);
 
-    const notifTitle = type === 'credit_note' ? `Credit Note Issued: ${adjNum}` : (type === 'debit_adjustment' ? `Debit Surcharge: ${adjNum}` : `Refund Issued: ${adjNum}`);
-    const notif: AppNotification = {
-      id: genId('notif'),
-      type: 'system',
-      title: notifTitle,
-      message: `${notifTitle} for ${labName}. Amount: PKR ${(amount || 0).toLocaleString()}. Reason: ${reason}`,
-      lab_id: labId,
-      is_read: false,
-      is_archived: false,
-      created_at: nowStr
-    };
-    setNotifications((n) => [notif, ...n]);
+    pushNotifications(
+      buildAdjustmentNotification({ id: genId('notif'), kind: type, adjNum, labId, labName, amount, reason, at: nowStr }),
+    );
 
     return newAdj;
   };
@@ -2706,17 +2614,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 6. In-App Notification
-    const notif: AppNotification = {
-      id: genId('notif'),
-      type: 'system',
-      title: `Payment Received: ${receiptNum}`,
-      message: `Received ${formatPKR(command.amount)} from ${labName} via ${command.method.toUpperCase()}. Receipt ${receiptNum} issued.`,
-      lab_id: command.clinicId,
-      is_read: false,
-      is_archived: false,
-      created_at: nowStr
-    };
-    setNotifications((prev) => [notif, ...prev]);
+    pushNotifications(
+      buildPaymentReceivedNotification({ id: genId('notif'), labId: command.clinicId, labName, amount: command.amount, method: command.method, receiptNum, formatAmount: formatPKR, at: nowStr }),
+    );
 
     // Voucher trail for this transaction
     const firstAllocInvoice = preparedAllocations[0]
@@ -2817,17 +2717,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Notification
-    const notif: AppNotification = {
-      id: genId('notif'),
-      type: 'system',
-      title: `Advance Deposit Received: ${advNum}`,
-      message: `Deposit of ${formatPKR(command.amount)} added to ${labName} credit wallet. Receipt ${receiptNum}.`,
-      lab_id: command.clinicId,
-      is_read: false,
-      is_archived: false,
-      created_at: nowStr
-    };
-    setNotifications((prev) => [notif, ...prev]);
+    pushNotifications(
+      buildAdvanceDepositV2Notification({ id: genId('notif'), labId: command.clinicId, labName, amount: command.amount, advNum, receiptNum, formatAmount: formatPKR, at: nowStr }),
+    );
 
     return { advance: newAdvance, receiptNumber: receiptNum, journal };
   };
@@ -3295,55 +3187,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  // Notifications
-  const markNotificationRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true, read: true } : n)));
-  };
-
-  const markNotificationUnread = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: false, read: false } : n)));
-  };
-
-  const markAllNotificationsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read: true })));
-  };
-
-  const clearReadNotifications = () => {
-    setNotifications((prev) => prev.filter((n) => !n.is_read && !n.read));
-  };
-
-  const clearAllNotifications = () => {
-    setNotifications([]);
-  };
-
-  const archiveNotification = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_archived: true } : n)));
-  };
-
-  const restoreNotification = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_archived: false } : n)));
-  };
-
-  const deleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
-
-  const bulkDeleteNotifications = (ids: string[]) => {
-    setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
-    showToast(`Removed ${ids.length} notification(s)`, 'info');
-  };
-
-  const addNotification = (n: Omit<AppNotification, 'id' | 'created_at'>) => {
-    const newNotif: AppNotification = {
-      ...n,
-      id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      is_read: false,
-      read: false,
-      is_archived: false,
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
-  };
+  // Notifications (mark/archive/delete/add live in useNotificationsDomain)
 
   // Settings
   const updateUserPreferences = (prefs: Partial<UserPreferences>) => {
