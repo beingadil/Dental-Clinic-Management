@@ -88,6 +88,7 @@ import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, mirrorSet
 import { isDatabaseReady, getDatabase } from '../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../db/defaults';
 import { syncCollectionsToDb, getLastSyncError } from '../db/syncCore';
+import { runIntegrityCheckSafe, IntegrityReport } from '../db/integrityCheck';
 import {
   usersRepo, labsRepo, caseTypesRepo, casesRepo, caseNotesRepo, attachmentsRepo,
   caseTemplatesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo,
@@ -159,6 +160,8 @@ interface AppContextType {
   labReviews: LabReview[];
   doctorPreferences: DoctorPreferredLab[];
   userPreferences: UserPreferences;
+  /** Boot-time DB integrity self-check result (null until the boot sweep ran). */
+  integrityReport: IntegrityReport | null;
   caseAttachments: Record<string, CaseAttachment[]>;
   /* Quality control — append-only stream, one command, derived reads. */
   qcInspections: QcInspection[];
@@ -595,6 +598,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'success',
     );
   }, [cases, userPreferences]);
+
+  // ─── Integrity self-check (boot-time, read-only) ───
+  // Runs once per session after hydration: FK pragma, orphan rows, ledger
+  // balance, invoice-journal coverage. Result lands in provider state so
+  // Settings → Database & Backup can display it without its own boot scan.
+  const [integrityReport, setIntegrityReport] = useState<IntegrityReport | null>(null);
+  const integrityRanRef = useRef(false);
+  useEffect(() => {
+    if (integrityRanRef.current) return;
+    if (!isDatabaseReady()) return;
+    if (!dbMirror['cases']) return; // wait for hydration
+    integrityRanRef.current = true;
+    setIntegrityReport(runIntegrityCheckSafe());
+  }, []);
 
   // ─── Sync-failure surfacing + ledger backfill sweep ───
   // Migration 012 backfills issuance journals for invoices that predate the
@@ -3368,6 +3385,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         brandingSettings,
         savedVouchers,
         qcInspections,
+        integrityReport,
 
         unreadCount,
         overdueCount,

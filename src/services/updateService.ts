@@ -76,17 +76,31 @@ interface GithubReleaseInfo {
  * tag — stable, no rate limit. Fallback: the GitHub Releases API (60 req/hr
  * unauthenticated) if Pages isn't reachable yet.
  */
+/**
+ * Silence the browser console on unreachable update sources: the boot check
+ * runs every hour and an offline/dev machine would otherwise log CSP + CORS
+ * errors for each dead URL on every check. A failed source is the expected
+ * steady state, not an error worth surfacing.
+ */
+const quietFetch = async (url: string): Promise<Response | null> => {
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (res.ok) return res;
+  } catch { /* expected offline / blocked — try the next source */ }
+  return null;
+};
+
 async function fetchLatestManifest(): Promise<UpdateManifest | null> {
   // 1 — CI-published manifest on the gh-pages branch (raw + published URLs,
   // in that order, so an enabled-Pages repo keeps working too)
   for (const url of [UPDATE_MANIFEST_URL_DEFAULT, UPDATE_MANIFEST_PAGES_URL]) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (res.ok) {
+    const res = await quietFetch(url);
+    if (res) {
+      try {
         const manifest = (await res.json()) as UpdateManifest;
         if (manifest?.magic === 'DENTALUPDATE' && manifest.version) return manifest;
-      }
-    } catch { /* try the next source */ }
+      } catch { /* try the next source */ }
+    }
   }
 
   // 2 — GitHub Releases API fallback
@@ -120,8 +134,8 @@ export async function checkForUpdates(manifestUrl?: string): Promise<UpdateStatu
     const m =
       manifest ??
       (await (async () => {
-        const res = await fetch(manifestUrl as string, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Update server returned ${res.status}`);
+        const res = await quietFetch(manifestUrl as string);
+        if (!res) throw new Error('Update source is unreachable (offline or blocked).');
         return (await res.json()) as UpdateManifest;
       })());
     if (m.magic !== 'DENTALUPDATE') {
