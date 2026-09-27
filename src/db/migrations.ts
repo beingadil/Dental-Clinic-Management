@@ -751,6 +751,48 @@ export const MIGRATION_011_CASE_ARCHIVE: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 012 — invoice journal backfill
+// The issuance journal (debit A/R / credit Revenue) was never wired into the
+// invoice-creation flow, so historical invoices have no journal in the
+// double-entry ledger. This backfill creates one balanced journal per invoice
+// that has none (matched by event_type='invoice_issued' AND reference_id).
+// The invoice's journal_id is NOT set here: the whole-table sync rewrites
+// invoices from React state and would overwrite it — the AppContext boot
+// sweep fills journal_id in state instead, per the app's persistence contract.
+export const MIGRATION_012_INVOICE_JOURNALS: Migration = {
+  version: 12,
+  name: 'invoice_journals_backfill',
+  statements: [
+    `INSERT INTO journal_entries (id, journal_number, date, event_type, reference_type, reference_id, reference_number, lab_id, lab_name, description, created_at, created_by)
+     SELECT 'jrn-invbf-' || i.id,
+            'JRN-INVBF-' || CAST(i.rowid AS TEXT),
+            COALESCE(i.created_at, '1970-01-01'),
+            'invoice_issued',
+            'invoice',
+            i.id,
+            i.invoice_number,
+            i.lab_id,
+            i.lab_name,
+            'Backfilled issuance journal for invoice ' || i.invoice_number,
+            COALESCE(i.created_at, '1970-01-01'),
+            'Migration 012'
+     FROM invoices i
+     WHERE NOT EXISTS (
+       SELECT 1 FROM journal_entries je
+       WHERE je.event_type = 'invoice_issued' AND je.reference_id = i.id
+     )`,
+    `INSERT INTO journal_lines (id, journal_id, account_code, account_name, account_type, debit, credit, description, lab_name)
+     SELECT 'jline-invbf-dr-' || j.reference_id, j.id, '1100', 'Accounts Receivable (Dental Clinics)', 'asset', i.final_amount, 0, 'Backfill: A/R debit', j.lab_name
+     FROM journal_entries j JOIN invoices i ON i.id = j.reference_id
+     WHERE j.event_type = 'invoice_issued' AND j.created_by = 'Migration 012'`,
+    `INSERT INTO journal_lines (id, journal_id, account_code, account_name, account_type, debit, credit, description, lab_name)
+     SELECT 'jline-invbf-cr-' || j.reference_id, j.id, '4010', 'Dental Prosthetics Revenue', 'revenue', 0, i.final_amount, 'Backfill: revenue credit', j.lab_name
+     FROM journal_entries j JOIN invoices i ON i.id = j.reference_id
+     WHERE j.event_type = 'invoice_issued' AND j.created_by = 'Migration 012'`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '12')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -763,4 +805,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_009_DROP_SERVICE_ACCOUNT,
   MIGRATION_010_CATALOG_DETAIL,
   MIGRATION_011_CASE_ARCHIVE,
+  MIGRATION_012_INVOICE_JOURNALS,
 ];

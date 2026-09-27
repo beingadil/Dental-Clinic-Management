@@ -55,6 +55,9 @@ export function syncCollectionsToDb(collections: SyncCollections): void {
       // eslint-disable-next-line no-console
       console.error('[sync] SQLite collection sync failed:', lastError);
     }
+    // Always notify: success clears any error banner, failure raises one.
+    // A failed sync means the UI keeps running on unsaved state — never silent.
+    try { window.dispatchEvent(new CustomEvent('sync:status')); } catch { /* non-browser */ }
   }, 150);
 }
 
@@ -298,6 +301,10 @@ function syncNow(c: SyncCollections): void {
 
     // ── journal ──
     tx.run('DELETE FROM journal_entries');
+    // Heal duplicate line ids (bulk-generated journals can collide on the
+    // same-millisecond id): one duplicate would abort the entire transaction
+    // and stop ALL persistence. First occurrence wins.
+    const seenJournalLineIds = new Set<string>();
     for (const j of c.journalEntries) {
       tx.run(
         `INSERT INTO journal_entries (id, journal_number, date, event_type, reference_type, reference_id, reference_number, lab_id, lab_name, description, created_at, created_by)
@@ -307,10 +314,13 @@ function syncNow(c: SyncCollections): void {
          j.created_at ?? now, j.created_by]
       );
       for (const line of j.lines || []) {
+        const lineId = line.id || genId('jl');
+        if (seenJournalLineIds.has(lineId)) continue;
+        seenJournalLineIds.add(lineId);
         tx.run(
           `INSERT INTO journal_lines (id, journal_id, account_code, account_name, account_type, debit, credit, description, lab_name)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [line.id || genId('jl'), j.id, line.account_code, line.account_name, line.account_type,
+          [lineId, j.id, line.account_code, line.account_name, line.account_type,
            line.debit || 0, line.credit || 0, line.description || null, line.lab_name || null]
         );
       }

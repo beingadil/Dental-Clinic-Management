@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrandingSettings, UserPreferences } from '../../types';
 import { settingsRepo } from '../../db/repos';
+import { roundMoney } from '../../services/financeDomain';
 import { isDatabaseReady } from '../../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
 import { INITIAL_USER_PREFERENCES } from '../../data/initialData';
@@ -53,8 +54,12 @@ export function useSettingsDomain(): {
 
   // Settings persist ONLY into the namespaced settings store (SQLite) —
   // the legacy dsw_* keys are no longer written (single source of truth).
+  // Money-adjacent settings are rounded through the shared policy on write.
   useEffect(() => {
-    dbWrite(() => settingsRepo.set('branding', 'settings', brandingSettings));
+    const safeBranding = brandingSettings?.warningThresholdHours !== undefined
+      ? { ...brandingSettings, warningThresholdHours: roundMoney(brandingSettings.warningThresholdHours) }
+      : brandingSettings;
+    dbWrite(() => settingsRepo.set('branding', 'settings', safeBranding));
   }, [brandingSettings]);
   useEffect(() => {
     dbWrite(() => settingsRepo.set('preferences', 'global', userPreferences));

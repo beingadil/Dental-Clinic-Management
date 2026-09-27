@@ -42,6 +42,18 @@ export const assertJournalBalanced = (lines: JournalLine[]): boolean => {
 };
 
 /**
+ * Round a money value to 2 decimal places (half-away-from-zero, not IEEE
+ * banker's rounding). THE single money-rounding policy for the app: PKR has
+ * no circulating subunit, so every money boundary (totals, payments,
+ * journals, reports) goes through this instead of ad-hoc float arithmetic —
+ * it kills the 0.30000000000000004-class drift that REAL storage accumulates.
+ */
+export const roundMoney = (amount: number): number => {
+  if (!Number.isFinite(amount)) return 0;
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+};
+
+/**
  * Derive authoritative invoice status based on charges, payments, and credit notes
  */
 export const deriveInvoiceStatus = (

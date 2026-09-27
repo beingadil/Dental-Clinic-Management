@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
 import { UpdateBanner } from './components/common/UpdateBanner';
+import { SyncStatusBanner } from './components/common/SyncStatusBanner';
 import { Sidebar } from './components/common/Sidebar';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
@@ -64,6 +65,9 @@ const MainAppContent: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* In-app auto-update banner (checks GitHub releases, silent offline) */}
         <UpdateBanner />
+
+        {/* Shown whenever the last SQLite collection sync failed — never silent */}
+        <SyncStatusBanner />
 
         {/* Top Header */}
         <Header onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />

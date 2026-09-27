@@ -61,6 +61,7 @@ import {
 import {
   buildInvoiceJournal,
   buildPaymentJournal,
+  roundMoney,
   buildAdvanceDepositJournal,
   buildApplyAdvanceJournal,
   buildAdjustmentJournal,
@@ -85,7 +86,7 @@ import { useBillingDomain } from './hooks/useBillingDomain';
 import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, mirrorSet, groupByCase, attachmentsByCase } from './hooks/domainState';
 import { isDatabaseReady, getDatabase } from '../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../db/defaults';
-import { syncCollectionsToDb } from '../db/syncCore';
+import { syncCollectionsToDb, getLastSyncError } from '../db/syncCore';
 import {
   usersRepo, labsRepo, caseTypesRepo, casesRepo, caseNotesRepo, attachmentsRepo,
   caseTemplatesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo,
@@ -516,6 +517,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return uuid ? `${prefix}-${uuid}` : `${prefix}-${Date.now()}-${randomToken(9)}`;
   };
 
+  // Login backoff state (session-only, per username; see login())
+  const loginBackoffState = useRef(new Map<string, { count: number; lastFail: number; until: number }>());
+
   // Persistent Collections — hydrated from the SQLite mirror at mount.
   // Legacy dsw_* keys are read ONLY by the one-time legacyMigrator; the app's
   // active persistence layer is SQLite alone.
@@ -593,6 +597,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'success',
     );
   }, [cases, userPreferences]);
+
+  // ─── Sync-failure surfacing + ledger backfill sweep ───
+  // Migration 012 backfills issuance journals for invoices that predate the
+  // journal wiring, but the whole-table sync rewrites invoices from state —
+  // so the backfilled journal_id must ALSO land in React state or the next
+  // sync wipes the pairing. Runs once per session after hydration; charges
+  // only when the backfill actually created a journal (012 stamps it).
+  const ledgerBackfillRanRef = useRef(false);
+  useEffect(() => {
+    if (ledgerBackfillRanRef.current) return;
+    if (!isDatabaseReady()) return;
+    if (!dbMirror['cases']) return; // wait for hydration
+    ledgerBackfillRanRef.current = true;
+    if (invoices.some((i) => !i.journal_id)) {
+      const byRef = new Map<string, string>();
+      for (const j of journalEntries) {
+        if (j.event_type === 'invoice_issued' && j.reference_id && !byRef.has(j.reference_id)) {
+          byRef.set(j.reference_id, j.id);
+        }
+      }
+      if (byRef.size > 0) {
+        const affected = new Set(invoices.filter((i) => !i.journal_id && byRef.has(i.id)).map((i) => i.id));
+        if (affected.size > 0) {
+          setInvoices((prev) => prev.map((i) => (affected.has(i.id) && !i.journal_id ? { ...i, journal_id: byRef.get(i.id)! } : i)));
+        }
+      }
+    }
+  }, [invoices, journalEntries]);
+
+  useEffect(() => {
+    const onSyncStatus = () => {
+      const err = getLastSyncError();
+      if (err) showToast('Database sync failed — recent changes may not be saved.', 'error');
+    };
+    window.addEventListener('sync:status', onSyncStatus);
+    return () => window.removeEventListener('sync:status', onSyncStatus);
+  }, []);
 
   // One-time legacy sweep: business data lives in SQLite only. Once the
   // migrator marker is set (import done), every other dsw_* key is dead
@@ -753,6 +794,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const login = async (usernameOrEmail: string, passwordAttempt: string, rememberMe = false): Promise<boolean> => {
     const cleanInput = usernameOrEmail.trim().toLowerCase();
 
+    // Brute-force backoff: 5 rapid failures per username trigger a 30s
+    // enforced wait (doubling, capped). Purely local — the attacker is
+    // someone at the keyboard; the goal is making online guessing impractical
+    // without locking out the legitimate operator forever.
+    const backoff = loginBackoffState.current.get(cleanInput);
+    if (backoff && backoff.until > Date.now()) {
+      const waitSec = Math.ceil((backoff.until - Date.now()) / 1000);
+      showToast(`Too many failed attempts — try again in ${waitSec}s`, 'error');
+      return false;
+    }
+
     // Remember me support
     if (rememberMe) {
       try { localStorage.setItem('dsw_remember_user', usernameOrEmail.trim()); } catch (e) {}
@@ -781,6 +833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (authenticatedUser) {
+      loginBackoffState.current.delete(cleanInput);
       setUser(authenticatedUser);
 
       // Role-based routing
@@ -795,6 +848,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     }
 
+    const failed = loginBackoffState.current.get(cleanInput);
+    const nowMs = Date.now();
+    const attempt = failed && nowMs - failed.lastFail < 60_000 ? failed.count + 1 : 1;
+    const until = attempt >= 5 ? nowMs + Math.min(30_000 * 2 ** (attempt - 5), 300_000) : 0;
+    loginBackoffState.current.set(cleanInput, { count: attempt, lastFail: nowMs, until });
+    if (until) showToast(`Too many failed attempts — locked for ${Math.ceil((until - nowMs) / 1000)}s`, 'error');
     return false;
   };
 
@@ -1547,6 +1606,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setInvoices((prev) => [newInvoice, ...prev]);
+
+    // Post the issuance journal (debit A/R / credit Revenue). The ledger is
+    // double-entry: every invoice must carry its issuance journal or reports
+    // cannot reconcile. journal_id is stamped on the invoice so the pair
+    // survives the whole-table sync rewrite.
+    const journal = buildInvoiceJournal(newInvoice, user ? user.name : 'System');
+    setJournalEntries((prev) => [journal, ...prev]);
+    newInvoice.journal_id = journal.id;
 
     // Check if preferred lab should be logged or updated
     if (caseData.doctor_name) {

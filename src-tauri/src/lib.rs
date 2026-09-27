@@ -204,10 +204,33 @@ fn db_backup_file(state: State<DbState>, dest: Option<String>) -> Result<String,
     Ok(target.to_string_lossy().to_string())
 }
 
-/// SHA-256 of any file — used to verify offline update packages and backups.
+/// SHA-256 of a file inside an approved directory — used to verify offline
+/// update packages and backup integrity. Restricted to the app's database
+/// directory (backups live there) and the staged-update temp dir; an
+/// unrestricted read-hash primitive would let a compromised webview probe
+/// arbitrary files on disk.
 #[tauri::command]
-fn file_sha256(path: String) -> Result<String, String> {
-    let bytes = fs::read(&path).map_err(|e| format!("cannot read file: {e}"))?;
+fn file_sha256(state: State<DbState>, path: String) -> Result<String, String> {
+    let requested = PathBuf::from(&path);
+    let mut allowed_dirs: Vec<PathBuf> = Vec::new();
+    if let Some(db_path) = state.path.lock().unwrap().clone() {
+        if let Some(dir) = db_path.parent() {
+            allowed_dirs.push(dir.to_path_buf());
+        }
+    }
+    allowed_dirs.push(std::env::temp_dir().join("dental-solutions-update"));
+
+    let canonical = requested
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve file: {e}"))?;
+    let in_allowed = allowed_dirs.iter().any(|dir| {
+        dir.canonicalize().ok().map(|c| canonical.starts_with(&c)).unwrap_or(false)
+    });
+    if !in_allowed {
+        return Err("file_sha256: path is outside approved directories".into());
+    }
+
+    let bytes = fs::read(&canonical).map_err(|e| format!("cannot read file: {e}"))?;
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
     Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
