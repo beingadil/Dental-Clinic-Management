@@ -117,6 +117,13 @@ export const LabListView: React.FC = () => {
     });
   }, [labs, searchTerm, sortBy, sortOrder, casesByLab]);
 
+  /* Render cap: each card renders case previews, so 1000 cards meant ~45k DOM
+     nodes (audit §9). Mount 120, expand on demand — same pattern as the
+     workstation and billing tables. */
+  const CARD_CAP_STEP = 120;
+  const [cardLimit, setCardLimit] = useState(CARD_CAP_STEP);
+  const visibleLabs = useMemo(() => filteredLabs.slice(0, cardLimit), [filteredLabs, cardLimit]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -175,7 +182,7 @@ export const LabListView: React.FC = () => {
             No dental clinics found matching search.
           </div>
         ) : (
-          filteredLabs.map((lab) => {
+          visibleLabs.map((lab) => {
             // All cases for this lab, most recent first (pre-indexed above)
             const labCases = casesByLab.get(lab.id) || [];
 
@@ -257,6 +264,21 @@ export const LabListView: React.FC = () => {
           })
         )}
       </div>
+
+      {filteredLabs.length > visibleLabs.length && (
+        <div className="flex items-center justify-center gap-3 py-4">
+          <span className="text-xs text-slate-500">
+            Showing {visibleLabs.length} of {filteredLabs.length} clinics
+          </span>
+          <button
+            type="button"
+            onClick={() => setCardLimit((n) => n + CARD_CAP_STEP)}
+            className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+          >
+            Show {Math.min(CARD_CAP_STEP, filteredLabs.length - visibleLabs.length)} More
+          </button>
+        </div>
+      )}
 
       {/* Selected Lab Detail Modal */}
       {selectedLab && (

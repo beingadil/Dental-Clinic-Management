@@ -108,6 +108,12 @@ export async function loadSnapshot(): Promise<Uint8Array | null> {
 export async function saveSnapshot(engine: SqliteEngine): Promise<boolean> {
   try {
     const bytes = engine.export();
+    // sql.js resets PRAGMA foreign_keys to OFF as a side effect of export()
+    // (verified empirically). Every FK/cascade guarantee in the schema dies
+    // with it — sync's DELETE FROM + re-INSERT then orphans child rows. The
+    // connection-level flag is not stored in the file, so re-assert it after
+    // every export.
+    engine.run('PRAGMA foreign_keys = ON;');
     if (isDesktop()) {
       const tauri = await desktopDb();
       const res = await tauri.db_save_bytes({ bytesB64: b64encode(bytes) });
@@ -179,6 +185,7 @@ export function installAutoPersistence(engine: SqliteEngine): void {
           // Desktop: fire-and-forget is not safe on quit; save synchronously.
           const engineNow = getDatabase();
           const bytes = engineNow.export();
+          engineNow.run('PRAGMA foreign_keys = ON;'); // export() resets it — see saveSnapshot
           if (isDesktop()) {
             void desktopDb().then((t) => t.db_save_bytes({ bytesB64: b64encode(bytes) }));
           } else {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   DentalCase,
   DentalLab,
@@ -79,9 +79,10 @@ import {
   statusAfterQc,
 } from '../services/qcDomain';
 import { getTodayStr } from '../utils/dateUtils';
-import { sqliteDb } from '../services/sqliteDbService';import { useSettingsDomain } from './hooks/useSettingsDomain';
+import { useSettingsDomain } from './hooks/useSettingsDomain';
 import { useCasesDomain } from './hooks/useCasesDomain';
 import { selectCasesToAutoArchive } from './hooks/autoArchive';
+import { deriveSimpleStatus, buildInvoiceAllocation, buildPaymentSideEffects, buildPaidInFullNotification } from '../services/paymentDomain';
 import { useBillingDomain } from './hooks/useBillingDomain';
 import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, mirrorSet, groupByCase, attachmentsByCase } from './hooks/domainState';
 import { isDatabaseReady, getDatabase } from '../db/core';
@@ -403,9 +404,6 @@ interface AppContextType {
   // Quick Search
   searchTerm: string;
   setSearchTerm: (term: string) => void;
-
-  // SQLite Database Service Layer Instance
-  sqliteDb: typeof sqliteDb;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1372,7 +1370,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getClinicFinancialSummary = getLabFinancialSummary;
 
   // Derived Comprehensive Double-Entry Ledger Engine
-  const getLedgerEntries = (filterLabId?: string): LedgerEntry[] => {
+  const getLedgerEntries = useCallback((filterLabId?: string): LedgerEntry[] => {
     try {
       type RawEvent = {
         date: string;
@@ -1556,7 +1554,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('Error generating ledger entries:', err);
       return [];
     }
-  };
+  }, [invoices, advancePayments, accountAdjustments]);
 
   // Cases CRUD
   const addCase = (caseData: Omit<DentalCase, 'id' | 'case_number' | 'created_at' | 'updated_at' | 'history'>) => {
@@ -2067,7 +2065,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const currentPayments = inv.payments || [];
         const newPaid = currentPayments.reduce((s, p) => s + p.amount, 0) + amount;
-        const newStatus = newPaid >= inv.final_amount ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
+        const newStatus = deriveSimpleStatus(newPaid, inv.final_amount);
 
         const newPaymentId = `pay-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const preparedAttachments: PaymentAttachment[] = (attachments || []).map((att, idx) => ({
@@ -2109,17 +2107,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // Notify if invoice fully settled
         if (newStatus === 'paid') {
-          const notif: AppNotification = {
-            id: genId('notif'),
-            type: 'system',
-            title: `Invoice ${inv.invoice_number} Paid in Full`,
-            message: `Payment of PKR ${(amount || 0).toLocaleString()} received for ${inv.lab_name}. Invoice is fully settled.`,
-            invoice_id: inv.id,
-            lab_id: inv.lab_id,
-            is_read: false,
-            is_archived: false,
-            created_at: new Date().toISOString().replace('T', ' ').substring(0, 16)
-          };
+          const notif = buildPaidInFullNotification(
+            { id: newPaymentId, payment_number: paymentNum, amount } as PaymentRecord,
+            inv,
+          );
           setNotifications((n) => [notif, ...n]);
         }
 
@@ -2129,38 +2120,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     // ---- Auto-log voucher + system journal for every payment entry ----
+    // (shared paymentDomain builders — one posting contract, see audit F3)
     const payVoucher = createdPayment as PaymentRecord | null;
     const payInv = invoices.find((i) => i.id === invoiceId);
     if (payVoucher && payInv) {
-      saveVoucherToSystem({
-        voucher_number: payVoucher.payment_number || paymentNum,
-        voucher_type: 'invoice',
-        case_id: payInv.case_id || '',
-        case_number: payInv.case_number || '',
-        lab_name: payInv.lab_name,
-        doctor_name: payInv.doctor_name || '',
-        patient_name: payInv.patient_name || '',
-        case_type_name: payInv.case_type_name,
-        amount,
-        notes: notes || `Payment ${method}${referenceNumber ? ` · ref ${referenceNumber}` : ''} on ${payInv.invoice_number}`
-      });
-
-      const journal = buildPaymentJournal(
-        payVoucher,
-        [{
-          id: `alloc-${payVoucher.id}`,
-          source_type: 'payment',
-          source_id: payVoucher.id,
-          source_ref: payVoucher.payment_number || paymentNum,
-          invoice_id: payInv.id,
-          invoice_number: payInv.invoice_number,
-          amount,
-          allocated_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          allocated_by: user ? user.name : 'Staff'
-        }],
-        0,
-        user ? user.name : 'Staff'
-      );
+      const actor = user ? user.name : 'Staff';
+      const { journal, voucher } = buildPaymentSideEffects({ payment: payVoucher, invoice: payInv, actor });
+      saveVoucherToSystem(voucher);
       payVoucher.journal_id = journal.id;
       setJournalEntries((prev) => [journal, ...prev]);
     }
@@ -2176,7 +2142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const updatedPayments = (inv.payments || []).filter((p) => p.id !== paymentId);
         const newPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
-        const newStatus = newPaid >= inv.final_amount ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
+        const newStatus = deriveSimpleStatus(newPaid, inv.final_amount);
 
         return {
           ...inv,
@@ -2195,7 +2161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const updated = { ...inv, ...updates };
         const finalAmt = updates.final_amount !== undefined ? updates.final_amount : updated.final_amount;
         const paidAmt = updates.amount_paid !== undefined ? updates.amount_paid : updated.amount_paid;
-        updated.payment_status = paidAmt >= finalAmt ? 'paid' : (paidAmt > 0 ? 'partial' : 'unpaid');
+        updated.payment_status = deriveSimpleStatus(paidAmt, finalAmt);
         return updated;
       })
     );
@@ -2230,18 +2196,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           notes: 'Bulk payment settlement',
           recorded_by: user ? user.name : 'Staff',
           allocations: [
-            {
-              id: `alloc-${Date.now()}-${inv.id}`,
-              source_type: 'payment',
-              source_id: `pay-${Date.now()}-${inv.id}`,
-              source_ref: payNum,
-              invoice_id: inv.id,
-              invoice_number: inv.invoice_number,
-              amount: remaining,
-              allocated_at: today,
-              allocated_by: user ? user.name : 'Staff'
-            }
-          ]
+            buildInvoiceAllocation({
+              payment: { id: `pay-${Date.now()}-${inv.id}`, payment_number: payNum, amount: remaining } as PaymentRecord,
+              invoice: inv,
+              actor: user ? user.name : 'Staff',
+            }),
+          ],
         };
 
         const journal = buildPaymentJournal(
@@ -3528,8 +3488,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         searchTerm,
         setSearchTerm,
-
-        sqliteDb,
       }}
     >
       {children}

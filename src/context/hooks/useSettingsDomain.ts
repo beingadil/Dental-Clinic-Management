@@ -5,7 +5,6 @@ import { roundMoney } from '../../services/financeDomain';
 import { isDatabaseReady } from '../../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
 import { INITIAL_USER_PREFERENCES } from '../../data/initialData';
-import { sqliteDb } from '../../services/sqliteDbService';
 
 /**
  * Settings domain state (branding + global user preferences), hydrated from
@@ -36,7 +35,7 @@ export function useSettingsDomain(): {
     if (isDatabaseReady()) {
       try { return settingsRepo.get('branding', 'settings') as BrandingSettings || DEFAULT_BRANDING_SETTINGS; } catch { /* fall through */ }
     }
-    return sqliteDb.settings.getBranding() || DEFAULT_BRANDING_SETTINGS;
+    return DEFAULT_BRANDING_SETTINGS;
   });
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
@@ -49,7 +48,7 @@ export function useSettingsDomain(): {
         return (settingsRepo.get('preferences', 'global') as UserPreferences) || INITIAL_USER_PREFERENCES;
       } catch { /* fall through */ }
     }
-    return sqliteDb.settings.getPreferences() || INITIAL_USER_PREFERENCES;
+    return INITIAL_USER_PREFERENCES;
   });
 
   // Settings persist ONLY into the namespaced settings store (SQLite) —

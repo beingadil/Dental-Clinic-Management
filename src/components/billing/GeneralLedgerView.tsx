@@ -230,6 +230,17 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     };
   }, [rawLedgerEntries, startDate, endDate]);
 
+  /* Render cap: computing totals over the full set stays correct (above memo),
+     but the table only mounts the newest LEDGER_CAP_STEP rows — building+mounting
+     ~1500 rows froze the view (audit §9). Expanded on demand like the other
+     capped tables. */
+  const LEDGER_CAP_STEP = 400;
+  const [ledgerLimit, setLedgerLimit] = useState(LEDGER_CAP_STEP);
+  const visibleLedgerItems = useMemo(
+    () => ledgerItems.slice(0, ledgerLimit),
+    [ledgerItems, ledgerLimit],
+  );
+
   // Helper to format narration and determine entry category
   const getNarrationDetails = (entry: LedgerEntry) => {
     if (!entry) {
@@ -790,7 +801,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                       </td>
                     </tr>
                   ) : (
-                    ledgerItems.map((entry, idx) => {
+                    visibleLedgerItems.map((entry, idx) => {
                       const details = getNarrationDetails(entry);
                       const Icon = details.icon;
 
@@ -889,6 +900,20 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                   </tfoot>
                 )}
               </table>
+              {ledgerItems.length > visibleLedgerItems.length && (
+                <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
+                  <span className="text-xs text-slate-500">
+                    Showing {visibleLedgerItems.length} of {ledgerItems.length} entries — totals cover the full period
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLedgerLimit((n) => n + LEDGER_CAP_STEP)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                  >
+                    Show {Math.min(LEDGER_CAP_STEP, ledgerItems.length - visibleLedgerItems.length)} More
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Final line of the statement: the closing balance, after the last

@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Invoice, AdvancePayment, AccountAdjustment, JournalEntry, AuditEvent, ReconciliationItem, SavedVoucher, AppNotification } from '../../types';
 import { INITIAL_NOTIFICATIONS } from '../../data/initialData';
-import { reconciliationRepo } from '../../db/repos';
-import { hydrateAllFromDb, dbMirror, dbRows, sqliteDb } from './domainState';
+import {
+  reconciliationRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo,
+  journalRepo, vouchersRepo, auditRepo, notificationsRepo,
+} from '../../db/repos';
+import { hydrateAllFromDb, dbMirror, dbRows } from './domainState';
 
 /**
  * Billing domain state — invoices, advances, adjustments, journal, audit,
@@ -13,12 +16,12 @@ import { hydrateAllFromDb, dbMirror, dbRows, sqliteDb } from './domainState';
 export function useBillingDomain() {
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
     if (dbMirror['invoices']) return dbMirror['invoices'] as Invoice[];
-    return sqliteDb.invoices.getAll();
+    return dbRows('invoices', () => invoicesRepo.all() as Invoice[]) || [];
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     if (dbMirror['notifications']) return dbMirror['notifications'] as AppNotification[];
-    const fromDb = sqliteDb.notifications.getAll();
+    const fromDb = dbRows('notifications', () => notificationsRepo.all() as AppNotification[]) || [];
     const parsed: AppNotification[] = fromDb.length > 0 ? fromDb : INITIAL_NOTIFICATIONS;
     const seen = new Set<string>();
     const safeList = Array.isArray(parsed) ? parsed : INITIAL_NOTIFICATIONS;
@@ -34,23 +37,23 @@ export function useBillingDomain() {
 
   const [savedVouchers, setSavedVouchers] = useState<SavedVoucher[]>(() => {
     if (dbMirror['savedVouchers']) return dbMirror['savedVouchers'] as SavedVoucher[];
-    return sqliteDb.vouchers.getAll();
+    return dbRows('savedVouchers', () => vouchersRepo.all() as SavedVoucher[]) || [];
   });
   const [advancePayments, setAdvancePayments] = useState<AdvancePayment[]>(() => {
     if (dbMirror['advancePayments']) return dbMirror['advancePayments'] as AdvancePayment[];
-    return sqliteDb.advancePayments.getAll();
+    return dbRows('advancePayments', () => advancePaymentsRepo.all() as AdvancePayment[]) || [];
   });
   const [accountAdjustments, setAccountAdjustments] = useState<AccountAdjustment[]>(() => {
     if (dbMirror['accountAdjustments']) return dbMirror['accountAdjustments'] as AccountAdjustment[];
-    return sqliteDb.adjustments.getAll();
+    return dbRows('accountAdjustments', () => adjustmentsRepo.all() as AccountAdjustment[]) || [];
   });
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>(() => {
     if (dbMirror['journalEntries']) return dbMirror['journalEntries'] as JournalEntry[];
-    return sqliteDb.journalEntries.getAll();
+    return dbRows('journalEntries', () => journalRepo.all() as JournalEntry[]) || [];
   });
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>(() => {
     if (dbMirror['auditEvents']) return dbMirror['auditEvents'] as AuditEvent[];
-    return sqliteDb.audit.getAll();
+    return dbRows('auditEvents', () => auditRepo.all() as AuditEvent[]) || [];
   });
   const [reconciliationItems, setReconciliationItems] = useState<ReconciliationItem[]>(() => dbRows('reconciliationItems', () => reconciliationRepo.all() as ReconciliationItem[]));
 

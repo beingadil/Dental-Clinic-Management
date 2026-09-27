@@ -200,6 +200,12 @@ export const BillingView: React.FC = () => {
     });
   }, [invoices, clinicFilter, invoiceStatusFilter, searchTerm, invFromDate, invToDate]);
 
+  /* Render cap (same pattern as CaseListView): mount 300 rows, expand on demand.
+     Mounting 1000+ heavy rows froze scroll and search on volume datasets. */
+  const RENDER_CAP_STEP = 300;
+  const [renderLimit, setRenderLimit] = useState(RENDER_CAP_STEP);
+  const visibleInvoices = useMemo(() => filteredInvoices.slice(0, renderLimit), [filteredInvoices, renderLimit]);
+
   const toggleSelectAll = () => {
     if (selectedIds.length === filteredInvoices.length) {
       setSelectedIds([]);
@@ -607,7 +613,7 @@ export const BillingView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {filteredInvoices.map((inv) => {
+                    {visibleInvoices.map((inv) => {
                       const isSelected = selectedIds.includes(inv.id);
                       const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
                       const isPaid = inv.payment_status === 'paid' || remaining <= 0;
@@ -816,6 +822,20 @@ export const BillingView: React.FC = () => {
                     })}
                   </tbody>
                 </table>
+                {filteredInvoices.length > visibleInvoices.length && (
+                  <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
+                    <span className="text-xs text-slate-500">
+                      Showing {visibleInvoices.length} of {filteredInvoices.length} invoices
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRenderLimit((n) => n + RENDER_CAP_STEP)}
+                      className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      Show {Math.min(RENDER_CAP_STEP, filteredInvoices.length - visibleInvoices.length)} More
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

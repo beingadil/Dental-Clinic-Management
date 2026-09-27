@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { DentalCase, DentalLab, CaseType, CaseAttachment, CaseNote, QcInspection } from '../../types';
 import {
-  attachmentsRepo, caseNotesRepo, qcInspectionsRepo,
+  attachmentsRepo, caseNotesRepo, qcInspectionsRepo, casesRepo, labsRepo, caseTypesRepo,
 } from '../../db/repos';
-import { hydrateAllFromDb, dbMirror, dbRows, sqliteDb, attachmentsByCase, groupByCase } from './domainState';
+import { hydrateAllFromDb, dbMirror, dbRows, attachmentsByCase, groupByCase } from './domainState';
 import { isDatabaseReady } from '../../db/core';
 
 /**
@@ -15,15 +15,15 @@ import { isDatabaseReady } from '../../db/core';
 export function useCasesDomain() {
   const [cases, setCases] = useState<DentalCase[]>(() => {
     if (hydrateAllFromDb() && dbMirror['cases']) return dbMirror['cases'] as DentalCase[];
-    return sqliteDb.cases.getAll();
+    return dbRows('cases', () => casesRepo.all() as DentalCase[]) || [];
   });
   const [labs, setLabs] = useState<DentalLab[]>(() => {
     if (dbMirror['labs']) return dbMirror['labs'] as DentalLab[];
-    return sqliteDb.labs.getAll();
+    return dbRows('labs', () => labsRepo.all() as DentalLab[]) || [];
   });
   const [caseTypes, setCaseTypes] = useState<CaseType[]>(() => {
     if (dbMirror['caseTypes']) return dbMirror['caseTypes'] as CaseType[];
-    return sqliteDb.caseTypes.getAll();
+    return dbRows('caseTypes', () => caseTypesRepo.all() as CaseType[]) || [];
   });
 
   const [caseAttachments, setCaseAttachments] = useState<Record<string, CaseAttachment[]>>(() => dbRows('caseAttachments', () => attachmentsByCase(attachmentsRepo.all())));

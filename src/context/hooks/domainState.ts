@@ -5,7 +5,6 @@ import {
   labContactsRepo, labAddressesRepo, labPricingOverridesRepo, labReviewsRepo,
   doctorPreferredLabsRepo, caseNotesRepo, attachmentsRepo, reconciliationRepo,
 } from '../../db/repos';
-import { sqliteDb } from '../../services/sqliteDbService';
 
 /**
  * Memory mirror: maps collection keys to the last arrays loaded from SQLite.
@@ -91,5 +90,3 @@ export function dbRows<T>(key: string, read: () => T): T {
     return undefined as unknown as T;
   }
 }
-
-export { sqliteDb };

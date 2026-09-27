@@ -70,7 +70,23 @@ function syncNow(c: SyncCollections): void {
   const now = new Date().toISOString();
 
   db.withTransaction((tx) => {
-    // ── labs (+ children) — parents of cases/invoices ──
+    // FK-aware delete order: children BEFORE parents. With PRAGMA
+    // foreign_keys ON (enforced since the export() reset fix), deleting the
+    // labs parent while case/invoice rows still reference it fails outright.
+    tx.run('DELETE FROM case_teeth');
+    tx.run('DELETE FROM case_status_history');
+    tx.run('DELETE FROM case_notes');
+    tx.run('DELETE FROM qc_inspections');
+    tx.run('DELETE FROM payment_attachments');
+    tx.run('DELETE FROM payments');
+    tx.run('DELETE FROM invoices');
+    tx.run('DELETE FROM cases');
+    tx.run('DELETE FROM doctor_preferred_labs');
+    tx.run('DELETE FROM lab_contacts');
+    tx.run('DELETE FROM lab_addresses');
+    tx.run('DELETE FROM lab_pricing_overrides');
+    tx.run('DELETE FROM lab_reviews');
+    // ── labs — parents of cases/invoices ──
     tx.run('DELETE FROM labs');
     for (const l of c.labs) {
       tx.run(
@@ -113,7 +129,7 @@ function syncNow(c: SyncCollections): void {
         );
       }
     }
-    tx.run('DELETE FROM doctor_preferred_labs');
+    // (doctor_preferred_labs already emptied up front for FK-safe ordering)
     for (const d of c.doctorPreferences) {
       tx.run(
         `INSERT OR REPLACE INTO doctor_preferred_labs (id, doctor_name, lab_id, lab_name, created_at) VALUES (?, ?, ?, ?, ?)`,
@@ -133,13 +149,10 @@ function syncNow(c: SyncCollections): void {
     }
 
     // ── cases (+ teeth, history, notes, attachments) ──
-    tx.run('DELETE FROM cases');
+    // (already emptied up front for FK-safe ordering; this DELETE is a no-op)
     // Child tables are wiped explicitly: the rebuild below re-inserts every row,
     // and FK cascade cannot be relied upon on every engine/connection.
-    tx.run('DELETE FROM case_teeth');
-    tx.run('DELETE FROM case_status_history');
-    tx.run('DELETE FROM case_notes');
-    tx.run("DELETE FROM attachments WHERE entity_type = 'case'");
+    // (children already emptied up front for FK-safe ordering)
     for (const cse of c.cases) {
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
@@ -188,7 +201,7 @@ function syncNow(c: SyncCollections): void {
     // ── QC inspections (append-only stream, child of cases) — after cases ──
     // Rows are never updated: the rebuild deletes and re-inserts every event so
     // the quality history (and every derived KPI) survives a boot sync.
-    tx.run('DELETE FROM qc_inspections');
+    // (qc_inspections already emptied up front for FK-safe ordering)
     for (const qc of c.qcInspections || []) {
       tx.run(
         `INSERT INTO qc_inspections (id, case_id, case_number, inspection_no, kind, result, reason_code, reason_text,
@@ -213,11 +226,7 @@ function syncNow(c: SyncCollections): void {
     }
 
     // ── invoices (+ payments + proof attachments) — after labs & cases ──
-    tx.run('DELETE FROM invoices');
-    // Payments and their proof attachments are fully rebuilt below (invoice
-    // payments + advance payments), so they are wiped explicitly up front.
-    tx.run('DELETE FROM payment_attachments');
-    tx.run('DELETE FROM payments');
+    // (invoices/payments/attachments already emptied up front for FK-safe ordering)
     for (const inv of c.invoices) {
       tx.run(
         `INSERT INTO invoices (id, invoice_number, case_id, case_number, lab_id, lab_name, case_type_id, case_type_name, doctor_name, patient_name,
