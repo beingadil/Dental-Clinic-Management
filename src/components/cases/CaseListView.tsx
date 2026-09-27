@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
+import { CaseDetailView } from './CaseDetailView';
 import { CaseTemplateModal } from './CaseTemplateModal';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
@@ -84,6 +85,9 @@ export const CaseListView: React.FC = () => {
     }
   };
   const [selectedCase, setSelectedCase] = useState<DentalCase | null>(null);
+  // Full-page viewer target — distinct from the edit-wizard target so a plain
+  // click reads the case while the wizard stays one explicit click away.
+  const [viewedCaseId, setViewedCaseId] = useState<string | null>(null);
 
   const [printSlipCase, setPrintSlipCase] = useState<DentalCase | null>(null);
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
@@ -101,7 +105,6 @@ export const CaseListView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [labFilter, setLabFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [overdueOnly, setOverdueOnly] = useState(false);
   const [dueSoonOnly, setDueSoonOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'delivery_date' | 'priority' | 'created_at'>('delivery_date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -185,12 +188,6 @@ export const CaseListView: React.FC = () => {
     // Priority
     if (priorityFilter !== 'all' && c.priority !== priorityFilter) return false;
 
-    // Overdue
-    if (overdueOnly) {
-      const isOverdue = c.delivery_date < todayStr && c.status !== 'delivered' && c.status !== 'cancelled';
-      if (!isOverdue) return false;
-    }
-
     // Due Soon (<24h or threshold)
     if (dueSoonOnly) {
       const { isWarning } = checkCaseWarning(c);
@@ -209,7 +206,7 @@ export const CaseListView: React.FC = () => {
       comparison = pMap[b.priority] - pMap[a.priority];
     }
     return sortOrder === 'asc' ? comparison : -comparison;
-  }), [activeCases, searchTerm, statusFilter, labFilter, priorityFilter, overdueOnly, dueSoonOnly, sortBy, sortOrder, todayStr]);
+  }), [activeCases, searchTerm, statusFilter, labFilter, priorityFilter, dueSoonOnly, sortBy, sortOrder, todayStr]);
 
   /* Archive tab list: date range on delivery date, clinic dropdown, search —
      the same controls every other module uses (shared DatePickerRange). */
@@ -441,47 +438,6 @@ export const CaseListView: React.FC = () => {
               title="Toggle sort direction"
             >
               <ArrowUpDown className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Checkboxes & Stats */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer select-none font-semibold text-amber-700">
-              <input
-                type="checkbox"
-                checked={overdueOnly}
-                onChange={(e) => setOverdueOnly(e.target.checked)}
-                className="rounded text-amber-600 focus:ring-amber-500"
-              />
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-              <span>Show Overdue Cases Only</span>
-            </label>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none font-bold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-200">
-              <input
-                type="checkbox"
-                checked={dueSoonOnly}
-                onChange={(e) => setDueSoonOnly(e.target.checked)}
-                className="rounded text-rose-600 focus:ring-rose-500"
-              />
-              <Clock className="w-3.5 h-3.5 text-rose-600" />
-              <span>Due Within {brandingSettings?.warningThresholdHours || 24}h ({warningCasesCount})</span>
-            </label>
-
-            {/* Select All Toggle */}
-            <button
-              type="button"
-              onClick={toggleSelectAll}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-            >
-              <CheckSquare className="w-3.5 h-3.5 text-slate-700" />
-              <span>
-                {selectedCaseIds.length > 0 && selectedCaseIds.length === filteredCases.length
-                  ? 'Deselect All'
-                  : 'Select All Filtered'}
-              </span>
             </button>
           </div>
         </div>
@@ -718,7 +674,7 @@ export const CaseListView: React.FC = () => {
                           key={c.id}
                           draggable={true}
                           onDragStart={(e) => handleDragStart(e, c.id)}
-                          onClick={() => setSelectedCase(c)}
+                          onClick={() => setViewedCaseId(c.id)}
                           style={{
                             backgroundColor: (isWarning && styleMode === 'full')
                               ? (colorTheme === 'rose' ? '#fff1f2' : colorTheme === 'amber' ? '#fffbeb' : '#fef2f2')
@@ -883,7 +839,6 @@ export const CaseListView: React.FC = () => {
                   setStatusFilter('all');
                   setLabFilter('all');
                   setPriorityFilter('all');
-                  setOverdueOnly(false);
                   setDueSoonOnly(false);
                 }}
               />
@@ -921,7 +876,7 @@ export const CaseListView: React.FC = () => {
                     return (
                       <tr
                         key={c.id}
-                        onClick={() => setSelectedCase(c)}
+                        onClick={() => setViewedCaseId(c.id)}
                         className={`hover:bg-indigo-50/40 cursor-pointer transition-colors ${
                           isSelected 
                             ? 'bg-indigo-50/60' 
@@ -1106,6 +1061,23 @@ export const CaseListView: React.FC = () => {
           }}
         />
       )}
+
+      {/* Full-page case viewer */}
+      {viewedCaseId && (() => {
+        const viewed = cases.find((c) => c.id === viewedCaseId);
+        if (!viewed) return null;
+        return (
+          <CaseDetailView
+            caseData={viewed}
+            onClose={() => setViewedCaseId(null)}
+            onEdit={(c) => {
+              setViewedCaseId(null);
+              setSelectedCase(c);
+            }}
+            onStatusChange={(id, updates, note) => updateCase(id, updates, note)}
+          />
+        );
+      })()}
 
       {/* Template Preset Gallery Modal */}
       {templateLibraryOpen && (

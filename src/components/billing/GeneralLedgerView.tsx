@@ -6,8 +6,6 @@ import {
   Search, 
   Calendar, 
   Eye, 
-  Printer, 
-  Download, 
   Building2, 
   RotateCcw, 
   CheckCircle2, 
@@ -16,7 +14,6 @@ import {
   ArrowDownLeft, 
   ChevronDown, 
   X, 
-  BookOpen,
   FileText,
   CreditCard,
   Banknote,
@@ -398,49 +395,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
   return (
     <div className="space-y-6 print-page">
-      {/* Top Header Card */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
-            <BookOpen className="w-6 h-6" />
-          </div>
-          <div>
-            <h2 className="text-base md:text-lg font-bold text-slate-900 flex items-center gap-2">
-              General Ledger
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                Clinic Statement
-              </span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Select saved clinics and choose date range to generate a clean preview of case debits, cash/bank credits, and closing balance.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            disabled={ledgerItems.length === 0}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer shadow-2xs"
-            title="Download CSV file"
-          >
-            <Download className="w-4 h-4 text-slate-500" />
-            <span>Export CSV</span>
-          </button>
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={ledgerItems.length === 0}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer shadow-2xs"
-            title="Print statement"
-          >
-            <Printer className="w-4 h-4 text-slate-500" />
-            <span>Print</span>
-          </button>
-        </div>
-      </div>
-
       {/* SEARCHBAR, DATEPICKER & PREVIEW CONTROLS CARD */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
@@ -670,47 +624,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
       {/* PREVIEW CONTAINER */}
       {isPreviewActive && (
         <div className="space-y-4 print-flow">
-          {/* Summary Strip Cards — the closing balance is deliberately NOT here:
-              it belongs at the END of the sequence, after the last entry. */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
-                Opening Balance
-              </span>
-              <span className="text-sm md:text-base font-bold text-slate-900 mt-1 block">
-                PKR {openingBalance.toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-500">
-                {startDate ? `Before ${startDate}` : 'Initial state'}
-              </span>
-            </div>
-
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">
-                Total Debits (Cases)
-              </span>
-              <span className="text-sm md:text-base font-bold text-blue-900 mt-1 block">
-                PKR {totalDebits.toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-500">
-                {ledgerItems.filter((i) => i.debit > 0).length} debits billed
-              </span>
-            </div>
-
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 block">
-                Total Credits (Cash/Bank)
-              </span>
-              <span className="text-sm md:text-base font-bold text-emerald-900 mt-1 block">
-                PKR {totalCredits.toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-500">
-                {ledgerItems.filter((i) => i.credit > 0).length} payments received
-              </span>
-            </div>
-
-          </div>
-
           {/* Selected Clinic Banner if specific clinic chosen */}
           {selectedClinic && (
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
