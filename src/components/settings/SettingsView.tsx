@@ -1739,6 +1739,18 @@ export const SettingsView: React.FC = () => {
                 <option value="false">Disabled (Manual prompt only)</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Auto-Archive Delivered Cases</label>
+              <select
+                value={userPreferences?.auto_archive_completed_cases === false ? 'false' : 'true'}
+                onChange={(e) => updateUserPreferences({ auto_archive_completed_cases: e.target.value === 'true' })}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              >
+                <option value="true">Enabled (Archive delivered cases older than 30 days on startup)</option>
+                <option value="false">Disabled (Cases stay in the workstation until archived manually)</option>
+              </select>
+            </div>
           </div>
         </div>
       )}

@@ -97,7 +97,8 @@ export const DEFAULT_USER_PREFS: UserPreferences = {
   currency: 'PKR',
   default_turnaround_days: 3,
   default_priority: 'normal',
-  auto_print_job_slips: false
+  auto_print_job_slips: false,
+  auto_archive_completed_cases: true
 };
 
 // Database Event Listener Mechanism

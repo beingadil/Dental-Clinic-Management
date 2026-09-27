@@ -39,6 +39,15 @@ export function useSettingsDomain(): {
   });
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
+    // SQLite is the single source of truth (same as branding). Reading the
+    // legacy localStorage mirror here instead silently RESET preferences to
+    // defaults on every post-cutover boot — the persist effect below then
+    // clobbered the user's saved choice in the settings table.
+    if (isDatabaseReady()) {
+      try {
+        return (settingsRepo.get('preferences', 'global') as UserPreferences) || INITIAL_USER_PREFERENCES;
+      } catch { /* fall through */ }
+    }
     return sqliteDb.settings.getPreferences() || INITIAL_USER_PREFERENCES;
   });
 

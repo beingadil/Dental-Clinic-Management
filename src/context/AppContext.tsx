@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import {
   DentalCase,
   DentalLab,
@@ -80,6 +80,7 @@ import {
 import { getTodayStr } from '../utils/dateUtils';
 import { sqliteDb } from '../services/sqliteDbService';import { useSettingsDomain } from './hooks/useSettingsDomain';
 import { useCasesDomain } from './hooks/useCasesDomain';
+import { selectCasesToAutoArchive } from './hooks/autoArchive';
 import { useBillingDomain } from './hooks/useBillingDomain';
 import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, mirrorSet, groupByCase, attachmentsByCase } from './hooks/domainState';
 import { isDatabaseReady, getDatabase } from '../db/core';
@@ -559,6 +560,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     caseNotes, caseAttachments, qcInspections,
   ]);  // Settings persist ONLY into the namespaced settings store (SQLite) —
   // handled inside useSettingsDomain (single source of truth).
+
+  // ─── Auto-archive sweep (boot-time) ───
+  // Delivered cases older than 30 days (by delivery_date — the Archive tab's
+  // age basis; there is no delivered_at timestamp on a case) are archived
+  // automatically once per session. Setting the fields here is the whole
+  // persistence story: the write-through sync above rewrites the SQLite
+  // `cases` table from this state. Runs only when the pref is on (undefined
+  // counts as on — it is the default), the database is ready, and cases have
+  // hydrated (dbMirror check distinguishes first render from post-boot).
+  const autoArchiveRanRef = useRef(false);
+  useEffect(() => {
+    if (autoArchiveRanRef.current) return;
+    if (!isDatabaseReady()) return;
+    if (userPreferences?.auto_archive_completed_cases === false) return;
+    if (!dbMirror['cases']) return; // wait for hydration
+    autoArchiveRanRef.current = true; // decide-once: reruns would re-archive restored cases
+    const today = new Date(`${getTodayStr()}T00:00:00`);
+    const due = selectCasesToAutoArchive(cases, today);
+    if (due.length === 0) return;
+    const stamp = new Date().toISOString();
+    const dueIds = new Set(due.map((c) => c.id));
+    setCases((prev) =>
+      prev.map((c) =>
+        dueIds.has(c.id) && !c.archived_at
+          ? { ...c, archived_at: stamp, updated_at: stamp }
+          : c,
+      ),
+    );
+    showToast(
+      `Auto-archive: ${due.length} delivered case${due.length === 1 ? '' : 's'} older than 30 days moved to the archive`,
+      'success',
+    );
+  }, [cases, userPreferences]);
 
   // One-time legacy sweep: business data lives in SQLite only. Once the
   // migrator marker is set (import done), every other dsw_* key is dead
@@ -1076,30 +1110,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auto-generate overdue case alerts
   useEffect(() => {
-    const existingCaseIds = new Set((notifications || []).filter((n) => n.type === 'overdue_case').map((n) => n.case_id));
-    const newAlerts: AppNotification[] = [];
+    const alerts: AppNotification[] = [];
 
     (cases || []).forEach((c) => {
       if (c && c.status !== 'delivered' && c.status !== 'cancelled' && (c.delivery_date || '') < todayStr) {
-        if (!existingCaseIds.has(c.id)) {
-          newAlerts.push({
-            id: `notif-overdue-${c.id}`,
-            type: 'overdue_case',
-            title: `Case ${c.case_number} Overdue Notice`,
-            message: `Case ${c.case_number} (${c.patient_name} - ${c.doctor_name}) missed scheduled delivery on ${c.delivery_date}. Priority triage required.`,
-            case_id: c.id,
-            case_number: c.case_number,
-            lab_id: c.lab_id,
-            is_read: false,
-            read: false,
-            created_at: new Date().toISOString()
-          });
-        }
+        alerts.push({
+          id: `notif-overdue-${c.id}`,
+          type: 'overdue_case',
+          title: `Case ${c.case_number} Overdue Notice`,
+          message: `Case ${c.case_number} (${c.patient_name} - ${c.doctor_name}) missed scheduled delivery on ${c.delivery_date}. Priority triage required.`,
+          case_id: c.id,
+          case_number: c.case_number,
+          lab_id: c.lab_id,
+          is_read: false,
+          read: false,
+          created_at: new Date().toISOString()
+        });
       }
     });
 
-    if (newAlerts.length > 0) {
-      setNotifications((prev) => [...newAlerts, ...(prev || [])]);
+    if (alerts.length > 0) {
+      // Dedupe INSIDE the updater: the render-scope `notifications` snapshot
+      // goes stale across the rapid re-renders/StrictMode double-invokes this
+      // effect fires on, which used to re-insert the same deterministic ids
+      // (`notif-overdue-<caseId>`) twice — and a duplicate id aborts the whole
+      // SQLite sync transaction, silently stopping ALL persistence.
+      setNotifications((prev) => {
+        const existing = new Set((prev || []).map((n) => n.id));
+        const fresh = alerts.filter((a) => !existing.has(a.id));
+        return fresh.length > 0 ? [...fresh, ...(prev || [])] : prev || [];
+      });
     }
   }, [cases, todayStr]);
 

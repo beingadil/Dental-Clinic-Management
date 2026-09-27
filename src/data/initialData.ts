@@ -200,6 +200,7 @@ export const INITIAL_USER_PREFERENCES: UserPreferences = {
   quiet_hours_end: '07:00',
   enabled_types: ['overdue_case', 'pending_payment', 'escalation', 'status_change'],
   unsubscribed_all: false,
+  auto_archive_completed_cases: true,
 };
 
 /**

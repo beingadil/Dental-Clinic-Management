@@ -58,4 +58,5 @@ export const DEFAULT_USER_PREFS: UserPreferences = {
   default_turnaround_days: 3,
   default_priority: 'normal',
   auto_print_job_slips: false,
+  auto_archive_completed_cases: true,
 };

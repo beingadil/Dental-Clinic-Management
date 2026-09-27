@@ -342,8 +342,15 @@ function syncNow(c: SyncCollections): void {
     }
 
     // ── notifications ──
+    // Heal duplicate ids that leaked into React state from pre-fix alert
+    // generation: one duplicate would abort this entire transaction and
+    // silently stop ALL persistence for the profile (no saves at all).
+    // First occurrence wins; later duplicates are dropped.
+    const seenNotificationIds = new Set<string>();
     tx.run('DELETE FROM notifications');
     for (const n of c.notifications) {
+      if (seenNotificationIds.has(n.id)) continue;
+      seenNotificationIds.add(n.id);
       tx.run(
         `INSERT INTO notifications (id, type, title, message, case_id, case_number, invoice_id, lab_id, read, is_archived, priority, link_url, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
