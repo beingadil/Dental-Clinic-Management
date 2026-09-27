@@ -3,7 +3,7 @@
 Scope: full repo audit per master prompt. **No code was modified.** Every claim cites file/line evidence.
 Environment audited: master @ `564e871`, React 19 + Vite 6, Tauri 2 (Rust), SQLite via sql.js WASM, 112 tests green.
 
-> **Resolution status (same day, post-audit):** P0–P3 of the remediation roadmap (§11) were executed and re-verified. Per-finding status is marked inline as **RESOLVED (Px)** / **PARTIAL** / **OPEN**. Re-graded scores in §10. Re-verification evidence: `npx tsc --noEmit` clean, 129/129 tests green, `npm run build` clean, live E2E in browser (all Settings tabs render, integrity panel ALL CHECKS PASSED, boot console free of CSP/CORS errors).
+> **Resolution status (same day, post-audit):** P0–P3 of the remediation roadmap (§11) were executed and re-verified. Per-finding status is marked inline as **RESOLVED (Px)** / **PARTIAL** / **OPEN**. Re-graded scores in §10. Re-verification evidence: `npx tsc --noEmit` clean, 138/138 tests green, `npm run build` clean, live E2E in browser (all Settings tabs render, integrity panel ALL CHECKS PASSED, boot console free of CSP/CORS errors).
 
 ---
 
@@ -135,7 +135,7 @@ No backend layer exists to enforce authorization — roles are UI-only (see S2).
 
 ## 8. Testing assessment
 
-129 tests / 21 files (post-P3): migration ledger, FK cascade, QC append-only, first-run admin, backup roundtrip + restore drill into fresh engine, update history, crypto, login backoff, **boot integrity self-check (5 tests: healthy green + FK-off/orphan/imbalanced-journal/unjournaled-invoice detection)**. **Gaps remaining:** no test for syncNow rollback behavior (the 2026-09-27 bug class), no UI-level tests (acceptable for this stack).
+138 tests / 21 files (final): migration ledger, FK cascade, QC append-only, first-run admin, backup roundtrip + restore drill into fresh engine, update history, crypto, login backoff, **ledger domain suite (9 tests: document-number generators, financial summary math, double-entry engine incl. same-day ordering offsets, advance-allocation memo rows, running balance)**, **boot integrity self-check (5 tests: healthy green + FK-off/orphan/imbalanced-journal/unjournaled-invoice detection)**. **Gaps remaining:** no test for syncNow rollback behavior (the 2026-09-27 bug class), no UI-level tests (acceptable for this stack).
 
 ---
 
@@ -155,7 +155,7 @@ No backend layer exists to enforce authorization — roles are UI-only (see S2).
 |---|---|---|---|
 | SPEC (does the app do its actual job) | **7** | **8** | Core flows work end-to-end and survive restart (unchanged). The one structurally-wrong behavior — invoices posting no journal, making the ledger unreconcilable — is fixed and guarded by a boot check. Sync failures no longer silent. Capped below 9: stored-vs-derived `payment_status` duality (F4) and O(all-data) sync model (D2) remain accepted-debt decisions. |
 | DESIGN | **4** | **7** | Monolith pressure relieved: 2282-LOC Settings split into 9 focused files; AppContext 3522 → 2042 LOC with pure domain modules (paymentDomain, notificationDomain, voucherDomain, ledgerDomain, transactionDomain) + state/logic hooks (useBilling/useCases/useSettings/useNotificationsDomain, useVoucherLogging, useTransactionCommands, useAuthDomain); 985-LOC dead legacy layer deleted. One shared `buildAuditEvent` contract replaced ~10 inline audit-event literals. Case/lab CRUD setters remain in the provider — migration incomplete but the ceiling has moved. |
-| CORRECTNESS | **6** | **8** | 129/129 tests green incl. new integrity suite; FK-pragma export() regression fixed at the persistence layer and now asserted by a boot-time self-check; integrity invariants (FK, orphans, ledger balance, journal coverage) verified live in E2E with all-green panel; console verified clean. Not higher: syncNow rollback behavior still untested, ledger event build not exercised at scale. |
+| CORRECTNESS | **6** | **8** | 138/138 tests green incl. integrity + ledger-domain suites; FK-pragma export() regression fixed at the persistence layer and now asserted by a boot-time self-check; integrity invariants (FK, orphans, ledger balance, journal coverage) verified live in E2E with all-green panel; console verified clean. Not higher: syncNow rollback behavior still untested, ledger event build not exercised at scale. |
 | QUALITY | **6** | **7** | Dead/parallel layers gone; pure domain modules with unit tests (ledgerDomain: generators, financial summary, double-entry ledger engine); per-domain files with clear ownership; quietFetch/CSP hygiene fixed so a boot console is actually readable; render caps present. Not higher: no UI-level tests, remaining OPEN findings are documented debt rather than rot. |
 
 **Single most valuable next pass (updated):** the AppContext decomposition is substantially complete (3522 → 2042 LOC; remaining body is case/lab CRUD setters, boot effects, and the provider contract). If a next pass is wanted, extract case/lab CRUD the same way — but the structural risk the audit flagged is resolved.
