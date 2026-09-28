@@ -236,7 +236,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
 
       {/* Popup */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-40 bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-[300px] space-y-3">
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-[300px] space-y-3">
           {/* Quick ranges */}
           <div className="flex flex-wrap gap-1">
             {defaults.map((q) => {

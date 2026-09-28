@@ -79,6 +79,12 @@ function syncNow(c: SyncCollections): void {
     tx.run('DELETE FROM qc_inspections');
     tx.run('DELETE FROM payment_attachments');
     tx.run('DELETE FROM payments');
+    // advance_allocations references invoices (no cascade) — must die first.
+    // advance_payments/account_adjustments reference labs (no cascade) and are
+    // re-synced later in this transaction, so clear them before labs.
+    tx.run('DELETE FROM advance_allocations');
+    tx.run('DELETE FROM advance_payments');
+    tx.run('DELETE FROM account_adjustments');
     tx.run('DELETE FROM invoices');
     tx.run('DELETE FROM cases');
     tx.run('DELETE FROM doctor_preferred_labs');
