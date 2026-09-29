@@ -80,6 +80,8 @@ interface PrintDocumentProps {
   };
   caseData?: DentalCase | null;
   invoice?: Invoice | null;
+  /** Statement mode: the full invoice list to summarize on one sheet. */
+  invoices?: Invoice[] | null;
   labName?: string;
   payment?: PaymentRecord | null;
   period?: { from: string; to: string };
@@ -92,6 +94,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   printSettings,
   caseData,
   invoice,
+  invoices: invoicesProp,
   labName,
   payment,
   period,
@@ -122,7 +125,9 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   const invPayments = invoice?.payments || [];
   const latestPayment = payment || invPayments[invPayments.length - 1] || null;
 
-  const statementInvoices: Invoice[] = invoice ? [invoice] : [];
+  const statementInvoices: Invoice[] = invoicesProp
+    ? [...invoicesProp]
+    : (invoice ? [invoice] : []);
 
   // Dynamic page setup — the chosen paper size + margin become the actual
   // @page rule for printing (overrides the 12mm stylesheet default).

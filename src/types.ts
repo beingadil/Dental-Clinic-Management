@@ -56,6 +56,9 @@ export interface JournalEntry {
   reference_number: string;
   lab_id: string;
   lab_name: string;
+  /** First-class case/job reference — relational, never parsed from narration. */
+  case_id?: string;
+  case_number?: string;
   description: string;
   lines: JournalLine[];
   created_at: string;
@@ -335,6 +338,9 @@ export interface AccountAdjustment {
   reference_number?: string;
   invoice_id?: string;
   invoice_number?: string;
+  /** Relational case context (derived from the adjustment's invoice). */
+  case_id?: string;
+  case_number?: string;
   notes?: string;
   recorded_by: string;
   approved_by?: string;
@@ -393,6 +399,8 @@ export interface LedgerEntry {
   type?: LedgerEntryType;
   reference_id: string; // invoice_id, payment_id, advance_id, or adjustment_id
   reference_number: string; // INV-XXXX, PAY-XXXX, ADV-XXXX, ADJ-XXXX
+  /** Relational case/job reference — from the source doc's case_id, never narration. */
+  case_id?: string;
   case_number?: string;
   doctor_name?: string;
   description: string;

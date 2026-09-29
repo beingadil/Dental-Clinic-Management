@@ -22,7 +22,6 @@ import {
   Clock, 
   CheckCircle2, 
   AlertTriangle, 
-  Calendar, 
   Download, 
   Award 
 } from 'lucide-react';
@@ -181,16 +180,27 @@ export const AnalyticsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Date Filter Bar — actually bounds every figure on this page */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-slate-400" />
-          <span className="text-xs font-bold text-slate-700">Reporting Period:</span>
-          <span className="text-[11px] text-slate-400 font-medium">
-            {period.from && period.to ? `${period.from} → ${period.to}` : 'All time'}
-          </span>
-        </div>
+      {/* Date Filter Bar — actually bounds every figure on this page. Same
+          search-first order as the Archive tab: date picker first, preset pills next. */}
+      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center gap-3">
+        <DatePickerRange
+          from={startDate}
+          to={endDate}
+          className="shrink-0"
+          quickRanges={[
+            { label: 'This Month', from: t.monthStart, to: t.today },
+            { label: 'Last 3 Months', from: t.threeMonthsAgo, to: t.today },
+            { label: 'This Year', from: t.yearStart, to: t.today },
+            { label: 'All Time', from: '', to: '' },
+          ]}
+          onChange={(f, to) => {
+            setStartDate(f);
+            setEndDate(to);
+            setDateFilter(f || to ? 'custom' : 'all_time');
+          }}
+        />
 
+        {/* Period preset pills */}
         <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto scrollbar-thin">
           {[
             { id: 'this_month', label: 'This Month' },
@@ -212,23 +222,6 @@ export const AnalyticsView: React.FC = () => {
             </button>
           ))}
         </div>
-
-        <DatePickerRange
-          from={startDate}
-          to={endDate}
-          className="shrink-0"
-          quickRanges={[
-            { label: 'This Month', from: t.monthStart, to: t.today },
-            { label: 'Last 3 Months', from: t.threeMonthsAgo, to: t.today },
-            { label: 'This Year', from: t.yearStart, to: t.today },
-            { label: 'All Time', from: '', to: '' },
-          ]}
-          onChange={(f, to) => {
-            setStartDate(f);
-            setEndDate(to);
-            setDateFilter(f || to ? 'custom' : 'all_time');
-          }}
-        />
       </div>
 
       {/* Top 4 KPI Metrics */}

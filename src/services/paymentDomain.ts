@@ -46,7 +46,10 @@ export const buildInvoiceAllocation = ({ payment, invoice, actor }: BuildPayment
  */
 export const buildPaymentSideEffects = (input: BuildPaymentSideEffectsInput): { journal: JournalEntry; voucher: Omit<SavedVoucher, 'id' | 'created_at' | 'saved_by'> } => {
   const { payment, invoice, actor } = input;
-  const journal = buildPaymentJournal(payment, [buildInvoiceAllocation(input)], 0, actor);
+  const journal = buildPaymentJournal(payment, [buildInvoiceAllocation(input)], 0, actor, {
+    case_id: invoice.case_id,
+    case_number: invoice.case_number,
+  });
 
   const voucher = {
     voucher_number: payment.payment_number || '',

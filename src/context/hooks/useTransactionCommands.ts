@@ -109,12 +109,17 @@ export function useTransactionCommands(deps: {
       setAdvancePayments((prev) => [prepared.remainderAdvance!, ...prev]);
     }
 
-    // 3. Balanced journal entry
+    // 3. Balanced journal entry — case context from the first allocated invoice
+    // (relational; a multi-invoice payment keeps its primary case reference).
+    const journalCaseRef = prepared.allocations[0]
+      ? (() => { const inv = invoices.find((i) => i.id === prepared.allocations[0].invoice_id); return inv ? { case_id: inv.case_id, case_number: inv.case_number } : undefined; })()
+      : undefined;
     const journal = buildPaymentJournal(
       prepared.payment,
       prepared.allocations,
       prepared.unappliedAmount,
       actorName || 'Cashier',
+      journalCaseRef,
     );
     prepared.payment.journal_id = journal.id;
     setJournalEntries((prev) => [journal, ...prev]);
@@ -278,6 +283,7 @@ export function useTransactionCommands(deps: {
     reasonCode: string;
     reasonText: string;
     approvedBy?: string;
+    date?: string;
   }): AccountAdjustment => {
     const lab = labs.find((l) => l.id === command.clinicId);
     const labName = lab ? lab.name : 'Dental Clinic';
@@ -298,9 +304,13 @@ export function useTransactionCommands(deps: {
       setInvoices((prev) => prev.map((item) => (item.id === inv.id ? applyCreditNoteToInvoice(item, command.amount) : item)));
     }
 
-    // Journal
-    const journal = buildAdjustmentJournal(prepared.adjustment, actorName || 'Manager');
+    // Journal — carry the invoice's case into the adjustment + journal
+    const journal = buildAdjustmentJournal(
+      { ...prepared.adjustment, case_id: inv?.case_id, case_number: inv?.case_number },
+      actorName || 'Manager'
+    );
     prepared.adjustment.journal_id = journal.id;
+    if (inv?.case_id) { prepared.adjustment.case_id = inv.case_id; prepared.adjustment.case_number = inv?.case_number; }
 
     setAccountAdjustments((prev) => [prepared.adjustment, ...prev]);
     setJournalEntries((prev) => [journal, ...prev]);

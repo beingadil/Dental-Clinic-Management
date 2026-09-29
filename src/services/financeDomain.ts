@@ -143,6 +143,8 @@ export const buildInvoiceJournal = (
     reference_number: invoice.invoice_number,
     lab_id: invoice.lab_id,
     lab_name: invoice.lab_name,
+    case_id: invoice.case_id,
+    case_number: invoice.case_number,
     description: `Billing invoice ${invoice.invoice_number} for ${invoice.case_type_name} (${invoice.case_number})`,
     lines,
     created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -157,7 +159,9 @@ export const buildPaymentJournal = (
   payment: PaymentRecord,
   allocations: PaymentAllocation[],
   unappliedAmount: number,
-  creator = 'Cashier'
+  creator = 'Cashier',
+  /** Relational case context — pass the invoice's case, never parsed text. */
+  caseRef?: { case_id?: string; case_number?: string }
 ): JournalEntry => {
   const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
   const methodLabel = (payment.payment_method || 'bank').toUpperCase();
@@ -210,6 +214,8 @@ export const buildPaymentJournal = (
     reference_number: payment.payment_number || 'PAY',
     lab_id: payment.lab_id || '',
     lab_name: payment.lab_name || '',
+    case_id: payment.case_id || caseRef?.case_id,
+    case_number: payment.case_number || caseRef?.case_number,
     description: `Payment received ${payment.payment_number} via ${methodLabel}${allocations.length ? ` applied to ${allocations.map(a => a.invoice_number).join(', ')}` : ''}${unappliedAmount > 0 ? ` (+${formatPKR(unappliedAmount)} unapplied advance)` : ''}`,
     lines,
     created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -256,6 +262,7 @@ export const buildAdvanceDepositJournal = (
     reference_number: advance.payment_number,
     lab_id: advance.lab_id,
     lab_name: advance.lab_name,
+    // A deposit is a clinic-level event: genuinely no case relationship yet.
     description: `Advance deposit ${advance.payment_number} received from ${advance.lab_name} via ${methodLabel}`,
     lines,
     created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -303,6 +310,8 @@ export const buildApplyAdvanceJournal = (
     reference_number: invoice.invoice_number,
     lab_id: invoice.lab_id,
     lab_name: invoice.lab_name,
+    case_id: invoice.case_id,
+    case_number: invoice.case_number,
     description: `Applied advance credit (${advanceRef}) of ${formatPKR(amount)} to invoice ${invoice.invoice_number}`,
     lines,
     created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -395,6 +404,9 @@ export const buildAdjustmentJournal = (
     reference_number: adj.adjustment_number,
     lab_id: adj.lab_id,
     lab_name: adj.lab_name,
+    // Case context flows through the adjustment's invoice when present.
+    case_id: adj.case_id,
+    case_number: adj.case_number,
     description: `${adj.type.replace('_', ' ').toUpperCase()}: ${adj.reason}`,
     lines,
     created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -431,6 +443,9 @@ export const buildReversalJournal = (
     reference_number: `REV-OF-${original.reference_number}`,
     lab_id: original.lab_id,
     lab_name: original.lab_name,
+    // A reversal reverses the same economic event: same case as the original.
+    case_id: original.case_id,
+    case_number: original.case_number,
     description: `REVERSAL of ${original.journal_number} (${original.reference_number}): ${reason}`,
     lines: compensatingLines,
     created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),

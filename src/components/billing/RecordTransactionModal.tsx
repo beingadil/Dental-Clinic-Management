@@ -277,6 +277,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         clinicId,
         invoiceId: selectedInvoiceId,
         amount,
+        date,
         reasonCode: creditReasonCode,
         reasonText: creditReasonText || `Adjustment for ${creditReasonCode}`
       });
@@ -290,7 +291,8 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         amount,
         notes || 'Client advance refund',
         referenceNumber,
-        attachments
+        attachments,
+        date
       );
       onClose();
       if (onSuccess) onSuccess({});

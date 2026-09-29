@@ -1241,10 +1241,11 @@ export const journalRepo = {
     return db.withTransaction((tx) => {
       const id = entry.id || genId('je');
       tx.run(
-        `INSERT INTO journal_entries (id, journal_number, date, event_type, reference_type, reference_id, reference_number, lab_id, lab_name, description, created_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO journal_entries (id, journal_number, date, event_type, reference_type, reference_id, reference_number, lab_id, lab_name, case_id, case_number, description, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, entry.journal_number, entry.date, entry.event_type, entry.reference_type ?? null, entry.reference_id ?? null,
-         entry.reference_number ?? null, entry.lab_id ?? null, entry.lab_name ?? null, entry.description,
+         entry.reference_number ?? null, entry.lab_id ?? null, entry.lab_name ?? null,
+         entry.case_id ?? null, entry.case_number ?? null, entry.description,
          entry.created_at ?? now(), entry.created_by]
       );
       for (const line of entry.lines || []) {

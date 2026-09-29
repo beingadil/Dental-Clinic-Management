@@ -425,6 +425,8 @@ export const buildCreditNoteAdjustment = (input: {
     reasonCode: string;
     reasonText: string;
     approvedBy?: string;
+    /** Business (adjustment) date — defaults to today when omitted. */
+    date?: string;
   };
   invoice: Invoice | undefined;
   adjustmentCount: number;
@@ -446,7 +448,7 @@ export const buildCreditNoteAdjustment = (input: {
     type: command.reasonCode === 'bad_debt' ? 'write_off' : 'credit_note',
     amount: command.amount,
     reason: `[${command.reasonCode.toUpperCase()}] ${command.reasonText}`,
-    date: nowStr.split(' ')[0],
+    date: command.date || nowStr.split(' ')[0],
     invoice_id: command.invoiceId,
     invoice_number: invoice?.invoice_number,
     recorded_by: actor,

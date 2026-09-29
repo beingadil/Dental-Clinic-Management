@@ -158,6 +158,25 @@ describe('buildLabFinancialSummary', () => {
 });
 
 describe('buildLedgerEntries', () => {
+  it('files invoices by their created_at (business) date, not insertion order', () => {
+    const ledger = buildLedgerEntries({
+      invoices: [
+        invWith({ id: 'inv-new', invoice_number: 'INV-0002', created_at: '2026-09-28' }),
+        invWith({ id: 'inv-old', invoice_number: 'INV-0001', created_at: '2026-09-01' }),
+      ],
+      advancePayments: [],
+      accountAdjustments: [],
+    });
+    // Newest first: the backdated entry files LAST (bottom of the ledger),
+    // behind newer transactions — never as the latest row.
+    expect(ledger.map((e) => e.reference_number)).toEqual(['INV-0002', 'INV-0001']);
+    expect(ledger[0].date.slice(0, 10)).toBe('2026-09-28');
+    expect(ledger[1].date.slice(0, 10)).toBe('2026-09-01');
+    // Running balance still accrues chronologically under the hood
+    expect(ledger[0].running_balance).toBe(200);
+    expect(ledger[1].running_balance).toBe(100);
+  });
+
   it('posts invoice debit, payment credit, and computes a running balance', () => {
     const ledger = buildLedgerEntries({
       invoices: [
@@ -179,6 +198,83 @@ describe('buildLedgerEntries', () => {
     expect(ledger[1].entry_type).toBe('invoice');
     expect(ledger[1].debit).toBe(100);
     expect(ledger[1].running_balance).toBe(100);
+  });
+
+  it('carries relational case_id/case_number from invoice and payments onto ledger rows', () => {
+    const ledger = buildLedgerEntries({
+      invoices: [
+        invWith({
+          case_id: 'case-202',
+          case_number: 'DS-202',
+          final_amount: 100,
+          created_at: '2026-09-01',
+          payments: [payWith({ amount: 40, payment_date: '2026-09-05', case_id: 'case-202', case_number: 'DS-202' })],
+        }),
+      ],
+      advancePayments: [],
+      accountAdjustments: [],
+    });
+    for (const row of ledger) {
+      expect(row.case_id).toBe('case-202');
+      expect(row.case_number).toBe('DS-202');
+    }
+  });
+
+  it('files advances and adjustments by their business date, not record time', () => {
+    // Advance deposited 2026-09-01 but synced/created 2026-09-20 — must file
+    // behind an adjustment recorded 2026-09-10 despite the later created_at.
+    const ledger = buildLedgerEntries({
+      invoices: [],
+      advancePayments: [
+        advWith({ payment_number: 'ADV-2026-0001', payment_date: '2026-09-01', created_at: '2026-09-20 10:00' }),
+      ],
+      accountAdjustments: [
+        adjWith({ adjustment_number: 'CR-2026-0001', date: '2026-09-10', created_at: '2026-09-10 09:00' }),
+      ],
+    });
+    // newest first: the 09-10 credit note is the latest row, the 09-01
+    // advance deposits at the bottom — chronological business order.
+    expect(ledger[0].reference_number).toBe('CR-2026-0001');
+    expect(ledger[1].reference_number).toBe('ADV-2026-0001');
+    expect(ledger[1].date.slice(0, 10)).toBe('2026-09-01');
+  });
+
+  it('files every entry kind by its business date, never its record time', () => {
+    // Invoice 09-01 → payment 09-02 → advance deposit 09-05 (created 09-20)
+    // → credit note 09-10 (created 09-10): chronological business order,
+    // despite the advance's later created_at.
+    const ledger = buildLedgerEntries({
+      invoices: [
+        invWith({ invoice_number: 'INV-0001', final_amount: 100, created_at: '2026-09-01' }),
+      ],
+      advancePayments: [
+        advWith({ payment_number: 'ADV-2026-0009', payment_date: '2026-09-05', created_at: '2026-09-20 10:00' }),
+      ],
+      accountAdjustments: [
+        adjWith({ adjustment_number: 'CR-2026-0004', date: '2026-09-10', created_at: '2026-09-10 09:00' }),
+      ],
+    });
+    expect(ledger.map((e) => e.reference_number)).toEqual(['CR-2026-0004', 'ADV-2026-0009', 'INV-0001']);
+    expect(ledger.every((e) => e.date.slice(0, 10) <= '2026-09-10')).toBe(true);
+  });
+
+  it('falls back to the invoice’s case when a payment row lacks one', () => {
+    const ledger = buildLedgerEntries({
+      invoices: [
+        invWith({
+          case_id: 'case-77',
+          case_number: 'DS-077',
+          final_amount: 100,
+          created_at: '2026-09-01',
+          payments: [payWith({ amount: 40, payment_date: '2026-09-05', case_id: undefined, case_number: undefined })],
+        }),
+      ],
+      advancePayments: [],
+      accountAdjustments: [],
+    });
+    const payRow = ledger.find((e) => e.entry_type === 'payment')!;
+    expect(payRow.case_id).toBe('case-77');
+    expect(payRow.case_number).toBe('DS-077');
   });
 
   it('treats advance allocations as memo rows (no credit) and deposits as credits', () => {

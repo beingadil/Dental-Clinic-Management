@@ -69,6 +69,8 @@ export const BillingView: React.FC = () => {
   const [clinicFilter, setClinicFilter] = useState<string>('all');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'overdue' | 'paid'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Business date for bulk settlements — user-picked, defaults to today.
+  const [bulkPayDate, setBulkPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
   // Invoice history window: '' = All Time. Dates compare on the billing day.
   const [invFromDate, setInvFromDate] = useState<string>('');
   const [invToDate, setInvToDate] = useState<string>('');
@@ -224,8 +226,8 @@ export const BillingView: React.FC = () => {
 
   const handleBulkPay = () => {
     if (selectedIds.length === 0) return;
-    if (confirm(`Bulk clear payment for ${selectedIds.length} selected invoices?`)) {
-      bulkMarkPaid(selectedIds);
+    if (confirm(`Bulk clear payment for ${selectedIds.length} selected invoices, dated ${bulkPayDate}?`)) {
+      bulkMarkPaid(selectedIds, bulkPayDate);
       setSelectedIds([]);
     }
   };
@@ -436,14 +438,25 @@ export const BillingView: React.FC = () => {
             </button>
 
             {selectedIds.length > 0 && activeTab === 'invoices' && (
-              <button
-                type="button"
-                onClick={handleBulkPay}
-                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Bulk Mark Paid ({selectedIds.length})</span>
-              </button>
+              <>
+                <label className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-xl shadow-2xs">
+                  <span className="text-xs font-semibold text-slate-600 shrink-0">Payment date</span>
+                  <input
+                    type="date"
+                    value={bulkPayDate}
+                    onChange={(e) => setBulkPayDate(e.target.value)}
+                    className="text-xs px-2 py-1 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleBulkPay}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Bulk Mark Paid ({selectedIds.length})</span>
+                </button>
+              </>
             )}
           </div>
         }
@@ -473,10 +486,57 @@ export const BillingView: React.FC = () => {
 
           {/* Search, Clinic Dropdown & Filter Controls */}
           <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              
-              {/* Status Filter Buttons (With visual indicators for Paid, Pending, and Overdue) */}
-              <div className="flex flex-wrap items-center gap-1.5 no-scrollbar pb-1 md:pb-0">
+            {/* Search-first filter row: search → date range → clinic → export (matches Archive tab) */}
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[180px]">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by invoice #, case #, dental clinic, doctor, material..."
+                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {/* Date Range + Export CSV */}
+              <div className="flex items-center gap-2 shrink-0">
+                <DatePickerRange
+                  from={invFromDate}
+                  to={invToDate}
+                  onChange={(f, t) => {
+                    setInvFromDate(f);
+                    setInvToDate(t);
+                  }}
+                />
+                <button
+                  onClick={handleExportInvoicesCSV}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Export Invoices CSV</span>
+                </button>
+              </div>
+
+              {/* Clinic Dropdown */}
+              <div className="relative w-full md:w-64 shrink-0">
+                <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={clinicFilter}
+                  onChange={(e) => setClinicFilter(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
+                >
+                  <option value="all">All Clinics ({labs.length})</option>
+                  {labs.map((lab) => (
+                    <option key={lab.id} value={lab.id}>{lab.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Status Filter Buttons (With visual indicators for Paid, Pending, and Overdue) */}
+            <div className="flex flex-wrap items-center gap-1.5 no-scrollbar">
                 {[
                   { id: 'all', label: 'All Invoices', count: statusCounts.allCount },
                   { id: 'unpaid', label: 'Pending (Unpaid)', count: statusCounts.unpaidCount },
@@ -515,58 +575,7 @@ export const BillingView: React.FC = () => {
                     </button>
                   );
                 })}
-              </div>
-
-              {/* Action: Date Range + Export CSV */}
-              <div className="flex items-center gap-2 shrink-0">
-                <DatePickerRange
-                  from={invFromDate}
-                  to={invToDate}
-                  onChange={(f, t) => {
-                    setInvFromDate(f);
-                    setInvToDate(t);
-                  }}
-                />
-                <button
-                  onClick={handleExportInvoicesCSV}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Export Invoices CSV</span>
-                </button>
-              </div>
-
             </div>
-
-            {/* Inputs: Search & Clinic Dropdown */}
-            <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by invoice #, case #, dental clinic, doctor, material..."
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                />
-              </div>
-
-              <div className="relative">
-                <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <select
-                  value={clinicFilter}
-                  onChange={(e) => setClinicFilter(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
-                >
-                  <option value="all">Filter by Dental Clinic: All Clinics ({labs.length})</option>
-                  {labs.map((lab) => (
-                    <option key={lab.id} value={lab.id}>{lab.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-
           </div>
 
           {/* Invoices Table */}

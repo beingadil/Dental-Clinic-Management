@@ -172,6 +172,7 @@ export const buildLedgerEntries = (input: {
       entry_type: LedgerEntryType;
       reference_id: string;
       reference_number: string;
+      case_id?: string;
       case_number?: string;
       doctor_name?: string;
       description: string;
@@ -205,6 +206,7 @@ export const buildLedgerEntries = (input: {
         entry_type: 'invoice',
         reference_id: inv.id,
         reference_number: invNum,
+        case_id: inv.case_id,
         case_number: inv.case_number,
         doctor_name: inv.doctor_name,
         description: `Invoice for ${inv.case_type_name || 'Restoration'} (${inv.case_number || 'Case'})`,
@@ -230,6 +232,7 @@ export const buildLedgerEntries = (input: {
           entry_type: isAdvanceAlloc ? 'advance_allocation' : 'payment',
           reference_id: p.id || `pay-${pIdx}`,
           reference_number: p.payment_number || `PAY-${invNum.replace('INV-', '')}-${pIdx + 1}`,
+          case_id: p.case_id || inv.case_id,
           case_number: p.case_number || inv.case_number,
           doctor_name: inv.doctor_name,
           description: isAdvanceAlloc
@@ -250,7 +253,9 @@ export const buildLedgerEntries = (input: {
     // 3. Advance Payments / Deposits received from Clinic -> Credit (Decreases Outstanding Receivable / Creates credit surplus)
     targetAdvances.forEach((adv, advIdx) => {
       const advDate = adv.payment_date || adv.created_at || new Date().toISOString().slice(0, 10);
-      const parsedTime = new Date(adv.created_at || advDate).getTime();
+      // Business date first: a backdated deposit must file at its payment
+      // date, never at the later record/sync created_at.
+      const parsedTime = new Date(advDate).getTime();
       const advTime = isNaN(parsedTime) ? Date.now() : parsedTime;
       const methodStr = String(adv.payment_method || 'cash').toUpperCase();
       const advAmt = adv.amount || 0;
@@ -281,7 +286,8 @@ export const buildLedgerEntries = (input: {
       const isCreditNote = adj.type === 'credit_note';
       const isDebit = adj.type === 'debit_adjustment';
       const adjDate = adj.date || adj.created_at || new Date().toISOString().slice(0, 10);
-      const parsedTime = new Date(adj.created_at || adjDate).getTime();
+      // Business date first: credit notes file at their adjustment date.
+      const parsedTime = new Date(adjDate).getTime();
       const adjTime = isNaN(parsedTime) ? Date.now() : parsedTime;
       const adjAmt = adj.amount || 0;
 
@@ -325,6 +331,7 @@ export const buildLedgerEntries = (input: {
         entry_type: evt.entry_type,
         reference_id: evt.reference_id,
         reference_number: evt.reference_number,
+        case_id: evt.case_id,
         case_number: evt.case_number,
         doctor_name: evt.doctor_name,
         description: evt.description,

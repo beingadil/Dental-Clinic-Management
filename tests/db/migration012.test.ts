@@ -92,7 +92,7 @@ describe('migration 012 — invoice journal backfill', () => {
     expect(orphan?.n).toBe(0);
   });
 
-  it('keeps the migration ledger intact through 012', () => {
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  it('keeps the migration ledger intact through 013', () => {
+    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   });
 });

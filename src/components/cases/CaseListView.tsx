@@ -498,11 +498,6 @@ export const CaseListView: React.FC = () => {
         <div className="space-y-4">
           <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-              <DatePickerRange
-                from={archiveFrom}
-                to={archiveTo}
-                onChange={(f, t) => { setArchiveFrom(f); setArchiveTo(t); }}
-              />
               <div className="relative flex-1 min-w-[180px]">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -513,6 +508,11 @@ export const CaseListView: React.FC = () => {
                   className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500"
                 />
               </div>
+              <DatePickerRange
+                from={archiveFrom}
+                to={archiveTo}
+                onChange={(f, t) => { setArchiveFrom(f); setArchiveTo(t); }}
+              />
               <select
                 value={archiveClinic}
                 onChange={(e) => setArchiveClinic(e.target.value)}

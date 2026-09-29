@@ -30,7 +30,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   initialLabId,
   onClose,
 }) => {
-  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem } = useApp();
+  const { labs, invoices, brandingSettings, saveVoucherToSystem } = useApp();
 
   const [labId, setLabId] = useState<string>(initialLabId || labs[0]?.id || '');
   const [from, setFrom] = useState<string>(firstOfMonth());
@@ -40,6 +40,10 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   /* Same stored invoice content list as the single-invoice dialog. */
   const [invoiceSections] = useState<string[]>(() =>
     loadDocumentSections('invoice', DEFAULT_ENABLED.invoice)
+  );
+  /* Statement section list for the one-sheet batch summary. */
+  const [statementSections] = useState<string[]>(() =>
+    loadDocumentSections('statement', DEFAULT_ENABLED.statement)
   );
 
   const dateOf = (inv: Invoice) => String(inv.issue_date || inv.created_at || '').slice(0, 10);
@@ -107,7 +111,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             <div>
               <h3 className="text-sm font-bold text-slate-900">Batch Print Unpaid Invoices</h3>
               <p className="text-xs text-slate-500">
-                Pick a clinic and a period — every unpaid invoice prints on its own sheet.
+                Pick a clinic and a period — all unpaid invoices print on one summary sheet.
               </p>
             </div>
           </div>
@@ -244,9 +248,10 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
           )}
         </div>
 
-        {/* Paper preview — one sheet per selected invoice. NOT `.no-print`: the
-            preview shell must stay printable, otherwise the whole batch comes
-            out blank (the card above carries print-area). */}
+        {/* Paper preview — ONE summary sheet listing every selected unpaid
+            invoice (no per-invoice page breaks). NOT `.no-print`: the preview
+            shell must stay printable, otherwise the whole batch comes out
+            blank (the card above carries print-area). */}
         <div className="print-preview-shell">
           <div className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter' : 'print-preview-page'}>
             <div>
@@ -256,21 +261,15 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                   Nothing selected to print.
                 </div>
               ) : (
-                selected.map((inv) => (
-                  <div key={inv.id} className="print-doc-page">
-                    <PrintDocument
-                      kind="invoice"
-                      sections={invoiceSections}
-                      branding={brandingSettings}
-                      printSettings={printSettings}
-                      caseData={cases.find(
-                        (c) => c.id === inv.case_id || c.case_number === inv.case_number
-                      )}
-                      invoice={inv}
-                      labName={inv.lab_name}
-                    />
-                  </div>
-                ))
+                <PrintDocument
+                  kind="statement"
+                  sections={statementSections}
+                  branding={brandingSettings}
+                  printSettings={printSettings}
+                  invoices={selected}
+                  labName={selectedClinic?.name}
+                  period={{ from, to }}
+                />
               )}
             </div>
           </div>

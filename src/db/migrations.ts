@@ -793,6 +793,54 @@ export const MIGRATION_012_INVOICE_JOURNALS: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 013 — journal case references
+// Case/Job must be a first-class accounting reference: journal_entries stored
+// case context only inside free-text description, forcing narration parsing in
+// the General Ledger. Backfill derives case_id/case_number relationally from
+// the journal's own reference row (invoice.case_id / payments.case_id /
+// account_adjustments.invoice_id → invoice), never from description text.
+export const MIGRATION_013_JOURNAL_CASE_REFS: Migration = {
+  version: 13,
+  name: 'journal_case_references',
+  statements: [
+    `ALTER TABLE journal_entries ADD COLUMN case_id TEXT`,
+    `ALTER TABLE journal_entries ADD COLUMN case_number TEXT`,
+    // Invoices carry case_id directly.
+    `UPDATE journal_entries SET
+       case_id = (SELECT i.case_id FROM invoices i WHERE i.id = journal_entries.reference_id),
+       case_number = (SELECT i.case_number FROM invoices i WHERE i.id = journal_entries.reference_id)
+     WHERE reference_type = 'invoice' AND reference_id IS NOT NULL`,
+    // Payments carry case_id themselves; fall back to their invoice.
+    `UPDATE journal_entries SET
+       case_id = COALESCE(
+         (SELECT p.case_id FROM payments p WHERE p.id = journal_entries.reference_id),
+         (SELECT i.case_id FROM invoices i WHERE i.id = (SELECT p.invoice_id FROM payments p WHERE p.id = journal_entries.reference_id))
+       ),
+       case_number = COALESCE(
+         (SELECT p.case_number FROM payments p WHERE p.id = journal_entries.reference_id),
+         (SELECT i.case_number FROM invoices i WHERE i.id = (SELECT p.invoice_id FROM payments p WHERE p.id = journal_entries.reference_id))
+       )
+     WHERE reference_type = 'payment' AND reference_id IS NOT NULL`,
+    // Advance-allocation journals reference the invoice they were applied to.
+    `UPDATE journal_entries SET
+       case_id = (SELECT i.case_id FROM invoices i WHERE i.id = journal_entries.reference_id),
+       case_number = (SELECT i.case_number FROM invoices i WHERE i.id = journal_entries.reference_id)
+     WHERE reference_type = 'advance_allocation' AND reference_id IS NOT NULL`,
+    // Adjustments reach the case through their invoice.
+    `UPDATE journal_entries SET
+       case_id = (SELECT i.case_id FROM invoices i WHERE i.id = (SELECT a.invoice_id FROM account_adjustments a WHERE a.id = journal_entries.reference_id)),
+       case_number = (SELECT i.case_number FROM invoices i WHERE i.id = (SELECT a.invoice_id FROM account_adjustments a WHERE a.id = journal_entries.reference_id))
+     WHERE reference_type = 'adjustment' AND reference_id IS NOT NULL`,
+    // Reversal journals inherit from the journal they reverse (reference_number REV-OF-*).
+    `UPDATE journal_entries SET
+       case_id = (SELECT o.case_id FROM journal_entries o WHERE o.journal_number = REPLACE(journal_entries.reference_number, 'REV-OF-', '')),
+       case_number = (SELECT o.case_number FROM journal_entries o WHERE o.journal_number = REPLACE(journal_entries.reference_number, 'REV-OF-', ''))
+     WHERE event_type = 'reversal' AND reference_number LIKE 'REV-OF-%'`,
+    `CREATE INDEX idx_journal_case ON journal_entries(case_id)`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '13')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -806,4 +854,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_010_CATALOG_DETAIL,
   MIGRATION_011_CASE_ARCHIVE,
   MIGRATION_012_INVOICE_JOURNALS,
+  MIGRATION_013_JOURNAL_CASE_REFS,
 ];

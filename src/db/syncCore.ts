@@ -322,10 +322,11 @@ function syncNow(c: SyncCollections): void {
     const seenJournalLineIds = new Set<string>();
     for (const j of c.journalEntries) {
       tx.run(
-        `INSERT INTO journal_entries (id, journal_number, date, event_type, reference_type, reference_id, reference_number, lab_id, lab_name, description, created_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO journal_entries (id, journal_number, date, event_type, reference_type, reference_id, reference_number, lab_id, lab_name, case_id, case_number, description, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [j.id, j.journal_number, j.date, j.event_type, j.reference_type || null, j.reference_id || null,
-         j.reference_number || null, j.lab_id || null, j.lab_name || null, j.description,
+         j.reference_number || null, j.lab_id || null, j.lab_name || null,
+         j.case_id || null, j.case_number || null, j.description,
          j.created_at ?? now, j.created_by]
       );
       for (const line of j.lines || []) {

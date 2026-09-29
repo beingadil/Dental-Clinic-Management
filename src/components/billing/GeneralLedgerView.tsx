@@ -4,43 +4,54 @@ import { LedgerEntry, DentalLab } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { 
   Search, 
-  Calendar, 
   Eye, 
-  Building2, 
   RotateCcw, 
-  CheckCircle2, 
-  DollarSign, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  ChevronDown, 
+  CheckCircle2,
+  DollarSign,
+  ArrowUpRight,
+  ArrowDownLeft,
+  ChevronDown,
+  FileDown,
   X, 
   FileText,
   CreditCard,
   Banknote,
   Receipt,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Building2
 } from 'lucide-react';
+import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
+import { ACCOUNT_CODES } from '../../services/financeDomain';
+import { CaseDetailModal } from '../cases/CaseDetailModal';
+import { DentalCase } from '../../types';
 
 interface GeneralLedgerViewProps {
   onOpenJournalModal?: (referenceId: string) => void;
 }
 
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJournalModal }) => {
-  const { labs, getLedgerEntries, brandingSettings } = useApp();
+  const { labs, getLedgerEntries, brandingSettings, cases, setSelectedCaseForModal } = useApp();
 
-  // Selected clinic ID ('all' or specific lab.id)
-  const [selectedClinicId, setSelectedClinicId] = useState<string>('all');
+  // Case drill-down state: which case's record is open from a ledger row.
+  const [selectedCaseForModal, setSelectedCaseForModalLocal] = useState<DentalCase | null>(null);
+
+  // Clinic selection: starts empty — the user must actively pick a clinic;
+  // there is no consolidated "all clinics" mode.
+  const [selectedClinicId, setSelectedClinicId] = useState<string>('');
   const [clinicSearchText, setClinicSearchText] = useState<string>('');
   const [isClinicDropdownOpen, setIsClinicDropdownOpen] = useState<boolean>(false);
   const clinicDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Case/Job filter — searches case numbers, invoice numbers, patient names.
+  const [caseFilter, setCaseFilter] = useState<string>('');
 
   // Date filters
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [activeDatePreset, setActiveDatePreset] = useState<string>('all');
 
-  // Preview state (controls whether preview is visible)
-  const [isPreviewActive, setIsPreviewActive] = useState<boolean>(true);
+  // Preview state: hidden until the user clicks Preview.
+  const [isPreviewActive, setIsPreviewActive] = useState<boolean>(false);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -161,8 +172,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
   // Fetch all ledger records for the selected clinic or all clinics
   const rawLedgerEntries = useMemo(() => {
     try {
-      if (!getLedgerEntries) return [];
-      return getLedgerEntries(selectedClinicId === 'all' ? undefined : selectedClinicId) || [];
+      if (!getLedgerEntries || !selectedClinicId) return [];
+      return getLedgerEntries(selectedClinicId) || [];
     } catch (err) {
       console.error('Error fetching ledger entries:', err);
       return [];
@@ -227,6 +238,34 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     };
   }, [rawLedgerEntries, startDate, endDate]);
 
+  /* Case/Job filter — relational field only (case_number on the entry), plus
+     invoice-number and patient-name search over rows already fetched. A case
+     hit shows that case's complete financial history (invoice + its payments). */
+  const caseFilteredItems = useMemo(() => {
+    const q = caseFilter.trim().toLowerCase();
+    if (!q) return ledgerItems;
+    return ledgerItems.filter((e) =>
+      (e.case_number || '').toLowerCase().includes(q) ||
+      (e.reference_number || '').toLowerCase().includes(q) ||
+      (e.doctor_name || '').toLowerCase().includes(q)
+    );
+  }, [ledgerItems, caseFilter]);
+
+  // Recompute running balance + totals over the case-filtered set so the
+  // statement stays self-consistent when narrowed to one case.
+  const caseScope = useMemo(() => {
+    let running = openingBalance;
+    let debitsSum = 0;
+    let creditsSum = 0;
+    const items = caseFilteredItems.map((entry) => {
+      debitsSum += entry.debit || 0;
+      creditsSum += entry.credit || 0;
+      running += (entry.debit || 0) - (entry.credit || 0);
+      return { ...entry, closing_balance: running };
+    });
+    return { items, debitsSum, creditsSum, closing: running };
+  }, [caseFilteredItems, openingBalance]);
+
   /* Render cap: computing totals over the full set stays correct (above memo),
      but the table only mounts the newest LEDGER_CAP_STEP rows — building+mounting
      ~1500 rows froze the view (audit §9). Expanded on demand like the other
@@ -234,8 +273,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
   const LEDGER_CAP_STEP = 400;
   const [ledgerLimit, setLedgerLimit] = useState(LEDGER_CAP_STEP);
   const visibleLedgerItems = useMemo(
-    () => ledgerItems.slice(0, ledgerLimit),
-    [ledgerItems, ledgerLimit],
+    () => caseScope.items.slice(0, ledgerLimit),
+    [caseScope, ledgerLimit],
   );
 
   // Helper to format narration and determine entry category
@@ -252,10 +291,10 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
     if (entry.entry_type === 'invoice') {
       return {
-        typeLabel: 'Case Entry',
+        typeLabel: 'Case Invoice',
         typeBadgeBg: 'bg-blue-50 text-blue-700 border-blue-200',
         icon: FileText,
-        narration: `Case Invoice #${entry.reference_number || ''}${entry.case_number ? ` (Case #${entry.case_number})` : ''} • ${entry.description || 'Restoration'}`,
+        narration: `${entry.reference_number || ''} • ${entry.description || 'Restoration'}`,
         subText: entry.doctor_name ? `Doctor: ${entry.doctor_name}` : undefined
       };
     }
@@ -341,10 +380,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     };
   };
 
-  // CSV Export
+  // CSV Export — needs a specific clinic (no consolidated mode exists)
   const handleExportCSV = () => {
+    if (!selectedClinic) return;
     try {
-      const clinicTitle = selectedClinic ? selectedClinic.name : 'All_Clinics';
+      const clinicTitle = selectedClinic.name;
       const filename = `Ledger_${clinicTitle.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
 
       const headers = ['Sr No.', 'Date', 'Clinic', 'Type', 'Narration', 'Debit (PKR)', 'Credit (PKR)', 'Closing Balance (PKR)'];
@@ -382,6 +422,53 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     }
   };
 
+  /* PDF export — a real vector document (text, table, page breaks), not a
+     screenshot. Reuses the exact rows/totals the on-screen preview shows. */
+  const handleExportPDF = () => {
+    if (!selectedClinic) return;
+    try {
+      const clinicLabel = selectedClinic.name;
+      const periodLabel = startDate || endDate
+        ? `${startDate || 'Beginning'} → ${endDate || 'Present'}`
+        : 'All Time';
+      const result = buildLedgerPdf(
+        caseScope.items.map((item) => {
+          const details = getNarrationDetails(item);
+          return {
+            date: String(item.date || '').slice(0, 10),
+            clinic: item.lab_name || '',
+            caseNumber: item.case_number || '',
+            typeLabel: details.typeLabel,
+            narration: details.narration,
+            debit: item.debit || 0,
+            credit: item.credit || 0,
+            closing: item.closing_balance || 0,
+          };
+        }),
+        {
+          labName: brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab',
+          clinicLabel,
+          periodLabel,
+          caseFilterLabel: caseFilter.trim() || undefined,
+          accountName: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.name,
+          accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.code,
+          openingBalance,
+          totalDebits: caseScope.debitsSum,
+          totalCredits: caseScope.creditsSum,
+          closingBalance: caseScope.closing,
+          transactionCount: caseScope.items.length,
+          generatedOn: todayISO(),
+        }
+      );
+      downloadPdf(
+        `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`,
+        result.pdf
+      );
+    } catch (e) {
+      console.error('Error exporting PDF:', e);
+    }
+  };
+
   // Handle Print safely. The printable block only exists while the preview
   // is active, so activate it first — otherwise the printout would be blank.
   const handlePrint = () => {
@@ -395,20 +482,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
   return (
     <div className="space-y-6 print-page">
-      {/* SEARCHBAR, DATEPICKER & PREVIEW CONTROLS CARD */}
+      {/* SEARCH-FIRST FILTER ROW: clinic picker → date picker → preview */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-          {/* Enhanced Searchbar for Saved Clinics (Col 6) */}
-          <div className="lg:col-span-6 relative" ref={clinicDropdownRef}>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                Select Saved Clinic
-              </span>
-              <span className="text-[11px] font-normal text-slate-500">
-                {labs.length} clinics saved
-              </span>
-            </label>
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          {/* Clinic picker (searchable dropdown) */}
+          <div className="relative flex-1 min-w-[220px]" ref={clinicDropdownRef}>
 
             <div className="relative">
               <div
@@ -427,27 +505,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                       )}
                     </div>
                   ) : (
-                    <span className="text-xs font-bold text-slate-900">
-                      All Saved Clinics (Consolidated)
+                    <span className="text-xs font-bold text-slate-400">
+                      Select clinic…
                     </span>
                   )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {selectedClinicId !== 'all' && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedClinicId('all');
-                        setClinicSearchText('');
-                      }}
-                      className="p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-200 rounded-md"
-                      title="Clear clinic selection"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                   <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isClinicDropdownOpen ? 'rotate-180' : ''}`} />
                 </div>
               </div>
@@ -470,35 +534,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                     </div>
                   </div>
 
-                  {/* All Clinics option */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedClinicId('all');
-                      setIsClinicDropdownOpen(false);
-                      setClinicSearchText('');
-                    }}
-                    className={`w-full text-left p-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors ${
-                      selectedClinicId === 'all'
-                        ? 'bg-blue-50 text-blue-900 font-bold'
-                        : 'hover:bg-slate-50 text-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
-                        ALL
-                      </div>
-                      <div>
-                        <div className="font-bold">All Saved Clinics</div>
-                        <div className="text-[10px] text-slate-500 font-normal">Combined ledger entries</div>
-                      </div>
-                    </div>
-                    {selectedClinicId === 'all' && (
-                      <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                    )}
-                  </button>
-
-                  {/* Filtered Saved Clinics */}
+                  {/* Saved Clinics */}
                   {filteredClinics.length === 0 ? (
                     <div className="p-4 text-center text-xs text-slate-500">
                       No saved clinic matching "{clinicSearchText}"
@@ -541,16 +577,33 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
             </div>
           </div>
 
-          {/* Enhanced Datepicker (Col 4) — shared calendar picker */}
-          <div className="lg:col-span-4">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              Date Range
-            </label>
+          {/* Case/Job search — case number, invoice number, or clinic-side name */}
+          <div className="relative shrink-0">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={caseFilter}
+              onChange={(e) => { setCaseFilter(e.target.value); setLedgerLimit(LEDGER_CAP_STEP); }}
+              placeholder="Case / Job / Invoice #"
+              className="w-44 pl-9 pr-8 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+            />
+            {caseFilter && (
+              <button
+                type="button"
+                onClick={() => { setCaseFilter(''); setLedgerLimit(LEDGER_CAP_STEP); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
+                title="Clear case filter"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Shared date picker */}
+          <div className="shrink-0">
             <DatePickerRange
               from={startDate}
               to={endDate}
-              className="w-full [&>button]:w-full [&>button]:justify-start"
               quickRanges={[
                 { label: 'All Time', from: '', to: '' },
                 { label: 'Today', from: todayISO(), to: todayISO() },
@@ -567,17 +620,26 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
             />
           </div>
 
-          {/* Preview Button (Col 2) */}
-          <div className="lg:col-span-2">
-            <button
-              type="button"
-              onClick={() => setIsPreviewActive(true)}
-              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <Eye className="w-4 h-4" />
-              <span>Preview</span>
-            </button>
-          </div>
+          {/* PDF Export Button — real vector document, not a screenshot */}
+          <button
+            type="button"
+            onClick={handleExportPDF}
+            title="Download ledger statement as PDF (selectable text, real pages)"
+            className="shrink-0 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <FileDown className="w-4 h-4" />
+            <span>Export PDF</span>
+          </button>
+
+          {/* Preview Button */}
+          <button
+            type="button"
+            onClick={() => setIsPreviewActive(true)}
+            className="shrink-0 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Eye className="w-4 h-4" />
+            <span>Preview</span>
+          </button>
         </div>
 
         {/* Quick Date Range Preset Pills */}
@@ -621,9 +683,19 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         </div>
       </div>
 
-      {/* PREVIEW CONTAINER */}
+      {/* PREVIEW CONTAINER — hidden until Preview clicked; shows an
+          empty-state until a clinic is picked (no consolidated mode). */}
       {isPreviewActive && (
         <div className="space-y-4 print-flow">
+          {!selectedClinic ? (
+            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
+              <Building2 className="mx-auto mb-2 w-8 h-8 text-slate-300" />
+              <p className="text-sm font-bold text-slate-600">Select a clinic to view its ledger</p>
+              <p className="text-xs text-slate-400 mt-1">Pick a clinic above to load its transactions.</p>
+            </div>
+          ) : (
+        <>
+          {/* Selected Clinic Banner if specific clinic chosen */}
           {/* Selected Clinic Banner if specific clinic chosen */}
           {selectedClinic && (
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -671,8 +743,9 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                   <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                     <th className="py-3 px-3 w-14 text-center">Sr No.</th>
                     <th className="py-3 px-3 w-28">Date</th>
-                    <th className="py-3 px-4 w-44">Clinic</th>
-                    <th className="py-3 px-4">Narration (Case / Cash / Method)</th>
+                    <th className="py-3 px-4 w-40">Clinic</th>
+                    <th className="py-3 px-3 w-32">Case / Job</th>
+                    <th className="py-3 px-4">Narration (Type / Reference)</th>
                     <th className="py-3 px-3 text-right w-28">Debit (PKR)</th>
                     <th className="py-3 px-3 text-right w-28">Credit (PKR)</th>
                     <th className="py-3 px-4 text-right w-36">Closing Balance</th>
@@ -687,6 +760,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                       <td className="py-2.5 px-4 font-bold text-slate-800">
                         {selectedClinic ? selectedClinic.name : 'Consolidated Clinics'}
                       </td>
+                      <td className="py-2.5 px-3 text-slate-400">—</td>
                       <td className="py-2.5 px-4">
                         <span className="inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
                           Opening Balance
@@ -703,7 +777,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
                   {ledgerItems.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-500">
+                      <td colSpan={8} className="py-12 text-center text-slate-500">
                         <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mb-3">
                           <FileSpreadsheet className="w-6 h-6" />
                         </div>
@@ -735,9 +809,30 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
                           {/* Clinic */}
                           <td className="py-3 px-4">
-                            <span className="font-bold text-slate-900 block truncate max-w-[180px]" title={entry.lab_name}>
+                            <span className="font-bold text-slate-900 block truncate max-w-[160px]" title={entry.lab_name}>
                               {entry.lab_name}
                             </span>
+                          </td>
+
+                          {/* Case/Job — first-class relational reference; opens the real case record */}
+                          <td className="py-3 px-3">
+                            {entry.case_number ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const c = cases.find((x) => x.id === entry.case_id)
+                                    || cases.find((x) => x.case_number === entry.case_number);
+                                  if (c) setSelectedCaseForModalLocal(c);
+                                }}
+                                disabled={!entry.case_id && !cases.some((x) => x.case_number === entry.case_number)}
+                                title={entry.case_id ? 'Open case' : 'Case record not found'}
+                                className="inline-block font-mono text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-indigo-100 transition-colors cursor-pointer disabled:cursor-default disabled:hover:bg-indigo-50"
+                              >
+                                {entry.case_number}
+                              </button>
+                            ) : (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
                           </td>
 
                           {/* Narration whether its a case entry or cash/payment */}
@@ -796,34 +891,34 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
                 {/* Period activity totals only — the closing balance is the
                     final line of the statement, below everything else. */}
-                {ledgerItems.length > 0 && (
+                {caseScope.items.length > 0 && (
                   <tfoot>
                     <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-xs text-slate-900">
-                      <td colSpan={4} className="py-3.5 px-4 text-right uppercase tracking-wider font-bold">
+                      <td colSpan={5} className="py-3.5 px-4 text-right uppercase tracking-wider font-bold">
                         Total Period Activity:
                       </td>
                       <td className="py-3.5 px-3 text-right font-bold font-mono text-blue-900 whitespace-nowrap">
-                        PKR {totalDebits.toLocaleString()}
+                        PKR {caseScope.debitsSum.toLocaleString()}
                       </td>
                       <td className="py-3.5 px-3 text-right font-bold font-mono text-emerald-700 whitespace-nowrap">
-                        PKR {totalCredits.toLocaleString()}
+                        PKR {caseScope.creditsSum.toLocaleString()}
                       </td>
                       <td className="py-3.5 px-4 text-right text-slate-400 whitespace-nowrap">—</td>
                     </tr>
                   </tfoot>
                 )}
               </table>
-              {ledgerItems.length > visibleLedgerItems.length && (
+              {caseScope.items.length > visibleLedgerItems.length && (
                 <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
                   <span className="text-xs text-slate-500">
-                    Showing {visibleLedgerItems.length} of {ledgerItems.length} entries — totals cover the full period
+                    Showing {visibleLedgerItems.length} of {caseScope.items.length} entries — totals cover the full period
                   </span>
                   <button
                     type="button"
                     onClick={() => setLedgerLimit((n) => n + LEDGER_CAP_STEP)}
                     className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
                   >
-                    Show {Math.min(LEDGER_CAP_STEP, ledgerItems.length - visibleLedgerItems.length)} More
+                    Show {Math.min(LEDGER_CAP_STEP, caseScope.items.length - visibleLedgerItems.length)} More
                   </button>
                 </div>
               )}
@@ -831,25 +926,35 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
             {/* Final line of the statement: the closing balance, after the last
                 chronologically ordered entry. */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-slate-300 bg-slate-900 px-4 py-3.5 text-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-slate-300 bg-slate-50 px-4 py-3.5">
               <div>
-                <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
                   Closing Balance{startDate || endDate ? ` · ${startDate || 'Beginning'} → ${endDate || 'Present'}` : ''}
                 </span>
-                <span className="text-[11px] text-slate-300">
-                  {closingBalance > 0
+                <span className="text-[11px] text-slate-400">
+                  {caseScope.closing > 0
                     ? 'Receivable from clinic'
-                    : closingBalance < 0
+                    : caseScope.closing < 0
                     ? 'Advance credit held for clinic'
                     : 'Fully settled'}
                 </span>
               </div>
-              <span className="font-mono text-lg font-bold tracking-tight">
-                PKR {closingBalance.toLocaleString()} {closingBalance > 0 ? 'Dr' : closingBalance < 0 ? 'Cr' : ''}
+              <span className="font-mono text-lg font-bold tracking-tight text-slate-900">
+                PKR {caseScope.closing.toLocaleString()} {caseScope.closing > 0 ? 'Dr' : caseScope.closing < 0 ? 'Cr' : ''}
               </span>
             </div>
           </div>
+        </>
+          )}
         </div>
+      )}
+
+      {/* Case drill-down: ledger badge → real case record (same pattern as LabDetailModal) */}
+      {selectedCaseForModal && (
+        <CaseDetailModal
+          initialCase={selectedCaseForModal}
+          onClose={() => setSelectedCaseForModalLocal(null)}
+        />
       )}
     </div>
   );

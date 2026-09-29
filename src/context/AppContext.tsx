@@ -63,7 +63,6 @@ import {
   nextCaseNumber,
   nextInvoiceNumber,
   nextPaymentNumber,
-  nextAdvanceNumber,
   nextAdjustmentNumber,
   collectAllPayments,
   buildLabFinancialSummary,
@@ -71,7 +70,7 @@ import {
 } from '../services/ledgerDomain';
 import { useTransactionCommands } from './hooks/useTransactionCommands';
 import { useAuthDomain } from './hooks/useAuthDomain';
-import { deriveSimpleStatus, buildInvoiceAllocation, buildPaymentSideEffects, buildPaidInFullNotification } from '../services/paymentDomain';
+import { deriveSimpleStatus, buildInvoiceAllocation, buildPaymentSideEffects } from '../services/paymentDomain';
 import { useBillingDomain } from './hooks/useBillingDomain';
 import { useNotificationsDomain } from './hooks/useNotificationsDomain';
 import { useVoucherLogging } from './hooks/useVoucherLogging';
@@ -80,7 +79,6 @@ import {
   buildQcFailedNotification,
   buildOverdueAlerts,
   buildUnpaidInvoiceAlerts,
-  buildAdvanceDepositNotification,
   buildAdvanceDepositV2Notification,
   buildAdvanceSettledInvoiceNotification,
   buildAdjustmentNotification,
@@ -239,14 +237,6 @@ interface AppContextType {
   deleteCaseType: (id: string) => void;
 
   // Invoices & Billing
-  recordPayment: (
-    invoiceId: string, 
-    amount: number, 
-    method: PaymentRecord['payment_method'], 
-    notes?: string,
-    referenceNumber?: string,
-    attachments?: PaymentAttachment[]
-  ) => PaymentRecord | null;
   deletePayment: (paymentId: string) => void;
   allPayments: PaymentRecord[];
   getLabFinancialSummary: (labId: string) => LabFinancialSummary;
@@ -254,18 +244,10 @@ interface AppContextType {
   getLedgerEntries: (filterLabId?: string) => LedgerEntry[];
   generatePaymentNumber: () => string;
   updateInvoice: (id: string, updates: Partial<Invoice>) => void;
-  bulkMarkPaid: (invoiceIds: string[]) => void;
+  bulkMarkPaid: (invoiceIds: string[], paymentDate?: string) => void;
   deleteInvoice: (id: string) => void;
 
   // Advance Payments & Account Adjustments
-  recordAdvancePayment: (
-    labId: string,
-    amount: number,
-    method: 'cash' | 'bank' | 'cheque',
-    notes?: string,
-    referenceNumber?: string,
-    attachments?: PaymentAttachment[]
-  ) => AdvancePayment;
   applyAdvanceCredit: (
     labId: string,
     invoiceId: string,
@@ -278,7 +260,8 @@ interface AppContextType {
     amount: number,
     reason: string,
     referenceNumber?: string,
-    attachments?: PaymentAttachment[]
+    attachments?: PaymentAttachment[],
+    date?: string
   ) => AccountAdjustment;
   deleteAdvancePayment: (advanceId: string) => void;
   deleteAccountAdjustment: (adjustmentId: string) => void;
@@ -319,6 +302,7 @@ interface AppContextType {
     reasonCode: string;
     reasonText: string;
     approvedBy?: string;
+    date?: string;
   }) => AccountAdjustment;
   reverseTransactionV2: (command: {
     referenceType: 'payment' | 'advance_payment' | 'adjustment';
@@ -904,7 +888,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const generateCaseNumber = () => nextCaseNumber(cases || []);
   const generateInvoiceNumber = () => nextInvoiceNumber(invoices || []);
   const generatePaymentNumber = () => nextPaymentNumber(invoices);
-  const generateAdvanceNumber = () => nextAdvanceNumber(advancePayments);
   const generateAdjustmentNumber = (type: 'credit_note' | 'debit_adjustment' | 'refund') =>
     nextAdjustmentNumber(accountAdjustments, type);
 
@@ -964,8 +947,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       final_amount: caseData.final_price,
       amount_paid: 0,
       payment_status: 'unpaid',
+      issue_date: caseData.delivery_date,
       due_date: caseData.delivery_date,
-      created_at: nowStr.split(' ')[0],
+      // Business date: the invoice is booked at the case's delivery/order
+      // date, so a backdated case entry files behind newer ledger rows
+      // instead of appearing as the latest transaction.
+      created_at: caseData.delivery_date || nowStr.split(' ')[0],
       payments: []
     };
 
@@ -1390,94 +1377,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Billing & Invoices
-  const recordPayment = (
-    invoiceId: string, 
-    amount: number, 
-    method: PaymentRecord['payment_method'], 
-    notes?: string,
-    referenceNumber?: string,
-    attachments?: PaymentAttachment[]
-  ): PaymentRecord | null => {
-    if (amount <= 0 || isNaN(amount)) return null;
-    const nowStr = new Date().toISOString().split('T')[0];
-    const paymentNum = generatePaymentNumber();
-    let createdPayment: PaymentRecord | null = null;
-
-    setInvoices((prev) =>
-      prev.map((inv) => {
-        if (inv.id !== invoiceId) return inv;
-
-        const currentPayments = inv.payments || [];
-        const newPaid = currentPayments.reduce((s, p) => s + p.amount, 0) + amount;
-        const newStatus = deriveSimpleStatus(newPaid, inv.final_amount);
-
-        const newPaymentId = `pay-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const preparedAttachments: PaymentAttachment[] = (attachments || []).map((att, idx) => ({
-          id: att.id || `patt-${Date.now()}-${idx}`,
-          payment_id: newPaymentId,
-          file_name: att.file_name || `attachment_${idx + 1}.jpg`,
-          file_type: att.file_type || 'image/jpeg',
-          file_size: att.file_size || 'Unknown',
-          file_url: att.file_url,
-          uploaded_at: att.uploaded_at || new Date().toISOString().replace('T', ' ').substring(0, 16),
-          uploaded_by: att.uploaded_by || (user ? user.name : 'Staff')
-        }));
-
-        createdPayment = {
-          id: newPaymentId,
-          payment_number: paymentNum,
-          invoice_id: invoiceId,
-          invoice_number: inv.invoice_number,
-          case_id: inv.case_id,
-          case_number: inv.case_number,
-          lab_id: inv.lab_id,
-          lab_name: inv.lab_name,
-          amount,
-          payment_method: method,
-          payment_date: nowStr,
-          reference_number: referenceNumber,
-          notes,
-          recorded_by: user ? user.name : 'Staff',
-          created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          attachments: preparedAttachments
-        };
-
-        const updatedInv: Invoice = {
-          ...inv,
-          amount_paid: newPaid,
-          payment_status: newStatus as Invoice['payment_status'],
-          payments: [createdPayment, ...currentPayments]
-        };
-
-        // Notify if invoice fully settled
-        if (newStatus === 'paid') {
-          const notif = buildPaidInFullNotification(
-            { id: newPaymentId, payment_number: paymentNum, amount } as PaymentRecord,
-            inv,
-          );
-          setNotifications((n) => [notif, ...n]);
-        }
-
-        triggerAgentWorkflow('PAYMENT_RECORDED', { invoiceId, amount, paymentNum, newStatus });
-        return updatedInv;
-      })
-    );
-
-    // ---- Auto-log voucher + system journal for every payment entry ----
-    // (shared paymentDomain builders — one posting contract, see audit F3)
-    const payVoucher = createdPayment as PaymentRecord | null;
-    const payInv = invoices.find((i) => i.id === invoiceId);
-    if (payVoucher && payInv) {
-      const actor = user ? user.name : 'Staff';
-      const { journal, voucher } = buildPaymentSideEffects({ payment: payVoucher, invoice: payInv, actor });
-      saveVoucherToSystem(voucher);
-      payVoucher.journal_id = journal.id;
-      setJournalEntries((prev) => [journal, ...prev]);
-    }
-
-    return createdPayment;
-  };
-
   const deletePayment = (paymentId: string) => {
     setInvoices((prev) =>
       prev.map((inv) => {
@@ -1511,8 +1410,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const bulkMarkPaid = (invoiceIds: string[]) => {
-    const today = getTodayStr();
+  const bulkMarkPaid = (invoiceIds: string[], paymentDate?: string) => {
+    const today = paymentDate || getTodayStr();
     const newJournals: JournalEntry[] = [];
     const newAudits: AuditEvent[] = [];
 
@@ -1634,58 +1533,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Advance Payments & Account Adjustments Actions
-  const recordAdvancePayment = (
-    labId: string,
-    amount: number,
-    method: 'cash' | 'bank' | 'cheque',
-    notes?: string,
-    referenceNumber?: string,
-    attachments?: PaymentAttachment[]
-  ): AdvancePayment => {
-    const lab = labs.find((l) => l.id === labId);
-    const labName = lab ? lab.name : 'Dental Clinic';
-    const advNum = generateAdvanceNumber();
-    const newId = `adv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
-    const preparedAttachments: PaymentAttachment[] = (attachments || []).map((att, idx) => ({
-      id: att.id || `patt-${Date.now()}-${idx}`,
-      payment_id: newId,
-      file_name: att.file_name || `attachment_${idx + 1}.jpg`,
-      file_type: att.file_type || 'image/jpeg',
-      file_size: att.file_size || 'Unknown',
-      file_url: att.file_url,
-      uploaded_at: att.uploaded_at || nowStr,
-      uploaded_by: att.uploaded_by || (user ? user.name : 'Staff')
-    }));
-
-    const newAdvance: AdvancePayment = {
-      id: newId,
-      payment_number: advNum,
-      lab_id: labId,
-      lab_name: labName,
-      amount,
-      allocated_amount: 0,
-      remaining_amount: amount,
-      payment_method: method,
-      payment_date: nowStr.split(' ')[0],
-      reference_number: referenceNumber,
-      notes,
-      recorded_by: user ? user.name : 'Staff',
-      created_at: nowStr,
-      attachments: preparedAttachments
-    };
-
-    setAdvancePayments((prev) => [newAdvance, ...prev]);
-
-    pushNotifications(
-      buildAdvanceDepositNotification({ id: genId('notif'), labId, labName, amount, method, advNum, at: nowStr }),
-    );
-
-    triggerAgentWorkflow('ADVANCE_PAYMENT_RECORDED', { labId, labName, amount, advNum });
-    return newAdvance;
-  };
-
   const applyAdvanceCredit = (
     labId: string,
     invoiceId: string,
@@ -1774,7 +1621,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     amount: number,
     reason: string,
     referenceNumber?: string,
-    attachments?: PaymentAttachment[]
+    attachments?: PaymentAttachment[],
+    date?: string
   ): AccountAdjustment => {
     const lab = labs.find((l) => l.id === labId);
     const labName = lab ? lab.name : 'Dental Clinic';
@@ -1790,7 +1638,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type,
       amount,
       reason,
-      date: nowStr.split(' ')[0],
+      // Business date first: a backdated refund/adjustment files at its
+      // transaction date; created_at stays the record time.
+      date: date || nowStr.split(' ')[0],
       reference_number: referenceNumber,
       recorded_by: user ? user.name : 'Staff',
       created_at: nowStr,
@@ -1956,7 +1806,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCaseType,
         deleteCaseType,
 
-        recordPayment,
         deletePayment,
         allPayments,
         getLabFinancialSummary,
@@ -1972,7 +1821,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         journalEntries,
         auditEvents,
         reconciliationItems,
-        recordAdvancePayment,
         applyAdvanceCredit,
         recordAccountAdjustment,
         deleteAdvancePayment,
