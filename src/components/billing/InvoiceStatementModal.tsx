@@ -14,6 +14,7 @@ import {
   saveDocumentSections,
 } from '../../services/printSettings';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
+import { SavePdfButton } from '../print/SavePdfButton';
 import '../print/printStyles.css';
 
 interface InvoiceStatementModalProps {
@@ -118,6 +119,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
             >
               Reset sections
             </button>
+            <SavePdfButton suggestedName={`Invoice_${invoice.invoice_number || 'statement'}.pdf`} />
             <button
               type="button"
               onClick={handleSaveAndPrint}

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatPKR } from '../../services/financeDomain';
 import { X, Printer, Download, Calendar, Building2, FileText, CheckCircle2 } from 'lucide-react';
+import { SavePdfButton } from '../print/SavePdfButton';
 
 interface ClinicStatementModalProps {
   isOpen: boolean;
@@ -115,6 +116,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               <Download className="w-3.5 h-3.5 text-slate-500" />
               Export CSV
             </button>
+            <SavePdfButton suggestedName={`Statement_${clinic?.name?.replace(/\s+/g, '_') || 'Clinic'}_${new Date().toISOString().split('T')[0]}.pdf`} />
             <button
               onClick={handlePrint}
               className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"

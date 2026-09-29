@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { PaymentRecord, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { X, Printer, CheckCircle2, Building2, Calendar, CreditCard, ShieldCheck } from 'lucide-react';
+import { SavePdfButton } from '../print/SavePdfButton';
 
 interface PaymentReceiptModalProps {
   payment: PaymentRecord;
@@ -33,6 +34,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <SavePdfButton suggestedName={`Receipt_${payment.payment_number || payment.id}.pdf`} />
             <button
               onClick={handlePrint}
               className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-1.5 shadow-xs"

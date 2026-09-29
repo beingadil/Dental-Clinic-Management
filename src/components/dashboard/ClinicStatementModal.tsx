@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Printer, Download, Building2, Calendar, FileText, CheckCircle2, ChevronDown } from 'lucide-react';
 import { Invoice, DentalLab, DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { SavePdfButton } from '../print/SavePdfButton';
 
 interface ClinicStatementModalProps {
   clinicName?: string;
@@ -69,12 +70,15 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               </select>
             )}
 
+            <SavePdfButton
+              suggestedName={`Clinic-Statement_${selectedClinic.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`}
+            />
             <button
               onClick={handlePrint}
               className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print / Save PDF</span>
+              <span>Print</span>
             </button>
             <button 
               onClick={onClose}

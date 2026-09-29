@@ -3,6 +3,7 @@ import { DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, Download, CheckCircle2, BookmarkCheck } from 'lucide-react';
 import { LabCardSlip } from './LabCardSlip';
+import { SavePdfButton } from '../print/SavePdfButton';
 
 interface CaseJobSlipModalProps {
   caseData: DentalCase;
@@ -123,6 +124,10 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
             >
               <Download className="w-4 h-4" /> Save & Download File
             </button>
+            <SavePdfButton
+              suggestedName={`Job-Card_${caseData.case_number || 'slip'}.pdf`}
+              className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            />
             <button
               type="button"
               onClick={() => handleSaveAndPrint(false)}

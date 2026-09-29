@@ -17,6 +17,7 @@ import {
   Layers,
   X
 } from 'lucide-react';
+import { SavePdfButton } from '../print/SavePdfButton';
 
 export const CatalogView: React.FC = () => {
   const { caseTypes, addCaseType, updateCaseType, deleteCaseType, brandingSettings } = useApp();
@@ -153,6 +154,7 @@ export const CatalogView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <SavePdfButton suggestedName="Material-Service-Catalog.pdf" />
           <button
             onClick={handlePrintCatalog}
             className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition-colors border border-slate-300 shadow-2xs flex items-center gap-1.5 cursor-pointer"

@@ -9,6 +9,8 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 #[cfg(windows)]
+pub mod pdf_save;
+#[cfg(windows)]
 use winreg::enums::HKEY_CURRENT_USER;
 #[cfg(windows)]
 use winreg::RegKey;
@@ -606,8 +608,10 @@ pub fn run() {
             backup_delete,
             file_sha256,
             open_external,
-            update_install
+            update_install,
+            pdf_save::save_webview_as_pdf
         ])
+        .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

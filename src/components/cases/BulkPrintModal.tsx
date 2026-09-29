@@ -3,6 +3,7 @@ import { DentalCase, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, Landmark, Download, CheckCircle2 } from 'lucide-react';
 import { LabCardSlip } from './LabCardSlip';
+import { SavePdfButton } from '../print/SavePdfButton';
 
 interface BulkPrintModalProps {
   selectedCases: DentalCase[];
@@ -114,6 +115,10 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              <SavePdfButton
+                suggestedName={`${printType === 'slips' ? 'Lab-Cards' : 'Case-Invoices'}_${new Date().toISOString().split('T')[0]}.pdf`}
+                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+              />
               <button
                 type="button"
                 onClick={() => handlePrint()}

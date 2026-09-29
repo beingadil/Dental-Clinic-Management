@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
+import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
 import '../print/printStyles.css';
 import { Printer, X, FileSpreadsheet, Building2, CheckCircle2 } from 'lucide-react';
@@ -116,6 +117,11 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <SavePdfButton
+              suggestedName={`Unpaid-Invoices-${new Date().toISOString().split('T')[0]}.pdf`}
+              disabled={selected.length === 0}
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white border border-slate-300 px-4 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            />
             <button
               type="button"
               onClick={handlePrint}
