@@ -15,7 +15,10 @@ import { installAutoPersistence } from '../db/persistence';
 
 export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_MAGIC = 'DENTALBACKUP';
-export const APP_VERSION = '2.10.0';
+/** Build-time injected from package.json (see vite.config.ts `define`).
+ * Never hardcode this again — a stale duplicate caused an infinite update
+ * loop where 2.12.0 installs believed they were 2.10.0. */
+export const APP_VERSION: string = __APP_VERSION__;
 
 export interface BackupManifest {
   magic: string;
