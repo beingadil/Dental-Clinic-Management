@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, ArrowUpCircle, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, ArrowUpCircle, Loader2, AlertCircle, CheckCircle2, Power } from 'lucide-react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   runAutoUpdate,
   onAutoUpdatePhase,
@@ -58,10 +59,21 @@ export function UpdateStatusPill() {
   if (phase.state === 'verifying' || phase.state === 'installing') {
     return (
       <div className="flex justify-end">
-        <div className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-bold rounded-full flex items-center gap-2">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          {phase.state === 'verifying' ? `Verifying v${phase.version}…` : `Installing v${phase.version} — the app will restart`}
-        </div>
+        {phase.state === 'installing' ? (
+          <button
+            onClick={() => { void getCurrentWindow().destroy(); }}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-full shadow-sm cursor-pointer flex items-center gap-1.5"
+            title="Close the app now so the update installer can finish. It relaunches automatically."
+          >
+            <Power className="w-3.5 h-3.5" />
+            Restart to finish update
+          </button>
+        ) : (
+          <div className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-bold rounded-full flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Verifying v{phase.version}…
+          </div>
+        )}
       </div>
     );
   }

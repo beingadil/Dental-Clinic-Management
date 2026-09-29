@@ -586,7 +586,13 @@ async fn update_install(
         .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| format!("Could not start the installer: {e}"))?;
-    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    // Let the invoke response (Ok) reach the webview first so it can record
+    // the install, then exit. A hard app.exit(0) here raced the IPC reply and
+    // left the pill stuck on "installing" with the app never closing.
+    // 1.5 s comfortably covers a local reply + the debounced DB flush; the
+    // waiter script tolerates any delay anyway (it waits for our PID).
+    std::thread::sleep(std::time::Duration::from_millis(1500));
     app.exit(0);
     // Unreachable in practice — exit(0) tears down the runtime before the
     // response resolves.

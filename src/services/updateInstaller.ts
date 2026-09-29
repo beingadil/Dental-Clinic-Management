@@ -142,6 +142,15 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
 
       let phase: AutoUpdatePhase;
       try {
+        // Flush any pending SQLite writes BEFORE handing off to the installer:
+        // app.exit(0) on the Rust side races the 400 ms debounced flush, and an
+        // exit mid-write would lose the newest clinic data. Flush is awaited,
+        // not fire-and-forget.
+        try {
+          const { flushNow } = await import('../db/persistence');
+          await flushNow();
+        } catch { /* non-fatal — the pre-update backup still protects data */ }
+
         const ok = await api.invoke('update_install', {
           version,
           downloadUrl: downloadUrl ?? null,
@@ -150,7 +159,8 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
         if (ok !== true) {
           phase = { state: 'failed', message: String(ok || 'Update installation failed') };
         } else {
-          // Verified installer is running; we exit so it can replace files.
+          // Verified installer is running; the Rust side exits this app so the
+          // installer can replace files, then relaunches the new version.
           phase = { state: 'installing', version };
         }
       } finally {
@@ -158,7 +168,13 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
       }
 
       if (phase.state === 'installing') {
-        recordUpdateHistory({ version, state: 'installed', message: notes });
+        // The Rust side already called app.exit(0) — nothing after this line
+        // is guaranteed to run, which is why history/pill updates happen on
+        // the NEXT boot from the update-install receipt, not here.
+        try {
+          sessionStorage.setItem('update-installed', version);
+        } catch { /* non-fatal */ }
+        phase = { state: 'installing', version };
       } else {
         recordUpdateHistory({ version, state: 'failed', message: (phase as any).message });
       }
