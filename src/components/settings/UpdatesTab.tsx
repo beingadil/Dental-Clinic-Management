@@ -5,16 +5,21 @@ import {
   onAutoUpdatePhase,
   getAutoUpdatePhase,
   getLastUpdateCheck,
+  reconcileInstallReceipt,
+  UpdateDiagnostics,
   AutoUpdatePhase,
 } from '../../services/updateInstaller';
 import { getUpdateHistory, UpdateHistoryEntry } from '../../services/updateHistory';
-import { ArrowUpCircle, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowUpCircle, Loader2, RefreshCw, TriangleAlert, CheckCircle2 } from 'lucide-react';
 
 export const UpdatesTab: React.FC = () => {
   const [autoPhase, setAutoPhase] = useState<AutoUpdatePhase>(() => getAutoUpdatePhase());
   useEffect(() => onAutoUpdatePhase(setAutoPhase), []);
   const [updateHistory, setUpdateHistory] = useState<UpdateHistoryEntry[]>(() => getUpdateHistory());
   useEffect(() => { setUpdateHistory(getUpdateHistory()); }, [autoPhase]);
+  // Boot-time update-chain diagnosis: receipt of the last staged install.
+  const [diag, setDiag] = useState<UpdateDiagnostics | null>(null);
+  useEffect(() => { void reconcileInstallReceipt().then(setDiag); }, []);
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
@@ -58,6 +63,31 @@ export const UpdatesTab: React.FC = () => {
       )}
       {autoPhase.state === 'failed' && (
         <p className="text-xs text-slate-500">{autoPhase.message}</p>
+      )}
+
+      {/* Stuck-install diagnosis — the receipt tells the truth about what the
+          updater staged vs what is actually running. */}
+      {diag && diag.receipt_status === 'pending' && diag.receipt && (
+        <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+          <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+          <div>
+            <p className="font-bold">Install awaiting completion</p>
+            <p className="text-[11px] text-amber-800 mt-0.5">
+              An installer for v{diag.receipt.version} was staged
+              {diag.receipt.staged_at ? ` at ${diag.receipt.staged_at}` : ''} and verified
+              ({diag.receipt.checksum?.slice(0, 19)}…), but this app is still running
+              v{diag.running_version}. Close the app — the staged installer finishes on exit and relaunches the new version automatically. If the banner persists after relaunch, run the installer manually from the Releases page.
+            </p>
+          </div>
+        </div>
+      )}
+      {diag && diag.receipt_status === 'settled' && diag.receipt && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+          <p className="text-[11px] text-emerald-800">
+            Last update verified: v{diag.receipt.version} staged {diag.receipt.staged_at || ''} and now running (checksum matched).
+          </p>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">

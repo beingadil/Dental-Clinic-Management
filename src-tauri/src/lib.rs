@@ -587,6 +587,21 @@ async fn update_install(
         .spawn()
         .map_err(|e| format!("Could not start the installer: {e}"))?;
 
+    // Machine-readable stage receipt — the frontend reads this on next boot
+    // to record "Updated to vX" in history even when app.exit(0) races the
+    // IPC reply (the reply is not guaranteed to reach the webview).
+    let receipt = serde_json::json!({
+        "magic": "DENTALUPDATE-RECEIPT",
+        "version": version,
+        "checksum": format!("sha256:{actual}"),
+        "bytes": received,
+        "staged_at": chrono_like_stamp(),
+        "staged_path": staged.display().to_string(),
+        "relaunch_target": relaunch_target.display().to_string(),
+        "previous_version": env!("CARGO_PKG_VERSION"),
+    });
+    let _ = fs::write(dir.join("stage-receipt.json"), serde_json::to_string_pretty(&receipt).unwrap_or_default());
+
     // Let the invoke response (Ok) reach the webview first so it can record
     // the install, then exit. A hard app.exit(0) here raced the IPC reply and
     // left the pill stuck on "installing" with the app never closing.
@@ -597,6 +612,42 @@ async fn update_install(
     // Unreachable in practice — exit(0) tears down the runtime before the
     // response resolves.
     Ok(true)
+}
+
+/// Boot-time update diagnostics for Settings → Updates.
+///
+/// Returns the receipt of the last staged install (if any) plus the exe's
+/// embedded version. A half-applied install shows up as a receipt whose
+/// version differs from the running exe, or an exe that predates the last
+/// staged receipt.
+#[tauri::command]
+fn update_diagnostics() -> Result<serde_json::Value, String> {
+    let dir = std::env::temp_dir().join("dental-solutions-update");
+    let receipt_path = dir.join("stage-receipt.json");
+    let receipt: serde_json::Value = fs::read_to_string(&receipt_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .filter(|r: &serde_json::Value| r.get("magic").and_then(|m| m.as_str()) == Some("DENTALUPDATE-RECEIPT"))
+        .unwrap_or(serde_json::Value::Null);
+
+    let running_version = env!("CARGO_PKG_VERSION").to_string();
+
+    // A consumed receipt is one whose version matches the running build —
+    // the install it describes has landed. Keep it for the record but mark
+    // it settled so the UI doesn't re-raise it every boot.
+    let receipt_status = if receipt.is_null() {
+        "none"
+    } else if receipt.get("version").and_then(|v| v.as_str()) == Some(running_version.as_str()) {
+        "settled"
+    } else {
+        "pending" // receipt describes a version the running exe is NOT
+    };
+
+    Ok(serde_json::json!({
+        "running_version": running_version,
+        "receipt": receipt,
+        "receipt_status": receipt_status,
+    }))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -615,6 +666,7 @@ pub fn run() {
             file_sha256,
             open_external,
             update_install,
+            update_diagnostics,
             pdf_save::save_webview_as_pdf
         ])
         .plugin(tauri_plugin_dialog::init())

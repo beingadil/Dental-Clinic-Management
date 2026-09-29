@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   runAutoUpdate,
   onAutoUpdatePhase,
+  reconcileInstallReceipt,
   AutoUpdatePhase,
   isDesktopShell,
 } from '../../services/updateInstaller';
@@ -22,6 +23,9 @@ export function UpdateStatusPill() {
 
   useEffect(() => {
     const unsub = onAutoUpdatePhase(setPhase);
+    // Consume any staged-install receipt BEFORE the check so a just-landed
+    // update records its history and the check sees the settled state.
+    void reconcileInstallReceipt();
     runAutoUpdate(); // singleton — the check happens once per session
     return () => { unsub(); };
   }, []);

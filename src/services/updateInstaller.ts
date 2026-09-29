@@ -77,6 +77,49 @@ function setLastUpdateCheck(version: string, state: string): void {
   } catch { /* non-fatal */ }
 }
 
+export interface UpdateDiagnostics {
+  running_version: string;
+  receipt_status: 'none' | 'settled' | 'pending';
+  receipt: {
+    magic: string;
+    version: string;
+    checksum: string;
+    bytes: number;
+    staged_at: string;
+    staged_path?: string;
+    relaunch_target?: string;
+    previous_version?: string;
+  } | null;
+}
+
+/**
+ * Boot-time reconciliation — consumes the Rust stage receipt.
+ *
+ * When `update_install` exits the app, the IPC reply may never reach the
+ * webview, so the installing run cannot record history itself. The receipt
+ * (written by Rust before the waiter spawns) is the durable record: on the
+ * next boot a `pending` receipt means "the install this receipt describes
+ * has landed on this now-running build" → record `installed` history once,
+ * then the receipt reads as `settled` forever after.
+ */
+export async function reconcileInstallReceipt(): Promise<UpdateDiagnostics | null> {
+  if (!isDesktopShell()) return null;
+  try {
+    const api = tauri()!;
+    const diag = (await api.invoke('update_diagnostics')) as UpdateDiagnostics;
+    if (diag.receipt_status === 'pending' && diag.receipt) {
+      recordUpdateHistory({
+        version: diag.receipt.version,
+        state: 'installed',
+        message: `Staged ${diag.receipt.staged_at} from v${diag.receipt.previous_version || '?'}`,
+      });
+    }
+    return diag;
+  } catch {
+    return null; // diagnostics are best-effort; never block boot
+  }
+}
+
 /**
  * Runs the full update pipeline. Called on app start (dashboard mount) and
  * manually from Settings. Safe to call again while running — returns the
