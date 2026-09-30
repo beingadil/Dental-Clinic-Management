@@ -1,6 +1,6 @@
 [package]
 name = "dental-solutions"
-version = "2.12.2"
+version = "2.12.4"
 edition = "2021"
 
 [lib]

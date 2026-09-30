@@ -4,6 +4,45 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.12.4] — 2026-10-01
+
+### Fixed
+- **Payment & document numbers can no longer collide** — numbers are now
+  generated from the highest number ever issued (max-scan) instead of row
+  counts, for PAY/REC/ADV/CR and invoice/case sequences; a reversed or
+  voided document's number stays retired. A payment split across several
+  invoices stores one payment row per slice with a distinct number
+  (`PAY-<year>-NNNN-1`, `-2`, …) instead of reusing the same number, which
+  used to abort the entire SQLite sync with
+  `UNIQUE constraint failed: payments.payment_number`.
+- **Sync heals duplicates instead of failing** — one bad row no longer
+  blocks persistence of everything else: duplicate payment/advance/invoice/
+  case numbers get a deterministic `-D2` suffix, orphan QC rows are skipped,
+  and duplicate case teeth are deduped, so the
+  "Database sync failed — your changes are at risk" banner stops appearing
+  for previously-poisoned databases.
+- **Money-path guards** — deleting a case with active payments is refused
+  (reverse first); deleting a lab with cases re-assigns them to a chosen
+  clinic; repricing an invoice reverses and re-issues its double-entry
+  journal; double-clicking "Post Transaction" can no longer create two
+  payments; batch printing logs each invoice voucher exactly once.
+- **Quit-time save window** — closing the desktop app now flushes the
+  pending debounced SQLite write (bounded by a 3 s guard) before teardown,
+  and a 5 s periodic checkpoint shrinks the unsaved window during normal
+  use.
+- **Updater honesty** — a lost stage receipt no longer produces a false
+  "close the application so it can install" banner: the receipt write
+  surfaces failures, and the banner only advises closing when the staged
+  installer is actually still on disk.
+
+### Verified
+- Live test pass on the production build: split receipts, the reported
+  110,000/101,000/9,000 advance scenario, reverse-then-record numbering,
+  double-submit latch, batch-print voucher dedupe, void-retirement
+  (INV-0006 issued after INV-0005 voided), and a restore drill (55 rows,
+  12 tables) — zero duplicate numbers, `integrity_check ok`, no FK
+  violations, all journals balanced.
+
 ## [2.9.1] — 2026-09-25
 
 ### Added

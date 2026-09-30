@@ -92,6 +92,10 @@ describe('syncCore duplicate-number healing', () => {
       created_at: '2026-09-28T09:00', updated_at: '2026-09-28T09:00', history: [],
     });
 
+    // Fake timers MUST be active when syncCollectionsToDb arms its 150 ms
+    // debounce — a real timer installed before vi.useFakeTimers() never
+    // advances and the sync never runs (the order bug this test shipped with).
+    vi.useFakeTimers();
     syncCollectionsToDb({
       users: [], labs: [{ id: 'lab-1', name: 'Test Clinic', created_at: '2026-09-28T09:00' }],
       caseTypes: [],
@@ -107,7 +111,6 @@ describe('syncCore duplicate-number healing', () => {
       doctorPreferences: [],
     } as unknown as SyncCollections);
 
-    vi.useFakeTimers();
     vi.advanceTimersByTime(150);
     vi.useRealTimers();
 
