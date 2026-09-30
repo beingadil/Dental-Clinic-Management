@@ -63,6 +63,21 @@ export const PreferencesTab: React.FC = () => {
         </div>
 
         <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">Interface Zoom</label>
+          <select
+            value={String(userPreferences?.ui_zoom || 1)}
+            onChange={(e) => updateUserPreferences({ ui_zoom: Number(e.target.value) })}
+            className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+          >
+            <option value="0.85">Smaller (85%)</option>
+            <option value="1">Default (100%)</option>
+            <option value="1.1">Larger (110%)</option>
+            <option value="1.25">Largest (125%)</option>
+          </select>
+          <p className="text-[11px] text-slate-400 mt-1">Applies to the whole interface instantly; printed documents are never scaled.</p>
+        </div>
+
+        <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Auto-Save Voucher Log</label>
           <select
             value={userPreferences?.auto_print_job_slips ? 'true' : 'false'}

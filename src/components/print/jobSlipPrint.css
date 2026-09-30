@@ -74,6 +74,15 @@
   padding: 0.4mm 1.2mm;
   white-space: nowrap;
 }
+.js-logo {
+  flex: 0 0 auto;
+  height: 7mm;                        /* fits the letterhead row */
+  max-width: 24mm;
+  object-fit: contain;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
 .js-qr {
   margin-left: auto;
   line-height: 0;
@@ -219,6 +228,21 @@
      blanking pages 2+). Scope it out while slip printing is active. */
   body.job-slip-printing-on .job-slip-printing.print-area {
     position: static !important;
+    width: auto !important;
+  }
+
+  /* Screen-viewport scaffolding (panel height cap + scrollable preview area
+     + zoom wrapper) must never reach paper: the cap would clip sheets 2+,
+     and a scrolled preview would print only the visible slice. */
+  body.job-slip-printing-on .batch-panel {
+    max-height: none !important;
+  }
+  body.job-slip-printing-on .batch-scroll-area {
+    overflow: visible !important;
+    flex: none !important;
+    min-height: 0 !important;
+  }
+  body.job-slip-printing-on .batch-zoom-wrap {
     width: auto !important;
   }
 }

@@ -51,6 +51,16 @@ export function useSettingsDomain(): {
     return INITIAL_USER_PREFERENCES;
   });
 
+  // Global interface zoom — applied once on <html> from the single owner of
+  // this setting. CSS `zoom` is already the app's print font-scale mechanism
+  // and is honored by WebView2; @media print resets it so paper keeps true
+  // sizes (see index.css).
+  useEffect(() => {
+    const z = userPreferences.ui_zoom;
+    (document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom =
+      z && z !== 1 ? String(z) : '';
+  }, [userPreferences.ui_zoom]);
+
   // Settings persist ONLY into the namespaced settings store (SQLite) —
   // the legacy dsw_* keys are no longer written (single source of truth).
   // Money-adjacent settings are rounded through the shared policy on write.

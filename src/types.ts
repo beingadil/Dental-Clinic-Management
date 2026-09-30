@@ -514,6 +514,8 @@ export interface UserPreferences {
   auto_print_job_slips?: boolean;
   /** Boot sweep: archive delivered cases older than 30 days automatically. */
   auto_archive_completed_cases?: boolean;
+  /** Global interface zoom (screen only; print output is never scaled). */
+  ui_zoom?: number;
 }
 
 export interface UserProfile {

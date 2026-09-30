@@ -590,17 +590,22 @@ async fn update_install(
     // Machine-readable stage receipt — the frontend reads this on next boot
     // to record "Updated to vX" in history even when app.exit(0) races the
     // IPC reply (the reply is not guaranteed to reach the webview).
-    let receipt = serde_json::json!({
-        "magic": "DENTALUPDATE-RECEIPT",
-        "version": version,
-        "checksum": format!("sha256:{actual}"),
-        "bytes": received,
-        "staged_at": chrono_like_stamp(),
-        "staged_path": staged.display().to_string(),
-        "relaunch_target": relaunch_target.display().to_string(),
-        "previous_version": env!("CARGO_PKG_VERSION"),
-    });
-    let _ = fs::write(dir.join("stage-receipt.json"), serde_json::to_string_pretty(&receipt).unwrap_or_default());
+    let receipt = build_stage_receipt(
+        &version,
+        &format!("sha256:{actual}"),
+        received,
+        &staged.display().to_string(),
+        &relaunch_target.display().to_string(),
+        env!("CARGO_PKG_VERSION"),
+    );
+    // The receipt is the boot-time source of truth for "did the staged
+    // install land?" — a silent write failure here is what produced the
+    // false 'Install awaiting completion' banner (verified on this machine:
+    // last-update.log exists, the receipt does not). Surface failures.
+    let receipt_path = dir.join("stage-receipt.json");
+    if let Err(e) = fs::write(&receipt_path, serde_json::to_string_pretty(&receipt).unwrap_or_default()) {
+        eprintln!("[updater] FAILED to write stage receipt {:?}: {}", receipt_path, e);
+    }
 
     // Let the invoke response (Ok) reach the webview first so it can record
     // the install, then exit. A hard app.exit(0) here raced the IPC reply and
@@ -612,6 +617,34 @@ async fn update_install(
     // Unreachable in practice — exit(0) tears down the runtime before the
     // response resolves.
     Ok(true)
+}
+
+/// Magic string marking a genuine stage receipt (updateInstaller.ts filters
+/// on the same value).
+const STAGE_RECEIPT_MAGIC: &str = "DENTALUPDATE-RECEIPT";
+
+/// Build the machine-readable stage receipt written after a verified update
+/// download. The frontend reads it on next boot to record "Updated to vX"
+/// even when app.exit(0) races the IPC reply. Extracted for unit tests —
+/// this payload is the update chain's source of truth.
+fn build_stage_receipt(
+    version: &str,
+    checksum: &str,
+    bytes: u64,
+    staged_path: &str,
+    relaunch_target: &str,
+    previous_version: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "magic": STAGE_RECEIPT_MAGIC,
+        "version": version,
+        "checksum": checksum,
+        "bytes": bytes,
+        "staged_at": chrono_like_stamp(),
+        "staged_path": staged_path,
+        "relaunch_target": relaunch_target,
+        "previous_version": previous_version,
+    })
 }
 
 /// Boot-time update diagnostics for Settings → Updates.
@@ -627,7 +660,7 @@ fn update_diagnostics() -> Result<serde_json::Value, String> {
     let receipt: serde_json::Value = fs::read_to_string(&receipt_path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .filter(|r: &serde_json::Value| r.get("magic").and_then(|m| m.as_str()) == Some("DENTALUPDATE-RECEIPT"))
+        .filter(|r: &serde_json::Value| r.get("magic").and_then(|m| m.as_str()) == Some(STAGE_RECEIPT_MAGIC))
         .unwrap_or(serde_json::Value::Null);
 
     let running_version = env!("CARGO_PKG_VERSION").to_string();
@@ -643,10 +676,22 @@ fn update_diagnostics() -> Result<serde_json::Value, String> {
         "pending" // receipt describes a version the running exe is NOT
     };
 
+    // A 'pending' receipt is only actionable while the staged installer file
+    // still exists — the waiter runs THAT exe on our exit. If it is gone
+    // (partial install already consumed it, or the temp dir was cleaned),
+    // no amount of app-closing completes anything, so the UI must not ask
+    // the user to close the app.
+    let staged_installer_present = receipt
+        .get("staged_path")
+        .and_then(|p| p.as_str())
+        .map(|p| fs::metadata(p).map(|m| m.is_file()).unwrap_or(false))
+        .unwrap_or(false);
+
     Ok(serde_json::json!({
         "running_version": running_version,
         "receipt": receipt,
         "receipt_status": receipt_status,
+        "staged_installer_present": staged_installer_present,
     }))
 }
 
@@ -672,4 +717,47 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The stage receipt is the update chain's boot-time source of truth
+    /// ("did the staged install land?"). The missing-receipt incident
+    /// (2026-09-30) produced a false "close the app to install" banner, so
+    /// pin the payload shape the frontend's updateInstaller.ts filters on.
+    #[test]
+    fn stage_receipt_has_magic_and_full_payload() {
+        let r = build_stage_receipt(
+            "2.12.4",
+            "sha256:abc123",
+            3_857_934,
+            "C:/temp/dental-solutions-update/setup.exe",
+            "C:/Program Files/Dental Solutions/dental-solutions.exe",
+            "2.12.3",
+        );
+        assert_eq!(r["magic"], STAGE_RECEIPT_MAGIC);
+        assert_eq!(r["version"], "2.12.4");
+        assert_eq!(r["checksum"], "sha256:abc123");
+        assert_eq!(r["bytes"], 3_857_934);
+        assert_eq!(r["staged_path"], "C:/temp/dental-solutions-update/setup.exe");
+        assert_eq!(r["relaunch_target"], "C:/Program Files/Dental Solutions/dental-solutions.exe");
+        assert_eq!(r["previous_version"], "2.12.3");
+        // staged_at must be present and non-empty (the frontend shows it).
+        assert!(!r["staged_at"].as_str().unwrap_or_default().is_empty());
+    }
+
+    /// The diagnostics filter accepts exactly the magic we emit — a stale or
+    /// hand-edited receipt file must never read as a staged install.
+    #[test]
+    fn diagnostics_magic_filter_matches_emitted_receipt() {
+        let r = build_stage_receipt("2.13.0", "sha256:x", 1, "p", "t", "2.12.3");
+        let text = serde_json::to_string_pretty(&r).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            parsed.get("magic").and_then(|m| m.as_str()),
+            Some(STAGE_RECEIPT_MAGIC)
+        );
+    }
 }

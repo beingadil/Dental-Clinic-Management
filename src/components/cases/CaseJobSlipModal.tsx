@@ -5,6 +5,7 @@ import { Printer, X, Download, CheckCircle2, BookmarkCheck } from 'lucide-react'
 import { JobSlipCard } from '../print/JobSlipCard';
 import { LabCardSlip } from './LabCardSlip';
 import { SavePdfButton } from '../print/SavePdfButton';
+import { buildStandaloneHtml, downloadStandaloneHtml } from '../print/printPipeline';
 import '../print/jobSlipPrint.css';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 
@@ -50,13 +51,6 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
       // document.styleSheets (not <link> tags): in the packaged app styles
       // live at /assets/*.css and a serialized relative link 404s in the
       // standalone file — the old bug that saved an unstyled/blank slip.
-      const inlineStyles = Array.from(document.styleSheets)
-        .map((sheet) => {
-          try { return Array.from(sheet.cssRules).map((r) => r.cssText).join('\n'); }
-          catch { return ''; } // cross-origin sheet — skip
-        })
-        .filter(Boolean)
-        .join('\n');
       const slipHtml = slipRef.current ? slipRef.current.outerHTML : '';
       const pageShell = slipStyle === 'compact'
         ? `<div class="job-slip-mode-single"><div class="job-slip-print-root job-slip-page">${slipHtml}</div></div>`
@@ -69,36 +63,17 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
         : `body * { visibility: hidden !important; }
       .print-area, .print-area * { visibility: visible !important; }
       .print-area { position: absolute; left: 0; top: 0; width: 100%; }`;
-      const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Job Slip ${caseData.case_number}</title>
-  <style>
-    ${inlineStyles}
-  </style>
-  <style>
+      const htmlContent = buildStandaloneHtml(pageShell, {
+        title: `Job Slip ${caseData.case_number}`,
+        extraCss: `
     body { margin: 0; padding: 24px; background: #f1f5f9; display: flex; justify-content: center; }
     @media print {
       body { padding: 0; background: #ffffff; }
       ${pageCss}
-    }
-  </style>
-</head>
-<body>
-  ${pageShell}
-</body>
-</html>`;
+    }`,
+      });
 
-      const blob = new Blob([htmlContent], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Job_Slip_${caseData.case_number}.html`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      downloadStandaloneHtml(htmlContent, `Job_Slip_${caseData.case_number}.html`);
       return; // Download only — printing is the separate "Print Card" action.
     }
 
@@ -171,7 +146,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
               style={{ transform: 'scale(0.9)', transformOrigin: 'top center' }}
               ref={slipRef}
             >
-              <JobSlipCard caseData={caseData} labName={brandingSettings.appName || 'DENTAL SOLUTIONS'} />
+              <JobSlipCard caseData={caseData} labName={brandingSettings.appName || 'DENTAL SOLUTIONS'} logoUrl={brandingSettings.logoUrl} />
             </div>
           ) : (
             <div

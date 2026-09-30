@@ -107,6 +107,14 @@
 }
 
 
+/* Global interface zoom (Settings → Preferences). Applied to <html> from
+   useSettingsDomain; print output must keep true sizes, so reset it here. */
+@media print {
+  html {
+    zoom: 1 !important;
+  }
+}
+
 @media print {
   @page {
     margin: 8mm;

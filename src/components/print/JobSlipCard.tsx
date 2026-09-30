@@ -31,9 +31,11 @@ interface JobSlipCardProps {
   caseData: DentalCase;
   /** Lab name for the letterhead line (from branding settings). */
   labName?: string;
+  /** Lab logo for the letterhead (from branding settings); omitted → none. */
+  logoUrl?: string;
 }
 
-export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName }) => {
+export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName, logoUrl }) => {
   const teeth = (c.selected_teeth || []).map((t) => `#${t}`).join(', ');
   const instructions = (c.instructions || '').trim();
   const band = slipBandFor(guessCategory(c.case_type_name));
@@ -46,6 +48,7 @@ export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName }
       <div className="job-slip-body">
       {/* Letterhead + QR — the only non-essential block, kept tiny */}
       <div className="js-head">
+        {logoUrl && <img src={logoUrl} alt="" className="js-logo" />}
         <div className="js-lab">{labName || 'DENTAL LAB'}</div>
         <div className="js-doc-title">JOB SLIP</div>
         <div className="js-qr">

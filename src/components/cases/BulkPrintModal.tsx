@@ -5,6 +5,15 @@ import { Printer, X, Landmark, Download, CheckCircle2 } from 'lucide-react';
 import { JobSlipCard } from '../print/JobSlipCard';
 import { chunkSlipsForA4 } from '../../lib/slipPagination';
 import { SavePdfButton } from '../print/SavePdfButton';
+import {
+  SLIP_PRINT_BODY_CLASS,
+  SLIP_PRINT_ROOT_CLASS,
+  PRINT_CONTAINER_SELECTOR,
+  BATCH_STANDALONE_CSS,
+  collectInlineStyles,
+  buildStandaloneHtml,
+  downloadStandaloneHtml,
+} from '../print/printPipeline';
 import '../print/jobSlipPrint.css';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 import { LabCardSlip } from './LabCardSlip';
@@ -12,10 +21,11 @@ import { LabCardSlip } from './LabCardSlip';
 /**
  * Screen-fit for A4 sheet previews: scale each 210mm-wide sheet to the
  * available modal width so the batch dialog never overflows a laptop
- * screen. Visual only — @media print strips the transform, so paper output
- * keeps exact physical millimetres.
+ * screen. 'fit' keeps the auto width fit; 0.75 / 1 are the operator's
+ * explicit zoom choices. Visual only — @media print strips the transform,
+ * so paper output keeps exact physical millimetres.
  */
-const useSheetFit = () => {
+const useSheetFit = (zoom: 'fit' | 0.75 | 1) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -24,7 +34,7 @@ const useSheetFit = () => {
     const fit = () => {
       const avail = wrap.clientWidth - 16;
       if (avail <= 0) return;
-      const scale = Math.min(1, avail / SHEET_PX);
+      const scale = zoom === 'fit' ? Math.min(1, avail / SHEET_PX) : zoom;
       wrap.querySelectorAll<HTMLElement>('.job-slip-mode-a4').forEach((el) => {
         if (scale < 1) {
           const page = el.querySelector<HTMLElement>('.job-slip-page');
@@ -43,7 +53,7 @@ const useSheetFit = () => {
     const ro = new ResizeObserver(fit);
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, []);
+  }, [zoom]);
   return wrapRef;
 };
 
@@ -62,47 +72,69 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
   const [printType, setPrintType] = useState<'slips' | 'invoices'>(initialPrintType);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [slipStyle] = useState<PrintSettings['jobSlipStyle']>(() => loadPrintSettings().jobSlipStyle);
-  const sheetWrapRef = useSheetFit();
+  // Preview zoom: 'fit' scales sheets to the modal width (default); 0.75 / 1
+  // are the operator's explicit choices for reading fine print on screen.
+  const [zoom, setZoom] = useState<'fit' | 0.75 | 1>('fit');
+  const sheetWrapRef = useSheetFit(zoom);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const handlePrint = (shouldSaveToSystem = true) => {
-    if (shouldSaveToSystem) {
-      if (printType === 'slips') {
-        selectedCases.forEach((c) => {
-          saveVoucherToSystem({
-            voucher_number: `SLIP-${c.case_number}`,
-            voucher_type: 'job_slip',
-            case_id: c.id,
-            case_number: c.case_number,
-            lab_name: c.lab_name,
-            doctor_name: c.doctor_name,
-            patient_name: c.patient_name || 'Batch Patient',
-            case_type_name: c.case_type_name,
-            notes: `Batch Workstation Card - FDI Teeth: ${c.selected_teeth.join(', ')}`
-          });
+  /**
+   * The ONE print entry point (footer button). Renders exactly the active
+   * preview tab on paper:
+   *  - compact slips → the dedicated slip pipeline (job-slip-printing
+   *    classes, A4 6-up sheets at exact physical millimetres);
+   *  - everything else (invoices, legacy full-page lab cards) → the generic
+   *    print-area pipeline (the modal itself is the .print-area, so what you
+   *    see — one document per sheet — is what prints). The slip isolation CSS
+   *    only reveals .job-slip-print-root nodes, which lab cards don't have,
+   *    so routing them through it would blank the paper.
+   *
+   * Vouchers are recorded for whichever tab is active, before printing.
+   */
+  const handlePrint = () => {
+    if (printType === 'slips') {
+      selectedCases.forEach((c) => {
+        saveVoucherToSystem({
+          voucher_number: `SLIP-${c.case_number}`,
+          voucher_type: 'job_slip',
+          case_id: c.id,
+          case_number: c.case_number,
+          lab_name: c.lab_name,
+          doctor_name: c.doctor_name,
+          patient_name: c.patient_name || 'Batch Patient',
+          case_type_name: c.case_type_name,
+          notes: `Batch Workstation Card - FDI Teeth: ${c.selected_teeth.join(', ')}`
         });
-      } else {
-        matchedInvoices.forEach((m) => {
-          if (m.invoice) {
-            saveVoucherToSystem({
-              voucher_number: m.invoice.invoice_number,
-              voucher_type: 'invoice',
-              case_id: m.invoice.case_id,
-              case_number: m.invoice.case_number,
-              lab_name: m.invoice.lab_name,
-              doctor_name: m.invoice.doctor_name,
-              case_type_name: m.invoice.case_type_name,
-              amount: m.invoice.final_amount,
-              notes: `Batch Printed Invoice - Net PKR ${(m.invoice.final_amount || 0).toLocaleString()}`
-            });
-          }
-        });
-      }
+      });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 4000);
+      if (slipStyle === 'compact') {
+        doSlipPrint();
+      } else {
+        setTimeout(() => window.print(), 60);
+      }
+    } else {
+      matchedInvoices.forEach((m) => {
+        if (m.invoice) {
+          saveVoucherToSystem({
+            voucher_number: m.invoice.invoice_number,
+            voucher_type: 'invoice',
+            case_id: m.invoice.case_id,
+            case_number: m.invoice.case_number,
+            lab_name: m.invoice.lab_name,
+            doctor_name: m.invoice.doctor_name,
+            case_type_name: m.invoice.case_type_name,
+            amount: m.invoice.final_amount,
+            notes: `Batch Printed Invoice - Net PKR ${(m.invoice.final_amount || 0).toLocaleString()}`
+          });
+        }
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 4000);
+      // The modal root is .print-area: printStyles.css reveals exactly the
+      // modal contents (invoices as previewed) and hides all app chrome.
+      setTimeout(() => window.print(), 60);
     }
-
-    doSlipPrint();
   };
 
   /**
@@ -117,15 +149,15 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
     const body = document.body;
     const root = rootRef.current;
     if (!root) return;
-    body.classList.add('job-slip-printing-on');
-    root.classList.add('job-slip-printing');
+    body.classList.add(SLIP_PRINT_BODY_CLASS);
+    root.classList.add(SLIP_PRINT_ROOT_CLASS);
     root.classList.remove('print-area', 'printable-area');
     setTimeout(() => {
       window.print();
       // Restore after the print dialog/PDF sink consumes the layout.
       setTimeout(() => {
-        body.classList.remove('job-slip-printing-on');
-        root.classList.remove('job-slip-printing');
+        body.classList.remove(SLIP_PRINT_BODY_CLASS);
+        root.classList.remove(SLIP_PRINT_ROOT_CLASS);
         root.classList.add('print-area', 'printable-area');
       }, 500);
     }, 60);
@@ -142,46 +174,13 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
   const handleSaveHtml = () => {
     const root = rootRef.current;
     if (!root) return;
-    const inlineStyles = Array.from(document.styleSheets)
-      .map((sheet) => {
-        try { return Array.from(sheet.cssRules).map((r) => r.cssText).join('\n'); }
-        catch { return ''; } // cross-origin sheet — skip
-      })
-      .filter(Boolean)
-      .join('\n');
     // Serialize the print container only (no modal chrome).
-    const container = root.querySelector('.space-y-8') || root;
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Job Slips ${new Date().toISOString().split('T')[0]}</title>
-  <style>
-    ${inlineStyles}
-  </style>
-  <style>
-    body { margin: 0; background: #ffffff; }
-    .no-print { display: none !important; }
-    @page { size: A4 portrait; margin: 0; }
-    body * { visibility: hidden !important; }
-    .job-slip-print-root, .job-slip-print-root * { visibility: visible !important; }
-    .job-slip-print-root { margin: 0 !important; }
-    .job-slip-mode-a4 { transform: none !important; height: auto !important; overflow: visible !important; margin: 0 !important; }
-  </style>
-</head>
-<body>
-  ${container.outerHTML}
-</body>
-</html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Job-Slip-Sheets_${new Date().toISOString().split('T')[0]}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const container = root.querySelector(PRINT_CONTAINER_SELECTOR) || root;
+    const html = buildStandaloneHtml(container.outerHTML, {
+      title: `Job Slips ${new Date().toISOString().split('T')[0]}`,
+      extraCss: BATCH_STANDALONE_CSS,
+    });
+    downloadStandaloneHtml(html, `Job-Slip-Sheets_${new Date().toISOString().split('T')[0]}.html`);
   };
 
   // Map selected cases to corresponding invoices if available
@@ -192,7 +191,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print-backdrop">
-      <div ref={rootRef} className="bg-white rounded-3xl max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area print-area">
+      <div ref={rootRef} className="bg-white rounded-3xl max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area print-area flex flex-col max-h-[calc(100vh-2rem)] batch-panel">
         {/* Header Controls (hidden when printing) */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
@@ -253,13 +252,6 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
               />
               <button
                 type="button"
-                onClick={() => handlePrint()}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <Printer className="w-4 h-4" /> Print {selectedCases.length} Job Slip{selectedCases.length === 1 ? '' : 's'}
-              </button>
-              <button
-                type="button"
                 onClick={onClose}
                 className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
@@ -269,8 +261,30 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
           </div>
         </div>
 
-        {/* PRINTABLE BATCH CONTAINER */}
-        <div className="space-y-8" ref={sheetWrapRef}>
+        {/* Preview zoom — operator-controlled sheet size on screen. Hidden
+            for the legacy full-page lab-card style (not an A4 sheet grid). */}
+        {printType === 'slips' && slipStyle === 'compact' && (
+          <div className="flex items-center gap-1.5 no-print self-start bg-slate-100 p-1 rounded-xl" role="group" aria-label="Preview zoom">
+            {([['fit', 'Fit'], [0.75, '75%'], [1, '100%']] as const).map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setZoom(value)}
+                className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  zoom === value ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title={value === 'fit' ? 'Scale sheets to fit the window' : `Zoom preview to ${label} of true size`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* PRINTABLE BATCH CONTAINER — the only scrolling region: header and
+            footer stay visible no matter how many sheets are batched. */}
+        <div className="space-y-8 overflow-y-auto min-h-0 flex-1 pr-1 batch-scroll-area">
+          <div ref={sheetWrapRef} className={`batch-zoom-wrap ${zoom !== 'fit' ? 'w-max mx-auto' : ''}`}>
           {printType === 'slips' && slipStyle === 'compact' ? (
             /* MODE B — A4 6-UP BATCH: six 100 × 95 mm compact tags per sheet,
                2 columns × 3 rows, selection order preserved, automatic
@@ -285,6 +299,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                       key={caseData.id}
                       caseData={caseData}
                       labName={brandingSettings.appName || 'DENTAL SOLUTIONS'}
+                      logoUrl={brandingSettings.logoUrl}
                     />
                   ))}
                 </div>
@@ -418,6 +433,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
               );
             })
           )}
+          </div>
         </div>
 
         {/* Modal Footer (Hidden on print) */}

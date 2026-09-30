@@ -182,7 +182,9 @@ export function installAutoPersistence(engine: SqliteEngine): void {
     window.addEventListener('beforeunload', () => {
       if (dirty) {
         try {
-          // Desktop: fire-and-forget is not safe on quit; save synchronously.
+          // Best-effort fallback only: this async save races webview teardown.
+          // The reliable path is the onCloseRequested interception below, which
+          // awaits the flush BEFORE the window is allowed to close.
           const engineNow = getDatabase();
           const bytes = engineNow.export();
           engineNow.run('PRAGMA foreign_keys = ON;'); // export() resets it — see saveSnapshot
@@ -200,6 +202,39 @@ export function installAutoPersistence(engine: SqliteEngine): void {
         void flushNow();
       }
     });
+    // Periodic checkpoint: cap the at-risk window at 5 s even when the user
+    // never triggers the visibility/close paths (crash, power loss). Cheap:
+    // no-op when not dirty; flushNow clears any pending debounce first.
+    setInterval(() => {
+      if (dirty) void flushNow();
+    }, 5000);
+    // Desktop quit path: intercept window close (X button, WindowControls,
+    // Alt+F4) and finish the debounced SQLite write FIRST, then close. The
+    // plain beforeunload handler cannot do this — its fire-and-forget IPC
+    // save is killed mid-flight by webview teardown, losing the newest
+    // writes (the 'my data did not save' class of reports).
+    if (isDesktop()) {
+      void (async () => {
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const win = getCurrentWindow();
+          await win.onCloseRequested(async (event) => {
+            if (!dirty) return; // nothing pending — close proceeds normally
+            event.preventDefault();
+            try {
+              // Bound the wait: a hung IPC must never make the app
+              // unclosable. 3 s covers the largest realistic snapshot.
+              await Promise.race([
+                flushNow(),
+                new Promise((r) => setTimeout(r, 3000)),
+              ]);
+            } catch { /* still close — an unclosable app is worse than a
+                          bounded loss, and periodic flushes cap it */ }
+            win.destroy();
+          });
+        } catch { /* not a Tauri context — beforeunload fallback applies */ }
+      })();
+    }
   }
 }
 

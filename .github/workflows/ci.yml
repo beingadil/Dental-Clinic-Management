@@ -64,6 +64,14 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # Update-chain smoke test: stage-receipt payload shape + diagnostics
+      # magic filter. The missing-receipt incident (2026-09-30) produced a
+      # false "close the app to install" banner; these tests fail the build
+      # if the receipt contract drifts.
+      - name: Rust tests (src-tauri)
+        working-directory: src-tauri
+        run: cargo test --lib
+
       - name: Build Tauri installers (NSIS + MSI)
         run: npm run tauri:build
 

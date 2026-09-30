@@ -67,7 +67,7 @@ export const UpdatesTab: React.FC = () => {
 
       {/* Stuck-install diagnosis — the receipt tells the truth about what the
           updater staged vs what is actually running. */}
-      {diag && diag.receipt_status === 'pending' && diag.receipt && (
+      {diag && diag.receipt_status === 'pending' && diag.receipt && diag.staged_installer_present && (
         <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2">
           <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
           <div>
@@ -77,6 +77,19 @@ export const UpdatesTab: React.FC = () => {
               {diag.receipt.staged_at ? ` at ${diag.receipt.staged_at}` : ''} and verified
               ({diag.receipt.checksum?.slice(0, 19)}…), but this app is still running
               v{diag.running_version}. Close the app — the staged installer finishes on exit and relaunches the new version automatically. If the banner persists after relaunch, run the installer manually from the Releases page.
+            </p>
+          </div>
+        </div>
+      )}
+      {diag && diag.receipt_status === 'pending' && diag.receipt && !diag.staged_installer_present && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2">
+          <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+          <div>
+            <p className="font-bold">Update was interrupted</p>
+            <p className="text-[11px] text-rose-800 mt-0.5">
+              v{diag.receipt.version} was downloaded and verified, but its installer is no longer on disk —
+              closing this app will NOT complete the update. Download it again from the Releases page
+              (or press Check &amp; Install Now) and run the installer manually if needed.
             </p>
           </div>
         </div>

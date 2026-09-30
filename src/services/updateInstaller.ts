@@ -80,6 +80,9 @@ function setLastUpdateCheck(version: string, state: string): void {
 export interface UpdateDiagnostics {
   running_version: string;
   receipt_status: 'none' | 'settled' | 'pending';
+  /** True when the staged installer file itself still exists on disk —
+      a pending receipt without it can NEVER complete on app exit. */
+  staged_installer_present?: boolean;
   receipt: {
     magic: string;
     version: string;
@@ -107,6 +110,9 @@ export async function reconcileInstallReceipt(): Promise<UpdateDiagnostics | nul
   try {
     const api = tauri()!;
     const diag = (await api.invoke('update_diagnostics')) as UpdateDiagnostics;
+    // A 'pending' receipt whose staged installer file is gone cannot ever
+    // complete on app exit — the UI renders that state as an interrupted-
+    // update diagnosis (see UpdatesTab), not as a 'close the app' nag.
     if (diag.receipt_status === 'pending' && diag.receipt) {
       recordUpdateHistory({
         version: diag.receipt.version,

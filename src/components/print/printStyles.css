@@ -96,6 +96,30 @@
   @page {
     margin: 12mm;
   }
+
+  /* Batch modal (BulkPrintModal) scaffolding: the height cap and inner
+     scroller are screen-only affordances — on paper they would clip or
+     truncate everything past the first viewport. Sheets flow naturally.
+     (The slip pipeline has body-scoped twins in jobSlipPrint.css.) */
+  .batch-panel {
+    max-height: none !important;
+  }
+  .batch-scroll-area {
+    overflow: visible !important;
+    flex: none !important;
+    min-height: 0 !important;
+  }
+  .batch-zoom-wrap {
+    width: auto !important;
+  }
+
+  /* One document per sheet: lab cards and invoices are separated in the
+     preview by 2rem gaps; the marker class turns those gaps into real page
+     breaks (all but the last item carry it — no trailing blank page). */
+  .page-break {
+    break-after: page;
+    page-break-after: always;
+  }
 }
 
 /* =========================================================================
