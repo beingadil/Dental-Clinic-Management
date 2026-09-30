@@ -73,6 +73,22 @@ async function main() {
     labName: 'Clinic One', actor: 'Cashier', paymentId: 'p4',
   });
   assert.strictEqual(afterSplit.paymentNumber, `PAY-${YEAR}-0002`, 'next payment must not re-mint the split base');
+
+  // Exact production case: 110,000 received, 101,000 allocated to one invoice,
+  // 9,000 kept as clinic advance.
+  const prod = prepareTransaction({
+    command: { clinicId: 'lab-1', method: 'cash', date: '2026-10-01', amount: 110000, allocations: [{ invoiceId: 'inv-1', amount: 101000 }], saveRemainingAsAdvance: true },
+    invoices: [inv({ amount: 101000, final_amount: 101000, due_date: '2026-10-05' }), inv({ id: 'inv-2', invoice_number: 'INV-0002' })],
+    existingPaymentNumbers: ['PAY-2026-0007'],
+    existingAdvanceNumbers: ['ADV-2026-0003'],
+    existingReceiptNumbers: ['REC-2026-0009', 'REC-2026-0010'],
+    labName: 'Clinic One', actor: 'Cashier', paymentId: 'p-prod',
+  });
+  assert.strictEqual(prod.paymentNumber, `PAY-${YEAR}-0008`);
+  assert.strictEqual(prod.invoiceSlices[0].payment.payment_number, `PAY-${YEAR}-0008`);
+  assert.strictEqual(prod.remainderAdvance.payment_number, 'ADV-2026-0004');
+  assert.strictEqual(prod.receiptNumber, 'REC-2026-0011');
+  console.log('ok  production case (110000 pay, 101000 allocated, 9000 advance):', prod.paymentNumber, '+', prod.remainderAdvance.payment_number);
   console.log('ok  remainder advance + legacy generator:', rem.remainderAdvance.payment_number);
 
   // ── 2. syncCore healing: duplicate numbers must persist, not abort ──
