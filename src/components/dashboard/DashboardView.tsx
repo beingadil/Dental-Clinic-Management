@@ -102,7 +102,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
       .map((c) => ({
         id: c.id,
         dueLabel: (c.delivery_date || '').slice(5).replace('-', '/'),
-        patient: c.patient_name || 'Unnamed patient',
+        patient: c.patient_name || `${c.case_type_name || 'Case'} — ${c.lab_name || 'clinic'}`,
         detail: `${c.case_type_name || 'Case'}${c.selected_teeth?.length ? ` • Tooth #${c.selected_teeth.join(', #')}` : ''}`,
         status: c.status,
       })),

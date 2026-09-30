@@ -160,7 +160,7 @@ export const AnalyticsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -266,14 +266,14 @@ export const AnalyticsView: React.FC = () => {
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Monthly Revenue Trend */}
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Monthly Revenue & Collection Trend (PKR)</h3>
             <p className="text-xs text-slate-500">Billed gross revenue vs cash collected</p>
           </div>
-          <div className="h-64">
+          <div className="h-48">
             {monthlyRevenueData.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center">
                 <BarChart3 className="w-8 h-8 text-slate-200 mb-2" />
@@ -296,12 +296,12 @@ export const AnalyticsView: React.FC = () => {
         </div>
 
         {/* Revenue by Dental Clinic */}
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Revenue Breakdown by Dental Clinic</h3>
             <p className="text-xs text-slate-500">Gross billing performance across client dental clinics</p>
           </div>
-          <div className="h-64">
+          <div className="h-48">
             {revenueByLabData.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center">
                 <BarChart3 className="w-8 h-8 text-slate-200 mb-2" />
@@ -322,12 +322,12 @@ export const AnalyticsView: React.FC = () => {
         </div>
 
         {/* Material Type Distribution — SQL restoration revenue */}
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Case Material Popularity & Revenue</h3>
             <p className="text-xs text-slate-500">Revenue by restoration material (charted teeth × invoices)</p>
           </div>
-          <div className="h-64 flex items-center justify-center">
+          <div className="h-48 flex items-center justify-center">
             {revenueByMaterialData.length === 0 ? (
               <p className="text-xs text-slate-400 text-center">No charted case materials yet.</p>
             ) : (
@@ -355,12 +355,12 @@ export const AnalyticsView: React.FC = () => {
         </div>
 
         {/* Payment Status Breakdown Pie */}
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Invoice Payment Status Distribution</h3>
             <p className="text-xs text-slate-500">Proportion of paid, partial, and unpaid invoices</p>
           </div>
-          <div className="h-64 flex items-center justify-center">
+          <div className="h-48 flex items-center justify-center">
             {paymentStatusPieData.length === 0 ? (
               <p className="text-xs text-slate-400 text-center">No invoices in this period.</p>
             ) : (
@@ -388,8 +388,10 @@ export const AnalyticsView: React.FC = () => {
       </div>
 
       {/* Turnaround by Priority — computed from case status history in SQLite */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
-        <h3 className="text-sm font-bold text-slate-900">Turnaround by Priority (delivered in period)</h3>
+      {/* Analytics Tables — side-by-side on wide screens */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs">
+          <h3 className="text-sm font-bold text-slate-900">Turnaround by Priority (delivered in period)</h3>
         <p className="text-xs text-slate-500 mt-0.5">Average days from case creation to delivery, and on-time rate against each priority's SLA.</p>
         <div className="overflow-x-auto mt-3 scrollbar-thin">
           <table className="w-full text-left text-xs">
@@ -418,10 +420,10 @@ export const AnalyticsView: React.FC = () => {
             </tbody>
           </table>
         </div>
-      </div>
+        </div>
 
-      {/* Payment Behavior per Clinic — computed from invoices + payments in SQLite */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
+        {/* Payment Behavior per Clinic — computed from invoices + payments in SQLite */}
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs">
         <h3 className="text-sm font-bold text-slate-900">Payment Behavior by Dental Clinic</h3>
         <p className="text-xs text-slate-500 mt-0.5">Billed vs collected (by invoice date), outstanding balance, average days-to-pay, and advance credit held.</p>
         <div className="overflow-x-auto mt-3 scrollbar-thin">
@@ -454,6 +456,7 @@ export const AnalyticsView: React.FC = () => {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       </div>
     </div>

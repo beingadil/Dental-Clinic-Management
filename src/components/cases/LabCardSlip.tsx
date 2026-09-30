@@ -119,10 +119,18 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
           </div>
 
           <div className="flex items-baseline gap-2">
-            <span className="font-extrabold text-slate-900 min-w-[75px]">Clinic / Pt:</span>
+            <span className="font-extrabold text-slate-900 min-w-[75px]">Clinic:</span>
             <div className="flex-1 border-b-2 border-slate-300 font-extrabold text-base text-indigo-900 print:text-black px-2 py-0.5 bg-slate-50/50 print:bg-transparent">
               {caseData.lab_name}
             </div>
+          </div>
+        </div>
+
+        {/* Patient Name — always printed so the lab can verify unit ownership */}
+        <div className="flex items-baseline gap-2">
+          <span className="font-extrabold text-slate-900 min-w-[75px]">Patient:</span>
+          <div className="flex-1 border-b-2 border-slate-300 font-extrabold text-base text-slate-900 px-2 py-0.5 bg-slate-50/50 print:bg-transparent">
+            {caseData.patient_name || '—'}
           </div>
         </div>
 

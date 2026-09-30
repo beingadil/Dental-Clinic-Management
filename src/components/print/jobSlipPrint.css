@@ -1,0 +1,328 @@
+/* =========================================================================
+   Compact Job Slip print system — physical mm geometry, isolated from the
+   generic print wrappers (printStyles.css / index.css @page rules).
+
+   Two modes, ONE slip component (JobSlipCard.tsx):
+
+   MODE A — single slip  → paper target 100 × 95 mm (A4 fallback keeps the
+                           slip at exactly 100 × 95 mm, never scaled)
+   MODE B — A4 batch     → 210 × 297 mm portrait, 2 cols × 3 rows,
+                           six 100 × 95 mm slips per sheet
+
+   A4 geometry (exact):
+     slips 200 mm wide  → 5 mm left + 5 mm right margins
+     slips 285 mm tall  → 6 mm top + 6 mm bottom margins
+     col x: 5 / 105 mm   row y: 6 / 101 / 196 mm
+   ========================================================================= */
+
+/* ---------- Shared slip card: fixed 100 × 95 mm physical cutting area ---- */
+
+.job-slip-card {
+  box-sizing: border-box;
+  width: 100mm;
+  height: 95mm;
+  border: 0.3mm solid #000;           /* the cutting boundary */
+  background: #fff;
+  color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  overflow: hidden;                   /* never bleed past the cut line */
+  text-align: left;
+}
+
+/* Category band — 3mm edge strip along the left cut line. Hue + luminance
+   pairing keeps groups distinguishable in grayscale. Runs the full height
+   so it stays visible after cutting, whatever the content height. */
+.js-band {
+  flex: 0 0 3mm;
+  align-self: stretch;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.job-slip-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6mm;
+  padding: 4mm;                       /* content safe area ≈ 92 × 87 mm */
+}
+
+/* Letterhead row: tiny lab name + doc title, QR on the right */
+.js-head {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  border-bottom: 0.3mm solid #000;
+  padding-bottom: 1.2mm;
+}
+.js-lab {
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.2mm;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.js-doc-title {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.5mm;
+  border: 0.3mm solid #000;
+  padding: 0.4mm 1.2mm;
+  white-space: nowrap;
+}
+.js-qr {
+  margin-left: auto;
+  line-height: 0;
+}
+.js-qr svg {
+  /* qrcode.react hardcodes width/height ATTRIBUTES on the svg element —
+     attribute size beats plain CSS, so force the compact 11mm tag size. */
+  width: 11mm !important;
+  height: 11mm !important;
+}
+
+/* Case ID — the hero. Instantly visible in a pile of job bags. */
+.js-id {
+  font-size: 17pt;
+  font-weight: 800;
+  letter-spacing: 0.4mm;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Identity grid: label column + wrapping value column */
+.js-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9mm;
+  min-height: 0;
+}
+.js-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1.6mm;
+  line-height: 1.15;
+}
+.js-k {
+  flex: 0 0 16mm;
+  font-size: 6.8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15mm;
+  color: #333;
+}
+.js-v {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 8.5pt;
+  font-weight: 600;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.js-mono {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+}
+.js-strong {
+  font-weight: 800;
+}
+
+/* Due band — second-most-visible line after the case ID */
+.js-due {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+  border: 0.3mm solid #000;
+  padding: 0.9mm 1.6mm;
+  margin-top: auto;                   /* pinned to the bottom block */
+}
+.js-due-k {
+  font-size: 6.8pt;
+  font-weight: 800;
+  letter-spacing: 0.4mm;
+}
+.js-due-v {
+  font-size: 10.5pt;
+  font-weight: 800;
+  font-family: 'Courier New', monospace;
+}
+.js-due-t {
+  margin-left: auto;
+  font-size: 7.5pt;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+}
+
+/* Workstation notes — wrap inside the remaining space, never overlap */
+.js-notes {
+  font-size: 6.8pt;
+  line-height: 1.25;
+  border-top: 0.2mm dotted #555;
+  padding-top: 0.9mm;
+  max-height: 14mm;
+  overflow: hidden;                   /* controlled truncation, layout safe */
+  overflow-wrap: break-word;
+}
+.js-notes-k {
+  font-weight: 800;
+  letter-spacing: 0.2mm;
+}
+
+/* =========================================================================
+   MODE A — SINGLE SLIP
+   Requested paper: exactly 100 × 95 mm via @page. Browsers/printers that
+   accept custom media print a native 100 × 95 mm sheet. Ones that don't
+   fall back (A4 etc.) — the slip itself stays 100 × 95 mm regardless;
+   we never scale, zoom, or stretch. The .job-slip-print-root is the
+   visibility-isolation target so no app chrome reaches paper.
+   ========================================================================= */
+
+@media print {
+  /* Slip isolation — scoped to slip printing so it can never blanket-hide
+     invoice/report surfaces: the batch root temporarily carries the class
+     .job-slip-printing (and <body> .job-slip-printing-on) during
+     window.print() and Save-PDF. */
+  body.job-slip-printing-on * {
+    visibility: hidden !important;
+  }
+  body.job-slip-printing-on .job-slip-print-root,
+  body.job-slip-printing-on .job-slip-print-root * {
+    visibility: visible !important;
+  }
+
+  /* Screen-fit preview transforms must never reach paper. !important
+     beats the inline styles the ResizeObserver fit hook sets. */
+  body.job-slip-printing-on .job-slip-mode-a4 {
+    transform: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;   /* space-y gaps would cause blank pages */
+  }
+  body.job-slip-printing-on .job-slip-preview {
+    transform: none !important;
+  }
+
+  body.job-slip-printing-on .job-slip-print-root {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* The batch modal root must NOT act as a generic .print-area during slip
+     printing (that rule absolute-positions it, collapsing sheet flow and
+     blanking pages 2+). Scope it out while slip printing is active. */
+  body.job-slip-printing-on .job-slip-printing.print-area {
+    position: static !important;
+    width: auto !important;
+  }
+}
+
+/* Single mode: fixed-size paper request + top-left slip placement.
+   The single-slip root doubles as the page (one slip = one page). */
+.job-slip-page {
+  width: 100mm;
+  height: 95mm;
+}
+
+
+
+@page job-slip-single {
+  size: 100mm 95mm;
+  margin: 0;
+}
+
+/* Fallback page (printer refused custom size): A4, ONE slip, top-left,
+   at the same physical 100 × 95 mm. Never enlarged. */
+@page job-slip-a4-fallback {
+  size: A4 portrait;
+  margin: 6mm;
+}
+
+/* =========================================================================
+   MODE B — A4 BATCH: 210 × 297 mm portrait, 2 × 3 grid of slips
+   ========================================================================= */
+
+.job-slip-mode-a4 .job-slip-page {
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  padding: 6mm 5mm;                   /* exact A4 margins from the spec */
+  display: grid;
+  grid-template-columns: 100mm 100mm;
+  grid-auto-rows: 95mm;
+  gap: 0;                             /* no gaps: rows at y = 6/101/196mm,
+                                         cols at x = 5/105mm exactly */
+  align-content: start;
+  background: #fff;
+  page-break-after: always;
+  break-after: page;
+}
+.job-slip-mode-a4 .job-slip-page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* A slip can never straddle two pages */
+.job-slip-card {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+@media screen {
+  /* Screen preview: pages stacked, subtle shadow only — geometry identical */
+  .job-slip-mode-a4 .job-slip-page {
+    margin: 0 auto 24px;
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.18);
+    outline: 1px solid #e2e8f0;
+  }
+  .job-slip-mode-single .job-slip-page {
+    margin: 0 auto;
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.18);
+    outline: 1px solid #e2e8f0;
+    background: #fff;
+  }
+
+  /* Batch preview fit is computed in JS (ResizeObserver) because CSS scale()
+     needs a unitless number and viewport math yields a length. The inline
+     transform is applied to .job-slip-mode-a4 wrappers only. */
+  .job-slip-sheet-fit {
+    display: flex;
+    justify-content: center;
+    max-width: 100%;
+    overflow: hidden;
+  }
+}
+
+@media print {
+  .job-slip-mode-a4 .job-slip-page {
+    box-shadow: none !important;
+    outline: none !important;
+    margin: 0 !important;
+  }
+}
+
+/* Custom page size request (named pages, Chromium/WebView2 ≥ 85): the
+   printer accepts 100 × 95 mm natively when supported; otherwise it falls
+   back to its default paper and the slip STILL renders at 100 × 95 mm —
+   never scaled. Batch pages always request A4. */
+.job-slip-print-root {
+  page: job-slip-single;
+}
+.job-slip-mode-a4 .job-slip-page {
+  page: job-slip-a4;
+}
+
+/* Batch A4 page rule — plain @page (named pages are unreliable in
+   PrintToPdfStream): the batch modal root carries .job-slip-printing and
+   <body> gets .job-slip-printing-on during print/Save-PDF, so this is the
+   ONLY active page rule then. printStyles.css keeps its 8mm fallback for
+   every other surface (slip printing never coexists with them). */
+body.job-slip-printing-on {
+  page: job-slip-a4;
+}

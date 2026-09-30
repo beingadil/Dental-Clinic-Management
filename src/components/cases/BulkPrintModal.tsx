@@ -1,9 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DentalCase, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, Landmark, Download, CheckCircle2 } from 'lucide-react';
-import { LabCardSlip } from './LabCardSlip';
+import { JobSlipCard } from '../print/JobSlipCard';
+import { chunkSlipsForA4 } from '../../lib/slipPagination';
 import { SavePdfButton } from '../print/SavePdfButton';
+import '../print/jobSlipPrint.css';
+import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
+import { LabCardSlip } from './LabCardSlip';
+
+/**
+ * Screen-fit for A4 sheet previews: scale each 210mm-wide sheet to the
+ * available modal width so the batch dialog never overflows a laptop
+ * screen. Visual only — @media print strips the transform, so paper output
+ * keeps exact physical millimetres.
+ */
+const useSheetFit = () => {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const SHEET_PX = 794; // 210mm at 96dpi
+    const fit = () => {
+      const avail = wrap.clientWidth - 16;
+      if (avail <= 0) return;
+      const scale = Math.min(1, avail / SHEET_PX);
+      wrap.querySelectorAll<HTMLElement>('.job-slip-mode-a4').forEach((el) => {
+        if (scale < 1) {
+          const page = el.querySelector<HTMLElement>('.job-slip-page');
+          el.style.transform = `scale(${scale})`;
+          el.style.transformOrigin = 'top center';
+          el.style.height = page ? `${page.offsetHeight * scale}px` : '';
+          el.style.overflow = 'hidden';
+        } else {
+          el.style.transform = '';
+          el.style.height = '';
+          el.style.overflow = '';
+        }
+      });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, []);
+  return wrapRef;
+};
 
 interface BulkPrintModalProps {
   selectedCases: DentalCase[];
@@ -19,6 +61,9 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
   const { invoices, saveVoucherToSystem, brandingSettings } = useApp();
   const [printType, setPrintType] = useState<'slips' | 'invoices'>(initialPrintType);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [slipStyle] = useState<PrintSettings['jobSlipStyle']>(() => loadPrintSettings().jobSlipStyle);
+  const sheetWrapRef = useSheetFit();
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = (shouldSaveToSystem = true) => {
     if (shouldSaveToSystem) {
@@ -57,9 +102,86 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
       setTimeout(() => setSavedSuccess(false), 4000);
     }
 
+    doSlipPrint();
+  };
+
+  /**
+   * Slip print/Save-PDF pipeline. Root cause fixed here: the batch modal
+   * root used to act as a generic `.print-area`, whose absolute-position
+   * print rule collapsed all A4 sheets onto page 1 — every page after the
+   * first printed blank. During slip printing we swap in the dedicated
+   * `job-slip-printing` classes so the sheets flow naturally with
+   * break-after: page, and the @page A4 margin-0 rule wins.
+   */
+  const doSlipPrint = () => {
+    const body = document.body;
+    const root = rootRef.current;
+    if (!root) return;
+    body.classList.add('job-slip-printing-on');
+    root.classList.add('job-slip-printing');
+    root.classList.remove('print-area', 'printable-area');
     setTimeout(() => {
       window.print();
-    }, 100);
+      // Restore after the print dialog/PDF sink consumes the layout.
+      setTimeout(() => {
+        body.classList.remove('job-slip-printing-on');
+        root.classList.remove('job-slip-printing');
+        root.classList.add('print-area', 'printable-area');
+      }, 500);
+    }, 60);
+  };
+
+  /**
+   * Save-to-file that works everywhere (web AND desktop): serializes the
+   * exact batch DOM + all app CSS into one standalone HTML file. Opening it
+   * in a browser or printing it to PDF (Microsoft Print to PDF) reproduces
+   * the sheets 1:1 — unlike a bare DOM dump, styles survive because they
+   * are inlined from document.styleSheets rather than relative <link>s
+   * that 404 outside the app.
+   */
+  const handleSaveHtml = () => {
+    const root = rootRef.current;
+    if (!root) return;
+    const inlineStyles = Array.from(document.styleSheets)
+      .map((sheet) => {
+        try { return Array.from(sheet.cssRules).map((r) => r.cssText).join('\n'); }
+        catch { return ''; } // cross-origin sheet — skip
+      })
+      .filter(Boolean)
+      .join('\n');
+    // Serialize the print container only (no modal chrome).
+    const container = root.querySelector('.space-y-8') || root;
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Job Slips ${new Date().toISOString().split('T')[0]}</title>
+  <style>
+    ${inlineStyles}
+  </style>
+  <style>
+    body { margin: 0; background: #ffffff; }
+    .no-print { display: none !important; }
+    @page { size: A4 portrait; margin: 0; }
+    body * { visibility: hidden !important; }
+    .job-slip-print-root, .job-slip-print-root * { visibility: visible !important; }
+    .job-slip-print-root { margin: 0 !important; }
+    .job-slip-mode-a4 { transform: none !important; height: auto !important; overflow: visible !important; margin: 0 !important; }
+  </style>
+</head>
+<body>
+  ${container.outerHTML}
+</body>
+</html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Job-Slip-Sheets_${new Date().toISOString().split('T')[0]}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Map selected cases to corresponding invoices if available
@@ -70,7 +192,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print-backdrop">
-      <div className="bg-white rounded-3xl max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area print-area">
+      <div ref={rootRef} className="bg-white rounded-3xl max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area print-area">
         {/* Header Controls (hidden when printing) */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
@@ -99,7 +221,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Lab Cards ({selectedCases.length})
+                {slipStyle === 'compact' ? `Slip Sheets (${Math.max(1, Math.ceil(selectedCases.length / 6))})` : `Lab Cards (${selectedCases.length})`}
               </button>
               <button
                 type="button"
@@ -115,8 +237,18 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {printType === 'slips' && (
+                <button
+                  type="button"
+                  onClick={handleSaveHtml}
+                  className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+                  title="Save the slip sheets as a self-contained HTML file — open it anywhere and print/save as PDF with identical layout"
+                >
+                  <Download className="w-4 h-4" /> Save to File
+                </button>
+              )}
               <SavePdfButton
-                suggestedName={`${printType === 'slips' ? 'Lab-Cards' : 'Case-Invoices'}_${new Date().toISOString().split('T')[0]}.pdf`}
+                suggestedName={`${printType === 'slips' ? 'Job-Slip-Sheets' : 'Case-Invoices'}_${new Date().toISOString().split('T')[0]}.pdf`}
                 className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition-all cursor-pointer"
               />
               <button
@@ -124,7 +256,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                 onClick={() => handlePrint()}
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
               >
-                <Printer className="w-4 h-4" /> Print All ({selectedCases.length})
+                <Printer className="w-4 h-4" /> Print {selectedCases.length} Job Slip{selectedCases.length === 1 ? '' : 's'}
               </button>
               <button
                 type="button"
@@ -138,9 +270,28 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
         </div>
 
         {/* PRINTABLE BATCH CONTAINER */}
-        <div className="space-y-8">
-          {printType === 'slips' ? (
-            /* PRINTING JOB SLIPS / LAB CARDS */
+        <div className="space-y-8" ref={sheetWrapRef}>
+          {printType === 'slips' && slipStyle === 'compact' ? (
+            /* MODE B — A4 6-UP BATCH: six 100 × 95 mm compact tags per sheet,
+               2 columns × 3 rows, selection order preserved, automatic
+               pagination (6/page). Same JobSlipCard as the single print.
+               Screen preview scales each A4 sheet to fit the modal —
+               print output keeps exact physical mm. */
+            chunkSlipsForA4(selectedCases).map((pageCases, pageIdx) => (
+              <div key={`sheet-${pageIdx}`} className="job-slip-mode-a4 job-slip-sheet-fit">
+                <div className="job-slip-print-root job-slip-page">
+                  {pageCases.map((caseData) => (
+                    <JobSlipCard
+                      key={caseData.id}
+                      caseData={caseData}
+                      labName={brandingSettings.appName || 'DENTAL SOLUTIONS'}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : printType === 'slips' ? (
+            /* Full-page lab cards — one per page (legacy full style) */
             selectedCases.map((caseData, index) => (
               <div
                 key={caseData.id}

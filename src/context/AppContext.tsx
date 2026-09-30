@@ -1025,7 +1025,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (inv.case_id !== id) return inv;
           const newAmount = updates.price ?? inv.amount;
           const newDiscount = updates.discount ?? inv.discount;
-          const newFinal = updates.final_price ?? (newAmount - newDiscount);
+          // Clamp at zero: a discount larger than the price used to produce a
+          // negative final_amount and the CHECK (final_amount >= 0) constraint
+          // failed the whole SQLite sync.
+          const newFinal = Math.max(0, updates.final_price ?? (newAmount - newDiscount));
           const newStatus = inv.amount_paid >= newFinal ? 'paid' : (inv.amount_paid > 0 ? 'partial' : 'unpaid');
           return {
             ...inv,
@@ -1415,13 +1418,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newJournals: JournalEntry[] = [];
     const newAudits: AuditEvent[] = [];
 
+    // Unique payment number PER invoice: generatePaymentNumber() reads the
+    // stale pre-update state, so calling it inside the map handed every
+    // invoice in the batch the same PAY- number and the payments.payment_number
+    // UNIQUE constraint aborted the whole SQLite sync transaction.
+    const basePayNum = generatePaymentNumber();
+    const payNumFor = (invId: string) =>
+      invoiceIds.length > 1 ? `${basePayNum}-${invoiceIds.indexOf(invId) + 1}` : basePayNum;
+
     setInvoices((prev) =>
       prev.map((inv) => {
         if (!invoiceIds.includes(inv.id)) return inv;
         const remaining = inv.final_amount - inv.amount_paid;
         if (remaining <= 0) return inv;
 
-        const payNum = generatePaymentNumber();
+        const payNum = payNumFor(inv.id);
         const newPayment: PaymentRecord = {
           id: `pay-${Date.now()}-${inv.id}`,
           payment_number: payNum,

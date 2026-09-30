@@ -599,7 +599,7 @@ export const BillingView: React.FC = () => {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50/80 border-b border-slate-200/80 font-bold uppercase text-[10px] text-slate-500 tracking-wider">
-                      <th className="py-3 px-4 w-10">
+                      <th className="py-2 px-3 w-10">
                         <button onClick={toggleSelectAll} className="p-1 text-slate-500 cursor-pointer">
                           {selectedIds.length === filteredInvoices.length && filteredInvoices.length > 0 ? (
                             <CheckSquare className="w-4 h-4 text-indigo-600" />
@@ -608,17 +608,17 @@ export const BillingView: React.FC = () => {
                           )}
                         </button>
                       </th>
-                      <th className="py-3 px-4">Invoice #</th>
-                      <th className="py-3 px-3">Case #</th>
-                      <th className="py-3 px-3">Dental Clinic</th>
-                      <th className="py-3 px-3">Case Material</th>
-                      <th className="py-3 px-3">Doctor</th>
-                      <th className="py-3 px-3 text-right">Final Amount</th>
-                      <th className="py-3 px-3 text-right">Paid</th>
-                      <th className="py-3 px-3 text-right">Remaining Due</th>
-                      <th className="py-3 px-3 text-center">Due Date & Terms</th>
-                      <th className="py-3 px-3 text-center">Payment Status</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
+                      <th className="py-2 px-3">Invoice #</th>
+                      <th className="py-2 px-3">Case #</th>
+                      <th className="py-2 px-3">Dental Clinic</th>
+                      <th className="py-2 px-3">Case Material</th>
+                      <th className="py-2 px-3">Doctor</th>
+                      <th className="py-2 px-3 text-right">Final Amount</th>
+                      <th className="py-2 px-3 text-right">Paid</th>
+                      <th className="py-2 px-3 text-right">Remaining Due</th>
+                      <th className="py-2 px-3 text-center">Due Date & Terms</th>
+                      <th className="py-2 px-3 text-center">Payment Status</th>
+                      <th className="py-2 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -645,7 +645,7 @@ export const BillingView: React.FC = () => {
                           key={inv.id} 
                           className={`hover:bg-slate-50/80 transition-colors ${rowStatusClass} ${isSelected ? 'bg-indigo-50/40' : ''}`}
                         >
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-3">
                             <button onClick={() => toggleSelect(inv.id)} className="p-1 cursor-pointer">
                               {isSelected ? (
                                 <CheckSquare className="w-4 h-4 text-indigo-600" />
@@ -656,7 +656,7 @@ export const BillingView: React.FC = () => {
                           </td>
 
                           {/* Invoice # */}
-                          <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
+                          <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                             <button
                               onClick={() => setSelectedDrawerInvoice(inv)}
                               className="hover:text-indigo-600 hover:underline transition-colors text-left font-bold cursor-pointer"
@@ -667,7 +667,7 @@ export const BillingView: React.FC = () => {
                           </td>
 
                           {/* Case # */}
-                          <td className="py-3 px-3 whitespace-nowrap">
+                          <td className="py-2 px-3 whitespace-nowrap">
                             <button
                               onClick={() => {
                                 const c = cases.find(cs => cs.id === inv.case_id || cs.case_number === inv.case_number);
@@ -681,7 +681,7 @@ export const BillingView: React.FC = () => {
                           </td>
 
                           {/* Dental Clinic */}
-                          <td className="py-3 px-3 text-slate-900 font-semibold whitespace-nowrap">
+                          <td className="py-2 px-3 text-slate-900 font-semibold whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <span>{inv.lab_name}</span>
                               {(clinicSummary?.advance_balance || 0) > 0 && (
@@ -696,34 +696,34 @@ export const BillingView: React.FC = () => {
                           </td>
 
                           {/* Material */}
-                          <td className="py-3 px-3 text-slate-600">
+                          <td className="py-2 px-3 text-slate-600">
                             {inv.case_type_name}
                           </td>
 
                           {/* Doctor */}
-                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                          <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
                             {inv.doctor_name}
                           </td>
 
                           {/* Total Amount */}
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                             PKR {(inv.final_amount || 0).toLocaleString()}
                           </td>
 
                           {/* Paid Amount */}
-                          <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-600 whitespace-nowrap">
+                          <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 whitespace-nowrap">
                             PKR {(inv.amount_paid || 0).toLocaleString()}
                           </td>
 
                           {/* Remaining Due */}
-                          <td className={`py-3 px-3 text-right font-mono font-bold whitespace-nowrap ${
+                          <td className={`py-2 px-3 text-right font-mono font-bold whitespace-nowrap ${
                             remaining > 0 ? (isOverdue ? 'text-rose-600 font-bold' : 'text-amber-600') : 'text-slate-400'
                           }`}>
                             PKR {(remaining || 0).toLocaleString()}
                           </td>
 
                           {/* Due Date & Terms Column */}
-                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
                             {isPaid ? (
                               <div className="inline-flex flex-col items-center">
                                 <span className="text-slate-500 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
@@ -750,12 +750,12 @@ export const BillingView: React.FC = () => {
                           </td>
 
                           {/* Payment Status Indicator (Paid, Pending, Overdue) */}
-                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
                             {getStatusBadge(inv)}
                           </td>
 
                           {/* Context-Aware Actions: Receive vs Pay/Refund & Drawer Inspect */}
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <td className="py-2 px-3 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1.5">
                               {!isPaid ? (
                                 <button

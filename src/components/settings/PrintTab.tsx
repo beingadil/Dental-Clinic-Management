@@ -89,6 +89,17 @@ export const PrintTab: React.FC = () => {
               <option value="large">Large</option>
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Job Slip Style</label>
+            <select
+              value={printSettingsForm.jobSlipStyle}
+              onChange={(e) => setPrintSettingsForm((p) => ({ ...p, jobSlipStyle: e.target.value as PrintSettings['jobSlipStyle'] }))}
+              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+            >
+              <option value="compact">Compact tag (100 × 95 mm, 6-up on A4)</option>
+              <option value="full">Full-page lab card (A4)</option>
+            </select>
+          </div>
         </div>
 
         <div className="pt-4 border-t border-slate-100 space-y-4">

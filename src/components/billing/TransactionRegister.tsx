@@ -371,15 +371,15 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[10px] text-slate-500 tracking-wider">
-                  <th className="py-3 px-4">Txn / Receipt #</th>
-                  <th className="py-3 px-3">Date</th>
-                  <th className="py-3 px-3">Dental Clinic</th>
-                  <th className="py-3 px-3">Category</th>
-                  <th className="py-3 px-3">Detail & Notes</th>
-                  <th className="py-3 px-3">Method & Ref #</th>
-                  <th className="py-3 px-3 text-right">Amount (PKR)</th>
-                  <th className="py-3 px-3 text-center">Proof Slip</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-2 px-3">Txn / Receipt #</th>
+                  <th className="py-2 px-3">Date</th>
+                  <th className="py-2 px-3">Dental Clinic</th>
+                  <th className="py-2 px-3">Category</th>
+                  <th className="py-2 px-3">Detail & Notes</th>
+                  <th className="py-2 px-3">Method & Ref #</th>
+                  <th className="py-2 px-3 text-right">Amount (PKR)</th>
+                  <th className="py-2 px-3 text-center">Proof Slip</th>
+                  <th className="py-2 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -392,7 +392,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                     <tr key={`${txn.sourceType}-${txn.id}`} className={`hover:bg-slate-50/80 transition-colors ${txn.isReversed ? 'bg-red-50/40 opacity-75' : ''}`}>
                       
                       {/* Transaction # */}
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
+                      <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <span>{txn.txnNumber}</span>
                           {txn.isReversed && (
@@ -404,17 +404,17 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       </td>
 
                       {/* Date */}
-                      <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                      <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
                         {txn.date}
                       </td>
 
                       {/* Clinic Name */}
-                      <td className="py-3 px-3 font-semibold text-slate-900">
+                      <td className="py-2 px-3 font-semibold text-slate-900">
                         {txn.labName}
                       </td>
 
                       {/* Category Badge */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-2 px-3 whitespace-nowrap">
                         {isPayment && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             <DollarSign className="w-3 h-3" />
@@ -442,13 +442,13 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       </td>
 
                       {/* Detail & Staff */}
-                      <td className="py-3 px-3 text-slate-600 max-w-xs">
+                      <td className="py-2 px-3 text-slate-600 max-w-xs">
                         <p className="font-medium text-slate-800 line-clamp-1">{txn.detail}</p>
                         <p className="text-[10px] text-slate-400">By {txn.recordedBy}</p>
                       </td>
 
                       {/* Method & Ref */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-2 px-3 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                             txn.method === 'cash'
@@ -472,7 +472,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       </td>
 
                       {/* Amount */}
-                      <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
+                      <td className="py-2 px-3 text-right font-bold whitespace-nowrap">
                         <span className={
                           txn.direction === 'inflow'
                             ? 'text-emerald-600'
@@ -487,7 +487,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       </td>
 
                       {/* Proof Slip Attachment */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <td className="py-2 px-3 text-center whitespace-nowrap">
                         {txn.hasAttachments ? (
                           <button
                             onClick={() => {
@@ -536,7 +536,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <td className="py-2 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
                           {isPayment && txn.rawPayment && (
                             <button

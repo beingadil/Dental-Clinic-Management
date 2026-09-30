@@ -168,11 +168,22 @@ jobs:
           grep -q '"exe":1' rel.json || fail "release $TAG has no NSIS setup exe attached"
 
           # 2. Live manifest must report this version and a download_url pointing at this tag.
-          sleep 30  # give GitHub Pages the customary minute to propagate
-          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/gh-pages/update-manifest.json" -o manifest.json \
-            || fail "gh-pages update-manifest.json unreachable — updater would fall back to the API"
-          grep -q "\"version\": \"$VERSION\"" manifest.json \
-            || fail "manifest version mismatch: expected $VERSION, got: $(grep -o '"version": "[^"]*"' manifest.json)"
+          # Pages propagation races the publish step: poll up to 3x with a 20s
+          # backoff before declaring failure (a single 30s sleep failed v2.12.2
+          # spuriously while every artifact was actually green).
+          fetch_manifest() {
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/gh-pages/update-manifest.json" -o manifest.json
+          }
+          ok=0
+          for attempt in 1 2 3; do
+            if fetch_manifest && grep -q "\"version\": \"$VERSION\"" manifest.json; then
+              ok=1
+              break
+            fi
+            echo "manifest attempt $attempt not ready (missing or stale version) — retrying in 20s"
+            sleep 20
+          done
+          [ "$ok" = "1" ] || fail "gh-pages update-manifest.json never reported $VERSION after 3 attempts — updater would fall back to the API"
           grep -q "releases/download/$TAG/" manifest.json \
             || fail "manifest download_url does not point at $TAG"
 

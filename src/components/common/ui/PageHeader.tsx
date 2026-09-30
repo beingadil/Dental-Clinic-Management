@@ -20,10 +20,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   id
 }) => {
   return (
-    <div id={id} className={`flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 ${className}`}>
-      <div className="space-y-1">
+    <div id={id} className={`flex flex-col lg:flex-row lg:items-center justify-between gap-2 pb-1 ${className}`}>
+      <div className="space-y-0.5 min-w-0">
         {breadcrumbs && breadcrumbs.length > 0 && (
-          <nav className="flex items-center gap-1.5 text-xs text-slate-600 mb-1">
+          <nav className="flex items-center gap-1.5 text-[11px] text-slate-600">
             {breadcrumbs.map((crumb, idx) => (
               <React.Fragment key={idx}>
                 {idx > 0 && <span>/</span>}
@@ -45,22 +45,22 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           </nav>
         )}
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-lg font-bold tracking-tight text-slate-900 leading-tight">
             {title}
           </h1>
           {badge}
         </div>
 
         {subtitle && (
-          <p className="text-xs md:text-sm text-slate-600 font-normal leading-relaxed">
+          <p className="text-[11px] text-slate-600 font-normal leading-snug max-w-2xl">
             {subtitle}
           </p>
         )}
       </div>
 
       {actions && (
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {actions}
         </div>
       )}

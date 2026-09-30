@@ -12,6 +12,8 @@ export interface PrintSettings {
   fontSize: 'compact' | 'normal' | 'large';
   showLogo: boolean;
   logoPosition: 'left' | 'center' | 'right';
+  /** Job slip physical style: compact 100×95mm bag tag or the full-page lab card. */
+  jobSlipStyle: 'compact' | 'full';
 }
 
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
@@ -20,6 +22,7 @@ export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   fontSize: 'normal',
   showLogo: true,
   logoPosition: 'left',
+  jobSlipStyle: 'compact',
 };
 
 export function loadPrintSettings(): PrintSettings {

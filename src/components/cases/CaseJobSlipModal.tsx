@@ -2,17 +2,31 @@ import React, { useState } from 'react';
 import { DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, Download, CheckCircle2, BookmarkCheck } from 'lucide-react';
+import { JobSlipCard } from '../print/JobSlipCard';
 import { LabCardSlip } from './LabCardSlip';
 import { SavePdfButton } from '../print/SavePdfButton';
+import '../print/jobSlipPrint.css';
+import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 
 interface CaseJobSlipModalProps {
   caseData: DentalCase;
   onClose: () => void;
 }
 
+/**
+ * Single Job Slip — MODE A (compact physical tag, 100 × 95 mm).
+ *
+ * The preview shows the slip at its true physical proportions (100:95),
+ * not a full A4 canvas. "Print Card" prints exactly one slip on a 100 × 95 mm
+ * page (printers without custom media fall back to A4 with the slip still at
+ * 100 × 95 mm, top-left — never scaled). "Save & Download" serializes the
+ * same slip DOM + app styles so the downloaded file matches the paper.
+ */
 export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, onClose }) => {
   const { saveVoucherToSystem, brandingSettings } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const slipRef = React.useRef<HTMLDivElement>(null);
+  const [slipStyle] = useState<PrintSettings['jobSlipStyle']>(() => loadPrintSettings().jobSlipStyle);
 
   const handleSaveAndPrint = (shouldDownloadFile = false) => {
     // Save to system database
@@ -32,46 +46,47 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
     setTimeout(() => setSavedSuccess(false), 4000);
 
     if (shouldDownloadFile) {
-      // Direct File Download (classic voucher style)
-      const teethStr = caseData.selected_teeth.map(t => `#${t}`).join(', ');
+      // Serialize the exact on-screen slip. Styles are INLINED from
+      // document.styleSheets (not <link> tags): in the packaged app styles
+      // live at /assets/*.css and a serialized relative link 404s in the
+      // standalone file — the old bug that saved an unstyled/blank slip.
+      const inlineStyles = Array.from(document.styleSheets)
+        .map((sheet) => {
+          try { return Array.from(sheet.cssRules).map((r) => r.cssText).join('\n'); }
+          catch { return ''; } // cross-origin sheet — skip
+        })
+        .filter(Boolean)
+        .join('\n');
+      const slipHtml = slipRef.current ? slipRef.current.outerHTML : '';
+      const pageShell = slipStyle === 'compact'
+        ? `<div class="job-slip-mode-single"><div class="job-slip-print-root job-slip-page">${slipHtml}</div></div>`
+        : `<div class="print-area printable-area">${slipHtml}</div>`;
+      const pageCss = slipStyle === 'compact'
+        ? `@page { size: 100mm 95mm; margin: 0; }
+      body * { visibility: hidden !important; }
+      .job-slip-print-root, .job-slip-print-root * { visibility: visible !important; }
+      .job-slip-print-root { position: absolute; left: 0; top: 0; }`
+        : `body * { visibility: hidden !important; }
+      .print-area, .print-area * { visibility: visible !important; }
+      .print-area { position: absolute; left: 0; top: 0; width: 100%; }`;
       const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Job Slip Voucher ${caseData.case_number}</title>
+  <title>Job Slip ${caseData.case_number}</title>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; padding: 30px; color: #0f172a; max-width: 700px; margin: 0 auto; border: 2px solid #0f172a; border-radius: 16px; }
-    h1 { margin: 0; font-size: 24px; text-transform: uppercase; }
-    .badge { background: #4f46e5; color: white; padding: 4px 12px; border-radius: 8px; font-weight: bold; font-size: 12px; display: inline-block; }
-    .row { display: flex; justify-content: space-between; margin-top: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
-    .label { font-weight: bold; color: #475569; }
-    .val { font-weight: 800; font-family: monospace; }
+    ${inlineStyles}
+  </style>
+  <style>
+    body { margin: 0; padding: 24px; background: #f1f5f9; display: flex; justify-content: center; }
+    @media print {
+      body { padding: 0; background: #ffffff; }
+      ${pageCss}
+    }
   </style>
 </head>
 <body>
-  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px;">
-    <div>
-      <h1>${brandingSettings.appName || 'Dental Lab'}</h1>
-      <p style="margin: 4px 0 0 0; color: #4f46e5; font-weight: bold; font-size: 12px;">WORKSTATION JOB SLIP VOUCHER</p>
-    </div>
-    <div style="text-align: right;">
-      <span class="badge">DS VOUCHER</span>
-      <div style="font-size: 18px; font-weight: 900; font-family: monospace; color: #4f46e5; margin-top: 4px;">#${caseData.case_number}</div>
-    </div>
-  </div>
-  <div class="row"><span class="label">Dental Clinic / Pt:</span><span class="val">${caseData.lab_name}</span></div>
-  <div class="row"><span class="label">Attending Doctor:</span><span class="val">Dr. ${caseData.doctor_name}</span></div>
-  <div class="row"><span class="label">Material & Restoration:</span><span class="val">${caseData.case_type_name}</span></div>
-  <div class="row"><span class="label">FDI Selected Teeth:</span><span class="val">${teethStr || 'Full Arch'}</span></div>
-  <div class="row"><span class="label">Shade:</span><span class="val">${caseData.shade || 'A2'}</span></div>
-  <div class="row"><span class="label">Priority:</span><span class="val" style="text-transform: uppercase;">${caseData.priority}</span></div>
-  <div class="row"><span class="label">Expected Delivery:</span><span class="val">${caseData.delivery_date} (05:00 PM)</span></div>
-  <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
-    <strong>Instructions:</strong> ${caseData.instructions || 'Standard anatomical contours & high-gloss polish.'}
-  </div>
-  <div style="margin-top: 30px; font-size: 11px; text-align: center; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-    ${brandingSettings.appName || 'Dental Solutions'} Laboratory • Contact: ${brandingSettings.phone || '—'} • ${brandingSettings.email || '—'}
-  </div>
+  ${pageShell}
 </body>
 </html>`;
 
@@ -79,7 +94,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Job_Slip_Voucher_${caseData.case_number}.html`;
+      link.download = `Job_Slip_${caseData.case_number}.html`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -87,7 +102,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
       return; // Download only — printing is the separate "Print Card" action.
     }
 
-    // Trigger Print
+    // Trigger Print — MODE A: one compact 100 × 95 mm slip
     setTimeout(() => {
       window.print();
     }, 100);
@@ -95,7 +110,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6 overflow-y-auto no-print-backdrop">
-      <div className="bg-white rounded-3xl max-w-3xl lg:max-w-4xl w-full p-6 md:p-8 border border-slate-200 shadow-2xl relative space-y-6 printable-area print-area my-auto">
+      <div className="bg-white rounded-3xl max-w-md w-full p-5 md:p-6 border border-slate-200 shadow-2xl relative space-y-5 printable-area print-area my-auto">
         {/* Header Actions (hidden on print) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
@@ -104,14 +119,16 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-base">Dental Solutions Laboratory Card</h3>
+                <h3 className="font-bold text-slate-900 text-base">Job Slip — Compact Tag</h3>
                 {savedSuccess && (
                   <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase rounded-full flex items-center gap-1 animate-in fade-in">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Saved in System!
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Saved!
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500">Official Physical Lab Case Routing Voucher</p>
+              <p className="text-xs text-slate-500">
+                {slipStyle === 'compact' ? '100 × 95 mm cut-out tag · 6 fit on one A4' : 'Full-page laboratory card (A4)'}
+              </p>
             </div>
           </div>
 
@@ -120,12 +137,12 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
               type="button"
               onClick={() => handleSaveAndPrint(true)}
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Save voucher in database and download HTML/PDF voucher file"
+              title="Save voucher in database and download the exact slip file"
             >
-              <Download className="w-4 h-4" /> Save & Download File
+              <Download className="w-4 h-4" /> Save &amp; Download
             </button>
             <SavePdfButton
-              suggestedName={`Job-Card_${caseData.case_number || 'slip'}.pdf`}
+              suggestedName={`Job-Slip_${caseData.case_number || 'tag'}.pdf`}
               className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
             />
             <button
@@ -145,15 +162,32 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
           </div>
         </div>
 
-        <div className="flex justify-center">
-          <LabCardSlip caseData={caseData} />
+        {/* Slip preview — compact tag at true proportions, or full lab card.
+            The 0.9 screen scale is visual only; print output is never scaled. */}
+        <div className="flex justify-center py-2">
+          {slipStyle === 'compact' ? (
+            <div
+              className="job-slip-preview"
+              style={{ transform: 'scale(0.9)', transformOrigin: 'top center' }}
+              ref={slipRef}
+            >
+              <JobSlipCard caseData={caseData} labName={brandingSettings.appName || 'DENTAL SOLUTIONS'} />
+            </div>
+          ) : (
+            <div
+              className="max-h-[55vh] overflow-y-auto no-scrollbar rounded-xl"
+              ref={slipRef}
+            >
+              <LabCardSlip caseData={caseData} />
+            </div>
+          )}
         </div>
 
         {/* Modal Footer Controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 no-print pt-2 border-t border-slate-100">
           <div className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
             <BookmarkCheck className="w-4 h-4 text-indigo-600" />
-            <span>Vouchers are automatically saved in system database logs.</span>
+            <span>Cut along the border · fits inside the job bag.</span>
           </div>
 
           <button
@@ -168,5 +202,3 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
     </div>
   );
 };
-
-

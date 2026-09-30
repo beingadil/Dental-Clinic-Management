@@ -322,12 +322,12 @@ export const AuditLogView: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4 w-44">Timestamp</th>
-                <th className="py-3 px-4 w-32">Actor</th>
-                <th className="py-3 px-4 w-52">Action Performed</th>
-                <th className="py-3 px-4 w-36">Entity Reference</th>
-                <th className="py-3 px-4">Reason / Notes</th>
-                <th className="py-3 px-4 text-right w-24">Payload</th>
+                <th className="py-2 px-3 w-44">Timestamp</th>
+                <th className="py-2 px-3 w-32">Actor</th>
+                <th className="py-2 px-3 w-52">Action Performed</th>
+                <th className="py-2 px-3 w-36">Entity Reference</th>
+                <th className="py-2 px-3">Reason / Notes</th>
+                <th className="py-2 px-3 text-right w-24">Payload</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -344,7 +344,7 @@ export const AuditLogView: React.FC = () => {
                   <tr key={event.id} className="hover:bg-slate-50/70 transition-colors">
                     
                     {/* Timestamp */}
-                    <td className="py-3 px-4 whitespace-nowrap">
+                    <td className="py-2 px-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5 font-mono text-slate-600">
                         <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{event.timestamp}</span>
@@ -352,7 +352,7 @@ export const AuditLogView: React.FC = () => {
                     </td>
 
                     {/* Actor */}
-                    <td className="py-3 px-4 whitespace-nowrap">
+                    <td className="py-2 px-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
                           {(event.actor || 'U').charAt(0).toUpperCase()}
@@ -362,19 +362,19 @@ export const AuditLogView: React.FC = () => {
                     </td>
 
                     {/* Action */}
-                    <td className="py-3 px-4 whitespace-nowrap">
+                    <td className="py-2 px-3 whitespace-nowrap">
                       {getActionBadge(event.action)}
                     </td>
 
                     {/* Entity Reference */}
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
+                    <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                       <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-800 border border-slate-200">
                         {event.entity_ref || event.entity_id}
                       </span>
                     </td>
 
                     {/* Reason & Notes */}
-                    <td className="py-3 px-4">
+                    <td className="py-2 px-3">
                       {event.reason && (
                         <span className="font-bold text-slate-900 block">{event.reason}</span>
                       )}
@@ -382,7 +382,7 @@ export const AuditLogView: React.FC = () => {
                     </td>
 
                     {/* Payload Inspection */}
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                    <td className="py-2 px-3 text-right whitespace-nowrap">
                       <button
                         onClick={() => setSelectedEventForDetail(event)}
                         className="px-2 py-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"

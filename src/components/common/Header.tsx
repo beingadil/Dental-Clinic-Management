@@ -22,6 +22,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { DentalCase } from '../../types';
+import { WindowControls } from './WindowControls';
 
 interface HeaderProps {
   /** Reserved for future global actions; the header intentionally hosts no case-creation entry. */
@@ -657,6 +658,9 @@ export const Header: React.FC<HeaderProps> = () => {
             </div>
           )}
         </div>
+
+        {/* Desktop window controls — minimize / maximize / close */}
+        <WindowControls />
       </div>
     </header>
   );

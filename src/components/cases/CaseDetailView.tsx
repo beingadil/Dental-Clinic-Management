@@ -66,7 +66,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
                 )}
               </div>
               <p className="text-xs text-slate-500 truncate">
-                {c.case_type_name} • {c.lab_name}
+                {c.patient_name ? `${c.patient_name} • ` : ''}{c.case_type_name} • {c.lab_name}
               </p>
             </div>
           </div>

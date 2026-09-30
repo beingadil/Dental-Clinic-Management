@@ -224,11 +224,11 @@ export const CatalogView: React.FC = () => {
       </div>
 
       {/* Catalog Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print-flow">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 print-flow max-h-[calc(100vh-360px)] overflow-y-auto no-scrollbar pr-0.5 print:max-h-none print:overflow-visible">
         {filteredCatalog.map((item) => (
           <div 
             key={item.id}
-            className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all p-4 flex flex-col justify-between space-y-4 group"
+            className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all p-3.5 flex flex-col justify-between space-y-3 group"
           >
             <div className="space-y-2">
               <div className="flex items-start justify-between gap-2">

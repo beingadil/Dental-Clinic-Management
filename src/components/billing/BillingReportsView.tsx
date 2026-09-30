@@ -235,14 +235,14 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[10px] text-slate-500 tracking-wider">
-                    <th className="py-3 px-4">Voucher #</th>
-                    <th className="py-3 px-3">Type</th>
-                    <th className="py-3 px-3">Case #</th>
-                    <th className="py-3 px-3">Dental Clinic</th>
-                    <th className="py-3 px-3">Doctor</th>
-                    <th className="py-3 px-3">Saved At</th>
-                    <th className="py-3 px-3">Recorded By</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th className="py-2 px-3">Voucher #</th>
+                    <th className="py-2 px-3">Type</th>
+                    <th className="py-2 px-3">Case #</th>
+                    <th className="py-2 px-3">Dental Clinic</th>
+                    <th className="py-2 px-3">Doctor</th>
+                    <th className="py-2 px-3">Saved At</th>
+                    <th className="py-2 px-3">Recorded By</th>
+                    <th className="py-2 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -250,10 +250,10 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                     const isInv = v.voucher_type === 'invoice';
                     return (
                       <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-900 font-mono whitespace-nowrap">
+                        <td className="py-2 px-3 font-bold text-slate-900 font-mono whitespace-nowrap">
                           {v.voucher_number}
                         </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-2 px-3 whitespace-nowrap">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                             isInv ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'
                           }`}>
@@ -261,22 +261,22 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                             <span>{isInv ? 'Invoice Voucher' : 'Workstation Slip'}</span>
                           </span>
                         </td>
-                        <td className="py-3 px-3 font-bold text-indigo-600 font-mono whitespace-nowrap">
+                        <td className="py-2 px-3 font-bold text-indigo-600 font-mono whitespace-nowrap">
                           {v.case_number}
                         </td>
-                        <td className="py-3 px-3 text-slate-800">
+                        <td className="py-2 px-3 text-slate-800">
                           {v.lab_name}
                         </td>
-                        <td className="py-3 px-3 text-slate-600">
+                        <td className="py-2 px-3 text-slate-600">
                           {v.doctor_name}
                         </td>
-                        <td className="py-3 px-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">
+                        <td className="py-2 px-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">
                           {v.created_at}
                         </td>
-                        <td className="py-3 px-3 text-slate-600">
+                        <td className="py-2 px-3 text-slate-600">
                           {v.saved_by || 'Staff'}
                         </td>
-                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <td className="py-2 px-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => {

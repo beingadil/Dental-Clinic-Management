@@ -248,8 +248,10 @@ export const CaseListView: React.FC = () => {
 
   const clearSelection = () => setSelectedCaseIds([]);
 
+  const isBoardView = !showArchive && viewMode === 'kanban';
+
   return (
-    <div className="space-y-6">
+    <div className={isBoardView ? 'flex flex-col space-y-6 h-[calc(100vh-110px)]' : 'space-y-6'}>
       {/* Modern Standardized Page Header */}
       <PageHeader
         title="Dental Cases Workstation"
@@ -552,31 +554,31 @@ export const CaseListView: React.FC = () => {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50/80 border-b border-slate-200/80 font-bold uppercase text-[10px] text-slate-500 tracking-wider">
-                      <th className="py-3 px-4">Case ID</th>
-                      <th className="py-3 px-3">Patient</th>
-                      <th className="py-3 px-3">Clinic</th>
-                      <th className="py-3 px-3">Material</th>
-                      <th className="py-3 px-3">Delivery</th>
-                      <th className="py-3 px-3">Status</th>
-                      <th className="py-3 px-3">Archived</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
+                      <th className="py-2 px-3">Case ID</th>
+                      <th className="py-2 px-3">Patient</th>
+                      <th className="py-2 px-3">Clinic</th>
+                      <th className="py-2 px-3">Material</th>
+                      <th className="py-2 px-3">Delivery</th>
+                      <th className="py-2 px-3">Status</th>
+                      <th className="py-2 px-3">Archived</th>
+                      <th className="py-2 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {filteredArchivedCases.map((c) => (
                       <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-900">{c.case_number}</td>
-                        <td className="py-3 px-3 text-slate-700">{c.patient_name || '—'}</td>
-                        <td className="py-3 px-3 text-slate-700">{c.lab_name}</td>
-                        <td className="py-3 px-3 text-slate-700">{c.case_type_name}</td>
-                        <td className="py-3 px-3 text-slate-600">{c.delivery_date}</td>
-                        <td className="py-3 px-3">
+                        <td className="py-2 px-3 font-bold text-slate-900">{c.case_number}</td>
+                        <td className="py-2 px-3 text-slate-700">{c.patient_name || '—'}</td>
+                        <td className="py-2 px-3 text-slate-700">{c.lab_name}</td>
+                        <td className="py-2 px-3 text-slate-700">{c.case_type_name}</td>
+                        <td className="py-2 px-3 text-slate-600">{c.delivery_date}</td>
+                        <td className="py-2 px-3">
                           <CaseStatusBadge status={c.status} />
                         </td>
-                        <td className="py-3 px-3 text-slate-500 text-[11px]">
+                        <td className="py-2 px-3 text-slate-500 text-[11px]">
                           {c.archived_at ? c.archived_at.slice(0, 10) : '—'}
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-2 px-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
@@ -606,7 +608,7 @@ export const CaseListView: React.FC = () => {
         </div>
       ) : viewMode === 'kanban' ? (
         /* DRAG AND DROP KANBAN BOARD */
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4 items-start overflow-x-auto pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4 items-start overflow-x-auto no-scrollbar flex-1 min-h-0">
           {KANBAN_STAGES.map((stage) => {
             const stageCases = filteredCases.filter((c) => c.status === stage.id);
             const isDragTarget = dragOverColumn === stage.id;
@@ -617,7 +619,7 @@ export const CaseListView: React.FC = () => {
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
-                className={`flex flex-col rounded-3xl p-3 min-h-[520px] transition-all border ${
+                className={`flex flex-col rounded-3xl p-3 h-full min-h-0 transition-all border ${
                   isDragTarget
                     ? 'border-indigo-400 bg-indigo-50/40 ring-2 ring-indigo-400/30'
                     : 'border-slate-200/80 bg-slate-100/60'
@@ -635,7 +637,7 @@ export const CaseListView: React.FC = () => {
                 </div>
 
                 {/* Cards Container */}
-                <div className="flex-1 space-y-3 overflow-y-auto max-h-[700px] pr-0.5">
+                <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-0.5">
                   {stageCases.length === 0 ? (
                     <div className="h-28 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center p-3 text-center text-slate-400 text-xs">
                       <Move className="w-4 h-4 opacity-40 mb-1" />
@@ -848,7 +850,7 @@ export const CaseListView: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    <th className="py-3.5 px-3 w-10 text-center">
+                    <th className="py-2 px-3 w-10 text-center">
                       <input
                         type="checkbox"
                         checked={filteredCases.length > 0 && selectedCaseIds.length === filteredCases.length}
@@ -857,16 +859,17 @@ export const CaseListView: React.FC = () => {
                         title="Select or deselect all filtered cases"
                       />
                     </th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">Case #</th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">Dental Clinic</th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">Material / Type</th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">Doctor</th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">FDI Teeth</th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">Delivery Date</th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">Priority</th>
-                    <th className="py-3.5 px-4 font-bold text-slate-700">Price (PKR)</th>
-                    <th className="py-3.5 px-4 text-center font-bold text-slate-700">Status</th>
-                    <th className="py-3.5 px-4 text-right font-bold text-slate-700">Action</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Case #</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Patient</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Dental Clinic</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Material / Type</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Doctor</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">FDI Teeth</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Delivery Date</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Priority</th>
+                    <th className="py-2 px-4 font-bold text-slate-700">Price (PKR)</th>
+                    <th className="py-2 px-4 text-center font-bold text-slate-700">Status</th>
+                    <th className="py-2 px-4 text-right font-bold text-slate-700">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -885,7 +888,7 @@ export const CaseListView: React.FC = () => {
                             : ''
                         }`}
                       >
-                        <td className="py-3.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -894,7 +897,7 @@ export const CaseListView: React.FC = () => {
                           />
                         </td>
 
-                        <td className="py-3.5 px-4 font-bold text-slate-900">
+                        <td className="py-2 px-4 font-bold text-slate-900">
                           <div className="flex items-center gap-1.5">
                             <span className="tracking-tight">{c.case_number}</span>
                             {isWarning && (
@@ -905,34 +908,36 @@ export const CaseListView: React.FC = () => {
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-4 font-medium text-slate-800">{c.lab_name}</td>
+                        <td className="py-2 px-4 font-medium text-slate-700">{c.patient_name || '—'}</td>
 
-                        <td className="py-3.5 px-4 text-slate-700">
+                        <td className="py-2 px-4 font-medium text-slate-800">{c.lab_name}</td>
+
+                        <td className="py-2 px-4 text-slate-700">
                           <span className="font-semibold text-indigo-600">{c.case_type_name}</span>
                           {c.shade && <span className="ml-1 text-[11px] text-slate-400 font-normal">({c.shade})</span>}
                         </td>
 
-                        <td className="py-3.5 px-4 text-slate-700 font-medium">Dr. {c.doctor_name}</td>
+                        <td className="py-2 px-4 text-slate-700 font-medium">Dr. {c.doctor_name}</td>
 
-                        <td className="py-3.5 px-4 text-slate-600">
+                        <td className="py-2 px-4 text-slate-600">
                           <span className="font-mono font-bold text-slate-800">#{c.selected_teeth.join(', ')}</span>
                         </td>
 
-                        <td className="py-3.5 px-4">
+                        <td className="py-2 px-4">
                           <div className={`font-semibold ${isOverdue ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>
                             {c.delivery_date}
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-4">
+                        <td className="py-2 px-4">
                           <PriorityBadge priority={c.priority} />
                         </td>
 
-                        <td className="py-3.5 px-4 font-bold text-slate-900">
+                        <td className="py-2 px-4 font-bold text-slate-900">
                           PKR {(c.final_price || 0).toLocaleString()}
                         </td>
 
-                        <td className="py-3.5 px-4 min-w-[160px]">
+                        <td className="py-2 px-4 min-w-[160px]">
                           <div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-between">
                               <CaseStatusBadge status={c.status} />
@@ -946,7 +951,7 @@ export const CaseListView: React.FC = () => {
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-4 text-right">
+                        <td className="py-2 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"

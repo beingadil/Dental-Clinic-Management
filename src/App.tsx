@@ -73,7 +73,7 @@ const MainAppContent: React.FC = () => {
         <Header onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
 
         {/* View Main Content Area wrapped in Error Boundary */}
-        <main className="flex-1 p-3 sm:p-5 md:p-8 overflow-y-auto dental-grid-bg">
+        <main className="flex-1 p-3 sm:p-4 lg:p-5 overflow-y-auto dental-grid-bg">
           <div className="w-full max-w-[1880px] 2xl:max-w-[2100px] mx-auto space-y-6">
             <ErrorBoundary>
               <Suspense fallback={null}>

@@ -741,14 +741,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    <th className="py-3 px-3 w-14 text-center">Sr No.</th>
-                    <th className="py-3 px-3 w-28">Date</th>
-                    <th className="py-3 px-4 w-40">Clinic</th>
-                    <th className="py-3 px-3 w-32">Case / Job</th>
-                    <th className="py-3 px-4">Narration (Type / Reference)</th>
-                    <th className="py-3 px-3 text-right w-28">Debit (PKR)</th>
-                    <th className="py-3 px-3 text-right w-28">Credit (PKR)</th>
-                    <th className="py-3 px-4 text-right w-36">Closing Balance</th>
+                    <th className="py-2 px-3 w-14 text-center">Sr No.</th>
+                    <th className="py-2 px-3 w-28">Date</th>
+                    <th className="py-2 px-3 w-40">Clinic</th>
+                    <th className="py-2 px-3 w-32">Case / Job</th>
+                    <th className="py-2 px-3">Narration (Type / Reference)</th>
+                    <th className="py-2 px-3 text-right w-28">Debit (PKR)</th>
+                    <th className="py-2 px-3 text-right w-28">Credit (PKR)</th>
+                    <th className="py-2 px-3 text-right w-36">Closing Balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -798,24 +798,24 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           className="hover:bg-slate-50/80 transition-colors"
                         >
                           {/* Sr No. */}
-                          <td className="py-3 px-3 text-center font-mono text-[11px] text-slate-500 font-semibold">
+                          <td className="py-2 px-3 text-center font-mono text-[11px] text-slate-500 font-semibold">
                             {idx + 1}
                           </td>
 
                           {/* Date */}
-                          <td className="py-3 px-3 text-slate-700 whitespace-nowrap font-medium text-[11px]">
+                          <td className="py-2 px-3 text-slate-700 whitespace-nowrap font-medium text-[11px]">
                             {entry.date ? entry.date.slice(0, 10) : '-'}
                           </td>
 
                           {/* Clinic */}
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-3">
                             <span className="font-bold text-slate-900 block truncate max-w-[160px]" title={entry.lab_name}>
                               {entry.lab_name}
                             </span>
                           </td>
 
                           {/* Case/Job — first-class relational reference; opens the real case record */}
-                          <td className="py-3 px-3">
+                          <td className="py-2 px-3">
                             {entry.case_number ? (
                               <button
                                 type="button"
@@ -836,7 +836,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           </td>
 
                           {/* Narration whether its a case entry or cash/payment */}
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-3">
                             <div className="space-y-1">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${details.typeBadgeBg}`}>
@@ -856,7 +856,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           </td>
 
                           {/* Debit */}
-                          <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <td className="py-2 px-3 text-right whitespace-nowrap">
                             {entry.debit > 0 ? (
                               <span className="font-bold text-blue-900 font-mono">
                                 PKR {entry.debit.toLocaleString()}
@@ -867,7 +867,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           </td>
 
                           {/* Credit */}
-                          <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <td className="py-2 px-3 text-right whitespace-nowrap">
                             {entry.credit > 0 ? (
                               <span className="font-bold text-emerald-700 font-mono">
                                 PKR {entry.credit.toLocaleString()}
@@ -878,7 +878,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           </td>
 
                           {/* Closing Balance */}
-                          <td className="py-3 px-4 text-right whitespace-nowrap font-mono font-bold text-slate-900">
+                          <td className="py-2 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
                             <span className={entry.closing_balance > 0 ? 'text-slate-900' : entry.closing_balance < 0 ? 'text-emerald-700' : 'text-slate-500'}>
                               PKR {entry.closing_balance.toLocaleString()}
                             </span>
