@@ -176,30 +176,36 @@ jobs:
           grep -q '"exe":1' rel.json || fail "release $TAG has no NSIS setup exe attached"
 
           # 2. Live manifest must report this version and a download_url pointing at this tag.
-          # Pages propagation races the publish step: poll up to 3x with a 20s
-          # backoff before declaring failure (a single 30s sleep failed v2.12.2
-          # spuriously while every artifact was actually green).
+          # Pages propagation races the publish step: poll up to 5x with a
+          # 30s backoff before declaring failure. 3x/20s still failed
+          # spuriously on v2.12.2 AND v2.12.4 — every artifact was green,
+          # the manifest/checksum verified minutes later (post-mortem:
+          # raw.githubusercontent branch propagation lagged the poll window).
           fetch_manifest() {
             curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/gh-pages/update-manifest.json" -o manifest.json
           }
           ok=0
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5; do
             if fetch_manifest && grep -q "\"version\": \"$VERSION\"" manifest.json; then
               ok=1
               break
             fi
-            echo "manifest attempt $attempt not ready (missing or stale version) — retrying in 20s"
-            sleep 20
+            echo "manifest attempt $attempt not ready (missing or stale version) — retrying in 30s"
+            sleep 30
           done
-          [ "$ok" = "1" ] || fail "gh-pages update-manifest.json never reported $VERSION after 3 attempts — updater would fall back to the API"
+          [ "$ok" = "1" ] || fail "gh-pages update-manifest.json never reported $VERSION after 5 attempts — updater would fall back to the API"
           grep -q "releases/download/$TAG/" manifest.json \
             || fail "manifest download_url does not point at $TAG"
 
           # 3. Manifest checksum must match the actual asset bytes (what update_install verifies).
+          # Release asset availability can also lag the upload moment: retry the
+          # download twice before failing.
           MANIFEST_SHA=$(grep -o '"payload_checksum": "sha256:[a-f0-9]*"' manifest.json | cut -d: -f2 | tr -d '"')
           [ -n "$MANIFEST_SHA" ] || fail "manifest has no payload_checksum"
           ASSET_URL=$(grep -o '"download_url": "[^"]*"' manifest.json | cut -d'"' -f4)
-          curl -fsSL "$ASSET_URL" -o setup.exe || fail "installer asset not downloadable: $ASSET_URL"
+          curl -fsSL "$ASSET_URL" -o setup.exe \
+            || { sleep 20; curl -fsSL "$ASSET_URL" -o setup.exe; } \
+            || fail "installer asset not downloadable: $ASSET_URL"
           ACTUAL_SHA=$(sha256sum setup.exe | cut -d' ' -f1)
           [ "$MANIFEST_SHA" = "$ACTUAL_SHA" ] \
             || fail "checksum mismatch: manifest says $MANIFEST_SHA, asset bytes are $ACTUAL_SHA — every install would abort"
