@@ -45,7 +45,7 @@ interface LabDetailModalProps {
 }
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
-  const { cases, invoices, updateLab, deleteLab, getLabFinancialSummary, getLedgerEntries, allPayments } = useApp();
+  const { cases, invoices, updateLab, deleteLab, reassignLabRecords, labs, getLabFinancialSummary, getLedgerEntries, allPayments } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing'>(initialTab);
   const [isFullScreen, setIsFullScreen] = useState(true);
@@ -132,8 +132,23 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
   const handleDeleteConfirmed = () => {
     if (confirmInput.trim() !== 'DELETE') return;
-    // Integrity guard: never orphan cases under a deleted clinic.
-    if (labCases.length > 0) return;
+    // Integrity guard: never orphan cases under a deleted clinic. Bulk
+    // re-assignment (audit C3) moves them to the clinic the operator picks,
+    // instead of forcing one-by-one case edits.
+    if (labCases.length > 0) {
+      const targets = labs.filter((l) => l.id !== lab.id);
+      if (targets.length === 0) {
+        alert('This is the only clinic. Create another clinic before deleting this one.');
+        return;
+      }
+      const picked = prompt(
+        `${lab.name} still has ${labCases.length} case(s).\nWhich clinic should take them? Enter a number:\n` +
+          targets.map((l, i) => `${i + 1}. ${l.name}`).join('\n')
+      );
+      const index = Number(picked) - 1;
+      if (!picked || !Number.isInteger(index) || index < 0 || index >= targets.length) return;
+      if (!reassignLabRecords(lab.id, targets[index].id)) return;
+    }
     deleteLab(lab.id);
     setDeleteModalOpen(false);
     onClose();
@@ -479,7 +494,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                         {labLedger.map((entry) => {
                           const isDebit = entry.entry_type === 'invoice';
                           const isCredit = entry.entry_type === 'payment';
-                          const matchedPayment = isCredit ? allPayments.find(p => p.id === entry.reference_id || p.payment_number === entry.reference_number) : undefined;
+                          const matchedPayment = isCredit ? allPayments.find(p => p.id === entry.reference_id || p.payment_number === entry.reference_number || (p.payment_number || '').replace(/-D?\d+$/, '') === entry.reference_number) : undefined;
                           const matchedInvoice = isDebit ? invoices.find(i => i.id === entry.reference_id || i.invoice_number === entry.reference_number) : undefined;
 
                           return (

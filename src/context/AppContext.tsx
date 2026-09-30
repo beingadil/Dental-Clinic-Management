@@ -80,7 +80,6 @@ import {
   buildOverdueAlerts,
   buildUnpaidInvoiceAlerts,
   buildAdvanceDepositV2Notification,
-  buildAdvanceSettledInvoiceNotification,
   buildAdjustmentNotification,
   buildPaymentReceivedNotification,
   prependUniqueNotifications,
@@ -218,6 +217,7 @@ interface AppContextType {
   addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count'>) => DentalLab;
   updateLab: (id: string, updates: Partial<DentalLab>) => void;
   deleteLab: (id: string) => void;
+  reassignLabRecords: (fromLabId: string, toLabId: string) => boolean;
   addLabContact: (contact: Omit<LabContact, 'id'>) => void;
   updateLabContact: (id: string, updates: Partial<LabContact>) => void;
   deleteLabContact: (id: string) => void;
@@ -1025,7 +1025,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // stale lab_id trips the labs FK and aborts the whole sync once that clinic
     // is deleted.
     if (updates.price !== undefined || updates.discount !== undefined || updates.final_price !== undefined
-      || updates.lab_id !== undefined || updates.lab_name !== undefined) {
+      || updates.lab_id !== undefined || updates.lab_name !== undefined || updates.delivery_date !== undefined) {
       // Repricing re-posts the books (audit F11): the old issuance journal is
       // reversed and a fresh one is issued for the new amounts, so the ledger
       // never drifts from the invoice.
@@ -1049,7 +1049,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             final_amount: newFinal,
             payment_status: newStatus,
             lab_id: updates.lab_id ?? inv.lab_id,
-            lab_name: updates.lab_name ?? inv.lab_name
+            lab_name: updates.lab_name ?? inv.lab_name,
+            issue_date: updates.delivery_date ?? inv.issue_date,
+            due_date: updates.delivery_date ?? inv.due_date
           };
           const priorJournal = journalEntries.find((j) => j.reference_type === 'invoice' && j.reference_id === inv.id);
           if (priorJournal) {
@@ -1367,6 +1369,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLabReviews((prev) => prev.filter((lr) => lr.lab_id !== id));
   };
 
+  // Bulk clinic re-assignment (audit C3): deleting a clinic is blocked while
+  // cases/invoices reference it, so this moves the case records (and their
+  // invoices) to another clinic in one step. Advances/adjustments are money
+  // rows and stay put — they keep blocking deletion on purpose.
+  const reassignLabRecords = (fromLabId: string, toLabId: string): boolean => {
+    const target = labs.find((l) => l.id === toLabId);
+    if (!target || fromLabId === toLabId) return false;
+    const stamp = new Date().toISOString();
+    setCases((prev) =>
+      prev.map((c) => (c.lab_id === fromLabId ? { ...c, lab_id: target.id, lab_name: target.name, updated_at: stamp } : c))
+    );
+    setInvoices((prev) =>
+      prev.map((inv) => (inv.lab_id === fromLabId ? { ...inv, lab_id: target.id, lab_name: target.name } : inv))
+    );
+    showToast(`Moved all cases and invoices to ${target.name}.`, 'success');
+    return true;
+  };
+
   const addLabContact = (contact: Omit<LabContact, 'id'>) => {
     const newC: LabContact = { ...contact, id: `lc-${Date.now()}` };
     if (newC.is_primary) {
@@ -1628,88 +1648,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Invoice ${target.invoice_number} voided — ledger reversed and audit trail updated.`, 'success');
   };
 
-  // Advance Payments & Account Adjustments Actions
+  // Legacy advance-credit entry point (audit F9): zero callers today, and the
+  // old body hand-wrote invoice.payments + wallet + status. It now delegates to
+  // the V2 command, so there is exactly one implementation of the money
+  // movement (journal, allocations, advance wallet and audit all included).
   const applyAdvanceCredit = (
     labId: string,
     invoiceId: string,
     amount: number,
     notes?: string
-  ): boolean => {
-    if (amount <= 0 || isNaN(amount)) return false;
-    const inv = invoices.find((i) => i.id === invoiceId);
-    if (!inv) return false;
-
-    const remainingDue = inv.final_amount - inv.amount_paid;
-    if (remainingDue <= 0) return false;
-
-    const clinicAdvances = advancePayments.filter((a) => a.lab_id === labId && a.remaining_amount > 0);
-    const totalAvailable = clinicAdvances.reduce((sum, a) => sum + a.remaining_amount, 0);
-    if (totalAvailable <= 0) return false;
-
-    const toApply = Math.min(amount, remainingDue, totalAvailable);
-    if (toApply <= 0) return false;
-
-    let unallocatedNeeded = toApply;
-    const usedAdvanceRefs: string[] = [];
-
-    // Deduct from advance payments (oldest first)
-    setAdvancePayments((prev) =>
-      prev.map((adv) => {
-        if (adv.lab_id !== labId || adv.remaining_amount <= 0 || unallocatedNeeded <= 0) return adv;
-        const take = Math.min(adv.remaining_amount, unallocatedNeeded);
-        unallocatedNeeded -= take;
-        usedAdvanceRefs.push(adv.payment_number);
-        return {
-          ...adv,
-          allocated_amount: adv.allocated_amount + take,
-          remaining_amount: adv.remaining_amount - take
-        };
-      })
-    );
-
-    const advPaymentNum = generatePaymentNumber();
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    const paymentRecord: PaymentRecord = {
-      id: `pay-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      payment_number: advPaymentNum,
-      invoice_id: invoiceId,
-      invoice_number: inv.invoice_number,
-      case_id: inv.case_id,
-      case_number: inv.case_number,
-      lab_id: inv.lab_id,
-      lab_name: inv.lab_name,
-      amount: toApply,
-      payment_method: 'advance',
-      payment_date: nowStr.split(' ')[0],
-      reference_number: usedAdvanceRefs.join(', '),
-      notes: notes ? `${notes} (Applied from Advance: ${usedAdvanceRefs.join(', ')})` : `Settled from Clinic Advance Balance (${usedAdvanceRefs.join(', ')})`,
-      recorded_by: user ? user.name : 'Staff',
-      created_at: nowStr,
-      payment_type: 'advance_allocation'
-    };
-
-    setInvoices((prev) =>
-      prev.map((item) => {
-        if (item.id !== invoiceId) return item;
-        const newPaid = item.amount_paid + toApply;
-        const newStatus = newPaid >= item.final_amount ? 'paid' : 'partial';
-        return {
-          ...item,
-          amount_paid: newPaid,
-          payment_status: newStatus,
-          payments: [paymentRecord, ...(item.payments || [])]
-        };
-      })
-    );
-
-    if (inv.amount_paid + toApply >= inv.final_amount) {
-      pushNotifications(
-        buildAdvanceSettledInvoiceNotification({ id: genId('notif'), invoice: inv, amount: toApply }),
-      );
-    }
-
-    return true;
-  };
+  ): boolean =>
+    applyAdvanceCreditV2({
+      clinicId: labId,
+      invoiceId,
+      amount,
+      notes: notes || 'Applied from clinic credit wallet',
+    });
 
   const recordAccountAdjustment = (
     labId: string,
@@ -1753,11 +1707,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteAdvancePayment = (advanceId: string) => {
-    setAdvancePayments((prev) => prev.filter((a) => a.id !== advanceId));
+    // Same money rule as deletePayment (audit F6): advances are reversed
+    // (reverseTransactionV2), never deleted — the wallet, journal and audit
+    // rows must survive.
+    const target = advancePayments.find((a) => a.id === advanceId);
+    if (target) {
+      showToast(`Advance ${target.payment_number || advanceId} cannot be deleted — reverse it instead (Reversal flow).`, 'error');
+    }
   };
 
   const deleteAccountAdjustment = (adjustmentId: string) => {
-    setAccountAdjustments((prev) => prev.filter((a) => a.id !== adjustmentId));
+    // Same money rule (audit F6): adjustments are reversed, never deleted.
+    const target = accountAdjustments.find((a) => a.id === adjustmentId || a.adjustment_number === adjustmentId);
+    if (target) {
+      showToast(`Adjustment ${target.adjustment_number || adjustmentId} cannot be deleted — reverse it instead (Reversal flow).`, 'error');
+    }
   };
 
   // ==========================================
@@ -1886,6 +1850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addLab,
         updateLab,
         deleteLab,
+        reassignLabRecords,
         addLabContact,
         updateLabContact,
         deleteLabContact,

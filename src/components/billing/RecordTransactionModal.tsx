@@ -250,64 +250,71 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       uploaded_by: user?.name || 'Staff'
     }] : [];
 
-    if (mode === 'payment') {
-      const allocationList = Object.entries(allocations)
-        .filter(([_, amt]) => (amt as number) > 0)
-        .map(([invoiceId, amt]) => ({ invoiceId, amount: amt as number }));
+    try {
+      if (mode === 'payment') {
+        const allocationList = Object.entries(allocations)
+          .filter(([_, amt]) => (amt as number) > 0)
+          .map(([invoiceId, amt]) => ({ invoiceId, amount: amt as number }));
 
-      const result = recordTransactionV2({
-        clinicId,
-        amount,
-        method,
-        date,
-        referenceNumber,
-        notes,
-        attachments,
-        allocations: allocationList,
-        saveRemainingAsAdvance,
-        isVerified
-      });
+        const result = recordTransactionV2({
+          clinicId,
+          amount,
+          method,
+          date,
+          referenceNumber,
+          notes,
+          attachments,
+          allocations: allocationList,
+          saveRemainingAsAdvance,
+          isVerified
+        });
 
-      onClose();
-      if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
-    } else if (mode === 'advance') {
-      const result = recordAdvanceDepositV2({
-        clinicId,
-        amount,
-        method: method === 'advance' ? 'bank' : method,
-        date,
-        referenceNumber,
-        notes,
-        attachments,
-        isVerified
-      });
+        onClose();
+        if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
+      } else if (mode === 'advance') {
+        const result = recordAdvanceDepositV2({
+          clinicId,
+          amount,
+          method: method === 'advance' ? 'bank' : method,
+          date,
+          referenceNumber,
+          notes,
+          attachments,
+          isVerified
+        });
 
-      onClose();
-      if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
-    } else if (mode === 'credit_note') {
-      issueCreditNoteV2({
-        clinicId,
-        invoiceId: selectedInvoiceId,
-        amount,
-        date,
-        reasonCode: creditReasonCode,
-        reasonText: creditReasonText || `Adjustment for ${creditReasonCode}`
-      });
+        onClose();
+        if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
+      } else if (mode === 'credit_note') {
+        issueCreditNoteV2({
+          clinicId,
+          invoiceId: selectedInvoiceId,
+          amount,
+          date,
+          reasonCode: creditReasonCode,
+          reasonText: creditReasonText || `Adjustment for ${creditReasonCode}`
+        });
 
-      onClose();
-      if (onSuccess) onSuccess({});
-    } else if (mode === 'refund') {
-      recordAccountAdjustment(
-        clinicId,
-        'refund',
-        amount,
-        notes || 'Client advance refund',
-        referenceNumber,
-        attachments,
-        date
-      );
-      onClose();
-      if (onSuccess) onSuccess({});
+        onClose();
+        if (onSuccess) onSuccess({});
+      } else if (mode === 'refund') {
+        recordAccountAdjustment(
+          clinicId,
+          'refund',
+          amount,
+          notes || 'Client advance refund',
+          referenceNumber,
+          attachments,
+          date
+        );
+        onClose();
+        if (onSuccess) onSuccess({});
+      }
+    } catch (err) {
+      // A thrown command must not leave the latch armed (audit F12): the
+      // cashier sees the reason and can retry without reopening the modal.
+      submitLatchRef.current = false;
+      alert(err instanceof Error ? err.message : 'Could not post the transaction. Please try again.');
     }
   };
 
