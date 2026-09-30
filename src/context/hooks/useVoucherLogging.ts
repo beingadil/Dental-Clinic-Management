@@ -37,7 +37,17 @@ export function useVoucherLogging(options: {
 
   const saveVoucherToSystem = (voucherData: Omit<SavedVoucher, 'id' | 'created_at' | 'saved_by'>): SavedVoucher => {
     const newVoucher = assembleVoucher(voucherData, { id: genVoucherId(), savedBy: actorName });
-    setSavedVouchers((prev) => [newVoucher, ...prev]);
+    // Batch re-prints must not log the same voucher twice (audit C10): the
+    // voucher number + case identify one print run. The updater gate below
+    // also covers same-tick batches where the state prop is stale.
+    if (savedVouchers.some((v) => v.voucher_number === newVoucher.voucher_number && v.case_id === newVoucher.case_id)) {
+      return newVoucher;
+    }
+    setSavedVouchers((prev) =>
+      prev.some((v) => v.voucher_number === newVoucher.voucher_number && v.case_id === newVoucher.case_id)
+        ? prev
+        : [newVoucher, ...prev]
+    );
 
     // Persist to SQLite (mirror-keyed effect does not cover this collection)
     dbWrite(() => {
@@ -47,10 +57,14 @@ export function useVoucherLogging(options: {
 
     const note: CaseNote | null = buildVoucherCaseNote(newVoucher, actorName);
     if (note) {
-      setCaseNotes((prev) => ({
-        ...prev,
-        [note.case_id]: [note, ...(prev[note.case_id] || [])],
-      }));
+      setCaseNotes((prev) => {
+        const list = prev[note.case_id] || [];
+        if (list.some((n) => n.id === note.id)) return prev;
+        return {
+          ...prev,
+          [note.case_id]: [note, ...list],
+        };
+      });
     }
 
     onWorkflowTrigger('VOUCHER_SAVED', newVoucher);

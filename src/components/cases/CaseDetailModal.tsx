@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, ToothDetail, CaseAttachment } from '../../types';
 import Odontogram, { SHADE_COLORS } from './Odontogram';
@@ -179,6 +179,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   /* ---------------------------- wizard state ---------------------------- */
   const STEP_SETTLE_MS = 350;
   const stepEnteredAtRef = React.useRef(0);
+  const committingRef = useRef(false);
   const [step, setStep] = useState(0);
   /* Editing jumps straight to any step — the record already exists, so nothing
      is being bypassed. Creating starts locked to step 1. */
@@ -457,6 +458,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
     const finalPrice = Math.max(0, price - discount);
 
+    if (committingRef.current) return;
+    committingRef.current = true;
+
     if (isEdit && initialCase) {
       updateCase(
         initialCase.id,
@@ -567,6 +571,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   useEffect(() => {
     stepEnteredAtRef.current = Date.now();
   }, [step]);
+
+  useEffect(() => {
+    committingRef.current = false;
+  }, [initialCase?.id]);
 
   /* Priority visual mapping */
   const priorityDot: Record<PriorityLevel, string> = {

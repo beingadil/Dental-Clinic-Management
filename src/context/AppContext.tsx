@@ -813,12 +813,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cases, labs, caseTypes, invoices, notifications, templates, labContacts,
       labAddresses, pricingOverrides, labReviews, doctorPreferences, userPreferences,
       caseAttachments, caseNotes, brandingSettings, savedVouchers, advancePayments,
-      accountAdjustments, journalEntries, auditEvents, reconciliationItems, users,
+      accountAdjustments, journalEntries, auditEvents, reconciliationItems, users, qcInspections,
     },
     setCases, setLabs, setCaseTypes, setInvoices, setAdvancePayments, setAccountAdjustments,
     setJournalEntries, setAuditEvents, setReconciliationItems, setNotifications, setTemplates,
     setLabContacts, setLabAddresses, setPricingOverrides, setLabReviews, setDoctorPreferences,
     setUserPreferences, setBrandingSettings, setSavedVouchers, setCaseAttachments, setCaseNotes,
+    setQcInspections,
   });
 
 
@@ -886,7 +887,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Document number generators (pure ledger domain)
   const generateCaseNumber = () => nextCaseNumber(cases || []);
-  const generateInvoiceNumber = () => nextInvoiceNumber(invoices || []);
+  // Voided invoice numbers stay retired: the audit trail is the only place a
+  // removed invoice's number still exists, and it must never be re-issued.
+  const generateInvoiceNumber = () =>
+    nextInvoiceNumber(invoices || [], auditEvents.filter((a) => a.action === 'INVOICE_VOIDED').map((a) => a.entity_ref));
   const generatePaymentNumber = () => nextPaymentNumber(invoices);
   const generateAdjustmentNumber = (type: 'credit_note' | 'debit_adjustment' | 'refund') =>
     nextAdjustmentNumber(accountAdjustments, type);
@@ -956,15 +960,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       payments: []
     };
 
-    setInvoices((prev) => [newInvoice, ...prev]);
-
-    // Post the issuance journal (debit A/R / credit Revenue). The ledger is
-    // double-entry: every invoice must carry its issuance journal or reports
-    // cannot reconcile. journal_id is stamped on the invoice so the pair
-    // survives the whole-table sync rewrite.
+    // Post the issuance journal (debit A/R / credit Revenue) and stamp it on
+    // the invoice BEFORE the invoice enters state. The ledger is double-entry:
+    // every invoice must carry its issuance journal or reports cannot
+    // reconcile, and a state snapshot without the pairing loses it for a sync.
     const journal = buildInvoiceJournal(newInvoice, user ? user.name : 'System');
-    setJournalEntries((prev) => [journal, ...prev]);
     newInvoice.journal_id = journal.id;
+    setInvoices((prev) => [newInvoice, ...prev]);
+    setJournalEntries((prev) => [journal, ...prev]);
 
     // Check if preferred lab should be logged or updated
     if (caseData.doctor_name) {
@@ -1018,8 +1021,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    // Sync invoice if price changed
-    if (updates.price !== undefined || updates.discount !== undefined || updates.final_price !== undefined) {
+    // Sync invoice if price or the owning clinic changed: an invoice left on a
+    // stale lab_id trips the labs FK and aborts the whole sync once that clinic
+    // is deleted.
+    if (updates.price !== undefined || updates.discount !== undefined || updates.final_price !== undefined
+      || updates.lab_id !== undefined || updates.lab_name !== undefined) {
+      // Repricing re-posts the books (audit F11): the old issuance journal is
+      // reversed and a fresh one is issued for the new amounts, so the ledger
+      // never drifts from the invoice.
+      const actor = user ? user.name : 'System';
+      const repriceJournals: JournalEntry[] = [];
+      const repriceReversals: JournalEntry[] = [];
       setInvoices((prev) =>
         prev.map((inv) => {
           if (inv.case_id !== id) return inv;
@@ -1030,15 +1042,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // failed the whole SQLite sync.
           const newFinal = Math.max(0, updates.final_price ?? (newAmount - newDiscount));
           const newStatus = inv.amount_paid >= newFinal ? 'paid' : (inv.amount_paid > 0 ? 'partial' : 'unpaid');
-          return {
+          const reissued: Invoice = {
             ...inv,
             amount: newAmount,
             discount: newDiscount,
             final_amount: newFinal,
-            payment_status: newStatus
+            payment_status: newStatus,
+            lab_id: updates.lab_id ?? inv.lab_id,
+            lab_name: updates.lab_name ?? inv.lab_name
           };
+          const priorJournal = journalEntries.find((j) => j.reference_type === 'invoice' && j.reference_id === inv.id);
+          if (priorJournal) {
+            repriceReversals.push(buildReversalJournal(priorJournal, `Invoice ${inv.invoice_number} repriced from case edit`, actor));
+          }
+          const newIssuance = buildInvoiceJournal(reissued, actor);
+          reissued.journal_id = newIssuance.id;
+          repriceJournals.push(newIssuance);
+          return reissued;
         })
       );
+      if (repriceReversals.length > 0 || repriceJournals.length > 0) {
+        setJournalEntries((prev) => [...repriceJournals, ...repriceReversals, ...prev]);
+      }
     }
   };
 
@@ -1135,11 +1160,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCase = (id: string) => {
     const target = cases.find((c) => c.id === id);
+
+    // Money integrity: linked invoices must never vanish silently. Refuse while
+    // any of them carries an active payment (the same gate deleteInvoice
+    // enforces) and reverse each issuance journal before removing the rows.
+    const linkedInvoices = invoices.filter((inv) => inv.case_id === id);
+    const activeInvoices = linkedInvoices.filter((inv) => (inv.payments || []).some((p) => !p.is_reversed));
+    if (activeInvoices.length > 0) {
+      showToast(
+        `Cannot delete ${target ? target.case_number : 'case'}: invoice ${activeInvoices[0].invoice_number} has active payment(s). Reverse them first.`,
+        'error'
+      );
+      return;
+    }
+
+    const actor = user ? user.name : 'Staff';
+    const reversalJournals: JournalEntry[] = [];
+    const voidAudits: AuditEvent[] = [];
+    linkedInvoices.forEach((inv) => {
+      const origJournal = journalEntries.find((j) => j.reference_type === 'invoice' && j.reference_id === inv.id);
+      if (origJournal) {
+        reversalJournals.push(buildReversalJournal(origJournal, `Case ${target ? target.case_number : id} deleted — invoice ${inv.invoice_number} voided`, actor));
+      }
+      voidAudits.push({
+        id: `aud-${Date.now()}-${inv.id}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        actor,
+        action: 'INVOICE_VOIDED',
+        entity_type: 'Invoice',
+        entity_id: inv.id,
+        entity_ref: inv.invoice_number,
+        notes: `Voided with case ${target ? target.case_number : id} (PKR ${inv.final_amount.toLocaleString()}) — no active payments.`
+      });
+    });
+    if (reversalJournals.length > 0) setJournalEntries((prev) => [...reversalJournals, ...prev]);
+    if (voidAudits.length > 0) setAuditEvents((prev) => [...voidAudits, ...prev]);
+
     setCases((prev) => prev.filter((c) => c.id !== id));
     setInvoices((prev) => prev.filter((inv) => inv.case_id !== id));
     setNotifications((prev) => prev.filter((n) => n.case_id !== id));
+    // QC rows cascade in SQLite (case FK): drop them here too or the rebuild
+    // re-inserts orphans and the FK aborts the whole sync.
+    setQcInspections((prev) => prev.filter((q) => q.case_id !== id));
+    // State hygiene (audit C9): the case is gone, so its notes/attachments
+    // maps must not keep orphan entries either.
+    setCaseNotes((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)));
+    setCaseAttachments((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)));
     if (target) {
       triggerAgentWorkflow('CASE_DELETED', { case_id: id, case_number: target.case_number });
+      showToast(`Case ${target.case_number} deleted — linked invoice journals reversed.`, 'success');
     }
   };
 
@@ -1168,6 +1237,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = cases.find((c) => c.id === id);
     setCases((prev) => prev.filter((c) => c.id !== id));
     setNotifications((prev) => prev.filter((n) => n.case_id !== id));
+    setQcInspections((prev) => prev.filter((q) => q.case_id !== id));
+    setCaseNotes((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)));
+    setCaseAttachments((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)));
     if (isDatabaseReady()) {
       try { casesRepo.deleteCascade(id); } catch { /* sync pass will reconcile */ }
     }
@@ -1179,7 +1251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addCaseNote = (caseId: string, noteText: string, author: string) => {
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
     const newNote: CaseNote = {
-      id: `note-${Date.now()}`,
+      id: genId('note'),
       case_id: caseId,
       note_text: noteText,
       author: author || (user ? user.name : 'Staff'),
@@ -1276,6 +1348,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteLab = (id: string) => {
+    // FK integrity: cases/invoices/advances/adjustments reference the lab with
+    // no cascade. Removing it while any row still points here aborts the whole
+    // SQLite sync transaction — refuse and ask for a re-assignment first.
+    const referenced =
+      cases.some((c) => c.lab_id === id) ||
+      invoices.some((inv) => inv.lab_id === id) ||
+      advancePayments.some((a) => a.lab_id === id) ||
+      accountAdjustments.some((adj) => adj.lab_id === id);
+    if (referenced) {
+      showToast('Cannot delete this clinic: cases, invoices or transactions still reference it.', 'error');
+      return;
+    }
     setLabs((prev) => prev.filter((l) => l.id !== id));
     setLabContacts((prev) => prev.filter((lc) => lc.lab_id !== id));
     setLabAddresses((prev) => prev.filter((la) => la.lab_id !== id));
@@ -1381,33 +1465,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Billing & Invoices
   const deletePayment = (paymentId: string) => {
-    setInvoices((prev) =>
-      prev.map((inv) => {
-        const hasPayment = (inv.payments || []).some((p) => p.id === paymentId);
-        if (!hasPayment) return inv;
-
-        const updatedPayments = (inv.payments || []).filter((p) => p.id !== paymentId);
-        const newPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
-        const newStatus = deriveSimpleStatus(newPaid, inv.final_amount);
-
-        return {
-          ...inv,
-          amount_paid: newPaid,
-          payment_status: newStatus,
-          payments: updatedPayments
-        };
-      })
-    );
+    // Money rows may not be deleted (audit F6): the payment list is owned by
+    // the transaction flows, and removal must keep the reversal journal, audit
+    // and reversal flags that applyPaymentReversalToInvoice/reverseTransactionV2
+    // produce. This legacy entry point is latent (zero callers) and now refuses
+    // instead of silently destroying the money trail.
+    const target = allPayments.find((p) => p.id === paymentId);
+    if (target) {
+      showToast(
+        `Payment ${target.payment_number || paymentId} cannot be deleted — reverse it instead (Reversal flow).`,
+        'error'
+      );
+    }
   };
 
   const updateInvoice = (id: string, updates: Partial<Invoice>) => {
     setInvoices((prev) =>
       prev.map((inv) => {
         if (inv.id !== id) return inv;
-        const updated = { ...inv, ...updates };
-        const finalAmt = updates.final_amount !== undefined ? updates.final_amount : updated.final_amount;
-        const paidAmt = updates.amount_paid !== undefined ? updates.amount_paid : updated.amount_paid;
-        updated.payment_status = deriveSimpleStatus(paidAmt, finalAmt);
+        // Money columns are owned by the transaction flows (audit F5): a
+        // generic invoice edit may change pricing/notes, never silently
+        // replace its payment list or paid total.
+        const { payments: _ignoredPayments, amount_paid: _ignoredPaid, ...safeUpdates } = updates;
+        const updated = { ...inv, ...safeUpdates };
+        const finalAmt = safeUpdates.final_amount !== undefined ? safeUpdates.final_amount : updated.final_amount;
+        updated.payment_status = deriveSimpleStatus(inv.amount_paid, finalAmt);
         return updated;
       })
     );
@@ -1429,7 +1511,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInvoices((prev) =>
       prev.map((inv) => {
         if (!invoiceIds.includes(inv.id)) return inv;
-        const remaining = inv.final_amount - inv.amount_paid;
+        // Net due must respect stored credit notes, or the settlement records
+        // amount_paid beyond what the clinic actually owes.
+        const credits = inv.credit_notes_total || 0;
+        const remaining = inv.final_amount - credits - inv.amount_paid;
         if (remaining <= 0) return inv;
 
         const payNum = payNumFor(inv.id);
@@ -1479,7 +1564,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         return {
           ...inv,
-          amount_paid: inv.final_amount,
+          amount_paid: inv.final_amount - credits,
           payment_status: 'paid',
           status_v2: 'paid',
           payments: [newPayment, ...(inv.payments || [])]

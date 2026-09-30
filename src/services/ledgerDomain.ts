@@ -32,6 +32,30 @@ const maxMatch = (values: (string | undefined)[], pattern: RegExp): number => {
   return max;
 };
 
+/**
+ * Highest sequence number across BOTH legacy (PAY-0009) and year-formatted
+ * (PAY-2026-0009) document numbers. Slice/healed copies (PAY-2026-0009-2,
+ * PAY-0012-1, …-D2) contribute their BASE sequence, so a split receipt's base
+ * number is never re-issued. Counting rows instead of scanning is what made
+ * the generator re-mint numbers that already existed and abort the whole sync.
+ */
+export const maxDocumentSeq = (numbers: (string | undefined)[], prefix: string): number => {
+  // Year form first: PAY-0012-1 would otherwise read as year "0012" with
+  // sequence 1 instead of base sequence 12 plus a slice suffix.
+  const yearForm = new RegExp(`^${prefix}-\\d{4}-(\\d{4,})(?:-D?\\d+)?$`);
+  const legacyForm = new RegExp(`^${prefix}-(\\d+)(?:-D?\\d+)?$`);
+  let max = 0;
+  for (const value of numbers) {
+    const trimmed = (value || '').trim();
+    const match = trimmed.match(yearForm) || trimmed.match(legacyForm);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > max) max = num;
+    }
+  }
+  return max;
+};
+
 type MaybeNumbered = { case_number?: string; invoice_number?: string; payment_number?: string; adjustment_number?: string } | null | undefined;
 
 /** Next case number DS-0001, based on the existing case list. */
@@ -40,18 +64,23 @@ export const nextCaseNumber = (cases: DentalCase[]): string => {
   return `DS-${String(maxNum + 1).padStart(4, '0')}`;
 };
 
-/** Next invoice number INV-0001, based on the existing invoice list. */
-export const nextInvoiceNumber = (invoices: Invoice[]): string => {
-  const maxNum = maxMatch((invoices || []).map((i) => (i as MaybeNumbered)?.invoice_number), /INV-(\d+)/);
+/** Next invoice number INV-0001. `retiredNumbers` keeps voided invoice numbers
+ *  retired, so a deleted invoice's number is never re-issued (audit F13). */
+export const nextInvoiceNumber = (invoices: Invoice[], retiredNumbers: (string | undefined)[] = []): string => {
+  const live = (invoices || []).map((i) => (i as MaybeNumbered)?.invoice_number);
+  const maxNum = maxDocumentSeq([...live, ...retiredNumbers], 'INV');
   return `INV-${String(maxNum + 1).padStart(4, '0')}`;
 };
 
-/** Next payment number PAY-0001, scanning the payments nested in invoices. */
+/**
+ * Next payment number PAY-0001, scanning the payments nested in invoices.
+ * Mixed formats are handled: a year-formatted PAY-2026-0009 counts as sequence
+ * 9 (the old /PAY-(\d+)/ read it as 2026 and handed out out-of-range numbers).
+ */
 export const nextPaymentNumber = (invoices: Invoice[]): string => {
   const flat: string[] = [];
   (invoices || []).forEach((inv) => (inv.payments || []).forEach((p) => flat.push(p.payment_number || '')));
-  const maxNum = maxMatch(flat, /PAY-(\d+)/);
-  return `PAY-${String(maxNum + 1).padStart(4, '0')}`;
+  return `PAY-${String(maxDocumentSeq(flat, 'PAY') + 1).padStart(4, '0')}`;
 };
 
 /** Next advance number ADV-0001. */

@@ -69,6 +69,31 @@ function syncNow(c: SyncCollections): void {
   const db = getDatabase();
   const now = new Date().toISOString();
 
+  /* Duplicate-document-number healer. Pre-fix state can contain two payments
+     sharing one PAY- number (one receipt split across several invoices) or two
+     advances sharing one ADV- number (count-based generation after a
+     deletion). A single duplicate aborts this whole transaction and silently
+     stops ALL persistence, so the first occurrence keeps its number and later
+     ones get a deterministic -D2/-D3 suffix instead of blocking the save. */
+  const usedPaymentNumbers = new Set<string>();
+  const usedAdvanceNumbers = new Set<string>();
+  const usedPaymentIds = new Set<string>();
+  const usedAdvanceIds = new Set<string>();
+  const usedCaseNumbers = new Set<string>();
+  const usedInvoiceNumbers = new Set<string>();
+  const usedHistoryIds = new Set<string>();
+  const usedNoteIds = new Set<string>();
+  const usedQcIds = new Set<string>();
+  const usedQcKeys = new Set<string>();
+  const uniqueNumber = (value: string, used: Set<string>): string => {
+    if (!used.has(value)) { used.add(value); return value; }
+    let n = 2;
+    while (used.has(`${value}-D${n}`)) n++;
+    const healed = `${value}-D${n}`;
+    used.add(healed);
+    return healed;
+  };
+
   db.withTransaction((tx) => {
     // FK-aware delete order: children BEFORE parents. With PRAGMA
     // foreign_keys ON (enforced since the export() reset fix), deleting the
@@ -159,13 +184,15 @@ function syncNow(c: SyncCollections): void {
     // Child tables are wiped explicitly: the rebuild below re-inserts every row,
     // and FK cascade cannot be relied upon on every engine/connection.
     // (children already emptied up front for FK-safe ordering)
+    const liveCaseIds = new Set(c.cases.map((x: any) => x.id));
     for (const cse of c.cases) {
+      const caseNumber = uniqueNumber(String(cse.case_number || 'DS-LEGACY'), usedCaseNumbers);
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
                             selected_teeth, tooth_details, shade, material, delivery_date, priority, price, discount, final_price,
                             instructions, photo_url, status, archived_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [cse.id, cse.case_number, cse.patient_name ?? null, cse.lab_id, cse.lab_name,
+        [cse.id, caseNumber, cse.patient_name ?? null, cse.lab_id, cse.lab_name,
          cse.case_type_id ?? null, cse.case_type_name ?? null, cse.units_count ?? null, cse.doctor_name ?? '',
          JSON.stringify(cse.selected_teeth ?? []), cse.tooth_details ? JSON.stringify(cse.tooth_details) : null,
          cse.shade ?? null, cse.material ?? null, cse.delivery_date, cse.priority ?? 'normal',
@@ -173,7 +200,10 @@ function syncNow(c: SyncCollections): void {
          cse.photo_url ?? null, cse.status ?? 'received', cse.archived_at ?? null, cse.created_at ?? now, cse.updated_at ?? now]
       );
       const details = cse.tooth_details || {};
+      const seenTeeth = new Set<number>();
       for (const tooth of cse.selected_teeth || []) {
+        if (seenTeeth.has(tooth)) continue; // PK (case_id, tooth_number): one row per tooth
+        seenTeeth.add(tooth);
         const d = details[tooth] || {};
         tx.run(
           `INSERT INTO case_teeth (case_id, tooth_number, shade, prep_type, material, notes, implant_brand, implant_size)
@@ -183,15 +213,21 @@ function syncNow(c: SyncCollections): void {
         );
       }
       for (const h of cse.history || []) {
+        let hid = h.id || genId('h');
+        if (usedHistoryIds.has(hid)) hid = genId('h');
+        usedHistoryIds.add(hid);
         tx.run(
           `INSERT INTO case_status_history (id, case_id, status, notes, timestamp, updated_by) VALUES (?, ?, ?, ?, ?, ?)`,
-          [h.id || genId('h'), cse.id, h.status, h.notes ?? null, h.timestamp ?? now, h.updated_by ?? 'System']
+          [hid, cse.id, h.status, h.notes ?? null, h.timestamp ?? now, h.updated_by ?? 'System']
         );
       }
       for (const n of c.caseNotes[cse.id] || []) {
+        let nid = n.id || genId('note');
+        if (usedNoteIds.has(nid)) nid = genId('note');
+        usedNoteIds.add(nid);
         tx.run(
           `INSERT INTO case_notes (id, case_id, note_text, author, created_at) VALUES (?, ?, ?, ?, ?)`,
-          [n.id, cse.id, n.note_text ?? '', n.author ?? 'System', n.created_at ?? now]
+          [nid, cse.id, n.note_text ?? '', n.author ?? 'System', n.created_at ?? now]
         );
       }
       for (const a of c.caseAttachments[cse.id] || []) {
@@ -209,13 +245,20 @@ function syncNow(c: SyncCollections): void {
     // the quality history (and every derived KPI) survives a boot sync.
     // (qc_inspections already emptied up front for FK-safe ordering)
     for (const qc of c.qcInspections || []) {
+      // A QC row whose case is gone (deleted/wiped/restored away) would trip the
+      // case FK and abort this whole transaction — the case is its parent, skip it.
+      if (!liveCaseIds.has(qc.case_id)) continue;
+      let qcId = qc.id || genId('qc');
+      if (usedQcIds.has(qcId)) qcId = genId('qc');
+      usedQcIds.add(qcId);
+      const qcKey = uniqueNumber(String(qc.dedupe_key || genId('qc-key')), usedQcKeys);
       tx.run(
         `INSERT INTO qc_inspections (id, case_id, case_number, inspection_no, kind, result, reason_code, reason_text,
                                      checklist, inspector, notes, supersedes_id, dedupe_key, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [qc.id, qc.case_id, qc.case_number ?? null, qc.inspection_no ?? 1, qc.kind ?? 'inspection',
+        [qcId, qc.case_id, qc.case_number ?? null, qc.inspection_no ?? 1, qc.kind ?? 'inspection',
          qc.result, qc.reason_code ?? null, qc.reason_text ?? null, qc.checklist ?? null,
-         qc.inspector ?? 'System', qc.notes ?? null, qc.supersedes_id ?? null, qc.dedupe_key, qc.created_at ?? now]
+         qc.inspector ?? 'System', qc.notes ?? null, qc.supersedes_id ?? null, qcKey, qc.created_at ?? now]
       );
     }
 
@@ -234,11 +277,12 @@ function syncNow(c: SyncCollections): void {
     // ── invoices (+ payments + proof attachments) — after labs & cases ──
     // (invoices/payments/attachments already emptied up front for FK-safe ordering)
     for (const inv of c.invoices) {
+      const invoiceNumber = uniqueNumber(String(inv.invoice_number || 'INV-LEGACY'), usedInvoiceNumbers);
       tx.run(
         `INSERT INTO invoices (id, invoice_number, case_id, case_number, lab_id, lab_name, case_type_id, case_type_name, doctor_name, patient_name,
                                amount, discount, final_amount, amount_paid, payment_status, status_v2, issue_date, due_date, journal_id, credit_notes_total, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [inv.id, inv.invoice_number, inv.case_id || null, inv.case_number || null, inv.lab_id, inv.lab_name,
+        [inv.id, invoiceNumber, inv.case_id || null, inv.case_number || null, inv.lab_id, inv.lab_name,
          inv.case_type_id ?? null, inv.case_type_name ?? null, inv.doctor_name || null, inv.patient_name ?? null,
          inv.amount ?? 0, inv.discount ?? 0, inv.final_amount ?? 0, inv.amount_paid ?? 0,
          inv.payment_status ?? 'unpaid', inv.status_v2 ?? 'open', inv.issue_date ?? null,
@@ -246,12 +290,15 @@ function syncNow(c: SyncCollections): void {
          inv.created_at ?? now, now]
       );
       (inv.payments || []).forEach((p: any, pIdx: number) => {
-        const pid = p.id || `${inv.id}-p${pIdx}`;
+        let pid = p.id || `${inv.id}-p${pIdx}`;
+        if (usedPaymentIds.has(pid)) pid = genId('pmt');
+        usedPaymentIds.add(pid);
+        const payNum = p.payment_number ? uniqueNumber(String(p.payment_number), usedPaymentNumbers) : null;
         tx.run(
           `INSERT INTO payments (id, payment_number, receipt_number, invoice_id, invoice_number, case_id, case_number, lab_id, lab_name,
                                  amount, payment_method, payment_date, reference_number, notes, recorded_by, payment_type, status, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [pid, p.payment_number || null, p.receipt_number || null, inv.id, inv.invoice_number,
+          [pid, payNum, p.receipt_number || null, inv.id, inv.invoice_number,
            p.case_id || inv.case_id || null, p.case_number || inv.case_number || null,
            p.lab_id || inv.lab_id, p.lab_name || inv.lab_name,
            p.amount, p.payment_method, p.payment_date, p.reference_number || null, p.notes || null,
@@ -272,11 +319,15 @@ function syncNow(c: SyncCollections): void {
     // ── advances ──
     tx.run('DELETE FROM advance_payments');
     for (const adv of c.advancePayments) {
+      let advId = adv.id || genId('adv');
+      if (usedAdvanceIds.has(advId)) advId = genId('adv');
+      usedAdvanceIds.add(advId);
+      const advNum = uniqueNumber(String(adv.payment_number || genId('ADV')), usedAdvanceNumbers);
       tx.run(
         `INSERT INTO advance_payments (id, payment_number, receipt_number, lab_id, lab_name, amount, allocated_amount, remaining_amount,
                                        payment_method, payment_date, reference_number, notes, recorded_by, status, is_reversed, journal_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [adv.id, adv.payment_number, adv.receipt_number || null, adv.lab_id, adv.lab_name, adv.amount,
+        [advId, advNum, adv.receipt_number || null, adv.lab_id, adv.lab_name, adv.amount,
          adv.allocated_amount ?? 0, adv.remaining_amount ?? 0, adv.payment_method, adv.payment_date,
          adv.reference_number || null, adv.notes || null, adv.recorded_by, adv.status ?? 'available',
          adv.is_reversed ? 1 : 0, adv.journal_id ?? null, adv.created_at ?? now]
@@ -285,7 +336,7 @@ function syncNow(c: SyncCollections): void {
         tx.run(
           `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [a.id || genId('pa'), adv.id, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
+          [a.id || genId('pa'), advId, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
            a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
         );
       }

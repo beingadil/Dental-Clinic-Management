@@ -8,6 +8,7 @@ import type {
   AuditEvent,
 } from '../types';
 import { deriveInvoiceStatus, formatPKR } from './financeDomain';
+import { maxDocumentSeq } from './ledgerDomain';
 
 /**
  * Transaction domain — pure builders for the V2 cashier command flows
@@ -89,19 +90,25 @@ export const prepareTransaction = (input: {
     isVerified?: boolean;
   };
   invoices: Invoice[];
-  /** Flat existing payment count for the PAY-/REC- sequence. */
-  existingPaymentCount: number;
-  advanceCount: number;
+  /** Every existing payment number — the PAY- sequence continues past the max, never a count. */
+  existingPaymentNumbers: string[];
+  /** Every existing advance number (the unapplied remainder may become one). */
+  existingAdvanceNumbers: string[];
+  /** Every existing receipt number (payments + advances) so REC- stays monotonic. */
+  existingReceiptNumbers: string[];
   labName: string;
   actor: string;
   paymentId: string;
 }): PreparedTransaction => {
-  const { command, invoices, existingPaymentCount, advanceCount, labName, actor, paymentId } = input;
+  const { command, invoices, existingPaymentNumbers, existingAdvanceNumbers, existingReceiptNumbers, labName, actor, paymentId } = input;
   const nowStr = nowStamp();
   const currentYear = new Date().getFullYear();
-  const seq = existingPaymentCount + advanceCount + 1;
+  /* Max-scan, not count: deletions, reversals and legacy 4-digit numbers must
+     never let the sequence hand out a number that already exists (a single
+     duplicate aborts the whole SQLite sync transaction). */
+  const seq = maxDocumentSeq(existingPaymentNumbers, 'PAY') + 1;
   const paymentNumber = `PAY-${currentYear}-${String(seq).padStart(4, '0')}`;
-  const receiptNumber = `REC-${currentYear}-${String(seq).padStart(4, '0')}`;
+  const receiptNumber = `REC-${currentYear}-${String(maxDocumentSeq(existingReceiptNumbers, 'REC') + 1).padStart(4, '0')}`;
 
   const totalAllocated = command.allocations.reduce((sum, a) => sum + a.amount, 0);
 
@@ -160,7 +167,11 @@ export const prepareTransaction = (input: {
     unapplied_amount: unappliedAmount
   };
 
-  const invoiceSlices = command.allocations.map((alloc) => {
+  /* One cash receipt can hit several invoices; every stored slice needs its own
+     payments.payment_number or the UNIQUE index aborts the whole sync
+     transaction. The canonical number stays on the payment (and on a
+     single-invoice slice); extra slices get a deterministic -1/-2 suffix. */
+  const invoiceSlices = command.allocations.map((alloc, idx) => {
     const inv = invoices.find((i) => i.id === alloc.invoiceId);
     return {
       invoiceId: alloc.invoiceId,
@@ -168,6 +179,7 @@ export const prepareTransaction = (input: {
       payment: {
         ...payment,
         id: `pay-slice-${Date.now()}-${alloc.invoiceId}`,
+        payment_number: command.allocations.length > 1 ? `${paymentNumber}-${idx + 1}` : paymentNumber,
         invoice_id: alloc.invoiceId,
         invoice_number: inv?.invoice_number,
         amount: alloc.amount
@@ -182,7 +194,7 @@ export const prepareTransaction = (input: {
     unappliedAmount > 0 && command.saveRemainingAsAdvance === true
       ? {
           id: `adv-rem-${Date.now()}`,
-          payment_number: `ADV-${currentYear}-${String(advanceCount + 1).padStart(4, '0')}`,
+          payment_number: `ADV-${currentYear}-${String(maxDocumentSeq(existingAdvanceNumbers, 'ADV') + 1).padStart(4, '0')}`,
           receipt_number: receiptNumber,
           lab_id: command.clinicId,
           lab_name: labName,
@@ -272,18 +284,18 @@ export const prepareAdvanceDeposit = (input: {
     attachments?: PaymentAttachment[];
     isVerified?: boolean;
   };
-  advanceCount: number;
-  existingPaymentCount: number;
+  existingAdvanceNumbers: string[];
+  existingReceiptNumbers: string[];
   labName: string;
   actor: string;
   advanceId: string;
 }): { advance: AdvancePayment; receiptNumber: string; reconciliationItem: PreparedTransaction['reconciliationItem']; auditEvent: AuditEvent } => {
-  const { command, advanceCount, existingPaymentCount, labName, actor, advanceId } = input;
+  const { command, existingAdvanceNumbers, existingReceiptNumbers, labName, actor, advanceId } = input;
   const nowStr = nowStamp();
   const currentYear = new Date().getFullYear();
-  const seq = advanceCount + 1;
+  const seq = maxDocumentSeq(existingAdvanceNumbers, 'ADV') + 1;
   const advNum = `ADV-${currentYear}-${String(seq).padStart(4, '0')}`;
-  const receiptNumber = `REC-${currentYear}-${String(existingPaymentCount + seq).padStart(4, '0')}`;
+  const receiptNumber = `REC-${currentYear}-${String(maxDocumentSeq(existingReceiptNumbers, 'REC') + 1).padStart(4, '0')}`;
 
   const advance: AdvancePayment = {
     id: advanceId,
@@ -429,15 +441,16 @@ export const buildCreditNoteAdjustment = (input: {
     date?: string;
   };
   invoice: Invoice | undefined;
-  adjustmentCount: number;
+  /** Every existing adjustment number — the CR- sequence continues past the max, never a count. */
+  existingAdjustmentNumbers: string[];
   labName: string;
   actor: string;
   adjustmentId: string;
 }): { adjustment: AccountAdjustment; auditEvent: AuditEvent } => {
-  const { command, invoice, adjustmentCount, labName, actor, adjustmentId } = input;
+  const { command, invoice, existingAdjustmentNumbers, labName, actor, adjustmentId } = input;
   const nowStr = nowStamp();
   const currentYear = new Date().getFullYear();
-  const crNum = `CR-${currentYear}-${String(adjustmentCount + 1).padStart(4, '0')}`;
+  const crNum = `CR-${currentYear}-${String(maxDocumentSeq(existingAdjustmentNumbers, 'CR') + 1).padStart(4, '0')}`;
 
   const adjustment: AccountAdjustment = {
     id: adjustmentId,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentAttachment } from '../../types';
 import { formatPKR } from '../../services/financeDomain';
@@ -70,6 +70,12 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const [proofType, setProofType] = useState<string>('');
   const [isVerified, setIsVerified] = useState<boolean>(true);
 
+  /* Synchronous double-submit latch. React state updates are async, so two
+     rapid submits (double click / Enter) would both read the same stale
+     invoices + advances, mint the same payment number twice and only surface
+     as a UNIQUE failure once the SQLite sync runs. */
+  const submitLatchRef = useRef(false);
+
   // Credit Note specific
   const [creditReasonCode, setCreditReasonCode] = useState<string>('remake');
   const [creditReasonText, setCreditReasonText] = useState<string>('');
@@ -81,6 +87,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   // Reset when opening
   useEffect(() => {
     if (isOpen) {
+      submitLatchRef.current = false;
       setMode(initialMode === 'advance_deposit' ? 'advance' : initialMode);
       if (initialClinicId) setClinicId(initialClinicId);
       if (initialInvoiceId) setSelectedInvoiceId(initialInvoiceId);
@@ -202,6 +209,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLatchRef.current) return;
     if (amount <= 0 && mode !== 'credit_note') {
       alert('Please enter a valid amount greater than 0.');
       return;
@@ -222,6 +230,14 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         return;
       }
     }
+
+    if (mode === 'credit_note' && !selectedInvoiceId) {
+      alert('Please select a target invoice for this credit note.');
+      return;
+    }
+
+    // Every validation passed — latch before the first write.
+    submitLatchRef.current = true;
 
     const attachments: PaymentAttachment[] = proofUrl ? [{
       id: `att-${Date.now()}`,
@@ -269,10 +285,6 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       onClose();
       if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
     } else if (mode === 'credit_note') {
-      if (!selectedInvoiceId) {
-        alert('Please select a target invoice for this credit note.');
-        return;
-      }
       issueCreditNoteV2({
         clinicId,
         invoiceId: selectedInvoiceId,

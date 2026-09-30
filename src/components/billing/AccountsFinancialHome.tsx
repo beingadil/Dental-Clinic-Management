@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord, AdvancePayment, AccountAdjustment, LedgerEntry } from '../../types';
 import { formatPKR } from '../../services/financeDomain';
@@ -147,9 +147,19 @@ export const AccountsFinancialHome: React.FC<AccountsFinancialHomeProps> = ({
     return { current, days1_30, days31_60, days61_90, days90Plus };
   }, [clinicInvoices]);
 
+  /* Synchronous double-submit latch (audit F8): the dialog closes on the same
+     tick, so a queued second submit would double-credit the invoice and the
+     advance wallet from stale render closures. */
+  const advanceSubmitLatchRef = useRef(false);
+  useEffect(() => {
+    if (!applyAdvanceTarget) advanceSubmitLatchRef.current = false;
+  }, [applyAdvanceTarget]);
+
   const handleApplyAdvanceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (advanceSubmitLatchRef.current) return;
     if (!applyAdvanceTarget || applyAdvanceAmount <= 0) return;
+    advanceSubmitLatchRef.current = true;
     applyAdvanceCreditV2({
       clinicId: selectedClinic.id,
       invoiceId: applyAdvanceTarget.invoiceId,

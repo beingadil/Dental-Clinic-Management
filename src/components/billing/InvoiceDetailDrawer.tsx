@@ -66,7 +66,8 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   // Journal entries linked to this invoice or any of its payments
   const linkedJournals = journalEntries.filter(
     (j) => j.reference_number === invoice.invoice_number || j.reference_id === invoice.id ||
-      (invoice.payments || []).some((p) => p.id === j.reference_id || p.payment_number === j.reference_number)
+      (invoice.payments || []).some((p) => p.id === j.reference_id || p.payment_number === j.reference_number
+        || (p.payment_number || '').replace(/-D?\d+$/, '') === j.reference_number)
   );
 
   return (

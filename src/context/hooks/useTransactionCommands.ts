@@ -67,6 +67,19 @@ export function useTransactionCommands(deps: {
     saveVoucherToSystem,
   } = deps;
 
+  /* Max-scan inputs for document numbering. Row counts were wrong twice over:
+     deletePayment lowers allPayments.length, and one multi-invoice payment is
+     counted once per slice — both re-issued numbers that already existed and
+     aborted the whole SQLite sync. */
+  const numberingInputs = {
+    existingPaymentNumbers: allPayments.map((p) => p.payment_number || ''),
+    existingAdvanceNumbers: advancePayments.map((a) => a.payment_number || ''),
+    existingReceiptNumbers: [
+      ...allPayments.map((p) => p.receipt_number || ''),
+      ...advancePayments.map((a) => a.receipt_number || ''),
+    ],
+  };
+
   const recordTransactionV2 = (command: {
     clinicId: string;
     amount: number;
@@ -87,8 +100,7 @@ export function useTransactionCommands(deps: {
     const prepared = prepareTransaction({
       command,
       invoices,
-      existingPaymentCount: allPayments.length,
-      advanceCount: advancePayments.length,
+      ...numberingInputs,
       labName,
       actor: actorName || 'Cashier',
       paymentId,
@@ -122,6 +134,9 @@ export function useTransactionCommands(deps: {
       journalCaseRef,
     );
     prepared.payment.journal_id = journal.id;
+    // SyncCore stores one payments row per invoice-nested slice: stamp the
+    // journal on every slice so drawer/reversal lookups resolve them (F7).
+    prepared.invoiceSlices.forEach((s) => { s.payment.journal_id = journal.id; });
     setJournalEntries((prev) => [journal, ...prev]);
 
     // 4. Audit event
@@ -183,8 +198,7 @@ export function useTransactionCommands(deps: {
 
     const prepared = prepareAdvanceDeposit({
       command,
-      advanceCount: advancePayments.length,
-      existingPaymentCount: allPayments.length,
+      ...numberingInputs,
       labName,
       actor: actorName || 'Cashier',
       advanceId,
@@ -293,7 +307,7 @@ export function useTransactionCommands(deps: {
     const prepared = buildCreditNoteAdjustment({
       command,
       invoice: inv,
-      adjustmentCount: accountAdjustments.length,
+      existingAdjustmentNumbers: accountAdjustments.map((a) => a.adjustment_number),
       labName,
       actor: actorName || 'Manager',
       adjustmentId,
@@ -370,7 +384,8 @@ export function useTransactionCommands(deps: {
 
       // Compensating journal
       const origJournal = journalEntries.find(
-        (j) => j.reference_id === targetPayment?.id || j.reference_number === targetPayment?.payment_number,
+        (j) => j.reference_id === targetPayment?.id || j.reference_number === targetPayment?.payment_number
+          || j.reference_number === (targetPayment?.payment_number || '').replace(/-D?\d+$/, ''),
       );
       if (origJournal) {
         const revJournal = buildReversalJournal(origJournal, command.reason, actor);

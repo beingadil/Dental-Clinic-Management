@@ -4,7 +4,7 @@ import {
   LabContact, LabAddress, LabPricingOverride, LabReview, DoctorPreferredLab,
   UserPreferences, BrandingSettings, SavedVoucher, AdvancePayment,
   AccountAdjustment, JournalEntry, AuditEvent, ReconciliationItem,
-  CaseAttachment, CaseNote, UserProfile,
+  CaseAttachment, CaseNote, UserProfile, QcInspection,
 } from '../../types';
 import type { UserRow } from '../../db/repos';
 import { usersRepo } from '../../db/repos';
@@ -55,6 +55,7 @@ export function useAuthDomain(deps: {
     caseNotes: Record<string, CaseNote[]>; brandingSettings: BrandingSettings; savedVouchers: SavedVoucher[];
     advancePayments: AdvancePayment[]; accountAdjustments: AccountAdjustment[];
     journalEntries: JournalEntry[]; auditEvents: AuditEvent[]; reconciliationItems: ReconciliationItem[]; users: UserProfile[];
+    qcInspections: QcInspection[];
   };
   setCases: React.Dispatch<React.SetStateAction<DentalCase[]>>;
   setLabs: React.Dispatch<React.SetStateAction<DentalLab[]>>;
@@ -77,6 +78,7 @@ export function useAuthDomain(deps: {
   setSavedVouchers: React.Dispatch<React.SetStateAction<SavedVoucher[]>>;
   setCaseAttachments: React.Dispatch<React.SetStateAction<Record<string, CaseAttachment[]>>>;
   setCaseNotes: React.Dispatch<React.SetStateAction<Record<string, CaseNote[]>>>;
+  setQcInspections: React.Dispatch<React.SetStateAction<QcInspection[]>>;
 }) {
   const {
     user, setUser, users, setUsers, setCurrentView, loginBackoffState, showToast, genId, snapshot,
@@ -84,6 +86,7 @@ export function useAuthDomain(deps: {
     setJournalEntries, setAuditEvents, setReconciliationItems, setNotifications, setTemplates,
     setLabContacts, setLabAddresses, setPricingOverrides, setLabReviews, setDoctorPreferences,
     setUserPreferences, setBrandingSettings, setSavedVouchers, setCaseAttachments, setCaseNotes,
+    setQcInspections,
   } = deps;
 
   const dbWrite = (fn: () => void): void => {
@@ -328,6 +331,7 @@ export function useAuthDomain(deps: {
       if (tables.caseNotes) setCaseNotes(tables.caseNotes);
       if (tables.brandingSettings) setBrandingSettings(tables.brandingSettings);
       if (Array.isArray(tables.savedVouchers)) setSavedVouchers(tables.savedVouchers);
+      if (Array.isArray(tables.qcInspections)) setQcInspections(tables.qcInspections);
       if (Array.isArray(tables.users)) setUsers(tables.users.filter((u: any) => !u.is_hidden));
       return true;
     } catch (err) {
@@ -357,6 +361,7 @@ export function useAuthDomain(deps: {
     setUserPreferences(INITIAL_USER_PREFERENCES);
     setBrandingSettings(DEFAULT_BRANDING_SETTINGS);
     setSavedVouchers([]);
+    setQcInspections([]);
     setCaseAttachments({
       'case-1': [
         { id: 'att-1', case_id: 'case-1', filename: 'shade_guide_a2.jpg', file_type: 'image/jpeg', file_url: '', uploaded_at: '2026-07-26 10:00', uploaded_by: 'Dr. Tariq', file_size: '1.2 MB' },
@@ -391,6 +396,7 @@ export function useAuthDomain(deps: {
     setSavedVouchers([]);
     setCaseAttachments({});
     setCaseNotes({});
+    setQcInspections([]);
 
     // Purge the SQLite tables that the collection sync does not own — the tables
     // it does own are emptied by the write-through rebuild that follows.
