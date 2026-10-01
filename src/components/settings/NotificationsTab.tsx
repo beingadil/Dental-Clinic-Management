@@ -400,7 +400,7 @@ export const NotificationsTab: React.FC = () => {
                     </span>
                   )}
                   {active.footer_text && (
-                    <p className="text-[11px] text-slate-400 border-t border-slate-100 pt-2">
+                    <p className="text-[11px] text-slate-500 border-t border-slate-100 pt-2">
                       {active.footer_text}
                     </p>
                   )}

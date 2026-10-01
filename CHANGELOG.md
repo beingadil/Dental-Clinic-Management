@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **The desktop window can be closed again.** Every window mutation the UI
+  makes was denied at runtime: `core:window:default` grants read-only access
+  plus `internal-toggle-maximize`, so `close()`, `destroy()`, `minimize()` and
+  `toggleMaximize()` all rejected with an ACL error. The header's close button
+  did nothing, and because the close-request flush in `persistence.ts` ends in
+  `destroy()`, the window could not be closed at all while a debounced SQLite
+  write was pending. The four mutations are now granted explicitly, and
+  `tests/lib/tauriWindowPermissions.test.ts` fails the suite whenever a window
+  method is called without its permission — this class of bug is silent in
+  tsc, vitest and the production build, so it needs a standing guard.
+- **Sessions are revoked when a user's authority changes** (audit finding S5).
+  A role change, deactivation or password reset now drops that user's existing
+  sessions, so an already-minted token cannot outlive the privilege it was
+  granted for.
+
+### Changed
+- **Empty states in the audit log and both reports tabs now use the shared
+  `EmptyState`** instead of ad-hoc text, matching the invoices, register and
+  ledger tabs.
+- **11px meta text on light surfaces raised from `text-slate-400` to
+  `text-slate-500`** (27 sites across billing and settings). Slate-400 is
+  below AA contrast for text that size on white. Sites on dark, branded or
+  user-chosen backgrounds keep the dimmer colour, where it is the correct
+  choice — a mechanical sweep of the remaining ~120 sites would regress them.
+
+### Known issues
+- The `verify-release` CI gate is still red, and it is **not** an artifact
+  problem. It has failed on every tag since it was introduced in v2.12.2, in
+  0–1 s, with `Process completed with exit code 1` and no `::error::`
+  annotation — so it dies at its first command and never reaches its own
+  `fail()` helper. Artifacts were verified by hand on every tag and are
+  healthy. A temporary `release-probe` job plus an `ERR` trap now publish the
+  failing command as a check-run annotation for the next tag run. See
+  `.planning/settings-redesign/TODO.md`.
+
 ## [2.14.2] — 2026-10-01
 
 ### Fixed

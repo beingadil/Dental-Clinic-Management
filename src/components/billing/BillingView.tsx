@@ -270,7 +270,7 @@ export const BillingView: React.FC = () => {
             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
             <span>Paid</span>
           </span>
-          <span className="text-[11px] text-slate-400 mt-0.5">Paid in Full</span>
+          <span className="text-[11px] text-slate-500 mt-0.5">Paid in Full</span>
         </div>
       );
     }

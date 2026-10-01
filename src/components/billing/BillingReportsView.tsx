@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
+import { EmptyState } from '../common/ui';
 import { 
   BarChart3, 
   BookmarkCheck, 
@@ -170,9 +171,11 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       {activeSubTab === 'monthly' && (
         <div className="space-y-4">
           {Object.keys(monthlyLabGroups).length === 0 ? (
-            <div className="p-12 text-center text-xs text-slate-400 bg-white rounded-xl border border-slate-200">
-              No monthly billing records available.
-            </div>
+            <EmptyState
+              icon={BarChart3}
+              title="No Billing Records Yet"
+              description="Once invoices are raised for this period, the monthly breakdown by clinic appears here."
+            />
           ) : (
             Object.entries(monthlyLabGroups).map(([month, labMap]) => {
               const monthTotal = Object.values(labMap).reduce((s, d) => s + d.total, 0);
@@ -249,9 +252,11 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       {activeSubTab === 'vouchers' && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
           {filteredVouchers.length === 0 ? (
-            <div className="p-12 text-center text-xs text-slate-400">
-              No saved vouchers recorded for this date range. Rewind the date picker to see earlier vouchers.
-            </div>
+            <EmptyState
+              icon={BookmarkCheck}
+              title="No Saved Vouchers"
+              description="No vouchers were saved in this date range. Rewind the date picker to see earlier ones."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">

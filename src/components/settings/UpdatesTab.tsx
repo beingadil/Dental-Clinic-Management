@@ -164,7 +164,7 @@ export const UpdatesTab: React.FC = () => {
           </ul>
         </div>
       ) : (
-        <p className="text-[11px] text-slate-400 border-t border-slate-100 pt-3">No update activity recorded yet.</p>
+        <p className="text-[11px] text-slate-500 border-t border-slate-100 pt-3">No update activity recorded yet.</p>
       )}
     </div>
   );

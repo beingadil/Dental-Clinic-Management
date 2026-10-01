@@ -445,7 +445,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       {/* Detail & Staff */}
                       <td className="py-2 px-3 text-slate-600 max-w-xs">
                         <p className="font-medium text-slate-800 line-clamp-1">{txn.detail}</p>
-                        <p className="text-[11px] text-slate-400">By {txn.recordedBy}</p>
+                        <p className="text-[11px] text-slate-500">By {txn.recordedBy}</p>
                       </td>
 
                       {/* Method & Ref */}

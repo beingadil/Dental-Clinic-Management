@@ -935,7 +935,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
                   Closing Balance{startDate || endDate ? ` · ${startDate || 'Beginning'} → ${endDate || 'Present'}` : ''}
                 </span>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-500">
                   {caseScope.closing > 0
                     ? 'Receivable from clinic'
                     : caseScope.closing < 0

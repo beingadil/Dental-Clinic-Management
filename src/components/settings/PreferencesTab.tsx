@@ -77,7 +77,7 @@ export const PreferencesTab: React.FC = () => {
               Admin only — changing the billing currency repaints money on every screen.
             </p>
           ) : (
-            <p className="mt-1 text-[11px] text-slate-400">
+            <p className="mt-1 text-[11px] text-slate-500">
               Changing this asks for confirmation first and is written to the audit trail.
             </p>
           )}
@@ -121,7 +121,7 @@ export const PreferencesTab: React.FC = () => {
             <option value="1.1">Larger (110%)</option>
             <option value="1.25">Largest (125%)</option>
           </select>
-          <p className="text-[11px] text-slate-400 mt-1">Applies to the whole interface instantly; printed documents are never scaled.</p>
+          <p className="text-[11px] text-slate-500 mt-1">Applies to the whole interface instantly; printed documents are never scaled.</p>
         </div>
 
         <div>

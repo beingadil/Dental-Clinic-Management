@@ -241,7 +241,7 @@ export const PrintTab: React.FC = () => {
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
               Document Content — What Prints
             </h3>
-            <span className="text-[10px] font-semibold text-slate-400">Saved automatically</span>
+            <span className="text-[10px] font-semibold text-slate-500">Saved automatically</span>
           </div>
           <p className="text-[11px] text-slate-500">
             Choose the sections that appear on each document. These lists are the same ones the

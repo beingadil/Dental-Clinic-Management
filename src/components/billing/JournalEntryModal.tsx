@@ -113,7 +113,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                       <div className="font-sans font-medium text-slate-800">
                         {line.account_name}
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[11px] text-slate-500">
                         Acc: {line.account_code}
                       </div>
                     </td>

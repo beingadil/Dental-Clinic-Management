@@ -1,19 +1,36 @@
 # Billing / Settings redesign — remaining work
 
-Status after **v2.14.0**. Everything the v2.13.0 handoff listed as open has
-either landed or is listed below with the reason it is still open. Nothing
-here is a correctness defect.
+Status after **v2.14.2**, plus the unreleased working-tree work: the desktop
+close fix, session revocation on privilege change, `EmptyState` coverage in the
+audit log and reports tabs, and the meta-text contrast raise in billing and
+settings.
 
-## Release gate (2.14.2)
+## Release gate — red since the job was introduced in v2.12.2
 
-The `verify-release` job had been failing since v2.12.2 on healthy artifacts —
-never a CDN race. Two parsing bugs in the same line, in sequence: first
-`cut -d: -f2` on `"payload_checksum": "sha256:<hex>"` returned the literal
-` sha256`; the 2.14.1 fix then used `sed` with an unescaped BRE group, so `\1`
-was an invalid reference and the variable came back empty. 2.14.2 reads the
-digest with `[[ … =~ … ]]` and guards on 64 characters. Replayed end-to-end
-against the live 2.14.1 release before tagging: manifest, downloaded asset and
-`SHA256SUMS.txt` all agree on `96ecb3c3…`.
+Established on 2026-10-01, from the Actions API and readable check-run
+annotations (job logs need repo admin rights; `gh` is not installed locally):
+
+- `verify-release` was **added in the v2.12.2 commit** and has failed on every
+  tag since — v2.12.2, v2.12.3, v2.12.4, v2.13.0, v2.14.0, v2.14.1, v2.14.2.
+  The earlier tags read "success" only because the job did not exist yet.
+- It dies in **0–1 s** with `Process completed with exit code 1` and **no
+  `::error::` annotation**, so it never reaches its own `fail()` helper — this
+  is true of the *original* version too, whose second command was `sleep 30`.
+- That means the death is at the first command, `gh release view "$TAG"`. A
+  temporary `release-probe` job on master proves `gh` exists
+  (`/usr/bin/gh`, 2.101.0), is authenticated through `GH_TOKEN`, and that the
+  *identical* `gh release view … --jq …` call returns `{"draft":false,"exe":1}`
+  with exit 0.
+- The artifacts are healthy on every tag. v2.14.1 was verified by hand:
+  3,872,478 bytes, `96ecb3c3…`, matching the manifest and `SHA256SUMS.txt`.
+
+Two earlier changes (2.14.0's field-index parse, 2.14.1's `sed` group) fixed
+real defects in the digest comparison, but **neither is why the gate fails**: a
+bad digest prints `fail()` diagnostics seconds in, it does not exit silently in
+0 s. The remaining suspects are the two things that differ between the passing
+master probe and the failing tag job — the `TAG`/`github.ref_name` value and
+the token scope on a tag event. An `ERR` trap (commit `366380c`) now echoes the
+failing command and line as an annotation, so the next tag run names it.
 
 ## Landed in v2.14.0
 
@@ -32,10 +49,18 @@ against the live 2.14.1 release before tagging: manifest, downloaded asset and
 | aria-live filter counts + `aria-pressed` | `BillingView` status pills, `TransactionRegister` | live click-through |
 | Dead Pages URL removed from the update path | `services/updateService.ts` | `tests/services/update.test.ts` |
 
+## Landed after 2.14.0 (unreleased)
+
+| Item | Where | Proof |
+| --- | --- | --- |
+| Desktop close button / close flush work again | `src-tauri/capabilities/default.json` grants the four window mutations | `tests/lib/tauriWindowPermissions.test.ts`; both permissions checked against `gen/schemas/acl-manifests.json` |
+| Sessions revoked when a user's authority changes (audit S5) | `useAuthDomain`, `sessionsRepo.revokeForUser` | `tests/db/repos.test.ts` (+3) |
+| EmptyState coverage (was item 5) | `AuditLogView` empty row, both `BillingReportsView` tabs | tsc + suite |
+| 11px meta contrast (was item 6, billing + settings) | 27 sites `text-slate-400` → `text-slate-500` | tsc + suite |
+
 ## Still open — deliberately deferred
 
-These are refactors of working code. Each one rewrites a large surface, so they
-were kept out of a release that already restructured every billing dialog.
+These are refactors of working code, not defects.
 
 1. **DataTable extraction (V-13/V-16/V-17)** — the invoice table and the
    register still render their own `<table>` markup. The status *chip* is now
@@ -53,11 +78,13 @@ were kept out of a release that already restructured every billing dialog.
    as B1–B10 (closure-minted state, unguarded actions). They now share the
    dialog, empty-state and label primitives, so anything found is a logic fix
    rather than a chrome fix.
-5. **EmptyState coverage** — invoices, register and the ledger have real empty
-   states; the audit and reports tabs still render ad-hoc text.
-6. **Contrast of 11px meta text** — `text-slate-400` on small meta text still
-   sits under AA in places. Only load-bearing text (money, dates, IDs) was
-   raised.
+5. **Contrast outside billing + settings** — the remaining ~120
+   `text-slate-400` sites on 10px/11px text are in case, dashboard, catalog,
+   analytics and shared chrome. Not swept on purpose: several sit on dark or
+   user-chosen backgrounds (`BrandingTab`'s previews use the configured
+   `cardBgColor`, the reports month header is `bg-slate-900`), where slate-400
+   is the *correct*, higher-contrast choice. This needs per-site judgement, not
+   a find-and-replace.
 
 ## Notes for the next reader
 
@@ -75,3 +102,10 @@ were kept out of a release that already restructured every billing dialog.
   print preview is a hand-built miniature for this reason; do not embed
   `PrintDocument` in Settings, or `body:has(.print-area)` will hijack print
   isolation for the document dialogs.
+- Tauri v2 ACL: `core:window:default` is read-only plus
+  `internal-toggle-maximize`. Any window mutation needs its own
+  `core:window:allow-*` grant or it fails only at runtime.
+  `tests/lib/tauriWindowPermissions.test.ts` enforces that.
+- `release-probe` in `.github/workflows/ci.yml` is **temporary scaffolding**
+  (it only reports environment facts as annotations on master). Delete it once
+  `verify-release` is green.

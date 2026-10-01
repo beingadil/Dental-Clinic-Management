@@ -112,7 +112,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({ payment, o
         <div className="px-6 py-3 border-t border-slate-100 bg-white flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-900 truncate max-w-md">{currentAttachment.file_name}</p>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-500">
               Uploaded on {currentAttachment.uploaded_at} by {currentAttachment.uploaded_by || 'Staff'} • {currentAttachment.file_size}
             </p>
           </div>

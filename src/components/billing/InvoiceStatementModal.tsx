@@ -157,7 +157,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 What appears on the printed invoice
               </span>
-              <span className="text-[11px] font-semibold text-slate-400">
+              <span className="text-[11px] font-semibold text-slate-500">
                 {enabled.length} of {PRINT_SECTIONS[KIND].length} sections · saved automatically
               </span>
             </div>

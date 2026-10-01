@@ -203,7 +203,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
           <div className="p-4 rounded-xl border border-slate-200 bg-white">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Billed For Patient</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Billed For Patient</span>
                 <span className="text-base font-bold text-slate-900 truncate block">
                   {invoice.patient_name || linkedCase?.patient_name || 'Walk-in Patient'}
                 </span>
@@ -223,7 +223,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               </div>
               {invoice.case_type_name && (
                 <div className="text-right shrink-0">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Procedure</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Procedure</span>
                   <span className="text-xs font-semibold text-slate-800">{invoice.case_type_name}</span>
                 </div>
               )}
@@ -456,7 +456,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             {jvOpen && (
               <div className="px-4 pb-3.5 space-y-2">
                 {linkedJournals.length === 0 ? (
-                  <p className="text-[11px] text-slate-400 italic">No journal entries recorded for this invoice yet.</p>
+                  <p className="text-[11px] text-slate-500 italic">No journal entries recorded for this invoice yet.</p>
                 ) : (
                   linkedJournals.map((j) => (
                     <div key={j.id} className="bg-white rounded-lg border border-slate-200 p-3">

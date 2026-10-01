@@ -105,7 +105,7 @@ export const UsersTab: React.FC = () => {
                         {u.role}
                       </span>
                     </td>
-                    <td className="p-3 text-slate-400 text-[11px]">{u.created_at || '—'}</td>
+                    <td className="p-3 text-slate-500 text-[11px]">{u.created_at || '—'}</td>
                     <td className="p-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button

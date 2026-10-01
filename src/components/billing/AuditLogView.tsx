@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AuditEvent } from '../../types';
 import { todayISO } from '../common/DatePickerRange';
+import { EmptyState } from '../common/ui';
 import { 
   ShieldCheck, 
   Search, 
@@ -221,7 +222,7 @@ export const AuditLogView: React.FC = () => {
         {/* 4 Summary Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-5 border-t border-slate-100">
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Logged Events</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Logged Events</span>
             <span className="text-xl font-bold text-slate-900 mt-1 block">{metrics.total}</span>
             <span className="text-[11px] text-slate-500">Forensic history</span>
           </div>
@@ -336,13 +337,12 @@ export const AuditLogView: React.FC = () => {
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
               {filteredEvents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
-                    <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                    <p className="font-bold text-slate-600 text-sm">No Audit Events Found</p>
-                    <p className="text-xs mt-1">
-                      This log opens on today's events — rewind the date fields to see earlier
-                      entries, or press Reset to clear the whole window.
-                    </p>
+                  <td colSpan={6} className="p-0">
+                    <EmptyState
+                      icon={ShieldCheck}
+                      title="No Audit Events Found"
+                      description="This log opens on today's events — rewind the date fields to see earlier entries, or press Reset to clear the whole window."
+                    />
                   </td>
                 </tr>
               ) : (
@@ -432,19 +432,19 @@ export const AuditLogView: React.FC = () => {
               {/* Event Metadata Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Actor</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-500 block">Actor</span>
                   <span className="text-xs font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.actor}</span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Timestamp</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-500 block">Timestamp</span>
                   <span className="text-xs font-mono font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.timestamp}</span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Entity</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-500 block">Entity</span>
                   <span className="text-xs font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.entity_type}</span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Reference</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-500 block">Reference</span>
                   <span className="text-xs font-mono font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.entity_ref}</span>
                 </div>
               </div>
