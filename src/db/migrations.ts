@@ -841,6 +841,25 @@ export const MIGRATION_013_JOURNAL_CASE_REFS: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 014 — per-user preferences
+// D4 decision (2026-10-01): preferences (UI zoom, per-user toggles) become
+// per-user rows instead of one global blob, so two staff members on the same
+// installation keep their own settings. value holds the JSON preferences
+// object; the legacy global row (settings namespace 'user_prefs') migrates
+// to nobody — the app falls back to defaults until each user saves once.
+export const MIGRATION_014_USER_PREFERENCES: Migration = {
+  version: 14,
+  name: 'user_preferences_table',
+  statements: [
+    `CREATE TABLE IF NOT EXISTS user_preferences (
+       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+       value TEXT NOT NULL,
+       updated_at TEXT NOT NULL
+     )`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '14')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -855,4 +874,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_011_CASE_ARCHIVE,
   MIGRATION_012_INVOICE_JOURNALS,
   MIGRATION_013_JOURNAL_CASE_REFS,
+  MIGRATION_014_USER_PREFERENCES,
 ];

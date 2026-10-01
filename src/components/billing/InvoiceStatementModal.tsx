@@ -78,7 +78,12 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
       {/* The CARD is the print area (same pattern as the job slip and receipt
           modals): the printable sheet must never sit inside a `.no-print` or
           `overflow-hidden` wrapper, or paper output comes out blank/clipped. */}
-      <div className="print-area printable-area bg-white rounded-2xl max-w-5xl w-full border border-slate-200 shadow-2xl relative my-auto overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Invoice statement"
+        className="print-area printable-area bg-white rounded-2xl max-w-5xl w-full border border-slate-200 shadow-2xl relative my-auto overflow-hidden"
+      >
         {/* Header (screen only) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 no-print">
           <div className="flex items-center gap-2.5">
@@ -89,7 +94,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-900 text-sm">Print Invoice — {invoice.invoice_number}</h3>
                 {savedSuccess && (
-                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1 border border-emerald-200">
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold uppercase rounded-full flex items-center gap-1 border border-emerald-200">
                     <CheckCircle2 className="w-3 h-3" /> Saved
                   </span>
                 )}
@@ -146,7 +151,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 What appears on the printed invoice
               </span>
-              <span className="text-[10px] font-semibold text-slate-400">
+              <span className="text-[11px] font-semibold text-slate-400">
                 {enabled.length} of {PRINT_SECTIONS[KIND].length} sections · saved automatically
               </span>
             </div>

@@ -110,7 +110,7 @@ export const UpdatesTab: React.FC = () => {
         </div>
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
           <p className="text-xs font-bold text-slate-800">Silent install</p>
-          <p className="text-[11px] text-slate-600">Installs per-user — no administrator rights needed. The installer is checksum-verified, the database is backed up first, and the app restarts itself on the new version. Offline machines: import a verified .dentalupdate package from the Database &amp; Backup tab.</p>
+          <p className="text-[11px] text-slate-600">Installs per-user — no administrator rights needed. The installer is checksum-verified, the database is backed up first, and the app restarts itself on the new version.</p>
         </div>
       </div>
 

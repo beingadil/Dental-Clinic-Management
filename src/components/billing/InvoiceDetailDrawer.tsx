@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
+import { availableAdvanceCredit } from '../../services/transactionDomain';
 import { 
   X, 
   FileText, 
@@ -20,7 +21,8 @@ import {
   ChevronRight,
   Receipt,
   FileDown,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Wallet
 } from 'lucide-react';
 
 interface InvoiceDetailDrawerProps {
@@ -46,8 +48,26 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   onViewReceipt,
   onReversePayment
 }) => {
-  const { cases, accountAdjustments, journalEntries } = useApp();
+  const { cases, accountAdjustments, journalEntries, advancePayments, applyAdvanceCreditV2 } = useApp();
   const [jvOpen, setJvOpen] = useState(false);
+
+  /* B7: quick-apply of unallocated clinic advance credit (folded in from the
+     retired AccountsFinancialHome). Inline errors + synchronous latch, same
+     discipline as ReversalModal / RecordTransactionModal. */
+  const [applyOpen, setApplyOpen] = useState(false);
+  const [applyAmount, setApplyAmount] = useState('');
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyDone, setApplyDone] = useState<string | null>(null);
+  const applyLatchRef = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !invoice) return null;
 
@@ -62,6 +82,45 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
 
   const isPaid = netDue <= 0;
   const statusV2 = invoice.status_v2 || deriveInvoiceStatus(invoice.final_amount, totalPaid, invoice.due_date, totalCredits);
+  const availableCredit = availableAdvanceCredit(advancePayments, invoice.lab_id);
+
+  const handleApplyAdvance = () => {
+    if (applyLatchRef.current) return;
+    const amount = Number(applyAmount);
+    if (!amount || amount <= 0 || isNaN(amount)) {
+      setApplyError('Enter an amount greater than zero.');
+      return;
+    }
+    if (amount > availableCredit) {
+      setApplyError(`Only ${formatPKR(availableCredit)} of advance credit is available for this clinic.`);
+      return;
+    }
+    if (amount > netDue) {
+      setApplyError(`Amount exceeds the ${formatPKR(netDue)} still due on this invoice.`);
+      return;
+    }
+    applyLatchRef.current = true;
+    try {
+      const ok = applyAdvanceCreditV2({
+        clinicId: invoice.lab_id,
+        invoiceId: invoice.id,
+        amount,
+        notes: 'Applied from clinic credit wallet'
+      });
+      if (!ok) {
+        setApplyError('Could not apply the advance — the wallet or invoice changed. Reopen the drawer and retry.');
+        return;
+      }
+      setApplyError(null);
+      setApplyDone(`Applied ${formatPKR(amount)} of advance credit to ${invoice.invoice_number}.`);
+      setApplyOpen(false);
+      setApplyAmount('');
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Could not apply the advance credit.');
+    } finally {
+      applyLatchRef.current = false;
+    }
+  };
 
   // Journal entries linked to this invoice or any of its payments
   const linkedJournals = journalEntries.filter(
@@ -72,7 +131,12 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/50 backdrop-blur-xs flex justify-end">
-      <div className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Invoice ${invoice.invoice_number} details`}
+        className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 print:shadow-none"
+      >
         {/* Drawer Header */}
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -89,7 +153,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                     : totalPaid > 0
                     ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                    : 'bg-red-50 text-red-700 border border-red-200'
+                    : 'bg-rose-50 text-rose-700 border border-rose-200'
                 }`}>
                   {statusV2.replace('_', ' ')}
                 </span>
@@ -147,7 +211,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
           <div className="p-4 rounded-xl border border-slate-200 bg-white">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Billed For Patient</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Billed For Patient</span>
                 <span className="text-base font-bold text-slate-900 truncate block">
                   {invoice.patient_name || linkedCase?.patient_name || 'Walk-in Patient'}
                 </span>
@@ -167,7 +231,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               </div>
               {invoice.case_type_name && (
                 <div className="text-right shrink-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Procedure</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Procedure</span>
                   <span className="text-xs font-semibold text-slate-800">{invoice.case_type_name}</span>
                 </div>
               )}
@@ -247,6 +311,70 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               )}
             </div>
 
+            {/* Advance wallet credit: apply to this invoice without posting cash */}
+            {netDue > 0 && availableCredit > 0 && (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setApplyOpen((v) => !v);
+                    setApplyError(null);
+                  }}
+                  aria-expanded={applyOpen}
+                  className="text-xs font-semibold text-indigo-800 hover:text-indigo-900 flex items-center gap-1.5"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  Apply clinic advance credit ({formatPKR(availableCredit)} available)
+                </button>
+
+                {applyOpen && (
+                  <form
+                    className="flex flex-wrap items-end gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleApplyAdvance();
+                    }}
+                  >
+                    <label className="text-[11px] font-semibold text-indigo-900 flex flex-col gap-1">
+                      Amount to apply (PKR)
+                      <input
+                        type="number"
+                        min={1}
+                        step="0.01"
+                        value={applyAmount}
+                        onChange={(e) => {
+                          setApplyAmount(e.target.value);
+                          setApplyError(null);
+                        }}
+                        aria-invalid={!!applyError}
+                        className="w-40 px-2 py-1.5 text-xs font-mono tabular-nums bg-white border border-indigo-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors"
+                    >
+                      Apply Advance
+                    </button>
+                    <p className="text-[11px] text-indigo-900/80 basis-full">
+                      Settles this invoice from the clinic wallet, oldest advance first. No cash movement is posted.
+                    </p>
+                  </form>
+                )}
+
+                {applyError && (
+                  <p role="alert" className="text-[11px] font-semibold text-rose-700">
+                    {applyError}
+                  </p>
+                )}
+                {applyDone && !applyError && (
+                  <p role="status" className="text-[11px] font-semibold text-emerald-700">
+                    {applyDone}
+                  </p>
+                )}
+              </div>
+            )}
+
             {(!invoice.payments || invoice.payments.length === 0) ? (
               <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
                 No payments have been applied to this invoice yet.
@@ -257,17 +385,17 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                   <div
                     key={pmt.id}
                     className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
-                      pmt.is_reversed ? 'bg-red-50/50 border-red-200 opacity-60' : 'bg-white border-slate-200'
+                      pmt.is_reversed ? 'bg-rose-50/50 border-rose-200 opacity-60' : 'bg-white border-slate-200'
                     }`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-slate-900">{pmt.payment_number}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 uppercase">
+                        <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 uppercase">
                           {pmt.payment_method}
                         </span>
                         {pmt.is_reversed && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 uppercase">
+                          <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-700 uppercase">
                             REVERSED
                           </span>
                         )}
@@ -278,7 +406,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                         <span>• Recorded by: {pmt.recorded_by}</span>
                       </div>
                       {pmt.is_reversed && pmt.reversal_reason && (
-                        <div className="text-[10px] text-red-700 italic">
+                        <div className="text-[11px] text-rose-700 italic">
                           Reason: {pmt.reversal_reason}
                         </div>
                       )}
@@ -303,7 +431,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                           <button
                             type="button"
                             onClick={() => onReversePayment(pmt)}
-                            className="p-1.5 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+                            className="p-1.5 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                             title="Reverse Payment (Audit Correction)"
                           >
                             <ArrowLeftRight className="w-4 h-4" />
@@ -328,7 +456,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                 <Scale className="w-4 h-4 text-slate-400" />
                 System Ledger Entry (Journal Voucher)
                 {linkedJournals.length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold">{linkedJournals.length}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[11px] font-bold">{linkedJournals.length}</span>
                 )}
               </span>
               <ChevronRight className={`w-4 h-4 transition-transform ${jvOpen ? 'rotate-90' : ''}`} />
@@ -351,12 +479,12 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                         </button>
                       </div>
                       <div className="text-[11px] text-slate-500 mb-2">{j.date} · {j.description}</div>
-                      <table className="w-full text-[10px]">
+                      <table className="w-full text-[11px]">
                         <thead>
                           <tr className="text-slate-400 uppercase tracking-wider">
-                            <th className="text-left font-bold py-0.5">Account</th>
-                            <th className="text-right font-bold py-0.5">Debit</th>
-                            <th className="text-right font-bold py-0.5">Credit</th>
+                            <th scope="col" className="text-left font-bold py-0.5">Account</th>
+                            <th scope="col" className="text-right font-bold py-0.5">Debit</th>
+                            <th scope="col" className="text-right font-bold py-0.5">Credit</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -406,7 +534,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-amber-900">{cn.adjustment_number}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 uppercase">
+                        <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 uppercase">
                           {cn.type}
                         </span>
                       </div>

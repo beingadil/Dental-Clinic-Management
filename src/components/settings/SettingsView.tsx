@@ -18,6 +18,7 @@ import {
   ArrowUpCircle,
 } from 'lucide-react';
 import { TabsNav } from '../common/ui';
+import { canManageSystem, type SystemAction } from '../../services/permissions';
 import { BrandingTab } from './BrandingTab';
 import { AccountTab } from './AccountTab';
 import { UsersTab } from './UsersTab';
@@ -32,6 +33,10 @@ import { UpdatesTab } from './UpdatesTab';
 export const SettingsView: React.FC = () => {
   const { user } = useApp();
   const isAdmin = user?.role === 'Lab Admin' || user?.role === 'Super Admin' || user?.isSuperAdmin;
+  // F2: tab visibility now FOLLOWS the permission matrix. canManageSystem is
+  // the single owner of "may this role touch this area"; every guarded tab
+  // re-checks at its action sites too (hiding is not enforcement).
+  const may = (a: SystemAction) => canManageSystem(user, a) || (isAdmin && a !== 'users:manage');
 
   const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates'>('branding');
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -101,13 +106,13 @@ export const SettingsView: React.FC = () => {
         onChange={(t) => setActiveTab(t as typeof activeTab)}
         variant="pills"
         tabs={[
-          { id: 'branding', label: 'Branding & Identity', icon: Palette },
+          ...(may('branding:edit') ? [{ id: 'branding', label: 'Branding & Identity', icon: Palette }] : []),
           { id: 'account', label: 'My Account & Security', icon: User },
-          ...(isAdmin ? [{ id: 'users', label: 'User Management', icon: Users }] : []),
-          { id: 'backup', label: 'Database & Backup', icon: Database },
-          { id: 'testing', label: 'System Reset', icon: Trash2 },
+          ...(may('users:manage') ? [{ id: 'users', label: 'User Management', icon: Users }] : []),
+          ...(may('backup:restore') ? [{ id: 'backup', label: 'Database & Backup', icon: Database }] : []),
+          ...(may('data:wipe') ? [{ id: 'testing', label: 'System Reset', icon: Trash2 }] : []),
           { id: 'preferences', label: 'Application Defaults', icon: Sliders },
-          { id: 'print', label: 'Print & Documents', icon: Printer },
+          ...(may('print:edit') ? [{ id: 'print', label: 'Print & Documents', icon: Printer }] : []),
           { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
         ]}
       />
@@ -124,19 +129,19 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'branding' && <BrandingTab />}
+      {activeTab === 'branding' && may('branding:edit') && <BrandingTab />}
       {activeTab === 'account' && <AccountTab />}
-      {activeTab === 'users' && isAdmin && <UsersTab />}
-      {activeTab === 'backup' && (
+      {activeTab === 'users' && may('users:manage') && <UsersTab />}
+      {activeTab === 'backup' && may('backup:restore') && (
         <BackupTab
           backupMessage={backupMessage}
           setBackupMessage={setBackupMessage}
           liveTableStats={liveTableStats}
         />
       )}
-      {activeTab === 'testing' && <TestingTab />}
+      {activeTab === 'testing' && may('data:wipe') && <TestingTab />}
       {activeTab === 'preferences' && <PreferencesTab />}
-      {activeTab === 'print' && <PrintTab />}
+      {activeTab === 'print' && may('print:edit') && <PrintTab />}
       {activeTab === 'updates' && <UpdatesTab />}
     </div>
   );

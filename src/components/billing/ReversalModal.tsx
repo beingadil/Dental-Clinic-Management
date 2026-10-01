@@ -74,18 +74,23 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-xl shadow-2xl border border-red-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reverse transaction"
+        className="bg-white rounded-xl shadow-2xl border border-rose-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-red-100 flex items-center justify-between bg-red-50/70">
+        <div className="px-6 py-4 border-b border-rose-100 flex items-center justify-between bg-rose-50/70">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center text-red-600">
+            <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-900">
                 Reverse Financial Transaction
               </h3>
-              <p className="text-xs text-red-700">
+              <p className="text-xs text-rose-700">
                 Immutable Accounting Correction & Compensating Journal Entry
               </p>
             </div>
@@ -115,7 +120,7 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500 font-medium">Amount:</span>
-              <span className="font-bold text-red-600 font-mono text-sm">{formatPKR(target.amount)}</span>
+              <span className="font-bold text-rose-600 font-mono text-sm">{formatPKR(target.amount)}</span>
             </div>
             {target.details && (
               <div className="pt-2 border-t border-slate-200 text-slate-600">
@@ -143,7 +148,7 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
             <select
               value={reasonCode}
               onChange={(e) => setReasonCode(e.target.value)}
-              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-slate-800"
+              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-slate-800"
             >
               <option value="cheque_bounce">Dishonored / Bounced Cheque</option>
               <option value="bank_return">Bank Transfer Return / Disputed Slip</option>
@@ -167,12 +172,12 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
                 setError('');
               }}
               placeholder="Provide exact details for the financial auditor (e.g., Cheque #4492 returned unpaid by Meezan Bank due to signature mismatch)..."
-              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-slate-800"
+              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-slate-800"
             />
           </div>
 
           {error && (
-            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
               {error}
             </div>
           )}
@@ -189,7 +194,7 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+              className="px-4 py-2 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
               Confirm & Post Reversal

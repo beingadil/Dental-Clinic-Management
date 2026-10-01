@@ -102,7 +102,12 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/70 p-3 backdrop-blur-xs no-print-backdrop md:p-6">
       {/* Card = print area, exactly like the single-invoice dialog: one sheet
           per selected invoice, nothing wrapping the sheets in `.no-print`. */}
-      <div className="print-area printable-area relative my-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Batch invoice printing"
+        className="print-area printable-area relative my-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+      >
         {/* Header */}
         <div className="no-print flex flex-col gap-3 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2.5">
@@ -202,12 +207,12 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-slate-200 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  <th className="w-10 py-2.5 pl-6">✓</th>
-                  <th className="py-2.5 px-3">Invoice</th>
-                  <th className="py-2.5 px-3">Case</th>
-                  <th className="py-2.5 px-3">Doctor</th>
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-6 text-right">Balance Due</th>
+                  <th scope="col" className="w-10 py-2.5 pl-6">✓</th>
+                  <th scope="col" className="py-2.5 px-3">Invoice</th>
+                  <th scope="col" className="py-2.5 px-3">Case</th>
+                  <th scope="col" className="py-2.5 px-3">Doctor</th>
+                  <th scope="col" className="py-2.5 px-3">Date</th>
+                  <th scope="col" className="py-2.5 px-6 text-right">Balance Due</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">

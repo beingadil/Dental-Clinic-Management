@@ -349,7 +349,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                 }`}
               >
                 <span>{sub.label}</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                <span className={`px-1.5 py-0.2 rounded-full text-[11px] ${
                   isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700'
                 }`}>
                   {sub.count}
@@ -370,16 +370,16 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
           <div className="overflow-x-auto no-scrollbar">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[10px] text-slate-500 tracking-wider">
-                  <th className="py-2 px-3">Txn / Receipt #</th>
-                  <th className="py-2 px-3">Date</th>
-                  <th className="py-2 px-3">Dental Clinic</th>
-                  <th className="py-2 px-3">Category</th>
-                  <th className="py-2 px-3">Detail & Notes</th>
-                  <th className="py-2 px-3">Method & Ref #</th>
-                  <th className="py-2 px-3 text-right">Amount (PKR)</th>
-                  <th className="py-2 px-3 text-center">Proof Slip</th>
-                  <th className="py-2 px-3 text-right">Actions</th>
+                <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[11px] text-slate-500 tracking-wider">
+                  <th scope="col" className="py-2 px-3">Txn / Receipt #</th>
+                  <th scope="col" className="py-2 px-3">Date</th>
+                  <th scope="col" className="py-2 px-3">Dental Clinic</th>
+                  <th scope="col" className="py-2 px-3">Category</th>
+                  <th scope="col" className="py-2 px-3">Detail & Notes</th>
+                  <th scope="col" className="py-2 px-3">Method & Ref #</th>
+                  <th scope="col" className="py-2 px-3 text-right">Amount (PKR)</th>
+                  <th scope="col" className="py-2 px-3 text-center">Proof Slip</th>
+                  <th scope="col" className="py-2 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -389,14 +389,14 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                   const isAdjustment = txn.sourceType === 'adjustment';
 
                   return (
-                    <tr key={`${txn.sourceType}-${txn.id}`} className={`hover:bg-slate-50/80 transition-colors ${txn.isReversed ? 'bg-red-50/40 opacity-75' : ''}`}>
+                    <tr key={`${txn.sourceType}-${txn.id}`} className={`hover:bg-slate-50/80 transition-colors ${txn.isReversed ? 'bg-rose-50/40 opacity-75' : ''}`}>
                       
                       {/* Transaction # */}
                       <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <span>{txn.txnNumber}</span>
                           {txn.isReversed && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 uppercase tracking-tight">
+                            <span className="px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 text-rose-700 uppercase tracking-tight">
                               REVERSED
                             </span>
                           )}
@@ -416,19 +416,19 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       {/* Category Badge */}
                       <td className="py-2 px-3 whitespace-nowrap">
                         {isPayment && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             <DollarSign className="w-3 h-3" />
                             <span>{txn.category}</span>
                           </span>
                         )}
                         {isAdvance && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                             <Wallet className="w-3 h-3" />
                             <span>Advance Deposit</span>
                           </span>
                         )}
                         {isAdjustment && (
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                             txn.direction === 'credit'
                               ? 'bg-purple-50 text-purple-700 border border-purple-200'
                               : txn.direction === 'debit'
@@ -444,13 +444,13 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       {/* Detail & Staff */}
                       <td className="py-2 px-3 text-slate-600 max-w-xs">
                         <p className="font-medium text-slate-800 line-clamp-1">{txn.detail}</p>
-                        <p className="text-[10px] text-slate-400">By {txn.recordedBy}</p>
+                        <p className="text-[11px] text-slate-400">By {txn.recordedBy}</p>
                       </td>
 
                       {/* Method & Ref */}
                       <td className="py-2 px-3 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
                             txn.method === 'cash'
                               ? 'bg-emerald-100 text-emerald-800'
                               : txn.method === 'bank'
@@ -464,7 +464,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                             {txn.method || '—'}
                           </span>
                           {txn.referenceNumber && (
-                            <span className="font-mono text-[10px] text-slate-500">
+                            <span className="font-mono text-[11px] text-slate-500">
                               #{txn.referenceNumber}
                             </span>
                           )}
@@ -482,7 +482,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                             ? 'text-amber-700'
                             : 'text-rose-600'
                         }>
-                          PKR {(txn.amount || 0).toLocaleString()}
+                          PKR <span className="tabular-nums">{(txn.amount || 0).toLocaleString()}</span>
                         </span>
                       </td>
 
@@ -525,7 +525,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                                 });
                               }
                             }}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded text-[10px] transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded text-[11px] transition-colors cursor-pointer"
                           >
                             <ImageIcon className="w-3.5 h-3.5" />
                             <span>{txn.attachmentsCount} Slip{txn.attachmentsCount > 1 ? 's' : ''}</span>

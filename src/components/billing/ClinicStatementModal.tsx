@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatPKR } from '../../services/financeDomain';
+import { downloadCSV } from '../../services/csvExport';
 import { X, Printer, Download, Calendar, Building2, FileText, CheckCircle2 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 
@@ -80,25 +81,22 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
       e.date,
       e.type,
       e.reference_number,
-      `"${e.description.replace(/"/g, '""')}"`,
+      e.description,
       e.debit || 0,
       e.credit || 0,
       e.running_balance
     ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Statement_${clinic.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCSV(`Statement_${clinic.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`, [headers, ...rows]);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl xl:max-w-6xl overflow-hidden animate-in fade-in zoom-in-95 my-auto print:shadow-none print:border-none print:m-0 print:max-w-none print-area">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Statement of account"
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl xl:max-w-6xl overflow-hidden animate-in fade-in zoom-in-95 my-auto print:shadow-none print:border-none print:m-0 print:max-w-none print-area"
+      >
         {/* Modal Controls (Hidden in Print) */}
         <div className="px-6 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2">
@@ -233,13 +231,13 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
             <table className="w-full text-xs text-left">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
-                  <th className="px-3.5 py-2.5">Date</th>
-                  <th className="px-3.5 py-2.5">Type</th>
-                  <th className="px-3.5 py-2.5">Reference #</th>
-                  <th className="px-3.5 py-2.5">Description</th>
-                  <th className="px-3.5 py-2.5 text-right">Debit (PKR)</th>
-                  <th className="px-3.5 py-2.5 text-right">Credit (PKR)</th>
-                  <th className="px-3.5 py-2.5 text-right">Balance (PKR)</th>
+                  <th scope="col" className="px-3.5 py-2.5">Date</th>
+                  <th scope="col" className="px-3.5 py-2.5">Type</th>
+                  <th scope="col" className="px-3.5 py-2.5">Reference #</th>
+                  <th scope="col" className="px-3.5 py-2.5">Description</th>
+                  <th scope="col" className="px-3.5 py-2.5 text-right">Debit (PKR)</th>
+                  <th scope="col" className="px-3.5 py-2.5 text-right">Credit (PKR)</th>
+                  <th scope="col" className="px-3.5 py-2.5 text-right">Balance (PKR)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">

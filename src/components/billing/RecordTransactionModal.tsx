@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentAttachment } from '../../types';
 import { formatPKR } from '../../services/financeDomain';
+import { validateFile } from '../../services/fileValidation';
+import { canPost } from '../../services/permissions';
 import { 
   X, 
   DollarSign, 
@@ -83,6 +85,11 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
 
   // Split allocations for multi-invoice payment
   const [allocations, setAllocations] = useState<{ [invoiceId: string]: number }>({});
+
+  /* Inline validation/POST errors (B6): alert() was blocking, non-aria and
+     inconsistent with ReversalModal's inline-error voice. One error slot,
+     cleared on the next submit attempt, tied to the footer banner. */
+  const [formError, setFormError] = useState<string>('');
 
   // Reset when opening
   useEffect(() => {
@@ -194,6 +201,15 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // B5: a multi-MB proof becomes base64 inside the synced row and every
+      // .dentalbackup — validate before it reaches the engine.
+      const check = validateFile(file, { maxMB: 2, mimeAllow: ['image/', 'application/pdf'] });
+      if (!check.ok) {
+        setFormError(check.error || 'File not accepted.');
+        e.target.value = '';
+        return;
+      }
+      setFormError('');
       setProofName(file.name);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -210,21 +226,31 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (submitLatchRef.current) return;
+    setFormError('');
+    // B3 enforcement at the action layer — hiding the buttons is not enough.
+    const postingAction = mode === 'payment' ? 'payment:record'
+      : mode === 'advance' ? 'advance:deposit'
+      : mode === 'credit_note' ? 'credit:issue'
+      : 'refund:issue';
+    if (!canPost(user, postingAction)) {
+      setFormError(`Your role (${user?.role || 'signed out'}) is not permitted to post this transaction type.`);
+      return;
+    }
     if (amount <= 0 && mode !== 'credit_note') {
-      alert('Please enter a valid amount greater than 0.');
+      setFormError('Please enter a valid amount greater than 0.');
       return;
     }
 
     if (mode === 'payment') {
       if (totalAllocated > amount + 0.001) {
-        alert(
+        setFormError(
           `Allocated ${formatPKR(totalAllocated)} is more than the ${formatPKR(amount)} received. Reduce the allocations first.`
         );
         return;
       }
       if (unappliedRemainder > 0 && !saveRemainingAsAdvance) {
-        alert(
-          `${formatPKR(unappliedRemainder)} is not applied to any invoice.\n\n` +
+        setFormError(
+          `${formatPKR(unappliedRemainder)} is not applied to any invoice. ` +
             'Allocate it to an invoice, or tick "Save to Wallet" to keep it as a clinic advance deposit.'
         );
         return;
@@ -232,7 +258,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     }
 
     if (mode === 'credit_note' && !selectedInvoiceId) {
-      alert('Please select a target invoice for this credit note.');
+      setFormError('Please select a target invoice for this credit note.');
       return;
     }
 
@@ -314,7 +340,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       // A thrown command must not leave the latch armed (audit F12): the
       // cashier sees the reason and can retry without reopening the modal.
       submitLatchRef.current = false;
-      alert(err instanceof Error ? err.message : 'Could not post the transaction. Please try again.');
+      setFormError(err instanceof Error ? err.message : 'Could not post the transaction. Please try again.');
     }
   };
 
@@ -322,7 +348,12 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto max-h-[94vh] flex flex-col">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Record transaction"
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto max-h-[94vh] flex flex-col"
+      >
         {/* Top Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
           <div>
@@ -546,7 +577,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleAllocationChange(inv.id, due)}
-                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors"
+                            className="px-2 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors"
                           >
                             Pay Full
                           </button>
@@ -652,7 +683,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
           <details className="rounded-lg border border-slate-200 bg-white">
             <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-xs font-bold text-slate-700">
               <span>Reference, reconciliation, proof &amp; notes</span>
-              <span className="text-[10px] font-semibold text-slate-400">Optional</span>
+              <span className="text-[11px] font-semibold text-slate-400">Optional</span>
             </summary>
             <div className="space-y-5 border-t border-slate-200 p-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -743,6 +774,14 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               <ShieldCheck className="w-3.5 h-3.5" /> Balanced
             </span>
           </div>
+
+          {/* Inline form/post error (B6) — announced to screen readers, never alert() */}
+          {formError && (
+            <div role="alert" className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-xs text-rose-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+              <span>{formError}</span>
+            </div>
+          )}
 
           {/* Footer Buttons */}
           <div className="pt-2 flex items-center justify-end gap-3">

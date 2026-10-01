@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord } from '../../types';
+import { downloadCSV } from '../../services/csvExport';
+import { canPost } from '../../services/permissions';
+import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { InvoiceStatementModal } from './InvoiceStatementModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from './PaymentProofModal';
@@ -58,7 +61,8 @@ export const BillingView: React.FC = () => {
     labs,
     getLabFinancialSummary,
     journalEntries,
-    auditEvents
+    auditEvents,
+    user
   } = useApp();
 
   // Core navigation: 5 tabs for complete dental laboratory ERP accounting
@@ -224,40 +228,35 @@ export const BillingView: React.FC = () => {
     }
   };
 
+  // B4/B10: both native confirm()s replaced by ConfirmDialog — a
+  // ledger-reversing action needs room to explain consequences, and void
+  // requires a typed phrase + the invoice:void permission (B3).
+  const [voidTarget, setVoidTarget] = useState<Invoice | null>(null);
+  const [bulkPayConfirm, setBulkPayConfirm] = useState(false);
+
   const handleBulkPay = () => {
     if (selectedIds.length === 0) return;
-    if (confirm(`Bulk clear payment for ${selectedIds.length} selected invoices, dated ${bulkPayDate}?`)) {
-      bulkMarkPaid(selectedIds, bulkPayDate);
-      setSelectedIds([]);
-    }
+    if (!canPost(user, 'payment:bulk')) return;
+    setBulkPayConfirm(true);
   };
 
-  // Export Invoices to CSV
+  // Export Invoices to CSV (B9: RFC-4180 quoting — clinics with commas/quotes
+  // used to break rows under the old hand-rolled joiner)
   const handleExportInvoicesCSV = () => {
     const headers = ['Invoice #', 'Case #', 'Dental Clinic', 'Doctor', 'Material / Type', 'Final Amount (PKR)', 'Paid (PKR)', 'Remaining (PKR)', 'Status', 'Due Date'];
     const rows = filteredInvoices.map(inv => [
-      `"${inv.invoice_number}"`,
-      `"${inv.case_number}"`,
-      `"${inv.lab_name}"`,
-      `"${inv.doctor_name}"`,
-      `"${inv.case_type_name}"`,
+      inv.invoice_number,
+      inv.case_number,
+      inv.lab_name,
+      inv.doctor_name,
+      inv.case_type_name,
       inv.final_amount,
       inv.amount_paid || 0,
       Math.max(0, inv.final_amount - (inv.amount_paid || 0)),
-      `"${inv.payment_status.toUpperCase()}"`,
-      `"${inv.due_date}"`
+      inv.payment_status.toUpperCase(),
+      inv.due_date
     ]);
-
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Dental_Solutions_Invoices_${new Date().toISOString().substring(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadCSV(`Dental_Solutions_Invoices_${new Date().toISOString().substring(0, 10)}`, [headers, ...rows]);
   };
 
   const getStatusBadge = (inv: Invoice) => {
@@ -265,11 +264,11 @@ export const BillingView: React.FC = () => {
     if (inv.payment_status === 'paid' || remaining <= 0) {
       return (
         <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
             <span>Paid</span>
           </span>
-          <span className="text-[9px] text-slate-400 mt-0.5">Paid in Full</span>
+          <span className="text-[11px] text-slate-400 mt-0.5">Paid in Full</span>
         </div>
       );
     }
@@ -278,11 +277,11 @@ export const BillingView: React.FC = () => {
     if (isOverdue) {
       return (
         <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
             <AlertTriangle className="w-3 h-3 text-rose-600" />
             <span>Overdue</span>
           </span>
-          <span className="text-[9px] font-bold text-rose-600 mt-0.5 whitespace-nowrap">
+          <span className="text-[11px] font-bold text-rose-600 mt-0.5 whitespace-nowrap">
             {diffDays === 1 ? '1 day late' : `${diffDays} days late`}
           </span>
         </div>
@@ -292,11 +291,11 @@ export const BillingView: React.FC = () => {
     if (inv.payment_status === 'partial' || (inv.amount_paid || 0) > 0) {
       return (
         <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
             <Clock className="w-3 h-3 text-blue-600" />
             <span>Partial</span>
           </span>
-          <span className="text-[9px] font-semibold text-blue-600 mt-0.5 whitespace-nowrap">
+          <span className="text-[11px] font-semibold text-blue-600 mt-0.5 whitespace-nowrap">
             PKR {(inv.amount_paid || 0).toLocaleString()} paid
           </span>
         </div>
@@ -319,11 +318,11 @@ export const BillingView: React.FC = () => {
 
     return (
       <div className="inline-flex flex-col items-center">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
           <Clock className="w-3 h-3 text-amber-600" />
           <span>Pending</span>
         </span>
-        <span className="text-[9px] font-semibold text-amber-700 mt-0.5 whitespace-nowrap">
+        <span className="text-[11px] font-semibold text-amber-700 mt-0.5 whitespace-nowrap">
           {dueSubtext}
         </span>
       </div>
@@ -565,7 +564,7 @@ export const BillingView: React.FC = () => {
                         <AlertTriangle className={`w-3.5 h-3.5 ${isSubActive ? 'text-white' : 'text-rose-600'}`} />
                       )}
                       <span>{sub.label}</span>
-                      <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${
+                      <span className={`px-1.5 py-0.2 rounded-md text-[11px] ${
                         isSubActive
                           ? 'bg-black/20 text-white'
                           : 'bg-white/80 text-slate-700'
@@ -598,8 +597,8 @@ export const BillingView: React.FC = () => {
               <div className="overflow-x-auto no-scrollbar">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200/80 font-bold uppercase text-[10px] text-slate-500 tracking-wider">
-                      <th className="py-2 px-3 w-10">
+                    <tr className="bg-slate-50/80 border-b border-slate-200/80 font-bold uppercase text-[11px] text-slate-500 tracking-wider">
+                      <th scope="col" className="py-2 px-3 w-10">
                         <button onClick={toggleSelectAll} className="p-1 text-slate-500 cursor-pointer">
                           {selectedIds.length === filteredInvoices.length && filteredInvoices.length > 0 ? (
                             <CheckSquare className="w-4 h-4 text-indigo-600" />
@@ -608,17 +607,17 @@ export const BillingView: React.FC = () => {
                           )}
                         </button>
                       </th>
-                      <th className="py-2 px-3">Invoice #</th>
-                      <th className="py-2 px-3">Case #</th>
-                      <th className="py-2 px-3">Dental Clinic</th>
-                      <th className="py-2 px-3">Case Material</th>
-                      <th className="py-2 px-3">Doctor</th>
-                      <th className="py-2 px-3 text-right">Final Amount</th>
-                      <th className="py-2 px-3 text-right">Paid</th>
-                      <th className="py-2 px-3 text-right">Remaining Due</th>
-                      <th className="py-2 px-3 text-center">Due Date & Terms</th>
-                      <th className="py-2 px-3 text-center">Payment Status</th>
-                      <th className="py-2 px-3 text-right">Actions</th>
+                      <th scope="col" className="py-2 px-3">Invoice #</th>
+                      <th scope="col" className="py-2 px-3">Case #</th>
+                      <th scope="col" className="py-2 px-3">Dental Clinic</th>
+                      <th scope="col" className="py-2 px-3">Case Material</th>
+                      <th scope="col" className="py-2 px-3">Doctor</th>
+                      <th scope="col" className="py-2 px-3 text-right">Final Amount</th>
+                      <th scope="col" className="py-2 px-3 text-right">Paid</th>
+                      <th scope="col" className="py-2 px-3 text-right">Remaining Due</th>
+                      <th scope="col" className="py-2 px-3 text-center">Due Date & Terms</th>
+                      <th scope="col" className="py-2 px-3 text-center">Payment Status</th>
+                      <th scope="col" className="py-2 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -686,7 +685,7 @@ export const BillingView: React.FC = () => {
                               <span>{inv.lab_name}</span>
                               {(clinicSummary?.advance_balance || 0) > 0 && (
                                 <span 
-                                  className="text-[9px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded"
+                                  className="text-[11px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded"
                                   title={`Clinic holds PKR ${(clinicSummary.advance_balance || 0).toLocaleString()} unallocated advance deposit`}
                                 >
                                   Adv Avail
@@ -706,17 +705,17 @@ export const BillingView: React.FC = () => {
                           </td>
 
                           {/* Total Amount */}
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap tabular-nums">
                             PKR {(inv.final_amount || 0).toLocaleString()}
                           </td>
 
                           {/* Paid Amount */}
-                          <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 whitespace-nowrap">
+                          <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 whitespace-nowrap tabular-nums">
                             PKR {(inv.amount_paid || 0).toLocaleString()}
                           </td>
 
                           {/* Remaining Due */}
-                          <td className={`py-2 px-3 text-right font-mono font-bold whitespace-nowrap ${
+                          <td className={`py-2 px-3 text-right font-mono font-bold whitespace-nowrap tabular-nums ${
                             remaining > 0 ? (isOverdue ? 'text-rose-600 font-bold' : 'text-amber-600') : 'text-slate-400'
                           }`}>
                             PKR {(remaining || 0).toLocaleString()}
@@ -727,7 +726,7 @@ export const BillingView: React.FC = () => {
                             {isPaid ? (
                               <div className="inline-flex flex-col items-center">
                                 <span className="text-slate-500 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
-                                <span className="text-[9px] text-emerald-600 font-bold">Settled</span>
+                                <span className="text-[11px] text-emerald-600 font-bold">Settled</span>
                               </div>
                             ) : isOverdue ? (
                               <div className="inline-flex flex-col items-center">
@@ -735,14 +734,14 @@ export const BillingView: React.FC = () => {
                                   <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
                                   <span>{inv.due_date}</span>
                                 </span>
-                                <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-bold text-[9px] rounded mt-0.5 whitespace-nowrap">
+                                <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-bold text-[11px] rounded mt-0.5 whitespace-nowrap">
                                   EXPIRED ({diffDays}d)
                                 </span>
                               </div>
                             ) : (
                               <div className="inline-flex flex-col items-center">
                                 <span className="text-slate-700 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
-                                <span className="text-[9px] text-amber-700 font-semibold">
+                                <span className="text-[11px] text-amber-700 font-semibold">
                                   {inv.due_date ? 'Within Terms' : 'No Terms'}
                                 </span>
                               </div>
@@ -790,7 +789,7 @@ export const BillingView: React.FC = () => {
                                   <span>Pay / Refund</span>
                                 </button>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                   <span>Cleared</span>
                                 </span>
@@ -813,13 +812,15 @@ export const BillingView: React.FC = () => {
                               </button>
 
                               <button
-                                onClick={() => {
-                                  if (confirm(`Are you sure you want to void invoice ${inv.invoice_number}?`)) {
-                                    deleteInvoice(inv.id);
-                                  }
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Void Invoice"
+                                onClick={() => { if (canPost(user, 'invoice:void')) setVoidTarget(inv); }}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  canPost(user, 'invoice:void')
+                                    ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
+                                    : 'text-slate-200 cursor-not-allowed'
+                                }`}
+                                title={canPost(user, 'invoice:void') ? 'Void Invoice' : 'Void Invoice (admin only)'}
+                                aria-label={canPost(user, 'invoice:void') ? `Void invoice ${inv.invoice_number}` : `Void invoice ${inv.invoice_number} (admin only)`}
+                                aria-disabled={!canPost(user, 'invoice:void')}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1012,6 +1013,42 @@ export const BillingView: React.FC = () => {
           onClose={() => setViewSlipCase(null)}
         />
       )}
+
+      {/* B4: void = typed-phrase confirmation (ledger reversal + retired number) */}
+      <ConfirmDialog
+        open={!!voidTarget}
+        title={`Void invoice ${voidTarget?.invoice_number || ''}`}
+        consequences={[
+          `${voidTarget?.lab_name || 'The clinic'} will owe ${voidTarget ? voidTarget.final_amount - (voidTarget.amount_paid || 0) : 0} PKR again once the issuance journal is reversed.`,
+          `Invoice ${voidTarget?.invoice_number || ''} leaves the register; its number is retired and never re-issued.`,
+          'An INVOICE_VOIDED audit entry records who voided it and why.',
+        ]}
+        confirmLabel="Void Invoice"
+        typedPhrase="VOID"
+        onCancel={() => setVoidTarget(null)}
+        onConfirm={() => {
+          if (voidTarget) deleteInvoice(voidTarget.id);
+          setVoidTarget(null);
+        }}
+      />
+
+      {/* B10: bulk settlement confirmation with the exact business facts */}
+      <ConfirmDialog
+        open={bulkPayConfirm}
+        tone="indigo"
+        title="Bulk settle invoices"
+        consequences={[
+          `${selectedIds.length} invoice(s) will be marked fully paid, dated ${bulkPayDate}.`,
+          'One payment row per invoice is posted with a distinct number and a balanced journal.',
+        ]}
+        confirmLabel="Mark Paid"
+        onCancel={() => setBulkPayConfirm(false)}
+        onConfirm={() => {
+          bulkMarkPaid(selectedIds, bulkPayDate);
+          setSelectedIds([]);
+          setBulkPayConfirm(false);
+        }}
+      />
 
     </div>
   );

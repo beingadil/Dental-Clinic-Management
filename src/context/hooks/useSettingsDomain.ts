@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { BrandingSettings, UserPreferences } from '../../types';
 import { settingsRepo } from '../../db/repos';
+import { userPreferencesRepo } from '../../db/userPreferencesRepo';
 import { roundMoney } from '../../services/financeDomain';
 import { isDatabaseReady } from '../../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
 import { INITIAL_USER_PREFERENCES } from '../../data/initialData';
+import type { UserProfile } from '../../types';
 
 /**
  * Settings domain state (branding + global user preferences), hydrated from
@@ -25,7 +27,7 @@ function dbWrite(fn: () => void): void {
   }
 }
 
-export function useSettingsDomain(): {
+export function useSettingsDomain(user?: UserProfile | null): {
   brandingSettings: BrandingSettings;
   setBrandingSettings: React.Dispatch<React.SetStateAction<BrandingSettings>>;
   userPreferences: UserPreferences;
@@ -39,17 +41,31 @@ export function useSettingsDomain(): {
   });
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
-    // SQLite is the single source of truth (same as branding). Reading the
-    // legacy localStorage mirror here instead silently RESET preferences to
-    // defaults on every post-cutover boot — the persist effect below then
-    // clobbered the user's saved choice in the settings table.
+    // SQLite is the single source of truth (same as branding). D4: prefer
+    // the signed-in user's own row; fall back to the legacy global blob for
+    // users who have never saved, then shipped defaults.
     if (isDatabaseReady()) {
       try {
+        if (user?.id) {
+          const own = userPreferencesRepo.get(user.id) as UserPreferences | undefined;
+          if (own) return own;
+        }
         return (settingsRepo.get('preferences', 'global') as UserPreferences) || INITIAL_USER_PREFERENCES;
       } catch { /* fall through */ }
     }
     return INITIAL_USER_PREFERENCES;
   });
+
+  // D4: a login switch rehydrates that user's saved preferences.
+  useEffect(() => {
+    if (!user?.id || !isDatabaseReady()) return;
+    try {
+      const own = userPreferencesRepo.get(user.id) as UserPreferences | undefined;
+      if (own) setUserPreferences(own);
+      // No row yet: keep the current (legacy global / default) values — the
+      // next save writes this user's own row.
+    } catch { /* best-effort hydration */ }
+  }, [user?.id]);
 
   // Global interface zoom — applied once on <html> from the single owner of
   // this setting. CSS `zoom` is already the app's print font-scale mechanism
@@ -71,8 +87,13 @@ export function useSettingsDomain(): {
     dbWrite(() => settingsRepo.set('branding', 'settings', safeBranding));
   }, [brandingSettings]);
   useEffect(() => {
-    dbWrite(() => settingsRepo.set('preferences', 'global', userPreferences));
-  }, [userPreferences]);
+    dbWrite(() => {
+      // D4: signed-in users get their own row; the legacy global blob stays
+      // as the fallback for pre-login surfaces.
+      if (user?.id) userPreferencesRepo.set(user.id, userPreferences);
+      settingsRepo.set('preferences', 'global', userPreferences);
+    });
+  }, [userPreferences, user?.id]);
 
   return { brandingSettings, setBrandingSettings, userPreferences, setUserPreferences };
 }

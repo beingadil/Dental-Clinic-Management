@@ -6,6 +6,7 @@ import {
   parseBackupFile,
   validateBackup,
   applyRestoredBytes,
+  createSafetySnapshot,
   APP_VERSION,
 } from '../../services/backupService';
 import { exportSqliteFile } from '../../services/sqliteStorage';
@@ -170,13 +171,27 @@ export const BackupTab: React.FC<{
     if (!pendingRestore || pendingRestore.errors.length > 0) return;
     setBusy('restore');
     try {
+      // F3: the pre-restore snapshot is now ENFORCED, not just promised. If
+      // it cannot be written, the restore is blocked — a bad restore must
+      // never be unrecoverable.
+      let snapshot: { takenAt: string; data: string };
+      try {
+        snapshot = await createSafetySnapshot();
+        localStorage.setItem('dsw_pre_restore_snapshot', JSON.stringify(snapshot));
+      } catch (snapErr: any) {
+        setBackupMessage({
+          type: 'error',
+          text: `Restore BLOCKED — the pre-restore safety snapshot could not be written (${snapErr?.message || 'storage error'}). Free up space and retry; your current data stays untouched.`,
+        });
+        return;
+      }
       await applyRestoredBytes(pendingRestore.pkg, (bytes) =>
         initEngineFromBytes(bytes)
       );
       setPendingRestore(null);
       setBackupMessage({
         type: 'success',
-        text: 'Restore complete — database swapped to the backup payload. Reloading…',
+        text: 'Restore complete — a recoverable snapshot of the previous data was kept. Reloading…',
       });
       setTimeout(() => window.location.reload(), 1200);
     } catch (err: any) {

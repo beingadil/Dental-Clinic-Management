@@ -183,7 +183,13 @@ export async function downloadUpdate(downloadUrl?: string): Promise<{ ok: boolea
   }
 }
 
-/** Parses and validates an offline `.dentalupdate` package file. */
+/**
+ * Parses and validates an offline `.dentalupdate` package file.
+ * D2 decision (2026-10-01): the offline import UI was removed — updates are
+ * manifest-driven only. This parser stays because the package format and its
+ * validation tests pin the contract CI's release job writes; do not call it
+ * from new UI without reintroducing the documented feature.
+ */
 export async function parseOfflineUpdate(text: string): Promise<
   { ok: true; manifest: UpdateManifest } | { ok: false; error: string }
 > {

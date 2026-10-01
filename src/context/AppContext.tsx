@@ -68,6 +68,7 @@ import {
   buildLabFinancialSummary,
   buildLedgerEntries,
 } from '../services/ledgerDomain';
+import { nextReservedInvoiceNumber } from '../services/invoiceNumbering';
 import { useTransactionCommands } from './hooks/useTransactionCommands';
 import { useAuthDomain } from './hooks/useAuthDomain';
 import { deriveSimpleStatus, buildInvoiceAllocation, buildPaymentSideEffects } from '../services/paymentDomain';
@@ -555,8 +556,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [labReviews, setLabReviews] = useState<LabReview[]>(() => dbRows('labReviews', () => labReviewsRepo.all() as LabReview[]));
   const [doctorPreferences, setDoctorPreferences] = useState<DoctorPreferredLab[]>(() => dbRows('doctorPreferences', () => doctorPreferredLabsRepo.all() as DoctorPreferredLab[]));
   // Settings domain (branding + preferences) lives in useSettingsDomain —
-  // identical surface, same SQLite write-through behavior.
-  const { brandingSettings, setBrandingSettings, userPreferences, setUserPreferences } = useSettingsDomain();
+  // identical surface, same SQLite write-through behavior. The signed-in
+  // user threads through so preferences hydrate/save per user (D4).
+  const { brandingSettings, setBrandingSettings, userPreferences, setUserPreferences } = useSettingsDomain(user);
 
   // ─── SQLite write-through sync (replaces all dsw_* localStorage writes) ───
   // React state = UI mirror; SQLite = authoritative store.
@@ -935,10 +937,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCases((prev) => [newCase, ...prev]);
 
-    // Create corresponding invoice automatically
+    // Create corresponding invoice automatically. The number is minted
+    // through the reservation service (B2): render-state closures handed out
+    // duplicate INV-n when two cases were created inside one render window,
+    // and the sync aborted on the UNIQUE constraint. The floor is the live
+    // state's max-scan output — byte-identical to the legacy generator —
+    // raised monotonically so two mints can never collide.
     const newInvoice: Invoice = {
       id: genId('inv'),
-      invoice_number: generateInvoiceNumber(),
+      invoice_number: nextReservedInvoiceNumber(() => generateInvoiceNumber()),
       case_id: newId,
       case_number: caseNumber,
       lab_id: caseData.lab_id,

@@ -24,7 +24,12 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl lg:max-w-3xl w-full overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200 print-area print:max-h-none">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Payment receipt"
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl lg:max-w-3xl w-full overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200 print-area print:max-h-none"
+      >
         
         {/* Modal Controls (Hidden in Print) */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 print:hidden">
@@ -78,14 +83,14 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
           {/* Transaction Metadata Grid */}
           <div className="grid grid-cols-2 gap-4 py-5 border-b border-slate-200 text-xs">
             <div>
-              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Received From / Dental Clinic</p>
+              <p className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">Received From / Dental Clinic</p>
               <p className="font-bold text-slate-900 text-sm mt-0.5">{payment.lab_name || invoice?.lab_name}</p>
               {payment.case_number && (
                 <p className="text-slate-500 mt-0.5">Case Reference: <span className="font-semibold text-slate-700">{payment.case_number}</span></p>
               )}
             </div>
             <div className="text-right">
-              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Applied To Invoice</p>
+              <p className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">Applied To Invoice</p>
               <p className="font-bold text-slate-900 text-sm mt-0.5">{payment.invoice_number || invoice?.invoice_number}</p>
               <p className="text-slate-500 mt-0.5">
                 Payment Method: <span className="font-bold text-indigo-700 uppercase">{payment.payment_method}</span>
@@ -121,15 +126,15 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
               <p className="font-bold text-slate-800 mb-2">Invoice Settlement Status</p>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-slate-50 p-2 rounded-lg">
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Total Invoiced</p>
+                  <p className="text-[11px] text-slate-400 font-bold uppercase">Total Invoiced</p>
                   <p className="font-bold text-slate-800 text-xs mt-0.5">PKR {invoice.final_amount.toLocaleString()}</p>
                 </div>
                 <div className="bg-emerald-50 p-2 rounded-lg">
-                  <p className="text-[10px] text-emerald-600 font-bold uppercase">Total Paid</p>
+                  <p className="text-[11px] text-emerald-600 font-bold uppercase">Total Paid</p>
                   <p className="font-bold text-emerald-700 text-xs mt-0.5">PKR {invoice.amount_paid.toLocaleString()}</p>
                 </div>
                 <div className="bg-rose-50 p-2 rounded-lg">
-                  <p className="text-[10px] text-rose-600 font-bold uppercase">Remaining</p>
+                  <p className="text-[11px] text-rose-600 font-bold uppercase">Remaining</p>
                   <p className="font-bold text-rose-700 text-xs mt-0.5">
                     PKR {Math.max(0, invoice.final_amount - invoice.amount_paid).toLocaleString()}
                   </p>
@@ -150,7 +155,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             </div>
           </div>
 
-          <div className="mt-8 text-center text-[10px] text-slate-400 border-t border-slate-100 pt-3">
+          <div className="mt-8 text-center text-[11px] text-slate-400 border-t border-slate-100 pt-3">
             This is a computer-generated official receipt • Thank you for your business!
           </div>
         </div>

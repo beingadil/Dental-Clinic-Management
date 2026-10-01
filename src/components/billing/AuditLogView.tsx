@@ -113,7 +113,7 @@ export const AuditLogView: React.FC = () => {
   const getActionBadge = (action: string) => {
     if (action.includes('REVERS') || action.includes('VOID')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
           <RotateCcw className="w-3 h-3 text-rose-600" />
           <span>{action}</span>
         </span>
@@ -121,7 +121,7 @@ export const AuditLogView: React.FC = () => {
     }
     if (action.includes('EXCEPTION')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
           <AlertTriangle className="w-3 h-3 text-amber-700" />
           <span>{action}</span>
         </span>
@@ -129,7 +129,7 @@ export const AuditLogView: React.FC = () => {
     }
     if (action.includes('RECONCIL')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
           <CheckCircle2 className="w-3 h-3 text-emerald-700" />
           <span>{action}</span>
         </span>
@@ -137,7 +137,7 @@ export const AuditLogView: React.FC = () => {
     }
     if (action.includes('CREDIT') || action.includes('ADJUST')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-300">
           <DollarSign className="w-3 h-3 text-purple-700" />
           <span>{action}</span>
         </span>
@@ -145,14 +145,14 @@ export const AuditLogView: React.FC = () => {
     }
     if (action.includes('ADVANCE')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-300">
           <Wallet className="w-3 h-3 text-indigo-700" />
           <span>{action}</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
         <Activity className="w-3 h-3 text-slate-600" />
         <span>{action}</span>
       </span>
@@ -220,25 +220,25 @@ export const AuditLogView: React.FC = () => {
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Logged Events</span>
             <span className="text-xl font-bold text-slate-900 mt-1 block">{metrics.total}</span>
-            <span className="text-[10px] text-slate-500">Forensic history</span>
+            <span className="text-[11px] text-slate-500">Forensic history</span>
           </div>
 
           <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200">
             <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Collections & Deposits</span>
             <span className="text-xl font-bold text-emerald-950 mt-1 block">{metrics.payments}</span>
-            <span className="text-[10px] text-emerald-700">Cash, Bank, Advance</span>
+            <span className="text-[11px] text-emerald-700">Cash, Bank, Advance</span>
           </div>
 
           <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-200">
             <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider block">Reversals & Voids</span>
             <span className="text-xl font-bold text-rose-950 mt-1 block">{metrics.reversals}</span>
-            <span className="text-[10px] text-rose-700">Strictly non-destructive</span>
+            <span className="text-[11px] text-rose-700">Strictly non-destructive</span>
           </div>
 
           <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-200">
             <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider block">Adjustments & Reconciliations</span>
             <span className="text-xl font-bold text-purple-950 mt-1 block">{metrics.adjustments + metrics.reconciliations}</span>
-            <span className="text-[10px] text-purple-700">Bank verified & credit notes</span>
+            <span className="text-[11px] text-purple-700">Bank verified & credit notes</span>
           </div>
         </div>
       </div>
@@ -320,14 +320,14 @@ export const AuditLogView: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto no-scrollbar">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b border-slate-200">
+            <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase font-bold border-b border-slate-200">
               <tr>
-                <th className="py-2 px-3 w-44">Timestamp</th>
-                <th className="py-2 px-3 w-32">Actor</th>
-                <th className="py-2 px-3 w-52">Action Performed</th>
-                <th className="py-2 px-3 w-36">Entity Reference</th>
-                <th className="py-2 px-3">Reason / Notes</th>
-                <th className="py-2 px-3 text-right w-24">Payload</th>
+                <th scope="col" className="py-2 px-3 w-44">Timestamp</th>
+                <th scope="col" className="py-2 px-3 w-32">Actor</th>
+                <th scope="col" className="py-2 px-3 w-52">Action Performed</th>
+                <th scope="col" className="py-2 px-3 w-36">Entity Reference</th>
+                <th scope="col" className="py-2 px-3">Reason / Notes</th>
+                <th scope="col" className="py-2 px-3 text-right w-24">Payload</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -354,7 +354,7 @@ export const AuditLogView: React.FC = () => {
                     {/* Actor */}
                     <td className="py-2 px-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
+                        <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[11px]">
                           {(event.actor || 'U').charAt(0).toUpperCase()}
                         </div>
                         <span className="font-bold text-slate-900">{event.actor || 'System'}</span>
@@ -426,19 +426,19 @@ export const AuditLogView: React.FC = () => {
               {/* Event Metadata Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Actor</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Actor</span>
                   <span className="text-xs font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.actor}</span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Timestamp</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Timestamp</span>
                   <span className="text-xs font-mono font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.timestamp}</span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Entity</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Entity</span>
                   <span className="text-xs font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.entity_type}</span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Reference</span>
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block">Reference</span>
                   <span className="text-xs font-mono font-bold text-slate-900 mt-0.5 block">{selectedEventForDetail.entity_ref}</span>
                 </div>
               </div>

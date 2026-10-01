@@ -3,6 +3,13 @@
  * (paper size, margins, font scale, logo placement). Stored in SQLite via
  * the settingsRepo (`print` namespace). Per-document *section* toggles belong
  * to each print dialog; this only governs the shared page layout.
+ *
+ * Persistence contract (B1/F1 regression — do not regress): settingsRepo.get()
+ * returns the ALREADY-PARSED value (repos.ts JSON.parses the column), so a
+ * load must NOT parse again, and a save must hand set() the OBJECT (set()
+ * stringifies). Rows written by the old double-encoding bug (a JSON string
+ * handed to set() → stringified twice) are tolerated on read and healed by
+ * the next save.
  */
 import { settingsRepo } from '../db/repos';
 
@@ -25,18 +32,39 @@ export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   jobSlipStyle: 'compact',
 };
 
+const KNOWN_KEYS = new Set(Object.keys(DEFAULT_PRINT_SETTINGS) as (keyof PrintSettings)[]);
+
+/** Coerce one already-parsed (or legacy double-encoded) value into settings. */
+function coerce(parsed: unknown): PrintSettings {
+  // Legacy double-encoded rows arrive as a string that still needs one parse.
+  if (typeof parsed === 'string') {
+    try { return coerce(JSON.parse(parsed)); } catch { return { ...DEFAULT_PRINT_SETTINGS }; }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ...DEFAULT_PRINT_SETTINGS };
+  }
+  // Keep only known keys — dead/stale keys must not survive a round-trip.
+  const out: PrintSettings = { ...DEFAULT_PRINT_SETTINGS };
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (KNOWN_KEYS.has(k as keyof PrintSettings) && v !== undefined && v !== null) {
+      (out as unknown as Record<string, unknown>)[k] = v;
+    }
+  }
+  return out;
+}
+
 export function loadPrintSettings(): PrintSettings {
   try {
-    const row = settingsRepo.get('print', 'settings');
-    if (row) {
-      return { ...DEFAULT_PRINT_SETTINGS, ...JSON.parse(row.value) };
+    const stored = settingsRepo.get('print', 'settings');
+    if (stored !== undefined) {
+      return coerce(stored);
     }
   } catch { /* fall through to defaults */ }
   return { ...DEFAULT_PRINT_SETTINGS };
 }
 
 export function savePrintSettings(settings: PrintSettings): void {
-  settingsRepo.set('print', 'settings', JSON.stringify(settings));
+  settingsRepo.set('print', 'settings', settings);
 }
 
 /**
@@ -47,18 +75,19 @@ export function savePrintSettings(settings: PrintSettings): void {
  */
 export function loadDocumentSections(kind: string, fallback: string[]): string[] {
   try {
-    const row = settingsRepo.get('print', `sections_${kind}`);
-    if (row) {
-      const parsed = JSON.parse(row.value);
-      if (Array.isArray(parsed)) {
-        // Keep the stored order of known sections; unknown ids are dropped.
-        return fallback.filter((id) => parsed.includes(id));
-      }
+    let stored: unknown = settingsRepo.get('print', `sections_${kind}`);
+    // Legacy double-encoded row: one extra parse.
+    if (typeof stored === 'string') {
+      try { stored = JSON.parse(stored); } catch { stored = null; }
+    }
+    if (Array.isArray(stored)) {
+      // Keep the stored order of known sections; unknown ids are dropped.
+      return fallback.filter((id) => stored.includes(id));
     }
   } catch { /* fall through to the shipped default */ }
   return [...fallback];
 }
 
 export function saveDocumentSections(kind: string, sections: string[]): void {
-  settingsRepo.set('print', `sections_${kind}`, JSON.stringify(sections));
+  settingsRepo.set('print', `sections_${kind}`, sections);
 }

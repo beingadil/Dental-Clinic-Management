@@ -31,7 +31,12 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl xl:max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Journal entry inspector"
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl xl:max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-2.5">
@@ -101,10 +106,10 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             <table className="w-full text-xs text-left">
               <thead>
                 <tr className="bg-slate-100/80 text-slate-600 border-b border-slate-200">
-                  <th className="px-3.5 py-2.5 font-semibold">Account Code & Title</th>
-                  <th className="px-3 py-2.5 font-semibold text-center w-24">Type</th>
-                  <th className="px-3.5 py-2.5 font-semibold text-right w-32">Debit (PKR)</th>
-                  <th className="px-3.5 py-2.5 font-semibold text-right w-32">Credit (PKR)</th>
+                  <th scope="col" className="px-3.5 py-2.5 font-semibold">Account Code & Title</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold text-center w-24">Type</th>
+                  <th scope="col" className="px-3.5 py-2.5 font-semibold text-right w-32">Debit (PKR)</th>
+                  <th scope="col" className="px-3.5 py-2.5 font-semibold text-right w-32">Credit (PKR)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
@@ -119,7 +124,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-center">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-sans uppercase font-medium ${
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-sans uppercase font-medium ${
                         line.account_type === 'asset'
                           ? 'bg-blue-50 text-blue-700'
                           : line.account_type === 'liability'

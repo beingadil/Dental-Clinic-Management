@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { BrandingSettings } from '../../types';
+import { validateFile } from '../../services/fileValidation';
 import {
   Check,
   Palette,
@@ -23,13 +24,20 @@ export const BrandingTab: React.FC = () => {
     setBrandingForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  // F11: logo validation via the shared helper — size + MIME (images only).
+  // Errors surface inline (B6 voice) instead of alert().
+  const [logoError, setLogoError] = useState<string>('');
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, key: 'logoUrl' | 'logoUrl2' = 'logoUrl') => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert('Logo image size must be under 2MB.');
+      const check = validateFile(file, { maxMB: 2, mimeAllow: ['image/'] });
+      if (!check.ok) {
+        setLogoError(check.error || 'Logo not accepted.');
+        e.target.value = '';
         return;
       }
+      setLogoError('');
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
@@ -126,6 +134,9 @@ export const BrandingTab: React.FC = () => {
           )}
 
           <div className="space-y-2 flex-1 w-full">
+            {logoError && (
+              <p role="alert" className="text-xs text-rose-600 font-medium">{logoError}</p>
+            )}
             <div className="flex items-center gap-2 flex-wrap">
               <input
                 ref={logoInputRef}

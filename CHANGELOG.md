@@ -4,6 +4,71 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.13.0] — 2026-10-01
+
+### Fixed
+- **Invoice & document print settings now actually apply** — paper size,
+  margins, font scale, logo position and every per-document section toggle
+  were silently ignored: the settings reader `JSON.parse`d a value the repo
+  had already parsed, so the load always threw and fell back to defaults
+  while the UI still said "Saved — applies to all documents". Print settings
+  now round-trip (test-pinned), the writer no longer double-encodes, and rows
+  written by older builds are migrated on read.
+- **Invoice numbers can no longer be minted twice** — invoice numbers were
+  generated from a render closure, so two creations in one render window
+  produced the same `INV-n`, and the resulting `UNIQUE` failure aborted the
+  whole SQLite sync (later work survived only in memory). Numbers are now
+  reserved from a monotonic high-water mark, mirroring the payment/advance
+  fix in 2.12.4; voided or reversed numbers stay retired.
+- **Restore is now enforced, not suggested** — `Restore backup` takes the
+  safety snapshot first and *blocks* the restore if that snapshot cannot be
+  written, so a bad backup can no longer overwrite the only copy of live
+  data.
+- **Malformed CSV exports** — invoices, statements and register exports go
+  through one RFC-4180 writer (correct quoting of commas/quotes/newlines,
+  CRLF rows, UTF-8 BOM so Excel opens PKR amounts and Urdu names correctly)
+  instead of the previous `encodeURI` data-URL and naive quote doubling.
+- **Payment-proof uploads are validated** — attachments are checked against a
+  2 MB / image-or-PDF allowance before they are base64'd into SQLite, with an
+  inline error instead of a silent oversized write. The same guard protects
+  the branding logo upload.
+
+### Changed
+- **Role gating across Billing** — a locked permission matrix now gates every
+  money action: Super Admin / Lab Admin can do everything; Billing Manager can
+  make every money post but cannot void an invoice or post a reversal;
+  Technician cannot post at all. System-mutating settings tabs require a
+  system-management permission.
+- **Real confirmation dialogs** — voiding an invoice and bulk-settling now use
+  an in-app dialog that lists the consequences (ledger reversal, retired
+  number, audit entry); voiding additionally requires typing `VOID`. Native
+  `confirm()` is gone from Billing.
+- **Inline errors instead of `alert()`** — validation and posting failures in
+  the record-transaction dialog surface in an aria-live banner in the
+  dialog footer, matching the reversal dialog's inline discipline.
+- **Per-user preferences** — UI preferences (zoom, density, preferred tab)
+  moved from one global blob to a `user_preferences` table (migration 014),
+  so two operators on one machine no longer overwrite each other; existing
+  global values are adopted on first load.
+- **Dead and duplicate surfaces removed** — the unreachable
+  `AccountsFinancialHome` screen (719 LOC) is retired, with its one unique
+  capability (applying unallocated advance credit to an invoice) folded into
+  the invoice drawer; the dashboard's divergent print-only statement modal now
+  renders the single shared statement implementation.
+- **Visual + accessibility normalization in Billing** — no sub-11px text left
+  in the module, money columns use tabular figures, every table header carries
+  `scope="col"`, every modal is a real `role="dialog"` (with Escape to close
+  on the invoice drawer), destructive actions use one rose palette, and status
+  chips keep their existing wording.
+- **Honest update copy** — the removed offline `.dentalupdate` import is no
+  longer advertised in Settings → Updates or in the changelog history.
+
+### Verified
+- `tsc --noEmit`, `vitest` (273 tests / 36 files, including new suites for
+  print settings, invoice numbering, CSV export, file validation and the
+  permission matrix) and the production build are green; live click-through of
+  all five Billing tabs on the built bundle with zero console errors.
+
 ## [2.12.4] — 2026-10-01
 
 ### Fixed
@@ -362,10 +427,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - **In-app auto-update system.** The app now silently checks GitHub for a newer
   release on startup (and hourly after). When one exists, a dismissible banner
   offers a one-click installer download that opens in the system browser
-  (new `open_external` Tauri command, https-only). Offline machines remain
-  fully supported via the Settings → Import Offline Update (`.dentalupdate`)
-  path. Update sources: a CI-published `update-manifest.json` on GitHub Pages,
-  with the GitHub Releases API as fallback.
+  (new `open_external` Tauri command, https-only). Update sources: a
+  CI-published `update-manifest.json` on GitHub Pages, with the GitHub
+  Releases API as fallback. (The offline `.dentalupdate` import UI shipped
+  here was later removed — updates are manifest-driven only.)
 - CI now publishes `update-manifest.json` to the `gh-pages` branch on every
   `v*` tag so released installers are discoverable by the in-app updater.
 
@@ -426,8 +491,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - PBKDF2-hashed authentication; plaintext passwords and hardcoded backdoor removed.
 - Portable `.dentalbackup` format: checksummed, versioned, with validated
   restore (safety snapshot → engine swap → reload).
-- Update system: online manifest check + offline `.dentalupdate` package import
-  with SHA-256 verification; version `2.0.0` surfaced in Settings.
+- Update system: online manifest check with SHA-256 verification (the
+  companion offline `.dentalupdate` import UI was removed in 2.13.0);
+  version `2.0.0` surfaced in Settings.
 - Priority SLA model (urgent 1 / high 2 / normal 4 / low 7 days) with automatic
   due dates and badges across case forms and lists.
 - Attachment validation service (MIME allow-list, 8 MB/file, 32 MB/entity).

@@ -559,7 +559,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                         >
                           <div className="min-w-0 pr-2">
                             <div className="font-bold text-slate-900 truncate">{clinic.name}</div>
-                            <div className="text-[10px] text-slate-500 font-normal flex items-center gap-2 mt-0.5 truncate">
+                            <div className="text-[11px] text-slate-500 font-normal flex items-center gap-2 mt-0.5 truncate">
                               {clinic.doctor_name && <span>Dr. {clinic.doctor_name}</span>}
                               {clinic.city && <span>• {clinic.city}</span>}
                               {clinic.phone && <span>• {clinic.phone}</span>}
@@ -713,7 +713,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 </div>
               </div>
               <div className="text-right">
-                <span className="text-[10px] font-bold text-slate-500 uppercase block">Statement Period</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Statement Period</span>
                 <span className="font-semibold text-slate-800">
                   {startDate || 'Beginning'} &rarr; {endDate || 'Present'}
                 </span>
@@ -741,14 +741,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    <th className="py-2 px-3 w-14 text-center">Sr No.</th>
-                    <th className="py-2 px-3 w-28">Date</th>
-                    <th className="py-2 px-3 w-40">Clinic</th>
-                    <th className="py-2 px-3 w-32">Case / Job</th>
-                    <th className="py-2 px-3">Narration (Type / Reference)</th>
-                    <th className="py-2 px-3 text-right w-28">Debit (PKR)</th>
-                    <th className="py-2 px-3 text-right w-28">Credit (PKR)</th>
-                    <th className="py-2 px-3 text-right w-36">Closing Balance</th>
+                    <th scope="col" className="py-2 px-3 w-14 text-center">Sr No.</th>
+                    <th scope="col" className="py-2 px-3 w-28">Date</th>
+                    <th scope="col" className="py-2 px-3 w-40">Clinic</th>
+                    <th scope="col" className="py-2 px-3 w-32">Case / Job</th>
+                    <th scope="col" className="py-2 px-3">Narration (Type / Reference)</th>
+                    <th scope="col" className="py-2 px-3 text-right w-28">Debit (PKR)</th>
+                    <th scope="col" className="py-2 px-3 text-right w-28">Credit (PKR)</th>
+                    <th scope="col" className="py-2 px-3 text-right w-36">Closing Balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -762,7 +762,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                       </td>
                       <td className="py-2.5 px-3 text-slate-400">—</td>
                       <td className="py-2.5 px-4">
-                        <span className="inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
+                        <span className="inline-block text-[11px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
                           Opening Balance
                         </span>
                         <span className="text-slate-600 not-italic">Balance brought forward</span>
@@ -839,7 +839,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           <td className="py-2 px-3">
                             <div className="space-y-1">
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${details.typeBadgeBg}`}>
+                                <span className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${details.typeBadgeBg}`}>
                                   <Icon className="w-3 h-3" />
                                   {details.typeLabel}
                                 </span>
@@ -928,7 +928,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 chronologically ordered entry. */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-slate-300 bg-slate-50 px-4 py-3.5">
               <div>
-                <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
                   Closing Balance{startDate || endDate ? ` · ${startDate || 'Beginning'} → ${endDate || 'Present'}` : ''}
                 </span>
                 <span className="text-[11px] text-slate-400">
