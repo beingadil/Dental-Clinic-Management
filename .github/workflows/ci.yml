@@ -215,14 +215,25 @@ jobs:
           # Release asset availability can also lag the upload moment: retry the
           # download twice before failing.
           #
-          # The digest is extracted by pattern, NOT by colon field position: this
-          # line used to be `cut -d: -f2`, which on `"payload_checksum":
-          # "sha256:<hex>"` yields the literal string ` sha256` — so the compare
-          # could never succeed and verify-release failed on v2.12.2, v2.12.4,
-          # v2.13.0 and v2.14.0 with perfectly healthy artifacts. It was a
-          # parsing bug wearing a CDN-race costume.
-          MANIFEST_SHA=$(sed -n 's/.*"payload_checksum"[[:space:]]*:[[:space:]]*"sha256:([a-f0-9]\{64\})".*/\1/p' manifest.json | head -n1)
-          [ -n "$MANIFEST_SHA" ] || fail "manifest has no readable payload_checksum (got: $(grep -o '"payload_checksum"[^,]*' manifest.json | head -n1))"
+          # The digest is extracted by pattern, NOT by colon field position: the
+          # original line took `cut -d: -f2` of `"payload_checksum":
+          # "sha256:<hex>"`, which yields the literal string ` sha256` — so the
+          # compare could never succeed. That one bug failed verify-release on
+          # v2.12.2, v2.12.4, v2.13.0 and v2.14.0 with perfectly healthy
+          # artifacts: a parsing bug wearing a CDN-race costume.
+          #
+          # Read it with bash's own ERE matcher, not sed/grep: the first fix used
+          # sed with an unescaped BRE group (`(...)` instead of `\(...\)`), so
+          # `\1` was an invalid reference, sed exited non-zero under `set -e`,
+          # and MANIFEST_SHA came back empty — failing v2.14.1 the same way.
+          MANIFEST_SHA=""
+          if [[ $(cat manifest.json) =~ \"payload_checksum\"[[:space:]]*:[[:space:]]*\"sha256:([a-f0-9]{64})\" ]]; then
+            MANIFEST_SHA="${BASH_REMATCH[1]}"
+          fi
+          # Length guard so an extractor that silently matches nothing can never
+          # be mistaken for a successful read again.
+          [ "${#MANIFEST_SHA}" -eq 64 ] \
+            || fail "manifest has no readable payload_checksum (got: $(grep -o '"payload_checksum"[^,]*' manifest.json | head -n1))"
           ASSET_URL=$(grep -o '"download_url": "[^"]*"' manifest.json | cut -d'"' -f4)
           curl -fsSL "$ASSET_URL" -o setup.exe \
             || { sleep 20; curl -fsSL "$ASSET_URL" -o setup.exe; } \

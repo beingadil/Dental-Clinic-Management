@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.14.2] — 2026-10-01
+
+### Fixed
+- **`verify-release` now extracts the manifest digest with bash's own ERE
+  matcher.** The 2.14.1 attempt to fix the comparison replaced a `cut -d: -f2`
+  with a `sed` substitution whose BRE group was written unescaped — `(...)`
+  instead of `\(...\)` — so `\1` was an invalid reference, sed exited non-zero
+  under `set -e`, `MANIFEST_SHA` came back empty, and the gate failed on v2.14.1
+  with byte-perfect artifacts. The digest is now read by `[[ … =~ … ]]` with an
+  explicit capture group, behind a 64-character length guard, so an extractor
+  that silently matches nothing can never again be mistaken for a read.
+
+### Verified
+- Replayed the whole step against the live release: manifest `2.14.1`,
+  `Dental.Solutions_2.14.1_x64-setup.exe` (3,872,478 bytes), manifest digest
+  `96ecb3c3…`, asset bytes and `SHA256SUMS.txt` all identical — the 2.14.1
+  artifacts were healthy; only the extractor was broken.
+
+No application code changed in this patch either — the 2.14.0/2.14.1 installer
+and this one contain the same build.
+
 ## [2.14.1] — 2026-10-01
 
 ### Fixed

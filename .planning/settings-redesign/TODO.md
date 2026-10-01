@@ -4,6 +4,17 @@ Status after **v2.14.0**. Everything the v2.13.0 handoff listed as open has
 either landed or is listed below with the reason it is still open. Nothing
 here is a correctness defect.
 
+## Release gate (2.14.2)
+
+The `verify-release` job had been failing since v2.12.2 on healthy artifacts —
+never a CDN race. Two parsing bugs in the same line, in sequence: first
+`cut -d: -f2` on `"payload_checksum": "sha256:<hex>"` returned the literal
+` sha256`; the 2.14.1 fix then used `sed` with an unescaped BRE group, so `\1`
+was an invalid reference and the variable came back empty. 2.14.2 reads the
+digest with `[[ … =~ … ]]` and guards on 64 characters. Replayed end-to-end
+against the live 2.14.1 release before tagging: manifest, downloaded asset and
+`SHA256SUMS.txt` all agree on `96ecb3c3…`.
+
 ## Landed in v2.14.0
 
 | Item | Where | Proof |
