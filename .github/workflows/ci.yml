@@ -147,6 +147,33 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: pages
 
+  # ---- TEMPORARY diagnostic probe (remove once verify-release is green) ----
+  # verify-release has failed in 0s on v2.14.0, v2.14.1 and v2.14.2 with no
+  # `::error::` annotation, which means a command BEFORE the first fail() exits
+  # non-zero under `set -e` — nothing in the step's own diagnostics ever ran.
+  # Job logs need repo admin rights to download, but `::error::` lines surface
+  # as check-run annotations, and those are readable — so this job states the
+  # environment facts as annotations instead.
+  release-probe:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe gh availability and release read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          echo "::error::probe gh path: $(command -v gh || echo MISSING)"
+          gh --version 2>&1 | head -1 | while read -r l; do echo "::error::probe gh version: $l"; done
+          gh auth status 2>&1 | head -3 | while read -r l; do echo "::error::probe auth: $l"; done
+          out=$(gh release view v2.14.2 --json isDraft,assets --jq '{draft: .isDraft, exe: [.assets[] | select(.name | test("setup\\.exe$"))] | length}' 2>&1)
+          code=$?
+          echo "::error::probe release-view exit=$code out=$(echo "$out" | tr '\n' ' ' | head -c 300)"
+          ok=$(gh api "repos/${GITHUB_REPOSITORY}/contents/update-manifest.json?ref=gh-pages" --jq '.content' 2>&1 | head -c 40)
+          echo "::error::probe contents-api exit=$? out=$ok"
+
   # ---- Post-release verification: fail loudly if the release did not serve ----
   # Runs only for v* tags, after the desktop job published everything. Checks
   # what the in-app updater will actually consume: manifest version, manifest
@@ -164,7 +191,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          # Any command that dies under `set -e` before reaching fail() left NO
+          # evidence in three consecutive tag runs (the step failed in 0s with a
+          # bare exit code). Name the command and line as an annotation, which
+          # is readable without repo admin rights; job logs are not.
+          trap 'echo "::error::verify-release: `$BASH_COMMAND` exited $? (line $LINENO)"' ERR
           VERSION="${TAG#v}"
           # Diagnostics are printed alongside every failure: job logs need repo
           # admin rights to download, so the failing evidence has to be in the
