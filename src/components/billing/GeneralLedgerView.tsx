@@ -46,9 +46,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
   const [caseFilter, setCaseFilter] = useState<string>('');
 
   // Date filters
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [activeDatePreset, setActiveDatePreset] = useState<string>('all');
+  // Ledger window defaults to TODAY (like the other billing tabs): older
+  // entries are reached with the date picker or the 'All Time' preset.
+  const [startDate, setStartDate] = useState<string>(() => todayISO());
+  const [endDate, setEndDate] = useState<string>(() => todayISO());
+  const [activeDatePreset, setActiveDatePreset] = useState<string>('today');
 
   // Preview state: hidden until the user clicks Preview.
   const [isPreviewActive, setIsPreviewActive] = useState<boolean>(false);
@@ -129,7 +131,9 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     }
 
     if (preset === 'today') {
-      const todayStr = now.toISOString().slice(0, 10);
+      // Local calendar day, matching the shared picker (toISOString would roll
+      // back a day for PKT/any +offset zone before 05:00 local time).
+      const todayStr = todayISO();
       setStartDate(todayStr);
       setEndDate(todayStr);
       return;
@@ -605,8 +609,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               from={startDate}
               to={endDate}
               quickRanges={[
-                { label: 'All Time', from: '', to: '' },
                 { label: 'Today', from: todayISO(), to: todayISO() },
+                { label: 'All Time', from: '', to: '' },
                 { label: 'This Week', from: mondayThisWeek(), to: todayISO() },
                 { label: 'This Month', from: firstOfMonth(), to: endOfMonth() },
                 { label: 'Last Month', from: firstOfLastMonth(), to: endOfLastMonth() },
@@ -646,8 +650,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
           <span className="text-[11px] font-bold text-slate-600 mr-1">Quick Dates:</span>
           {[
-            { id: 'all', label: 'All Time' },
             { id: 'today', label: 'Today' },
+            { id: 'all', label: 'All Time' },
             { id: 'this_week', label: 'This Week' },
             { id: 'this_month', label: 'This Month' },
             { id: 'last_month', label: 'Last Month' },

@@ -19,7 +19,7 @@ import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
 import { PageHeader, EmptyState, TabsNav, Badge } from '../common/ui';
-import { DatePickerRange } from '../common/DatePickerRange';
+import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { 
   DollarSign, 
   Wallet, 
@@ -75,9 +75,11 @@ export const BillingView: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Business date for bulk settlements — user-picked, defaults to today.
   const [bulkPayDate, setBulkPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  // Invoice history window: '' = All Time. Dates compare on the billing day.
-  const [invFromDate, setInvFromDate] = useState<string>('');
-  const [invToDate, setInvToDate] = useState<string>('');
+  // Invoice history window: defaults to TODAY, like every other billing tab —
+  // yesterday's and older invoices are reached by rewinding the date picker
+  // (clearing it = All Time). Dates compare on the billing day.
+  const [invFromDate, setInvFromDate] = useState<string>(() => todayISO());
+  const [invToDate, setInvToDate] = useState<string>(() => todayISO());
 
   // Finance 2.0 Unified & Inspection Modals
   const [selectedDrawerInvoice, setSelectedDrawerInvoice] = useState<Invoice | null>(null);
@@ -584,12 +586,14 @@ export const BillingView: React.FC = () => {
                 <EmptyState
                   icon={Search}
                   title="No invoices match the active filters"
-                  description="Try adjusting your clinic selection, clearing search keywords, or selecting 'All Invoices'."
-                  actionLabel="Reset Invoice Filters"
+                  description="This tab lists today's invoices by default — rewind the date picker to see earlier days, or reset to show every date."
+                  actionLabel="Reset Filters & Show All Dates"
                   onAction={() => {
                     setSearchTerm('');
                     setClinicFilter('all');
                     setInvoiceStatusFilter('all');
+                    setInvFromDate('');
+                    setInvToDate('');
                   }}
                 />
               </div>

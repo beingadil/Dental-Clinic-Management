@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
+import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { 
   BarChart3, 
   BookmarkCheck, 
@@ -27,6 +28,10 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers'>('monthly');
   const [voucherSearch, setVoucherSearch] = useState<string>('');
+  // Saved-voucher list defaults to TODAY like the other billing tabs; rewind the
+  // picker (or clear it for All Time) to audit earlier vouchers.
+  const [vFromDate, setVFromDate] = useState<string>(() => todayISO());
+  const [vToDate, setVToDate] = useState<string>(() => todayISO());
 
   // Group invoices by Month (YYYY-MM) and then Dental Clinic
   const monthlyLabGroups = useMemo(() => {
@@ -70,9 +75,16 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
   // Filter saved vouchers
   const filteredVouchers = useMemo(() => {
-    if (!voucherSearch.trim()) return savedVouchers;
+    const inRange = (v: (typeof savedVouchers)[number]) => {
+      const day = (v.created_at || '').slice(0, 10);
+      if (vFromDate && (!day || day < vFromDate)) return false;
+      if (vToDate && (!day || day > vToDate)) return false;
+      return true;
+    };
+    if (!voucherSearch.trim()) return savedVouchers.filter(inRange);
     const q = voucherSearch.toLowerCase();
     return savedVouchers.filter((v) => {
+      if (!inRange(v)) return false;
       return (
         v.voucher_number.toLowerCase().includes(q) ||
         v.case_number.toLowerCase().includes(q) ||
@@ -81,7 +93,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         (v.saved_by || '').toLowerCase().includes(q)
       );
     });
-  }, [savedVouchers, voucherSearch]);
+  }, [savedVouchers, voucherSearch, vFromDate, vToDate]);
 
   return (
     <div className="space-y-5">
@@ -131,14 +143,24 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         )}
 
         {activeSubTab === 'vouchers' && (
-          <div className="relative w-full sm:w-64">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={voucherSearch}
-              onChange={(e) => setVoucherSearch(e.target.value)}
-              placeholder="Search voucher #, case #, clinic..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={voucherSearch}
+                onChange={(e) => setVoucherSearch(e.target.value)}
+                placeholder="Search voucher #, case #, clinic..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+              />
+            </div>
+            <DatePickerRange
+              from={vFromDate}
+              to={vToDate}
+              onChange={(f, t) => {
+                setVFromDate(f);
+                setVToDate(t);
+              }}
             />
           </div>
         )}
@@ -228,7 +250,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
           {filteredVouchers.length === 0 ? (
             <div className="p-12 text-center text-xs text-slate-400">
-              No saved vouchers recorded in audit log.
+              No saved vouchers recorded for this date range. Rewind the date picker to see earlier vouchers.
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AuditEvent } from '../../types';
+import { todayISO } from '../common/DatePickerRange';
 import { 
   ShieldCheck, 
   Search, 
@@ -28,8 +29,10 @@ export const AuditLogView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [actorFilter, setActorFilter] = useState<string>('all');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  // Audit window defaults to TODAY (matching the other billing tabs); older
+  // events are reached with the date inputs, and Reset clears back to All Time.
+  const [startDate, setStartDate] = useState<string>(() => todayISO());
+  const [endDate, setEndDate] = useState<string>(() => todayISO());
   const [selectedEventForDetail, setSelectedEventForDetail] = useState<AuditEvent | null>(null);
 
   // Distinct actors
@@ -336,7 +339,10 @@ export const AuditLogView: React.FC = () => {
                   <td colSpan={6} className="py-12 text-center text-slate-400">
                     <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                     <p className="font-bold text-slate-600 text-sm">No Audit Events Found</p>
-                    <p className="text-xs mt-1">No security log entries match the search filters.</p>
+                    <p className="text-xs mt-1">
+                      This log opens on today's events — rewind the date fields to see earlier
+                      entries, or press Reset to clear the whole window.
+                    </p>
                   </td>
                 </tr>
               ) : (

@@ -364,7 +364,8 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
         {filteredTransactions.length === 0 ? (
           <div className="p-12 text-center text-xs text-slate-400">
-            No transactions found matching the selected filters.
+            No transactions found for the selected date range and filters — rewind
+            the date picker to view previous entries.
           </div>
         ) : (
           <div className="overflow-x-auto no-scrollbar">
