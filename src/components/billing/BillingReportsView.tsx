@@ -311,7 +311,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                                 }
                               }}
                               className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
-                              title="Re-print or View Voucher"
+                              title="Re-print or View Voucher" aria-label="Re-print or view voucher"
                             >
                               <Printer className="w-3.5 h-3.5" />
                               <span>Re-Print</span>
@@ -319,7 +319,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                             <button
                               onClick={() => deleteSavedVoucher(v.id)}
                               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Delete Voucher Log"
+                              title="Delete Voucher Log" aria-label="Delete voucher log"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>

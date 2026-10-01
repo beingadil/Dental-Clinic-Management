@@ -318,7 +318,7 @@ export const CaseListView: React.FC = () => {
                 setAppliedTemplate(null);
                 setIsNewModalOpen(true);
               }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs md:text-sm rounded-xl shadow-sm hover:shadow flex items-center gap-2 transition-all cursor-pointer"
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs md:text-sm rounded-xl shadow-sm hover:shadow flex items-center gap-2 transition-all cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 text-white" />
               <span>Create New Case</span>

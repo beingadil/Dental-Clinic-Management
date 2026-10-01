@@ -392,7 +392,7 @@ export const AuditLogView: React.FC = () => {
                       <button
                         onClick={() => setSelectedEventForDetail(event)}
                         className="px-2 py-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
-                        title="View Full Audit Snapshot"
+                        title="View Full Audit Snapshot" aria-label="View full audit snapshot"
                       >
                         <Code className="w-3.5 h-3.5" />
                         <span>Inspect</span>
@@ -496,7 +496,7 @@ export const AuditLogView: React.FC = () => {
             <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
               <button
                 onClick={() => setSelectedEventForDetail(null)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
               >
                 Close Inspector
               </button>

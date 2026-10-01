@@ -23,8 +23,6 @@ import { APP_VERSION } from './backupService';
  */
 export const UPDATE_MANIFEST_URL_DEFAULT =
   'https://raw.githubusercontent.com/beingadil/Dental-Clinic-Management/gh-pages/update-manifest.json';
-export const UPDATE_MANIFEST_PAGES_URL =
-  'https://beingadil.github.io/Dental-Clinic-Management/update-manifest.json';
 export const GITHUB_LATEST_RELEASE_URL =
   'https://api.github.com/repos/beingadil/Dental-Clinic-Management/releases/latest';
 export const GITHUB_RELEASES_PAGE = 'https://github.com/beingadil/Dental-Clinic-Management/releases/latest';
@@ -91,16 +89,17 @@ const quietFetch = async (url: string): Promise<Response | null> => {
 };
 
 async function fetchLatestManifest(): Promise<UpdateManifest | null> {
-  // 1 — CI-published manifest on the gh-pages branch (raw + published URLs,
-  // in that order, so an enabled-Pages repo keeps working too)
-  for (const url of [UPDATE_MANIFEST_URL_DEFAULT, UPDATE_MANIFEST_PAGES_URL]) {
-    const res = await quietFetch(url);
-    if (res) {
-      try {
-        const manifest = (await res.json()) as UpdateManifest;
-        if (manifest?.magic === 'DENTALUPDATE' && manifest.version) return manifest;
-      } catch { /* try the next source */ }
-    }
+  // 1 — the CI-published manifest on the gh-pages branch, via the raw host.
+  // The published Pages URL (beingadil.github.io/Dental-Clinic-Management/…)
+  // was tried here first and always 404'd: GitHub Pages is not enabled for
+  // this repo, so every check burned a request on a URL that cannot work.
+  // The raw URL serves the same committed file, so it is the only source now.
+  const res = await quietFetch(UPDATE_MANIFEST_URL_DEFAULT);
+  if (res) {
+    try {
+      const manifest = (await res.json()) as UpdateManifest;
+      if (manifest?.magic === 'DENTALUPDATE' && manifest.version) return manifest;
+    } catch { /* fall through to the Releases API */ }
   }
 
   // 2 — GitHub Releases API fallback

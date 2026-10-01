@@ -362,7 +362,7 @@ export const BillingView: React.FC = () => {
                   setUnifiedModalMode('refund');
                   setIsUnifiedRecordModalOpen(true);
                 }}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
                 title="Lab holds advance credit for this clinic. Pay refund or apply debit adjustment"
               >
                 <ArrowUpRight className="w-4 h-4 shrink-0" />
@@ -377,7 +377,7 @@ export const BillingView: React.FC = () => {
                   setUnifiedModalMode('payment');
                   setIsUnifiedRecordModalOpen(true);
                 }}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
               >
                 <ArrowDownLeft className="w-4 h-4 shrink-0" />
                 <span>
@@ -452,7 +452,7 @@ export const BillingView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleBulkPay}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                  className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>Bulk Mark Paid ({selectedIds.length})</span>
@@ -550,6 +550,7 @@ export const BillingView: React.FC = () => {
                     <button
                       key={sub.id}
                       onClick={() => setInvoiceStatusFilter(sub.id as any)}
+                      aria-pressed={isSubActive}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                         isSubActive
                           ? sub.isOverdueAlert
@@ -566,11 +567,15 @@ export const BillingView: React.FC = () => {
                         <AlertTriangle className={`w-3.5 h-3.5 ${isSubActive ? 'text-white' : 'text-rose-600'}`} />
                       )}
                       <span>{sub.label}</span>
-                      <span className={`px-1.5 py-0.2 rounded-md text-[11px] ${
-                        isSubActive
-                          ? 'bg-black/20 text-white'
-                          : 'bg-white/80 text-slate-700'
-                      }`}>
+                      <span
+                        role="status"
+                        aria-live="polite"
+                        aria-label={`${sub.label}: ${sub.count ?? 0}`}
+                        className={`px-1.5 py-0.2 rounded-md text-[11px] tabular-nums ${
+                          isSubActive
+                            ? 'bg-black/20 text-white'
+                            : 'bg-white/80 text-slate-700'
+                        }`}>
                         {sub.count ?? 0}
                       </span>
                     </button>
@@ -802,7 +807,7 @@ export const BillingView: React.FC = () => {
                               <button
                                 onClick={() => setSelectedDrawerInvoice(inv)}
                                 className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                title="Inspect Invoice Breakdown, Case Items & Settlement History"
+                                title="Inspect Invoice Breakdown, Case Items & Settlement History" aria-label="Inspect invoice breakdown, case items and settlement history"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
@@ -810,7 +815,7 @@ export const BillingView: React.FC = () => {
                               <button
                                 onClick={() => setPrintModalInvoice(inv)}
                                 className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                title="Print Invoice Statement"
+                                title="Print Invoice Statement" aria-label="Print invoice statement"
                               >
                                 <Printer className="w-4 h-4" />
                               </button>

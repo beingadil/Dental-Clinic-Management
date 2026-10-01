@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Drawer } from '../common/ui';
+import { Drawer, InvoiceStatusBadge } from '../common/ui';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
@@ -143,15 +143,9 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                 <h2 className="text-base font-bold text-slate-900 font-mono">
                   {invoice.invoice_number}
                 </h2>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase ${
-                  isPaid
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : totalPaid > 0
-                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                    : 'bg-rose-50 text-rose-700 border border-rose-200'
-                }`}>
-                  {statusV2.replace('_', ' ')}
-                </span>
+                {/* V-18 — the canonical chip, so this status reads identically to
+                    the invoice list and the register (overdue/voided included). */}
+                <InvoiceStatusBadge status={statusV2} size="xs" />
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 {invoice.patient_name || 'Walk-in Patient'} · {invoice.case_type_name}
@@ -350,7 +344,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                     </label>
                     <button
                       type="submit"
-                      className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors"
+                      className="px-3 py-1.5 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold transition-colors"
                     >
                       Apply Advance
                     </button>
@@ -421,7 +415,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                           type="button"
                           onClick={() => onViewReceipt(pmt)}
                           className="p-1.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-                          title="View Official Receipt"
+                          title="View Official Receipt" aria-label="View official receipt"
                         >
                           <Receipt className="w-4 h-4" />
                         </button>
@@ -430,7 +424,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                             type="button"
                             onClick={() => onReversePayment(pmt)}
                             className="p-1.5 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
-                            title="Reverse Payment (Audit Correction)"
+                            title="Reverse Payment (Audit Correction)" aria-label="Reverse payment (audit correction)"
                           >
                             <ArrowLeftRight className="w-4 h-4" />
                           </button>

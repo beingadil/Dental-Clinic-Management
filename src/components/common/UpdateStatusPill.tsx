@@ -39,7 +39,7 @@ export function UpdateStatusPill() {
       <div className="flex justify-end">
         <button
           onClick={() => runAutoUpdate()}
-          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-full shadow-sm cursor-pointer flex items-center gap-1.5"
+          className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-[11px] font-bold rounded-full shadow-sm cursor-pointer flex items-center gap-1.5"
         >
           <ArrowUpCircle className="w-3.5 h-3.5" />
           Update to v{phase.version}
@@ -66,7 +66,7 @@ export function UpdateStatusPill() {
         {phase.state === 'installing' ? (
           <button
             onClick={() => { void getCurrentWindow().destroy(); }}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-full shadow-sm cursor-pointer flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-[11px] font-bold rounded-full shadow-sm cursor-pointer flex items-center gap-1.5"
             title="Close the app now so the update installer can finish. It relaunches automatically."
           >
             <Power className="w-3.5 h-3.5" />

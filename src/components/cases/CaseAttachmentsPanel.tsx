@@ -298,7 +298,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
               <button
                 type="button"
                 onClick={() => openFileInBrowser(previewItem.file_url, previewItem.filename, previewItem.file_type)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 <ExternalLink className="w-4 h-4" /> Open in Browser
               </button>

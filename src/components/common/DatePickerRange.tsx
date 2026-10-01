@@ -343,7 +343,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
                 setPicking('from');
                 setOpen(false);
               }}
-              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg cursor-pointer"
+              className="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[11px] font-bold rounded-lg cursor-pointer"
             >
               Done
             </button>

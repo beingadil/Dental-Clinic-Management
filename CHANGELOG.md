@@ -4,6 +4,63 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.14.0] — 2026-10-01
+
+### Added
+- **Settings → Notifications & Templates (D1)** — the reminder cadence that
+  `notification_config` had always stored now has a reader: overdue-case and
+  outstanding-invoice frequencies, escalation threshold and repeat interval
+  are editable, and the app's sweeps honour them immediately. The four
+  `email_templates` rows are editable with a live, real-data preview and
+  copy-to-clipboard (this workstation has no mail server, and the UI says so).
+  Past the last ticked reminder the sweep keeps reminding, so a receivable can
+  never silently drop off the tray.
+- **Brand accent (D7)** — `branding.primaryColor` was stored and then ignored
+  by every surface. It is now the app's single accent, chosen from six
+  contrast-checked swatches (white text on the solid shade ≥ 4.5:1), written
+  to `--brand-600` on boot, and resolvable as a real Tailwind colour. An
+  unknown or legacy stored value falls back to indigo; print ink is untouched.
+- **Labelled preview canvas (D8)** — one `PreviewFrame` gives every Settings
+  preview a caption and an artefact name, replacing the unlabelled block; the
+  print tab previews the actual sheet shape, margins, text scale and section
+  order from the draft settings.
+- **One dialog shell (V-19)** — `Modal`, `Drawer` and `ConfirmDialog` now live
+  in `common/ui` and own the backdrop, `role="dialog"`/`aria-modal`, Escape,
+  focus trap and focus restore. All eight Billing dialogs and the invoice
+  drawer were migrated onto them (their print cards still carry `print-area`
+  as the outermost element), so dialog chrome can no longer drift per screen.
+- **One invoice status chip (V-18)** — `InvoiceStatusBadge` maps every invoice
+  state to a single chip (emerald paid · amber partial · rose overdue · sky
+  open · slate draft/void), so the same state cannot read differently in the
+  list, the drawer and the register.
+- **Component test infrastructure (D5)** — `@testing-library/react` + `jsdom`
+  (dev-only) with 11 new DOM-level tests pinning the dialog contract that the
+  service tests cannot reach: dialog semantics, Escape, Tab containment, focus
+  restore, top-dialog arbitration and the typed-phrase guard.
+
+### Changed
+- **Settings layout (D9)** — Settings is a grouped, permission-aware 240px rail
+  at 1280px and up, with the existing segmented control below that width. Both
+  layouts render from one tab registry, so a permission change can no longer
+  hide a tab in one layout while leaving it reachable in the other.
+- **Currency changes are guarded (D6)** — the billing currency is admin-only,
+  asks for confirmation that names the screens it repaints (invoices, receipts,
+  statements, register, ledger, reports, dashboard), and writes an audit entry
+  naming the from/to values.
+- **Accessibility pass on Billing** — icon-only controls carry `aria-label`
+  alongside their tooltips, filter counts announce through `aria-live` with
+  `aria-pressed` state, and the invoice drawer traps focus while it is open.
+- **Honest update sources** — the published GitHub Pages manifest URL was
+  tried on every update check and always 404'd (Pages is not enabled for this
+  repo); the raw gh-pages URL remains the single source, with the Releases API
+  as fallback.
+
+### Verified
+- `tsc --noEmit`, `vitest` (296 tests / 39 files, including the new dialog,
+  brand-accent and reminder-cadence suites) and the production build are green;
+  Settings and Billing click-through on the built bundle with zero console
+  errors.
+
 ## [2.13.0] — 2026-10-01
 
 ### Fixed

@@ -73,7 +73,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
           <div className="flex items-center gap-2">
             <button
               onClick={() => onEdit(c)}
-              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+              className="px-3.5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
             >
               <Pencil className="w-3.5 h-3.5" />
               Edit Case

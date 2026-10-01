@@ -291,7 +291,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
             <button
               onClick={handleExportCSV}
               className="p-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
-              title="Export Transactions CSV"
+              title="Export Transactions CSV" aria-label="Export transactions CSV"
             >
               <Download className="w-4 h-4" />
             </button>
@@ -546,7 +546,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                                 onPrintReceipt(txn.rawPayment!, matchedInv);
                               }}
                               className="px-2 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1 transition-all cursor-pointer"
-                              title="Print Official Payment Slip"
+                              title="Print Official Payment Slip" aria-label="Print official payment slip"
                             >
                               <Printer className="w-3 h-3 text-slate-500" />
                               <span>Receipt</span>
@@ -559,7 +559,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                               type="button"
                               onClick={() => onOpenJournalModal(txn.txnNumber || txn.referenceNumber || '')}
                               className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                              title="Inspect Double-Entry Journal Records"
+                              title="Inspect Double-Entry Journal Records" aria-label="Inspect double-entry journal records"
                             >
                               <Scale className="w-3.5 h-3.5" />
                             </button>
@@ -581,7 +581,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                                 });
                               }}
                               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Reverse Transaction (Compensating Journal)"
+                              title="Reverse Transaction (Compensating Journal)" aria-label="Reverse transaction (compensating journal)"
                             >
                               <ArrowLeftRight className="w-3.5 h-3.5" />
                             </button>

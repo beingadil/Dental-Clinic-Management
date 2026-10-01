@@ -76,7 +76,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
               </button>
               <button
                 onClick={this.handleReload}
-                className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
+                className="px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
                 Reload Application

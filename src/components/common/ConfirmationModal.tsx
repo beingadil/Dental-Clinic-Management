@@ -61,7 +61,7 @@ export const ConfirmationModal: React.FC = () => {
             className={`px-4 py-2 text-sm font-semibold rounded-xl text-white shadow-sm transition-colors ${
               confirmModal.isDanger
                 ? 'bg-rose-600 hover:bg-rose-700 active:bg-rose-800'
-                : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800'
+                : 'bg-brand-600 hover:bg-brand-700 active:bg-indigo-800'
             }`}
           >
             {confirmModal.confirmLabel || 'Confirm Action'}

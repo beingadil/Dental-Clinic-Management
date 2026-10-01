@@ -1,5 +1,5 @@
 import React from 'react';
-import { CaseStatus, PriorityLevel, PaymentStatus } from '../../../types';
+import { CaseStatus, InvoiceStatusV2, PriorityLevel, PaymentStatus } from '../../../types';
 
 export interface BadgeProps {
   children?: React.ReactNode;
@@ -121,6 +121,35 @@ export const PriorityBadge: React.FC<{ priority: PriorityLevel; size?: 'xs' | 's
     default:
       return <Badge variant="neutral" size={size} className={className}>{priority}</Badge>;
   }
+};
+
+const INVOICE_STATUS: Record<InvoiceStatusV2, { label: string; variant: BadgeProps['variant'] }> = {
+  draft: { label: 'Draft', variant: 'neutral' },
+  open: { label: 'Open', variant: 'info' },
+  partially_paid: { label: 'Partial', variant: 'warning' },
+  paid: { label: 'Paid', variant: 'success' },
+  overdue: { label: 'Overdue', variant: 'danger' },
+  disputed: { label: 'Disputed', variant: 'warning' },
+  voided: { label: 'Voided', variant: 'default' },
+};
+
+/**
+ * V-18 — one mapping from an invoice state to a chip, so the same state cannot
+ * read emerald in the invoice list and amber in the register. Statuses use the
+ * app's existing semantic palette: emerald paid, amber partial/disputed, rose
+ * overdue, sky open, slate draft/void.
+ */
+export const InvoiceStatusBadge: React.FC<{
+  status: InvoiceStatusV2;
+  size?: 'xs' | 'sm' | 'md';
+  className?: string;
+}> = ({ status, size = 'xs', className = '' }) => {
+  const entry = INVOICE_STATUS[status] || { label: String(status), variant: 'neutral' as const };
+  return (
+    <Badge variant={entry.variant} dot size={size} className={`uppercase ${className}`}>
+      {entry.label}
+    </Badge>
+  );
 };
 
 export const PaymentStatusBadge: React.FC<{ status: PaymentStatus; size?: 'xs' | 'sm'; className?: string }> = ({

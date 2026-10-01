@@ -596,7 +596,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 type="button"
                 onClick={() => { setCaseFilter(''); setLedgerLimit(LEDGER_CAP_STEP); }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
-                title="Clear case filter"
+                title="Clear case filter" aria-label="Clear case filter"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -628,8 +628,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
           <button
             type="button"
             onClick={handleExportPDF}
-            title="Download ledger statement as PDF (selectable text, real pages)"
-            className="shrink-0 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+            title="Download ledger statement as PDF (selectable text, real pages)" aria-label="Download ledger statement as PDF"
+            className="shrink-0 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <FileDown className="w-4 h-4" />
             <span>Export PDF</span>
