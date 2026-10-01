@@ -62,7 +62,38 @@ follow-up — none of it is a correctness defect.
   splitting payment vs advance vs credit-note vs refund would make the
   permission/latch logic testable without a DOM.
 
+## Landed after the release commit (same release, later commits)
+
+- **Every billing tab opens on today's window** (`c7efda2`) — invoices,
+  general ledger, audit trail and the saved-voucher report now default to the
+  current day like the payments register already did; the shared picker (or its
+  `All Time` chip / the reset action) rewinds to older entries, and each empty
+  state says so. The ledger's `Today` preset also switched from a UTC
+  `toISOString` day to the picker's local day (PKT before 05:00 rolled back a
+  day). Display filters only.
+- **De-flaked the release gate** — `verify-release` failed on v2.13.0 exactly
+  as it did on v2.12.4 and v2.12.2, while every artifact was healthy. The step
+  now cache-busts the raw CDN URL, falls back to the gh-pages contents API
+  (readable the instant the push lands), and polls 8×30s. The next tag is the
+  first run that proves it.
+
 ## Suggested order
 
 `Modal primitive` → `aria-label sweep` → `DataTable/status badge` →
 `ledger/audit line audit` → `RecordTransactionModal split`.
+
+## Open infrastructure question
+
+`https://beingadil.github.io/Dental-Clinic-Management/…` still 404s (GitHub
+Pages is not serving this repo), which is why `updateService.ts` tries the raw
+gh-pages URL first and keeps the Pages URL only as a secondary source. Either
+enable Pages for the branch or drop the dead URL from the service so the next
+reader does not chase it.
+
+## Release facts for v2.13.0 (verified manually)
+
+- Release published with `Dental.Solutions_2.13.0_x64-setup.exe` (3,863,728 B).
+- `SHA256SUMS.txt` = `f28e74cd…2ea2d`, matches the downloaded asset byte-for-byte.
+- gh-pages manifest reports `version: 2.13.0`, `download_url` → `v2.13.0`,
+  `payload_checksum: sha256:f28e74cd…` — the in-app updater's own verification
+  path therefore passes even though the CI verify job reported failure.
