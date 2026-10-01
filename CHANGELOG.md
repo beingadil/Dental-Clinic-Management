@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.14.1] — 2026-10-01
+
+### Fixed
+- **The release verification gate can now actually pass** — `verify-release`
+  compared the manifest's `payload_checksum` against the uploaded installer by
+  taking the second colon-separated field of `"payload_checksum":
+  "sha256:<hex>"`, which yields the literal string ` sha256`. The comparison
+  could never succeed, which is why v2.12.2, v2.12.4, v2.13.0 and v2.14.0 all
+  reported a failed release job while every artifact was byte-perfect. The
+  digest is now extracted by pattern (pinned locally against the live manifest
+  and the real asset bytes), and every failure prints the manifest and release
+  JSON, because job logs need repo admin rights to download.
+
+No application code changed in this patch — the 2.14.0 installer and this one
+contain the same build.
+
 ## [2.14.0] — 2026-10-01
 
 ### Added

@@ -166,7 +166,16 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
-          fail() { echo "::error::verify-release: $1"; exit 1; }
+          # Diagnostics are printed alongside every failure: job logs need repo
+          # admin rights to download, so the failing evidence has to be in the
+          # step output itself (this is why the 2026-10-01 failures had to be
+          # diagnosed by hand from a local checkout).
+          fail() {
+            echo "::error::verify-release: $1"
+            echo "--- manifest.json ---"; cat manifest.json 2>/dev/null || echo "(none)"
+            echo "--- rel.json ---";      cat rel.json 2>/dev/null || echo "(none)"
+            exit 1
+          }
 
           # 1. Release exists, is published, and carries the installer asset.
           gh release view "$TAG" --json isDraft,assets \
@@ -205,8 +214,15 @@ jobs:
           # 3. Manifest checksum must match the actual asset bytes (what update_install verifies).
           # Release asset availability can also lag the upload moment: retry the
           # download twice before failing.
-          MANIFEST_SHA=$(grep -o '"payload_checksum": "sha256:[a-f0-9]*"' manifest.json | cut -d: -f2 | tr -d '"')
-          [ -n "$MANIFEST_SHA" ] || fail "manifest has no payload_checksum"
+          #
+          # The digest is extracted by pattern, NOT by colon field position: this
+          # line used to be `cut -d: -f2`, which on `"payload_checksum":
+          # "sha256:<hex>"` yields the literal string ` sha256` — so the compare
+          # could never succeed and verify-release failed on v2.12.2, v2.12.4,
+          # v2.13.0 and v2.14.0 with perfectly healthy artifacts. It was a
+          # parsing bug wearing a CDN-race costume.
+          MANIFEST_SHA=$(sed -n 's/.*"payload_checksum"[[:space:]]*:[[:space:]]*"sha256:([a-f0-9]\{64\})".*/\1/p' manifest.json | head -n1)
+          [ -n "$MANIFEST_SHA" ] || fail "manifest has no readable payload_checksum (got: $(grep -o '"payload_checksum"[^,]*' manifest.json | head -n1))"
           ASSET_URL=$(grep -o '"download_url": "[^"]*"' manifest.json | cut -d'"' -f4)
           curl -fsSL "$ASSET_URL" -o setup.exe \
             || { sleep 20; curl -fsSL "$ASSET_URL" -o setup.exe; } \
