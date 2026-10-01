@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord } from '../../types';
 import { downloadCSV } from '../../services/csvExport';
 import { canPost } from '../../services/permissions';
-import { ConfirmDialog } from './primitives/ConfirmDialog';
+import { ConfirmDialog } from '../common/ui';
 import { InvoiceStatementModal } from './InvoiceStatementModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from './PaymentProofModal';

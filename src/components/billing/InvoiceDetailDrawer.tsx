@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { Drawer } from '../common/ui';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
@@ -60,14 +61,10 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   const [applyDone, setApplyDone] = useState<string | null>(null);
   const applyLatchRef = useRef(false);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  // Escape, focus-in/out and Tab containment now come from the shared Drawer
+  // primitive (V-19), which arbitrates against any dialog opened on top of it —
+  // a local Escape listener here would also close the drawer when the user was
+  // dismissing a nested modal.
 
   if (!isOpen || !invoice) return null;
 
@@ -130,15 +127,13 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/50 backdrop-blur-xs flex justify-end">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Invoice ${invoice.invoice_number} details`}
-        className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 print:shadow-none"
-      >
-        {/* Drawer Header */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+    <Drawer
+      open
+      onClose={onClose}
+      label={`Invoice ${invoice.invoice_number} details`}
+      hideClose
+      header={
+        <>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
               <FileText className="w-5 h-5" />
@@ -167,8 +162,9 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => onPrintInvoice(invoice)}
-              className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors"
+              className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors cursor-pointer"
               title="Print Official Invoice Statement"
+              aria-label="Print official invoice statement"
             >
               <Printer className="w-4 h-4" />
             </button>
@@ -179,7 +175,9 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               <X className="w-5 h-5" />
             </button>
           </div>
-        </div>
+        </>
+      }
+    >
 
         {/* Drawer Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -566,7 +564,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenPaymentModal(invoice)}
-                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
+                className="px-4 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
                 <ArrowDownLeft className="w-4 h-4" />
                 Collect Payment
@@ -581,7 +579,6 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 };

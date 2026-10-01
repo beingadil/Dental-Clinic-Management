@@ -4,6 +4,7 @@ import { formatPKR } from '../../services/financeDomain';
 import { downloadCSV } from '../../services/csvExport';
 import { X, Printer, Download, Calendar, Building2, FileText, CheckCircle2 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
+import { Modal } from '../common/ui';
 
 interface ClinicStatementModalProps {
   isOpen: boolean;
@@ -90,15 +91,17 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Statement of account"
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl xl:max-w-6xl overflow-hidden animate-in fade-in zoom-in-95 my-auto print:shadow-none print:border-none print:m-0 print:max-w-none print-area"
-      >
-        {/* Modal Controls (Hidden in Print) */}
-        <div className="px-6 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between print:hidden">
+    <Modal
+      open
+      onClose={onClose}
+      label="Statement of account"
+      hideClose
+      maxWidth="max-w-5xl xl:max-w-6xl"
+      backdropClassName="bg-slate-900/60 print:p-0 print:bg-white"
+      cardClassName="print-area relative print:shadow-none print:border-none print:m-0 print:max-w-none"
+      headerClassName="px-6 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between print:hidden"
+      header={
+        <>
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-indigo-600" />
             <h3 className="text-sm font-bold text-slate-900">
@@ -117,7 +120,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
             <SavePdfButton suggestedName={`Statement_${clinic?.name?.replace(/\s+/g, '_') || 'Clinic'}_${new Date().toISOString().split('T')[0]}.pdf`} />
             <button
               onClick={handlePrint}
-              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
+              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               Print Statement
@@ -129,7 +132,9 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               <X className="w-5 h-5" />
             </button>
           </div>
-        </div>
+        </>
+      }
+    >
 
         {/* Filters Bar (Hidden in Print) */}
         <div className="px-6 py-3 bg-white border-b border-slate-200 flex items-center gap-3 text-xs print:hidden">
@@ -138,7 +143,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
             <button
               onClick={() => setDateRange('all')}
               className={`px-2.5 py-1 rounded-md font-semibold ${
-                dateRange === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                dateRange === 'all' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               All Time
@@ -304,7 +309,6 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

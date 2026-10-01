@@ -21,6 +21,7 @@ import {
   Percent,
   Plus
 } from 'lucide-react';
+import { Modal } from '../common/ui';
 
 interface RecordTransactionModalProps {
   isOpen: boolean;
@@ -347,30 +348,25 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const selectedClinic = labs.find((l) => l.id === clinicId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Record transaction"
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto max-h-[94vh] flex flex-col"
-      >
-        {/* Top Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">
-              Record Financial Transaction
-            </h3>
-            <p className="text-xs text-slate-500">
-              Unified double-entry transaction manager & automated allocation engine
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <Modal
+      open
+      onClose={onClose}
+      label="Record transaction"
+      maxWidth="max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl"
+      backdropClassName="p-2 sm:p-4 md:p-6"
+      cardClassName="max-h-[94vh] flex flex-col"
+      headerClassName="px-6 py-4 bg-slate-50/70"
+      header={
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">
+            Record Financial Transaction
+          </h3>
+          <p className="text-xs text-slate-500">
+            Unified double-entry transaction manager & automated allocation engine
+          </p>
         </div>
+      }
+    >
 
         {/* Mode Selector Tabs */}
         <div className="px-6 border-b border-slate-200 bg-white flex items-center gap-1 pt-2">
@@ -794,14 +790,13 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-5 py-2.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               Post Transaction & Issue Receipt
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

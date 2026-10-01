@@ -2,7 +2,8 @@ import React from 'react';
 import { JournalEntry } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatPKR } from '../../services/financeDomain';
-import { X, Scale, FileText, Calendar, Building2, User, ShieldCheck } from 'lucide-react';
+import { Scale, FileText, Calendar, Building2, User, ShieldCheck } from 'lucide-react';
+import { Modal } from '../common/ui';
 
 interface JournalEntryModalProps {
   isOpen: boolean;
@@ -30,40 +31,33 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Journal entry inspector"
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl xl:max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto"
-      >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-              <Scale className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-slate-900 font-mono tracking-tight">
-                  {journal.journal_number}
-                </h3>
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {journal.event_type.replace('_', ' ').toUpperCase()}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Double-Entry Accounting Record • Immutable Ledger Event
-              </p>
-            </div>
+    <Modal
+      open
+      onClose={onClose}
+      label="Journal entry inspector"
+      maxWidth="max-w-4xl xl:max-w-5xl"
+      headerClassName="px-6 py-4"
+      header={
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600">
+            <Scale className="w-5 h-5" />
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-slate-900 font-mono tracking-tight">
+                {journal.journal_number}
+              </h3>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-50 text-brand-700 border border-brand-200">
+                {journal.event_type.replace('_', ' ').toUpperCase()}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Double-Entry Accounting Record • Immutable Ledger Event
+            </p>
+          </div>
         </div>
+      }
+    >
 
         {/* Metadata Strip */}
         <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -176,12 +170,11 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           <span>Created at {journal.created_at}</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium transition-colors"
+            className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium transition-colors cursor-pointer"
           >
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

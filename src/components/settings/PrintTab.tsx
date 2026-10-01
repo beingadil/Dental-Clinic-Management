@@ -8,13 +8,21 @@ import {
 } from '../../services/printSettings';
 import { DocumentKind, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
+import { PreviewFrame } from '../common/ui';
+import { useApp } from '../../context/AppContext';
 import {
   CheckCircle2,
   Printer,
 } from 'lucide-react';
 
+/** Draft settings → the on-screen sheet, so the preview moves with the form. */
+const MARGIN_MM: Record<PrintSettings['margin'], number> = { narrow: 8, normal: 12, wide: 18 };
+const FONT_SCALE: Record<PrintSettings['fontSize'], number> = { compact: 0.88, normal: 1, large: 1.12 };
+const PAPER_ASPECT: Record<PrintSettings['paper'], string> = { a4: '210 / 297', letter: '8.5 / 11' };
+
 /** TAB: PRINT & DOCUMENTS — extracted verbatim from SettingsView (P3 split). */
 export const PrintTab: React.FC = () => {
+  const { brandingSettings } = useApp();
   const [printSettingsForm, setPrintSettingsForm] = useState<PrintSettings>(() => loadPrintSettings());
   const [printSaved, setPrintSaved] = useState(false);
 
@@ -102,6 +110,96 @@ export const PrintTab: React.FC = () => {
           </div>
         </div>
 
+        {/* D8 — labelled, live layout preview. Built from the draft settings
+            rather than embedding the real print renderer: a `.print-area` inside
+            Settings would satisfy `body:has(.print-area)` and hijack the print
+            isolation the document dialogs depend on. */}
+        <PreviewFrame
+          label="Layout preview"
+          artefact={sectionKind === 'job_slip' ? 'job_slip' : sectionKind}
+          hint={`${printSettingsForm.paper === 'letter' ? 'US Letter' : 'A4'} · ${MARGIN_MM[printSettingsForm.margin]} mm margins · ${printSettingsForm.fontSize} text · ${docSections[sectionKind]?.length ?? 0} sections`}
+          bodyClassName="p-4 bg-slate-100"
+        >
+          <div className="flex justify-center">
+            <div
+              className="bg-white shadow-md border border-slate-200 w-full max-w-[280px] overflow-hidden"
+              style={{
+                aspectRatio: PAPER_ASPECT[printSettingsForm.paper],
+                fontSize: `${FONT_SCALE[printSettingsForm.fontSize]}rem`,
+              }}
+            >
+              <div
+                className="h-full flex flex-col"
+                style={{ padding: `${MARGIN_MM[printSettingsForm.margin] / 2.6}%` }}
+              >
+                <div
+                  className={`flex items-center gap-1.5 pb-1 border-b border-slate-200 ${
+                    printSettingsForm.logoPosition === 'center'
+                      ? 'flex-col text-center'
+                      : printSettingsForm.logoPosition === 'right'
+                      ? 'flex-row-reverse text-right'
+                      : ''
+                  }`}
+                >
+                  {printSettingsForm.showLogo && (
+                    brandingSettings?.logoUrl ? (
+                      <img src={brandingSettings.logoUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+                    ) : (
+                      <span className="w-4 h-4 rounded bg-brand-600 text-white text-[6px] font-bold flex items-center justify-center shrink-0">
+                        {(brandingSettings?.appName || 'DS').slice(0, 2).toUpperCase()}
+                      </span>
+                    )
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[8px] font-bold text-slate-900 leading-tight truncate">
+                      {brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Solutions'}
+                    </p>
+                    {brandingSettings?.tagline && (
+                      <p className="text-[6px] text-slate-400 uppercase tracking-wide truncate">
+                        {brandingSettings.tagline}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-[7px] font-bold tracking-widest text-slate-500 mt-1">
+                  {sectionKind === 'job_slip' ? 'DENTAL LAB JOB SLIP'
+                    : sectionKind === 'invoice' ? 'INVOICE'
+                    : sectionKind === 'receipt' ? 'PAYMENT RECEIPT'
+                    : 'ACCOUNT STATEMENT'}
+                </p>
+
+                <ul className="mt-1 space-y-0.5 flex-1 min-h-0 overflow-hidden">
+                  {PRINT_SECTIONS[sectionKind]
+                    .filter((section) => (docSections[sectionKind] || []).includes(section.id))
+                    .map((section) => (
+                      <li
+                        key={section.id}
+                        className="flex items-center gap-1 text-[6px] text-slate-600 leading-tight"
+                      >
+                        <span className="w-0.5 h-0.5 rounded-full bg-slate-400 shrink-0" />
+                        <span className="truncate">{section.label}</span>
+                      </li>
+                    ))}
+                  {(docSections[sectionKind] || []).length === 0 && (
+                    <li className="text-[6px] text-rose-600 font-semibold">
+                      Nothing selected — this document would print blank.
+                    </li>
+                  )}
+                </ul>
+
+                <p className="text-[5px] text-slate-400 border-t border-slate-100 pt-0.5 truncate">
+                  {brandingSettings?.phone || brandingSettings?.email || brandingSettings?.address || ''}
+                </p>
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-slate-500">
+            Structure, paper shape, margin and text scale as this document will lay out. Sections
+            appear in printed order; the real output adds the live case, patient and pricing data.
+          </p>
+        </PreviewFrame>
+
         <div className="pt-4 border-t border-slate-100 space-y-4">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Logo on Printed Documents</h3>
           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -158,7 +256,7 @@ export const PrintTab: React.FC = () => {
                 onClick={() => setSectionKind(k)}
                 className={`rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer ${
                   sectionKind === k
-                    ? 'bg-slate-900 text-white border-slate-900'
+                    ? 'bg-brand-600 text-white border-brand-600'
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}
               >
@@ -190,7 +288,7 @@ export const PrintTab: React.FC = () => {
         <div className="flex items-center gap-3 pt-2">
           <button
             type="submit"
-            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
+            className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
           >
             Save Print Settings
           </button>

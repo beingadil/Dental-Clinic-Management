@@ -46,7 +46,7 @@ export function TabsNav<T extends string = string>({
               onClick={() => onChange(tab.id)}
               className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all whitespace-nowrap cursor-pointer active:scale-[0.99] min-w-[9.5rem] ${
                 isActive
-                  ? 'bg-indigo-600 text-white shadow-xs'
+                  ? 'bg-brand-600 text-white shadow-xs'
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
               }`}
             >
@@ -89,12 +89,12 @@ export function TabsNav<T extends string = string>({
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
-              {Icon && <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />}
+              {Icon && <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600' : 'text-slate-400'}`} />}
               <span>{tab.label}</span>
               {tab.badge !== undefined && (
                 <span
                   className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full ${
-                    tab.badgeColor || (isActive ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600')
+                    tab.badgeColor || (isActive ? 'bg-brand-100 text-brand-700' : 'bg-slate-200 text-slate-600')
                   }`}
                 >
                   {tab.badge}
@@ -123,7 +123,7 @@ export function TabsNav<T extends string = string>({
             onClick={() => onChange(tab.id)}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
               isActive
-                ? 'bg-indigo-600 text-white shadow-xs'
+                ? 'bg-brand-600 text-white shadow-xs'
                 : 'bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/80'
             }`}
           >

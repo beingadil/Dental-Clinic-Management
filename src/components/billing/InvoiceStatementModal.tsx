@@ -14,6 +14,7 @@ import {
   saveDocumentSections,
 } from '../../services/printSettings';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
+import { Modal } from '../common/ui';
 import { SavePdfButton } from '../print/SavePdfButton';
 import '../print/printStyles.css';
 
@@ -74,18 +75,21 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   }, [invoice.payment_status]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6 overflow-y-auto no-print-backdrop">
-      {/* The CARD is the print area (same pattern as the job slip and receipt
-          modals): the printable sheet must never sit inside a `.no-print` or
-          `overflow-hidden` wrapper, or paper output comes out blank/clipped. */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Invoice statement"
-        className="print-area printable-area bg-white rounded-2xl max-w-5xl w-full border border-slate-200 shadow-2xl relative my-auto overflow-hidden"
-      >
-        {/* Header (screen only) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 no-print">
+    // The CARD is the print area (same pattern as the job slip and receipt
+    // modals): the printable sheet must never sit inside a `.no-print` or
+    // `overflow-hidden` wrapper, or paper output comes out blank/clipped. The
+    // shared Modal keeps that contract — it puts no wrapper around the card.
+    <Modal
+      open
+      onClose={onClose}
+      label="Invoice statement"
+      hideClose
+      maxWidth="max-w-5xl"
+      backdropClassName="bg-slate-900/70 no-print-backdrop"
+      cardClassName="print-area printable-area relative"
+      headerClassName="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 no-print"
+      header={
+        <>
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-slate-100 text-slate-700 rounded-lg">
               <FileText className="w-5 h-5" />
@@ -109,7 +113,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               onClick={() => setShowSections((v) => !v)}
               className={`px-3 py-1.5 border font-semibold text-xs rounded-lg transition-colors cursor-pointer ${
                 showSections
-                  ? 'bg-slate-900 text-white border-slate-900'
+                  ? 'bg-brand-600 text-white border-brand-600'
                   : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
               }`}
               title="Choose what appears on the printed invoice — remembered for next time"
@@ -128,7 +132,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
             <button
               type="button"
               onClick={handleSaveAndPrint}
-              className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Printer className="w-4 h-4" /> Save &amp; Print
             </button>
@@ -141,7 +145,9 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
               <X className="w-5 h-5" />
             </button>
           </div>
-        </div>
+        </>
+      }
+    >
 
         {/* Invoice content setting (screen only) — saved to the database, so
             the next invoice, and batch printing, use the same list. */}
@@ -191,7 +197,6 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

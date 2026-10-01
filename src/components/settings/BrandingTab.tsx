@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { BrandingSettings } from '../../types';
 import { validateFile } from '../../services/fileValidation';
+import { BRAND_SWATCHES, resolveBrandSwatch, applyBrandColor } from '../../services/brandingTheme';
+import { PreviewFrame } from '../common/ui';
 import {
   Check,
   Palette,
@@ -22,6 +24,15 @@ export const BrandingTab: React.FC = () => {
 
   const handleBrandingChange = (key: keyof typeof brandingSettings, value: string) => {
     setBrandingForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // D7 — the accent being edited. Picking a swatch repaints the live app
+  // immediately (so the choice is judged in context, not in a swatch strip),
+  // while Save is what persists it; boot always re-applies the stored value.
+  const draftSwatch = resolveBrandSwatch(brandingForm.primaryColor);
+  const selectBrandColor = (hex: string) => {
+    setBrandingForm((prev) => ({ ...prev, primaryColor: hex }));
+    applyBrandColor(hex);
   };
 
   // F11: logo validation via the shared helper — size + MIME (images only).
@@ -77,7 +88,13 @@ export const BrandingTab: React.FC = () => {
       <form onSubmit={handleSaveBranding} className="space-y-6">
         {/* Live Preview — mirrors the real white header exactly (WYSIWYG,
             blank-safe: no fabricated contact details) */}
-        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-4">
+        <PreviewFrame
+          label="Header preview"
+          artefact="header"
+          hint="Live — logo, name and accent"
+          bodyClassName="p-4"
+        >
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           {brandingForm.logoUrl ? (
             <img
@@ -86,7 +103,7 @@ export const BrandingTab: React.FC = () => {
               className="w-8 h-8 rounded-xl object-contain bg-slate-100 p-0.5 border border-slate-200 shrink-0"
             />
           ) : (
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-brand-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
               {brandingForm.appName ? brandingForm.appName.substring(0, 2).toUpperCase() : 'DS'}
             </div>
           )}
@@ -105,8 +122,52 @@ export const BrandingTab: React.FC = () => {
           </div>
         )}
       </div>
+        </PreviewFrame>
 
-      {/* Logo Upload Section */}
+        {/* D7 — the accent. Fixed swatches only: every one is contrast-checked
+            for white text, and an unknown stored value falls back to indigo. */}
+        <PreviewFrame
+          label="Brand accent"
+          hint="On-screen app chrome only — print ink never changes"
+        >
+          <div role="radiogroup" aria-label="Brand accent colour" className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {BRAND_SWATCHES.map((swatch) => {
+              const selected = draftSwatch.id === swatch.id;
+              return (
+                <button
+                  key={swatch.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={`${swatch.name} accent`}
+                  onClick={() => selectBrandColor(swatch.hex)}
+                  className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
+                    selected
+                      ? 'border-brand-600 ring-2 ring-brand-600/25 bg-brand-50'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="w-6 h-6 rounded-lg shrink-0 border border-black/10 shadow-2xs"
+                    style={{ backgroundColor: swatch.tokens['600'] }}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-bold text-slate-900">{swatch.name}</span>
+                    <span className="block text-[11px] text-slate-500 truncate">{swatch.note}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-[11px] text-slate-500">
+            Every swatch is contrast-checked for white text on its solid shade (WCAG AA, at least
+            4.5:1). The accent paints the app's own chrome; printed invoices, job slips and
+            statements keep their existing ink.
+          </p>
+        </PreviewFrame>
+
+        {/* Logo Upload Section */}
       <div className="space-y-3">
         <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">Dashboard Logo</label>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -475,15 +536,14 @@ export const BrandingTab: React.FC = () => {
       </div>
 
         {/* LIVE CARD PREVIEW IN SETTINGS */}
-        <div className="mt-3 p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300 block">
-              Live Workstation Card Highlighting Preview
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Threshold: <strong className="text-white">{brandingForm.warningThresholdHours || 24} Hours</strong>
-            </span>
-          </div>
+        <PreviewFrame
+          label="Live workstation card highlighting"
+          artefact="card"
+          surface="dark"
+          className="mt-3"
+          bodyClassName="p-4"
+          hint={<>Threshold: <strong className="text-white">{brandingForm.warningThresholdHours || 24} Hours</strong></>}
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-900">
             {/* Normal Card Preview */}
             <div
@@ -544,12 +604,12 @@ export const BrandingTab: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </PreviewFrame>
 
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg text-xs shadow-2xs transition-colors flex items-center gap-2 cursor-pointer"
+            className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg text-xs shadow-2xs transition-colors flex items-center gap-2 cursor-pointer"
           >
             <Check className="w-4 h-4" />
             <span>Save Branding Settings</span>

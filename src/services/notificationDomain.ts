@@ -50,9 +50,57 @@ export const buildQcFailedNotification = (
 });
 
 /** Deterministic overdue alert, one per case per day (id is case-keyed). */
-export const buildOverdueAlerts = (cases: DentalCase[], today: string, idOf: (c: DentalCase) => string): AppNotification[] =>
+/**
+ * D1 — the reminder cadence lives in `notification_config` (Settings →
+ * Notifications). These two helpers turn the stored frequency ids into the day
+ * offsets they describe and decide whether a sweep should speak up today.
+ */
+
+/** '1_day_before' → -1, 'on_due_date' → 0, '3_days_after' → 3. */
+export const cadenceOffsets = (frequency?: string[] | null): number[] =>
+  (frequency || [])
+    .map((f) => {
+      const m = /^(\d+)_days?_(before|after)$/.exec(f);
+      if (m) return m[2] === 'before' ? -Number(m[1]) : Number(m[1]);
+      return f === 'on_due_date' ? 0 : null;
+    })
+    .filter((n): n is number => n !== null)
+    .sort((a, b) => a - b);
+
+/**
+ * Should a due/overdue item be reminded about today?
+ *
+ * - no cadence configured → `true` (legacy behaviour: every sweep, every item)
+ * - the day offset is one the user ticked → `true`
+ * - the item is older than the last ticked offset → `true`
+ *
+ * That last rule is deliberate: once a receivable or an overdue case has run
+ * past the final reminder we keep reminding rather than silently dropping it.
+ */
+export const shouldRemind = (frequency: string[] | null | undefined, dueDate: string, today: string): boolean => {
+  if (!frequency || frequency.length === 0) return true;
+  const offsets = cadenceOffsets(frequency);
+  if (offsets.length === 0) return true;
+  const days = Math.round((Date.parse(today) - Date.parse(dueDate)) / 86_400_000);
+  if (Number.isNaN(days)) return true;
+  return days >= offsets[offsets.length - 1] || offsets.includes(days);
+};
+
+export const buildOverdueAlerts = (
+  cases: DentalCase[],
+  today: string,
+  idOf: (c: DentalCase) => string,
+  /** Optional stored cadence; omit for the legacy "every overdue case" sweep. */
+  cadence?: string[] | null,
+): AppNotification[] =>
   (cases || [])
-    .filter((c) => c && c.status !== 'delivered' && c.status !== 'cancelled' && (c.delivery_date || '') < today)
+    .filter((c) => {
+      if (!c || c.status === 'delivered' || c.status === 'cancelled') return false;
+      // With a cadence configured the cadence owns the window (it can start a
+      // day early); without one we keep the legacy "strictly past due" sweep.
+      if (cadence === undefined) return (c.delivery_date || '') < today;
+      return Boolean(c.delivery_date) && shouldRemind(cadence, c.delivery_date, today);
+    })
     .map((c) => ({
       id: idOf(c),
       type: 'overdue_case' as const,
@@ -67,9 +115,18 @@ export const buildOverdueAlerts = (cases: DentalCase[], today: string, idOf: (c:
     }));
 
 /** Deterministic unpaid-invoice reminders, one per invoice past its due date. */
-export const buildUnpaidInvoiceAlerts = (invoices: Invoice[], today: string, idOf: (inv: Invoice) => string): AppNotification[] =>
+export const buildUnpaidInvoiceAlerts = (
+  invoices: Invoice[],
+  today: string,
+  idOf: (inv: Invoice) => string,
+  /** Optional stored cadence; omit for the legacy "every due invoice" sweep. */
+  cadence?: string[] | null,
+): AppNotification[] =>
   (invoices || [])
-    .filter((inv) => inv && inv.payment_status !== 'paid' && inv.status_v2 !== 'voided' && inv.due_date && inv.due_date <= today)
+    .filter((inv) => {
+      if (!inv || inv.payment_status === 'paid' || inv.status_v2 === 'voided' || !inv.due_date) return false;
+      return cadence === undefined ? inv.due_date <= today : shouldRemind(cadence, inv.due_date, today);
+    })
     .map((inv) => ({
       id: idOf(inv),
       type: 'unpaid_invoice' as const,

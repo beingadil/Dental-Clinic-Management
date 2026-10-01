@@ -69,6 +69,8 @@ import {
   buildLedgerEntries,
 } from '../services/ledgerDomain';
 import { nextReservedInvoiceNumber } from '../services/invoiceNumbering';
+import { applyBrandColor } from '../services/brandingTheme';
+import { readNotificationCadence, NOTIFICATION_CONFIG_CHANGED } from '../services/notificationSettings';
 import { useTransactionCommands } from './hooks/useTransactionCommands';
 import { useAuthDomain } from './hooks/useAuthDomain';
 import { deriveSimpleStatus, buildInvoiceAllocation, buildPaymentSideEffects } from '../services/paymentDomain';
@@ -560,6 +562,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // user threads through so preferences hydrate/save per user (D4).
   const { brandingSettings, setBrandingSettings, userPreferences, setUserPreferences } = useSettingsDomain(user);
 
+  // D7 — the stored accent is the single source of truth for `--brand-600`.
+  // Applied on boot and on every change (including the login rehydrate, which
+  // replaces brandingSettings wholesale), so a swatch change repaints instantly.
+  useEffect(() => {
+    applyBrandColor(brandingSettings?.primaryColor);
+  }, [brandingSettings?.primaryColor]);
+
   // ─── SQLite write-through sync (replaces all dsw_* localStorage writes) ───
   // React state = UI mirror; SQLite = authoritative store.
   useEffect(() => {
@@ -858,9 +867,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return del >= today && del <= sevenDaysLater;
   }).length;
 
-  // Auto-generate overdue case alerts
+  // D1 — Settings → Notifications announces a cadence change; bumping a counter
+  // re-runs both sweeps below so the new cadence applies at once.
+  const [notifConfigRev, setNotifConfigRev] = useState(0);
   useEffect(() => {
-    const alerts = buildOverdueAlerts(cases || [], todayStr, (c) => `notif-overdue-${c.id}`);
+    const bump = () => setNotifConfigRev((n) => n + 1);
+    window.addEventListener(NOTIFICATION_CONFIG_CHANGED, bump);
+    return () => window.removeEventListener(NOTIFICATION_CONFIG_CHANGED, bump);
+  }, []);
+
+  // Auto-generate overdue case alerts. D1: the sweep honours the cadence the
+  // admin set in Settings → Notifications (read straight from the repo so the
+  // sweep never depends on a render-scope snapshot going stale).
+  useEffect(() => {
+    const cadence = readNotificationCadence();
+    const alerts = buildOverdueAlerts(cases || [], todayStr, (c) => `notif-overdue-${c.id}`, cadence);
 
     if (alerts.length > 0) {
       // Dedupe INSIDE the updater: the render-scope `notifications` snapshot
@@ -870,17 +891,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // SQLite sync transaction, silently stopping ALL persistence.
       setNotifications((prev) => prependUniqueNotifications(prev, alerts));
     }
-  }, [cases, todayStr]);
+  }, [cases, todayStr, notifConfigRev]);
 
   // Auto-generate unpaid-invoice reminders: one per invoice while its due date
   // is today or past — the app's real, local "payment trigger". Because the
   // alert id is invoice-keyed, once a payment logs, the alert disappears.
   useEffect(() => {
-    const alerts = buildUnpaidInvoiceAlerts(invoices || [], todayStr, (inv) => `notif-unpaid-${inv.id}`);
+    const alerts = buildUnpaidInvoiceAlerts(
+      invoices || [],
+      todayStr,
+      (inv) => `notif-unpaid-${inv.id}`,
+      readNotificationCadence('pending_payment'),
+    );
     if (alerts.length > 0) {
       setNotifications((prev) => prependUniqueNotifications(prev, alerts));
     }
-  }, [invoices, todayStr]);
+  }, [invoices, todayStr, notifConfigRev]);
 
   // Agent workflow listener trigger simulation
   const triggerAgentWorkflow = (event: string, payload: any) => {

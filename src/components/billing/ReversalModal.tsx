@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatPKR } from '../../services/financeDomain';
-import { AlertTriangle, X, ShieldAlert, ArrowLeftRight } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, ArrowLeftRight } from 'lucide-react';
+import { Modal } from '../common/ui';
 
 export interface ReversalTarget {
   referenceType: 'payment' | 'advance_payment' | 'adjustment';
@@ -73,36 +74,30 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Reverse transaction"
-        className="bg-white rounded-xl shadow-2xl border border-rose-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-      >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-rose-100 flex items-center justify-between bg-rose-50/70">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">
-                Reverse Financial Transaction
-              </h3>
-              <p className="text-xs text-rose-700">
-                Immutable Accounting Correction & Compensating Journal Entry
-              </p>
-            </div>
+    <Modal
+      open
+      onClose={onClose}
+      label="Reverse transaction"
+      tone="rose"
+      maxWidth="max-w-lg"
+      cardClassName="border-rose-200"
+      headerClassName="px-6 py-4"
+      header={
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
+            <AlertTriangle className="w-5 h-5" />
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white/60 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">
+              Reverse Financial Transaction
+            </h3>
+            <p className="text-xs text-rose-700">
+              Immutable Accounting Correction & Compensating Journal Entry
+            </p>
+          </div>
         </div>
-
+      }
+    >
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Target Summary Card */}
           <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
@@ -187,7 +182,7 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+              className="px-4 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -201,7 +196,6 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

@@ -28,6 +28,8 @@ export type SystemAction =
   | 'prefs:edit'
   | 'branding:edit'
   | 'print:edit'
+  | 'notifications:edit'
+  | 'currency:edit'
   | 'backup:restore'
   | 'data:wipe'
   | 'updates:install'
@@ -50,6 +52,10 @@ const SYSTEM: Record<SystemAction, UserProfile['role'][]> = {
   'prefs:edit': [...ADMIN_ROLES, 'Billing Manager', 'Technician'],
   'branding:edit': ADMIN_ROLES,
   'print:edit': ADMIN_ROLES,
+  // D1/D6 — reminder copy plus the billing currency. Both are lab-wide, not
+  // per-user, so they follow branding/print: admin only, no technician access.
+  'notifications:edit': ADMIN_ROLES,
+  'currency:edit': ADMIN_ROLES,
   'backup:restore': ADMIN_ROLES,
   'data:wipe': ADMIN_ROLES,
   'updates:install': ADMIN_ROLES,

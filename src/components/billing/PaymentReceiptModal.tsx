@@ -3,6 +3,7 @@ import { PaymentRecord, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { X, Printer, CheckCircle2, Building2, Calendar, CreditCard, ShieldCheck } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
+import { Modal } from '../common/ui';
 
 interface PaymentReceiptModalProps {
   payment: PaymentRecord;
@@ -23,16 +24,17 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Payment receipt"
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl lg:max-w-3xl w-full overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200 print-area print:max-h-none"
-      >
-        
-        {/* Modal Controls (Hidden in Print) */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 print:hidden">
+    <Modal
+      open
+      onClose={onClose}
+      label="Payment receipt"
+      hideClose
+      maxWidth="max-w-2xl lg:max-w-3xl"
+      backdropClassName="bg-slate-900/70"
+      cardClassName="flex flex-col max-h-[95vh] print-area print:max-h-none"
+      headerClassName="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 print:hidden"
+      header={
+        <>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             <h3 className="text-sm font-bold text-slate-900">Official Payment Receipt</h3>
@@ -42,7 +44,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             <SavePdfButton suggestedName={`Receipt_${payment.payment_number || payment.id}.pdf`} />
             <button
               onClick={handlePrint}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-1.5 shadow-xs"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print Slip</span>
@@ -54,7 +56,9 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
               <X className="w-5 h-5" />
             </button>
           </div>
-        </div>
+        </>
+      }
+    >
 
         {/* Printable Area */}
         <div ref={printRef} className="p-8 overflow-y-auto print:p-0 bg-white text-slate-800">
@@ -160,7 +164,6 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
           </div>
         </div>
 
-      </div>
-    </div>
+    </Modal>
   );
 };

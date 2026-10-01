@@ -16,6 +16,7 @@ import {
   Users,
   Printer,
   ArrowUpCircle,
+  Bell,
 } from 'lucide-react';
 import { TabsNav } from '../common/ui';
 import { canManageSystem, type SystemAction } from '../../services/permissions';
@@ -27,6 +28,7 @@ import { TestingTab } from './TestingTab';
 import { PreferencesTab } from './PreferencesTab';
 import { PrintTab } from './PrintTab';
 import { UpdatesTab } from './UpdatesTab';
+import { NotificationsTab } from './NotificationsTab';
 
 /** Settings container (P3 split): header, tabs, shared backupMessage +
     liveTableStats; each tab lives in its own file. */
@@ -38,7 +40,7 @@ export const SettingsView: React.FC = () => {
   // re-checks at its action sites too (hiding is not enforcement).
   const may = (a: SystemAction) => canManageSystem(user, a) || (isAdmin && a !== 'users:manage');
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates' | 'notifications'>('branding');
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -61,6 +63,26 @@ export const SettingsView: React.FC = () => {
       return [];
     }
   }, []);
+
+  // D9 — one registry drives both the wide-screen rail and the narrow-screen
+  // segmented control, so a permission change can never hide a tab in one
+  // layout while leaving it reachable in the other.
+  const tabDefs = [
+    { id: 'branding', label: 'Branding & Identity', icon: Palette, group: 'Identity & Print', allowed: may('branding:edit') },
+    { id: 'print', label: 'Print & Documents', icon: Printer, group: 'Identity & Print', allowed: may('print:edit') },
+    { id: 'notifications', label: 'Notifications & Templates', icon: Bell, group: 'Identity & Print', allowed: true },
+    { id: 'account', label: 'My Account & Security', icon: User, group: 'Account & Access', allowed: true },
+    { id: 'users', label: 'User Management', icon: Users, group: 'Account & Access', allowed: may('users:manage') },
+    { id: 'preferences', label: 'Application Defaults', icon: Sliders, group: 'Account & Access', allowed: true },
+    { id: 'backup', label: 'Database & Backup', icon: Database, group: 'Data & System', allowed: may('backup:restore') },
+    { id: 'testing', label: 'System Reset', icon: Trash2, group: 'Data & System', allowed: may('data:wipe') },
+    { id: 'updates', label: 'Updates', icon: ArrowUpCircle, group: 'Data & System', allowed: true },
+  ] as const;
+  const visibleTabs = tabDefs.filter((t) => t.allowed);
+  const tabGroups = visibleTabs.reduce<Record<string, { id: string; label: string; icon: typeof Palette }[]>>((acc, t) => {
+    (acc[t.group] = acc[t.group] || []).push(t);
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-6">
@@ -100,22 +122,53 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Category Tabs — shared TabsNav, same as every other module */}
-      <TabsNav
-        activeTab={activeTab}
-        onChange={(t) => setActiveTab(t as typeof activeTab)}
-        variant="pills"
-        tabs={[
-          ...(may('branding:edit') ? [{ id: 'branding', label: 'Branding & Identity', icon: Palette }] : []),
-          { id: 'account', label: 'My Account & Security', icon: User },
-          ...(may('users:manage') ? [{ id: 'users', label: 'User Management', icon: Users }] : []),
-          ...(may('backup:restore') ? [{ id: 'backup', label: 'Database & Backup', icon: Database }] : []),
-          ...(may('data:wipe') ? [{ id: 'testing', label: 'System Reset', icon: Trash2 }] : []),
-          { id: 'preferences', label: 'Application Defaults', icon: Sliders },
-          ...(may('print:edit') ? [{ id: 'print', label: 'Print & Documents', icon: Printer }] : []),
-          { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
-        ]}
-      />
+      {/* D9 — grouped rail at 1280px and up, segmented control below that. */}
+      <div className="xl:grid xl:grid-cols-[240px_minmax(0,1fr)] xl:gap-6 xl:items-start">
+        <nav
+          aria-label="Settings sections"
+          className="hidden xl:block xl:sticky xl:top-6 bg-white rounded-2xl border border-slate-200 shadow-2xs p-3"
+        >
+          {Object.entries(tabGroups).map(([group, tabs]) => (
+            <div key={group} className="mb-3 last:mb-0">
+              <p className="px-2.5 pb-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                {group}
+              </p>
+              <ul className="space-y-0.5">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const active = activeTab === tab.id;
+                  return (
+                    <li key={tab.id}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                        aria-current={active ? 'page' : undefined}
+                        className={`w-full flex items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-brand-50 text-brand-700 border-brand-200'
+                            : 'text-slate-600 border-transparent hover:bg-slate-50'
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-brand-600' : 'text-slate-400'}`} />
+                        <span className="truncate">{tab.label}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+
+        <div className="min-w-0 space-y-6">
+          <div className="xl:hidden">
+            <TabsNav
+              activeTab={activeTab}
+              onChange={(t) => setActiveTab(t)}
+              variant="pills"
+              tabs={visibleTabs.map(({ id, label, icon }) => ({ id, label, icon }))}
+            />
+          </div>
 
       {/* Global Message Alert */}
       {backupMessage && (
@@ -143,6 +196,9 @@ export const SettingsView: React.FC = () => {
       {activeTab === 'preferences' && <PreferencesTab />}
       {activeTab === 'print' && may('print:edit') && <PrintTab />}
       {activeTab === 'updates' && <UpdatesTab />}
+      {activeTab === 'notifications' && <NotificationsTab />}
+        </div>
+      </div>
     </div>
   );
 };

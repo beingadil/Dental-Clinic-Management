@@ -7,6 +7,7 @@ import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
 import '../print/printStyles.css';
 import { Printer, X, FileSpreadsheet, Building2, CheckCircle2 } from 'lucide-react';
+import { Modal } from '../common/ui';
 
 interface BatchInvoicePrintModalProps {
   /** Clinic pre-selected from the billing filter, if any. */
@@ -99,17 +100,20 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/70 p-3 backdrop-blur-xs no-print-backdrop md:p-6">
-      {/* Card = print area, exactly like the single-invoice dialog: one sheet
-          per selected invoice, nothing wrapping the sheets in `.no-print`. */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Batch invoice printing"
-        className="print-area printable-area relative my-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-      >
-        {/* Header */}
-        <div className="no-print flex flex-col gap-3 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+    // Card = print area, exactly like the single-invoice dialog: one sheet per
+    // selected invoice, nothing wrapping the sheets in `.no-print`. The shared
+    // Modal adds no wrapper of its own, so that contract is preserved.
+    <Modal
+      open
+      onClose={onClose}
+      label="Batch invoice printing"
+      hideClose
+      maxWidth="max-w-5xl"
+      backdropClassName="bg-slate-900/70 no-print-backdrop"
+      cardClassName="print-area printable-area relative"
+      headerClassName="no-print flex flex-col gap-3 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
+      header={
+        <>
           <div className="flex items-center gap-2.5">
             <div className="rounded-lg bg-slate-100 p-2 text-slate-700">
               <FileSpreadsheet className="h-5 w-5" />
@@ -131,7 +135,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               type="button"
               onClick={handlePrint}
               disabled={selected.length === 0}
-              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
               <Printer className="h-4 w-4" /> Print {selected.length || ''} Invoice{selected.length === 1 ? '' : 's'}
             </button>
@@ -144,7 +148,9 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               <X className="h-5 w-5" />
             </button>
           </div>
-        </div>
+        </>
+      }
+    >
 
         {/* Controls */}
         <div className="no-print grid grid-cols-1 gap-4 border-b border-slate-200 bg-slate-50/60 px-6 py-4 lg:grid-cols-12">
@@ -299,7 +305,6 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
