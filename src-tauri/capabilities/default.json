@@ -1,12 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default window capabilities: core event/window access plus the custom database and file-checksum commands.",
+  "description": "Default window capabilities: core event/window access plus the custom database and file-checksum commands. The four window mutation permissions are what `core:window:default` deliberately leaves out: the header's window controls (minimize / maximize / close) and the close-request flush in persistence.ts, which force-destroys the window after saving the pending SQLite write. Without them every one of those calls rejects at runtime and the app cannot be closed.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:event:default",
     "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
     "dialog:default",
     "core:webview:allow-internal-toggle-devtools"
   ],
