@@ -51,3 +51,6 @@ bun.lock
 # Temporary
 tmp/
 *.tmp
+
+# Quarantined files kept for security analysis (never commit)
+.quarantine/

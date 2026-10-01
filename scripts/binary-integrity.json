@@ -1,0 +1,69 @@
+{
+  "_comment": "SHA-256 of every native binary shipped by a registry dependency, captured from the official npm tarball. Regenerate with the documented procedure if dependencies change; scripts/verify-binaries.mjs checks installed files against these hashes.",
+  "platform": {
+    "os": "win32",
+    "cpu": "x64"
+  },
+  "binaries": [
+    {
+      "package": "@esbuild/win32-x64",
+      "version": "0.25.12",
+      "file": "@esbuild/win32-x64/esbuild.exe",
+      "sha256": "cae1bbc86f4df800b01d99e28aea0a154b02243de6797e98f48a9b88a64a7be0"
+    },
+    {
+      "package": "@esbuild/win32-x64",
+      "version": "0.28.2",
+      "file": "tsx/node_modules/@esbuild/win32-x64/esbuild.exe",
+      "sha256": "c7bee37877d0aa6a046e52783fa0a2cf1a9ce5579d68bb3083bda99d4bff18ef"
+    },
+    {
+      "package": "@img/sharp-win32-x64",
+      "version": "0.34.4",
+      "file": "@img/sharp-win32-x64/lib/libvips-42.dll",
+      "sha256": "50433ce2e1d402dc0b898fe173408922a2ce88198d57a3a073e604ea50902b3a"
+    },
+    {
+      "package": "@img/sharp-win32-x64",
+      "version": "0.34.4",
+      "file": "@img/sharp-win32-x64/lib/libvips-cpp-8.17.2.dll",
+      "sha256": "63d64e4625111244890d78b6487519e3b5b78828dfa00fd81efd41340140951b"
+    },
+    {
+      "package": "@img/sharp-win32-x64",
+      "version": "0.34.4",
+      "file": "@img/sharp-win32-x64/lib/sharp-win32-x64.node",
+      "sha256": "3e75c83d511bf498913bacd08980648fc77c91a2751e90d8c6cfd0d722135814"
+    },
+    {
+      "package": "@rollup/rollup-win32-x64-gnu",
+      "version": "4.63.3",
+      "file": "@rollup/rollup-win32-x64-gnu/rollup.win32-x64-gnu.node",
+      "sha256": "4ae9b9d3c6add1617ce24f2ee8c08d2ab50f2145fd87eb0e2ea2265e58287b70"
+    },
+    {
+      "package": "@rollup/rollup-win32-x64-msvc",
+      "version": "4.63.3",
+      "file": "@rollup/rollup-win32-x64-msvc/rollup.win32-x64-msvc.node",
+      "sha256": "3f7da86abaeb6d8188e3afb2a5ef780b460fa88f47b84b60a4aea7397c4743f0"
+    },
+    {
+      "package": "@tailwindcss/oxide-win32-x64-msvc",
+      "version": "4.3.3",
+      "file": "@tailwindcss/oxide-win32-x64-msvc/tailwindcss-oxide.win32-x64-msvc.node",
+      "sha256": "abdc655d7f9f413e2da0c97c90852fa476bcac3f2659e9ad51901cf58cb7eac4"
+    },
+    {
+      "package": "@tauri-apps/cli-win32-x64-msvc",
+      "version": "2.11.4",
+      "file": "@tauri-apps/cli-win32-x64-msvc/cli.win32-x64-msvc.node",
+      "sha256": "37c4d79256120893f2c12c1385bce5f7510b5063afdeb09b40a9effec28d0208"
+    },
+    {
+      "package": "lightningcss-win32-x64-msvc",
+      "version": "1.32.0",
+      "file": "lightningcss-win32-x64-msvc/lightningcss.win32-x64-msvc.node",
+      "sha256": "83e7e838ef1bbf5454c651103574fec31a1cec0b453b999d1173365cbc6c7841"
+    }
+  ]
+}
