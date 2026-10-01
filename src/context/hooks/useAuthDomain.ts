@@ -7,7 +7,7 @@ import {
   CaseAttachment, CaseNote, UserProfile, QcInspection,
 } from '../../types';
 import type { UserRow } from '../../db/repos';
-import { usersRepo } from '../../db/repos';
+import { usersRepo, sessionsRepo } from '../../db/repos';
 import { isDatabaseReady, getDatabase } from '../../db/core';
 import { hashPassword, verifyPassword } from '../../db/crypto';
 import {
@@ -106,6 +106,25 @@ export function useAuthDomain(deps: {
       /* storage unavailable — nothing to clean */
     }
   }
+
+  /**
+   * Session hygiene (audit S5): a privilege change — role, super-admin flag or
+   * a password reset — must invalidate tokens minted under the old authority.
+   * Deleting the rows covers every session; for the signed-in user the cached
+   * token goes too, so AppContext's session effect mints a fresh one instead of
+   * leaving a token that no longer resolves to a session row. A self-service
+   * password change drops the token without re-minting, which simply means the
+   * operator re-authenticates after the next restart.
+   */
+  const revokeSessions = (userId: string): void => {
+    try {
+      if (!isDatabaseReady()) return;
+      sessionsRepo.deleteForUser(userId);
+      if (user?.id === userId) safeRemoveItem('dsw_session_token');
+    } catch {
+      /* session hygiene must never block the edit itself */
+    }
+  };
 
   // ────────────────────────────────────────────── auth + user management
 
@@ -239,6 +258,11 @@ export function useAuthDomain(deps: {
   };
 
   const updateUser = async (id: string, updates: Partial<UserProfile>) => {
+    // Revoke before the state update: a role / super-admin / password change
+    // makes every existing token stale.
+    if (updates.role !== undefined || updates.isSuperAdmin !== undefined || !!updates.password) {
+      revokeSessions(id);
+    }
     setUsers((prev) =>
       prev.map((u) => (u.id === id ? { ...u, ...updates } : u)),
     );
@@ -291,6 +315,8 @@ export function useAuthDomain(deps: {
     }
 
     dbWrite(() => usersRepo.update(userId, { password_hash: hash, password_salt: hash.split('$')[2] ?? '' }));
+    // A new password invalidates sessions minted with the old one (S5).
+    revokeSessions(userId);
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, password: undefined } : u)));
     return { success: true, message: 'Password updated successfully!' };
   };

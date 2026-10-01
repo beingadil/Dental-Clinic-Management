@@ -118,6 +118,11 @@ export const sessionsRepo = {
   delete(token: string): void {
     requireEngine().run('DELETE FROM sessions WHERE token = ?', [token]);
   },
+  /** Revokes every session a user holds — privilege changes must not leave
+   *  tokens minted under the old authority (audit S5). */
+  deleteForUser(userId: string): void {
+    requireEngine().run('DELETE FROM sessions WHERE user_id = ?', [userId]);
+  },
   purgeExpired(): void {
     requireEngine().run('DELETE FROM sessions WHERE expires_at <= ?', [now()]);
   },

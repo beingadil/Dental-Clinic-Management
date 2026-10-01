@@ -4,7 +4,7 @@ import { SqliteEngine } from '../../src/db/engine';
 import {
   labsRepo, casesRepo, caseTypesRepo, invoicesRepo, paymentsRepo, advancePaymentsRepo,
   adjustmentsRepo, journalRepo, ledgerRepo, notificationsRepo, usersRepo, caseNotesRepo,
-  attachmentsRepo, settingsRepo, statsRepo,
+  attachmentsRepo, settingsRepo, statsRepo, sessionsRepo,
 } from '../../src/db/repos';
 import { nextNumber, ensureCounterAtLeast, SEQ_KEYS, ensureSequenceTable } from '../../src/db/sequences';
 import { setDatabase } from '../../src/db/core';
@@ -363,5 +363,50 @@ describe('case types', () => {
     caseTypesRepo.update(ct.id, { base_price: 13000 });
     expect(caseTypesRepo.byId(ct.id)?.base_price).toBe(13000);
     expect(caseTypesRepo.delete(ct.id)).toBe(true);
+  });
+});
+
+describe('sessionsRepo', () => {
+  const user = (id: string) =>
+    usersRepo.insert({
+      id, username: `u-${id}`, email: `${id}@clinic.test`, name: id,
+      role: 'Lab Admin', password_hash: 'h', password_salt: 's',
+    });
+  const inDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
+
+  it('creates, resolves and expires a session', () => {
+    user('usr-sess');
+    sessionsRepo.create('tok-live', 'usr-sess', inDays(1));
+    sessionsRepo.create('tok-stale', 'usr-sess', inDays(-1));
+    expect(sessionsRepo.findValid('tok-live')?.user_id).toBe('usr-sess');
+    expect(sessionsRepo.findValid('tok-stale')).toBeUndefined(); // expired
+
+    sessionsRepo.purgeExpired();
+    expect(sessionsRepo.findValid('tok-live')?.token).toBe('tok-live');
+
+    sessionsRepo.delete('tok-live');
+    expect(sessionsRepo.findValid('tok-live')).toBeUndefined();
+  });
+
+  it('revokes every session of one user without touching the others (audit S5)', () => {
+    user('usr-revoked');
+    user('usr-kept');
+    sessionsRepo.create('tok-a', 'usr-revoked', inDays(1));
+    sessionsRepo.create('tok-b', 'usr-revoked', inDays(1));
+    sessionsRepo.create('tok-c', 'usr-kept', inDays(1));
+
+    sessionsRepo.deleteForUser('usr-revoked');
+
+    expect(sessionsRepo.findValid('tok-a')).toBeUndefined();
+    expect(sessionsRepo.findValid('tok-b')).toBeUndefined();
+    expect(sessionsRepo.findValid('tok-c')?.user_id).toBe('usr-kept');
+    sessionsRepo.delete('tok-c');
+  });
+
+  it('cascades sessions away with the user row', () => {
+    user('usr-cascade');
+    sessionsRepo.create('tok-cascade', 'usr-cascade', inDays(1));
+    usersRepo.delete('usr-cascade');
+    expect(sessionsRepo.findValid('tok-cascade')).toBeUndefined();
   });
 });
