@@ -125,3 +125,73 @@ describe('syncCore duplicate-number healing', () => {
     expect(qcCount).toBe(1);
   });
 });
+
+/**
+ * Regression: "Database sync failed — UNIQUE constraint failed:
+ * journal_lines.id" whenever a payment was reversed.
+ *
+ * syncCore cleared only the parent (`DELETE FROM journal_entries`) and left
+ * the child rows to `ON DELETE CASCADE`. That cascade only runs while
+ * `PRAGMA foreign_keys = ON` — and the snapshot/export path turns it OFF
+ * (exactly what the integrity check's FK finding reports). With the pragma
+ * off, the journal_lines rows survived the parent delete, so the very next
+ * sync re-inserted the same line ids and the UNIQUE constraint aborted the
+ * ENTIRE transaction: nothing after the journal block was persisted, which
+ * is why the banner said the operator's changes were at risk.
+ */
+describe('journal_lines are cleared independently of the FK cascade', () => {
+  const journalCollections = (): SyncCollections =>
+    ({
+      users: [], labs: [{ id: 'lab-1', name: 'Test Clinic', created_at: '2026-09-28T09:00' }],
+      caseTypes: [], cases: [], invoices: [],
+      advancePayments: [], accountAdjustments: [],
+      journalEntries: [
+        {
+          id: 'jrn-1', journal_number: 'JRN-INV-0001', date: '2026-09-28',
+          event_type: 'invoice_issued', reference_type: 'invoice', reference_id: 'inv-1',
+          reference_number: 'INV-0001', lab_id: 'lab-1', lab_name: 'Test Clinic',
+          description: 'Issuance', created_at: '2026-09-28 09:00', created_by: 'Tester',
+          lines: [
+            { id: 'jl-1', account_code: '1100', account_name: 'A/R', account_type: 'asset', debit: 100, credit: 0 },
+            { id: 'jl-2', account_code: '4010', account_name: 'Revenue', account_type: 'revenue', debit: 0, credit: 100 },
+          ],
+        },
+      ],
+      reconciliationItems: [], notifications: [], savedVouchers: [], auditEvents: [], templates: [],
+      labContacts: [], labAddresses: [], pricingOverrides: [], labReviews: [], caseNotes: {},
+      caseAttachments: {}, qcInspections: [], doctorPreferences: [],
+    } as unknown as SyncCollections);
+
+  it('re-syncs cleanly with foreign keys OFF (no orphan lines, no UNIQUE abort)', async () => {
+    const SQL = await initSqlJs();
+    const eng = await SqliteEngine.create(SQL, null);
+    eng.migrate();
+    setDatabase(eng);
+
+    // First sync seeds the journal lines.
+    vi.useFakeTimers();
+    syncCollectionsToDb(journalCollections());
+    vi.advanceTimersByTime(150);
+    vi.useRealTimers();
+    expect(getLastSyncError()).toBeNull();
+    expect(eng.scalar('SELECT COUNT(*) FROM journal_lines')).toBe(2);
+
+    // Reproduce the real-world precondition: FK enforcement got turned off.
+    eng.run('PRAGMA foreign_keys = OFF');
+
+    // Same state again — must not trip UNIQUE journal_lines.id.
+    vi.useFakeTimers();
+    syncCollectionsToDb(journalCollections());
+    vi.advanceTimersByTime(150);
+    vi.useRealTimers();
+
+    expect(getLastSyncError()).toBeNull();
+    expect(eng.scalar('SELECT COUNT(*) FROM journal_lines')).toBe(2);
+    // And no orphans left behind.
+    expect(
+      eng.scalar(
+        "SELECT COUNT(*) FROM journal_lines WHERE journal_id NOT IN (SELECT id FROM journal_entries)",
+      ),
+    ).toBe(0);
+  });
+});

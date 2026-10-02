@@ -984,12 +984,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       final_amount: caseData.final_price,
       amount_paid: 0,
       payment_status: 'unpaid',
-      issue_date: caseData.delivery_date,
+      // The invoice is booked on the day the case is REGISTERED — that is the
+      // day the work entered the books, and it is the day the billing tabs
+      // default their window to. Booking it on the delivery date instead
+      // pushed every new invoice days into the future, so a case created
+      // today was invisible in the default Today filter until its delivery
+      // date arrived. The delivery date remains the due date.
+      issue_date: nowStr.split(' ')[0],
       due_date: caseData.delivery_date,
-      // Business date: the invoice is booked at the case's delivery/order
-      // date, so a backdated case entry files behind newer ledger rows
-      // instead of appearing as the latest transaction.
-      created_at: caseData.delivery_date || nowStr.split(' ')[0],
+      created_at: nowStr.split(' ')[0],
       payments: []
     };
 

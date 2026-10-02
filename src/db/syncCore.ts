@@ -366,6 +366,13 @@ function syncNow(c: SyncCollections): void {
     }
 
     // ── journal ──
+    // Clear the child table EXPLICITLY before the parent. Relying on
+    // ON DELETE CASCADE silently failed whenever PRAGMA foreign_keys had
+    // been turned off (the snapshot/export reset does exactly that): the
+    // stale journal_lines rows survived the parent delete, and the inserts
+    // below then died on `UNIQUE constraint failed: journal_lines.id`,
+    // aborting the whole sync transaction and losing ALL persistence.
+    tx.run('DELETE FROM journal_lines');
     tx.run('DELETE FROM journal_entries');
     // Heal duplicate line ids (bulk-generated journals can collide on the
     // same-millisecond id): one duplicate would abort the entire transaction

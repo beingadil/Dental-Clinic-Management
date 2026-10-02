@@ -369,6 +369,11 @@ export function useTransactionCommands(deps: {
         }
       }
       if (!targetPayment) return false;
+      // Reversing twice would post a second compensating journal against the
+      // same payment. The idempotent guard is here (in addition to the
+      // is_reversed checks below) so a double-click or a retried command
+      // cannot double-reverse and unbalance the ledger.
+      if (targetPayment.is_reversed) return false;
 
       // Mark payment reversed on invoices and adjust amount_paid
       setInvoices((prev) =>
