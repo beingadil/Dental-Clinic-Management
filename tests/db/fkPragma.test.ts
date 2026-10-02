@@ -12,14 +12,23 @@ beforeAll(async () => {
 });
 
 describe('PRAGMA foreign_keys survives snapshot saves', () => {
-  it('sql.js export() resets the connection-level FK flag (documents the hazard)', () => {
+  it('SqliteEngine.export() re-asserts the FK flag sql.js resets', () => {
+    // sql.js implements export() by closing and reopening the connection,
+    // which drops every connection-level PRAGMA — foreign_keys included, and
+    // SQLite's default is OFF. This test used to ASSERT that reset (0) as a
+    // documented hazard; left unchecked it silently switched off every
+    // ON DELETE CASCADE in the schema after any backup or autosave, which is
+    // what orphaned journal_lines and then aborted the whole-table sync with
+    // `UNIQUE constraint failed: journal_lines.id`.
+    //
+    // The hazard is now contained inside SqliteEngine.export() itself, so the
+    // contract is the opposite: the flag must survive.
     expect(engine.get('PRAGMA foreign_keys')?.foreign_keys).toBe(1);
     engine.export();
-    expect(engine.get('PRAGMA foreign_keys')?.foreign_keys).toBe(0);
+    expect(engine.get('PRAGMA foreign_keys')?.foreign_keys).toBe(1);
   });
 
-  it('saveSnapshot re-asserts foreign_keys = ON after exporting', async () => {
-    engine.export(); // simulate any prior export leaving the flag off
+  it('saveSnapshot leaves foreign_keys = ON', async () => {
     await saveSnapshot(engine);
     expect(engine.get('PRAGMA foreign_keys')?.foreign_keys).toBe(1);
   });

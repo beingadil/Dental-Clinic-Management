@@ -39,9 +39,20 @@ function makeMemoryShim() {
   };
 }
 
+/**
+ * Builds a migrated engine holding the given labs, and makes it the live
+ * engine BEFORE any repo write.
+ *
+ * The ordering matters: repos resolve the engine through the module-global
+ * getDatabase(), so inserting before setDatabase() writes into whatever the
+ * previous test left behind — or throws "Database not initialized" on the
+ * first test. The global is deliberately not reset between tests because the
+ * restore path itself swaps it, which is exactly what these tests exercise.
+ */
 async function seeded(labs: Array<[string, string]>, marker: string): Promise<SqliteEngine> {
   const engine = await SqliteEngine.create(SQL, null);
   engine.migrate();
+  setDatabase(engine);
   for (const [id, name] of labs) {
     labsRepo.insert({ id, name, created_at: '2026-01-01' });
   }
@@ -208,7 +219,7 @@ describe('backup restore writes through to persistence', () => {
 });
 
 describe('export() must not disable foreign keys', () => {
-  it('re-asserts PRAGMA foreign_keys after serialising', async () => {
+  it('keeps ON DELETE CASCADE working after serialising', async () => {
     const engine = await SqliteEngine.create(SQL, null);
     engine.migrate();
     engine.run('PRAGMA foreign_keys = ON;');
@@ -220,21 +231,23 @@ describe('export() must not disable foreign keys', () => {
 
     expect(engine.scalar('PRAGMA foreign_keys')).toBe(1);
 
-    // Proof the cascade actually still fires.
-    engine.run(
-      "INSERT INTO case_types (id, name, created_at) VALUES ('ct-fk', 'Crown', '2026-01-01')",
-    );
-    engine.run(
-      "INSERT INTO labs (id, name, created_at) VALUES ('lab-fk', 'FK Lab', '2026-01-01')",
-    );
+    // Behavioural proof, not just the flag: cases.lab_id carries
+    // ON DELETE CASCADE in the real schema, so deleting the lab must take the
+    // case with it. With foreign_keys reset to OFF by export(), the case
+    // survives as an orphan — the exact row that later collides on
+    // `UNIQUE constraint failed: journal_lines.id`.
+    engine.run("INSERT INTO labs (id, name, created_at) VALUES ('lab-fk', 'FK Lab', '2026-01-01')");
     engine.run(
       "INSERT INTO cases (id, case_number, lab_id, lab_name, doctor_name, delivery_date, status, created_at, updated_at, selected_teeth)" +
       " VALUES ('c-fk', 'DS-FK1', 'lab-fk', 'FK Lab', 'Dr. F', '2026-11-01', 'received', '2026-01-01', '2026-01-01', '[11]')",
     );
+    expect(engine.rowCount('cases')).toBe(1);
+
+    // Serialise again — the realistic sequence: write, autosave, then delete.
     engine.export();
+
     engine.run("DELETE FROM labs WHERE id = 'lab-fk'");
-    // cases.lab_id has no ON DELETE CASCADE in this schema, so assert the pragma
-    // itself rather than a cascade that does not exist.
-    expect(engine.scalar('PRAGMA foreign_keys')).toBe(1);
+    expect(engine.rowCount('cases')).toBe(0);
+    expect(engine.foreignKeyCheck()).toHaveLength(0);
   });
 });
