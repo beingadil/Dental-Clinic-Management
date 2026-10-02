@@ -231,23 +231,29 @@ describe('export() must not disable foreign keys', () => {
 
     expect(engine.scalar('PRAGMA foreign_keys')).toBe(1);
 
-    // Behavioural proof, not just the flag: cases.lab_id carries
-    // ON DELETE CASCADE in the real schema, so deleting the lab must take the
-    // case with it. With foreign_keys reset to OFF by export(), the case
-    // survives as an orphan — the exact row that later collides on
-    // `UNIQUE constraint failed: journal_lines.id`.
+    // Behavioural proof, not just the flag. Deleting a parent row must still
+    // take its children with it: with foreign_keys reset to OFF by export(),
+    // the child survives as an orphan — the exact row shape that later
+    // collides on `UNIQUE constraint failed: journal_lines.id` when the
+    // whole-table sync re-inserts the same id.
+    //
+    // cases -> case_teeth is the relationship used here because it is the
+    // cascade the rest of the suite already proves end to end. (Deleting a
+    // labs row instead would have to unwind the lab's dependents as well, so
+    // it proves less about the pragma and more about cascade ordering.)
     engine.run("INSERT INTO labs (id, name, created_at) VALUES ('lab-fk', 'FK Lab', '2026-01-01')");
     engine.run(
-      "INSERT INTO cases (id, case_number, lab_id, lab_name, doctor_name, delivery_date, status, created_at, updated_at, selected_teeth)" +
-      " VALUES ('c-fk', 'DS-FK1', 'lab-fk', 'FK Lab', 'Dr. F', '2026-11-01', 'received', '2026-01-01', '2026-01-01', '[11]')",
+      "INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, doctor_name, units_count, selected_teeth, delivery_date, priority, price, discount, final_price, status, created_at, updated_at)" +
+      " VALUES ('c-fk', 'DS-FK1', 'FK Patient', 'lab-fk', 'FK Lab', 'Dr. F', 1, '[]', '2026-11-01', 'normal', 100, 0, 100, 'received', '2026-01-01', '2026-01-01')",
     );
-    expect(engine.rowCount('cases')).toBe(1);
+    engine.run("INSERT INTO case_teeth (case_id, tooth_number) VALUES ('c-fk', '16')");
+    expect(engine.scalar('SELECT COUNT(*) FROM case_teeth WHERE case_id = ?', ['c-fk'])).toBe(1);
 
     // Serialise again — the realistic sequence: write, autosave, then delete.
     engine.export();
 
-    engine.run("DELETE FROM labs WHERE id = 'lab-fk'");
-    expect(engine.rowCount('cases')).toBe(0);
+    engine.run("DELETE FROM cases WHERE id = 'c-fk'");
+    expect(engine.scalar('SELECT COUNT(*) FROM case_teeth WHERE case_id = ?', ['c-fk'])).toBe(0);
     expect(engine.foreignKeyCheck()).toHaveLength(0);
   });
 });

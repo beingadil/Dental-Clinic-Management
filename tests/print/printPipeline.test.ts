@@ -95,8 +95,18 @@ describe('single slip print wiring (CaseJobSlipModal)', () => {
   it('runs the same scoped isolation as the batch modal', () => {
     // The card used to stay a generic .print-area, so the tag printed
     // through the app-wide 12mm-margin page instead of its own geometry.
-    expect(modal).toContain(SLIP_PRINT_BODY_CLASS);
-    expect(modal).toContain(SLIP_PRINT_ROOT_CLASS);
+    //
+    // Asserting the imported constants rather than the literal strings is the
+    // stronger contract: the modal can never apply a stale hardcoded class
+    // name, because the identifier resolves to whatever the CSS keys on.
+    expect(modal).toMatch(
+      /import\s*\{[^}]*SLIP_PRINT_BODY_CLASS[^}]*\}\s*from\s*'[^']*printPipeline'/,
+    );
+    expect(modal).toMatch(/classList\.add\(SLIP_PRINT_BODY_CLASS\)/);
+    expect(modal).toMatch(/classList\.add\(SLIP_PRINT_ROOT_CLASS\)/);
+    // The constants themselves still carry the values the CSS expects.
+    expect(SLIP_PRINT_BODY_CLASS).toBe('job-slip-printing-on');
+    expect(SLIP_PRINT_ROOT_CLASS).toBe('job-slip-printing');
   });
 
   it('marks the compact slip preview as a print root', () => {
