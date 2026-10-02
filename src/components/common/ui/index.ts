@@ -8,3 +8,5 @@ export * from './EmptyState';
 export * from './PreviewFrame';
 export * from './PageHeader';
 export * from './TabsNav';
+export * from './DataTable';
+export * from './FilterBar';
