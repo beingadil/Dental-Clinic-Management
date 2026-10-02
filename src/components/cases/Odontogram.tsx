@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
+import { getTodayStr } from '../../utils/dateUtils';
 import {
   Check,
   Trash2,
@@ -377,7 +378,7 @@ export default function Odontogram({
         implant_manufacturer: existing.implant_manufacturer || (rType === "implant" ? "Nobel Biocare" : "Dental Solutions"),
         implant_model: existing.implant_model || (rType === "implant" ? "Replace Select Tapered" : (nextMaterials[t] || activeMaterial || defaultMaterial)),
         implant_size: existing.implant_size || "1 x 3.5mm x 10mm, 3 x 4.3mm x 11.5mm",
-        date: existing.date || new Date().toISOString().substring(0, 10),
+        date: existing.date || getTodayStr(),
       };
     });
 

@@ -22,6 +22,7 @@ import {
   Plus
 } from 'lucide-react';
 import { Modal } from '../common/ui';
+import { getTodayStr, getNowStamp } from '../../utils/dateUtils';
 
 interface RecordTransactionModalProps {
   isOpen: boolean;
@@ -60,7 +61,10 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const [clinicId, setClinicId] = useState<string>(effectiveClinicId || (labs[0]?.id || ''));
   const [amount, setAmount] = useState<number>(0);
   const [method, setMethod] = useState<'cash' | 'bank' | 'cheque' | 'advance'>('cash');
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Local calendar day, not toISOString(): between 00:00 and 05:00 PKT the UTC
+  // day is still yesterday, and a payment stamped with it fell outside the
+  // default Today filter on the Payments tab.
+  const [date, setDate] = useState<string>(getTodayStr);
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   /* Opt-IN: cash left unallocated only becomes clinic credit when the cashier
@@ -273,7 +277,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       file_url: proofUrl,
       file_type: proofType || 'image/png',
       file_size: proofSize || '—',
-      uploaded_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      uploaded_at: getNowStamp(),
       uploaded_by: user?.name || 'Staff'
     }] : [];
 
@@ -549,16 +553,33 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                   {clinicInvoices.map((inv) => {
                     const due = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
                     const currentAlloc = allocations[inv.id] || 0;
+                    const isTarget = selectedInvoiceId === inv.id;
                     return (
                       <div
                         key={inv.id}
-                        className={`p-2.5 rounded-lg border text-xs flex items-center justify-between transition-colors ${
-                          currentAlloc > 0 ? 'bg-indigo-50/70 border-indigo-200' : 'bg-white border-slate-200'
-                        }`}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={isTarget}
+                        title="Click to make this the target invoice"
+                        onClick={() => setSelectedInvoiceId(inv.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedInvoiceId(inv.id);
+                          }
+                        }}
+                        className={`p-2.5 rounded-lg border text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                          currentAlloc > 0 ? 'bg-indigo-50/70' : 'bg-white'
+                        } ${isTarget ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-slate-200'}`}
                       >
                         <div className="flex-1 min-w-0 pr-3">
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-bold text-slate-900">{inv.invoice_number}</span>
+                            {isTarget && (
+                              <span className="text-[10px] font-bold uppercase tracking-wide bg-indigo-600 text-white px-1.5 py-0.5 rounded">
+                                Target
+                              </span>
+                            )}
                             <span className="text-slate-500">• Due: {inv.due_date}</span>
                             {inv.patient_name && (
                               <span className="text-slate-600 truncate">• Pt: {inv.patient_name}</span>
@@ -569,7 +590,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => handleAllocationChange(inv.id, due)}

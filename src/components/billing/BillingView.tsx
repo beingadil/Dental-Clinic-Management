@@ -18,8 +18,9 @@ import { JournalEntryModal } from './JournalEntryModal';
 import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
-import { PageHeader, EmptyState, TabsNav, Badge } from '../common/ui';
-import { DatePickerRange, todayISO } from '../common/DatePickerRange';
+import { PageHeader, EmptyState, TabsNav, Badge, DataTable, FilterBar } from '../common/ui';
+import { todayISO } from '../common/DatePickerRange';
+import { getTodayStr } from '../../utils/dateUtils';
 import { 
   DollarSign, 
   Wallet, 
@@ -28,12 +29,9 @@ import {
   BarChart3, 
   Printer, 
   Search, 
-  CheckSquare, 
-  Square, 
   Download, 
   Trash2, 
   FileText, 
-  Building2, 
   CheckCircle2, 
   AlertCircle,
   AlertTriangle,
@@ -74,7 +72,7 @@ export const BillingView: React.FC = () => {
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'overdue' | 'paid'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Business date for bulk settlements — user-picked, defaults to today.
-  const [bulkPayDate, setBulkPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bulkPayDate, setBulkPayDate] = useState<string>(getTodayStr());
   // Invoice history window: defaults to TODAY, like every other billing tab —
   // yesterday's and older invoices are reached by rewinding the date picker
   // (clearing it = All Time). Dates compare on the billing day.
@@ -486,107 +484,65 @@ export const BillingView: React.FC = () => {
         <div className="space-y-5">
 
           {/* Search, Clinic Dropdown & Filter Controls */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-            {/* Search-first filter row: search → date range → clinic → export (matches Archive tab) */}
-            <div className="flex flex-col md:flex-row md:items-center gap-3">
-              {/* Search */}
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by invoice #, case #, dental clinic, doctor, material..."
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {/* Date Range + Export CSV */}
-              <div className="flex items-center gap-2 shrink-0">
-                <DatePickerRange
-                  from={invFromDate}
-                  to={invToDate}
-                  onChange={(f, t) => {
-                    setInvFromDate(f);
-                    setInvToDate(t);
-                  }}
-                />
-                <button
-                  onClick={handleExportInvoicesCSV}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Export Invoices CSV</span>
-                </button>
-              </div>
-
-              {/* Clinic Dropdown */}
-              <div className="relative w-full md:w-64 shrink-0">
-                <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <select
-                  value={clinicFilter}
-                  onChange={(e) => setClinicFilter(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
-                >
-                  <option value="all">All Clinics ({labs.length})</option>
-                  {labs.map((lab) => (
-                    <option key={lab.id} value={lab.id}>{lab.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Status Filter Buttons (With visual indicators for Paid, Pending, and Overdue) */}
-            <div className="flex flex-wrap items-center gap-1.5 no-scrollbar">
-                {[
-                  { id: 'all', label: 'All Invoices', count: statusCounts.allCount },
-                  { id: 'unpaid', label: 'Pending (Unpaid)', count: statusCounts.unpaidCount },
-                  { id: 'partial', label: 'Partially Paid', count: statusCounts.partialCount },
-                  { id: 'overdue', label: 'Overdue', count: statusCounts.overdueCount, isOverdueAlert: true },
-                  { id: 'paid', label: 'Paid in Full', count: statusCounts.paidCount, isSuccess: true },
-                ].map((sub) => {
-                  const isSubActive = invoiceStatusFilter === sub.id;
-                  return (
-                    <button
-                      key={sub.id}
-                      onClick={() => setInvoiceStatusFilter(sub.id as any)}
-                      aria-pressed={isSubActive}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                        isSubActive
-                          ? sub.isOverdueAlert
-                            ? 'bg-rose-600 text-white shadow-xs'
-                            : sub.isSuccess
-                            ? 'bg-emerald-700 text-white shadow-xs'
-                            : 'bg-slate-900 text-white shadow-xs'
-                          : sub.isOverdueAlert && (sub.count || 0) > 0
-                          ? 'bg-rose-100 text-rose-800 hover:bg-rose-200 font-bold'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {sub.isOverdueAlert && (sub.count || 0) > 0 && (
-                        <AlertTriangle className={`w-3.5 h-3.5 ${isSubActive ? 'text-white' : 'text-rose-600'}`} />
-                      )}
-                      <span>{sub.label}</span>
-                      <span
-                        role="status"
-                        aria-live="polite"
-                        aria-label={`${sub.label}: ${sub.count ?? 0}`}
-                        className={`px-1.5 py-0.2 rounded-md text-[11px] tabular-nums ${
-                          isSubActive
-                            ? 'bg-black/20 text-white'
-                            : 'bg-white/80 text-slate-700'
-                        }`}>
-                        {sub.count ?? 0}
-                      </span>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
+          <FilterBar
+            search={{
+              value: searchTerm,
+              onChange: setSearchTerm,
+              placeholder: 'Search by invoice #, case #, dental clinic, doctor, material...',
+            }}
+            dateRange={{
+              from: invFromDate,
+              to: invToDate,
+              onChange: (f, t) => {
+                setInvFromDate(f);
+                setInvToDate(t);
+              },
+            }}
+            clinics={{ labs, value: clinicFilter, onChange: setClinicFilter }}
+            actions={
+              <button
+                onClick={handleExportInvoicesCSV}
+                className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                <span>Export Invoices CSV</span>
+              </button>
+            }
+            pills={[
+              { id: 'all', label: 'All Invoices', count: statusCounts.allCount },
+              { id: 'unpaid', label: 'Pending (Unpaid)', count: statusCounts.unpaidCount },
+              { id: 'partial', label: 'Partially Paid', count: statusCounts.partialCount },
+              { id: 'overdue', label: 'Overdue', count: statusCounts.overdueCount, tone: 'danger' },
+              { id: 'paid', label: 'Paid in Full', count: statusCounts.paidCount, tone: 'success' },
+            ]}
+            activePill={invoiceStatusFilter}
+            onPillChange={(id) => setInvoiceStatusFilter(id as any)}
+          />
 
           {/* Invoices Table */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
-            {filteredInvoices.length === 0 ? (
+          <DataTable<Invoice>
+            data={visibleInvoices}
+            rowKey={(inv) => inv.id}
+            rowClassName={(inv) => {
+              const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+              const isPaid = inv.payment_status === 'paid' || remaining <= 0;
+              const { isOverdue } = isInvoiceOverdue(inv);
+              // Visual status border on row
+              return isPaid
+                ? 'border-l-4 border-l-emerald-500'
+                : isOverdue
+                ? 'border-l-4 border-l-rose-600 bg-rose-50/20'
+                : inv.payment_status === 'partial'
+                ? 'border-l-4 border-l-blue-500'
+                : 'border-l-4 border-l-amber-400';
+            }}
+            selection={{
+              selectedIds,
+              allSelected: selectedIds.length === filteredInvoices.length,
+              onToggle: toggleSelect,
+              onToggleAll: toggleSelectAll,
+            }}
+            emptyState={
               <div className="p-6">
                 <EmptyState
                   icon={Search}
@@ -602,262 +558,241 @@ export const BillingView: React.FC = () => {
                   }}
                 />
               </div>
-            ) : (
-              <div className="overflow-x-auto no-scrollbar">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200/80 font-bold uppercase text-[11px] text-slate-500 tracking-wider">
-                      <th scope="col" className="py-2 px-3 w-10">
-                        <button onClick={toggleSelectAll} className="p-1 text-slate-500 cursor-pointer">
-                          {selectedIds.length === filteredInvoices.length && filteredInvoices.length > 0 ? (
-                            <CheckSquare className="w-4 h-4 text-indigo-600" />
-                          ) : (
-                            <Square className="w-4 h-4 text-slate-300" />
-                          )}
-                        </button>
-                      </th>
-                      <th scope="col" className="py-2 px-3">Invoice #</th>
-                      <th scope="col" className="py-2 px-3">Case #</th>
-                      <th scope="col" className="py-2 px-3">Dental Clinic</th>
-                      <th scope="col" className="py-2 px-3">Case Material</th>
-                      <th scope="col" className="py-2 px-3">Doctor</th>
-                      <th scope="col" className="py-2 px-3 text-right">Final Amount</th>
-                      <th scope="col" className="py-2 px-3 text-right">Paid</th>
-                      <th scope="col" className="py-2 px-3 text-right">Remaining Due</th>
-                      <th scope="col" className="py-2 px-3 text-center">Due Date & Terms</th>
-                      <th scope="col" className="py-2 px-3 text-center">Payment Status</th>
-                      <th scope="col" className="py-2 px-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {visibleInvoices.map((inv) => {
-                      const isSelected = selectedIds.includes(inv.id);
-                      const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
-                      const isPaid = inv.payment_status === 'paid' || remaining <= 0;
-                      const { isOverdue, diffDays } = isInvoiceOverdue(inv);
-
-                      // Clinic financial summary for contextual action
-                      const clinicSummary = getLabFinancialSummary(inv.lab_id);
-
-                      // Visual status border on row
-                      const rowStatusClass = isPaid
-                        ? 'border-l-4 border-l-emerald-500'
-                        : isOverdue
-                        ? 'border-l-4 border-l-rose-600 bg-rose-50/20'
-                        : inv.payment_status === 'partial'
-                        ? 'border-l-4 border-l-blue-500'
-                        : 'border-l-4 border-l-amber-400';
-
-                      return (
-                        <tr 
-                          key={inv.id} 
-                          className={`hover:bg-slate-50/80 transition-colors ${rowStatusClass} ${isSelected ? 'bg-indigo-50/40' : ''}`}
+            }
+            footer={
+              filteredInvoices.length > visibleInvoices.length ? (
+                <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
+                  <span className="text-xs text-slate-500">
+                    Showing {visibleInvoices.length} of {filteredInvoices.length} invoices
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRenderLimit((n) => n + RENDER_CAP_STEP)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                  >
+                    Show {Math.min(RENDER_CAP_STEP, filteredInvoices.length - visibleInvoices.length)} More
+                  </button>
+                </div>
+              ) : undefined
+            }
+            columns={[
+              {
+                header: 'Invoice #',
+                className: 'font-mono font-bold text-slate-900 whitespace-nowrap',
+                render: (inv: Invoice) => (
+                  <button
+                    onClick={() => setSelectedDrawerInvoice(inv)}
+                    className="hover:text-indigo-600 hover:underline transition-colors text-left font-bold cursor-pointer"
+                    title="Click to inspect invoice lifecycle, breakdown & payment allocations"
+                  >
+                    {inv.invoice_number}
+                  </button>
+                ),
+              },
+              {
+                header: 'Case #',
+                className: 'whitespace-nowrap',
+                render: (inv: Invoice) => (
+                  <button
+                    onClick={() => {
+                      const c = cases.find(cs => cs.id === inv.case_id || cs.case_number === inv.case_number);
+                      if (c) setViewSlipCase(c);
+                    }}
+                    className="font-mono font-semibold text-indigo-600 hover:underline"
+                    title="View Workstation Job Slip"
+                  >
+                    {inv.case_number}
+                  </button>
+                ),
+              },
+              {
+                header: 'Dental Clinic',
+                className: 'text-slate-900 font-semibold whitespace-nowrap',
+                render: (inv: Invoice) => {
+                  const clinicSummary = getLabFinancialSummary(inv.lab_id);
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      <span>{inv.lab_name}</span>
+                      {(clinicSummary?.advance_balance || 0) > 0 && (
+                        <span
+                          className="text-[11px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded"
+                          title={`Clinic holds PKR ${(clinicSummary.advance_balance || 0).toLocaleString()} unallocated advance deposit`}
                         >
-                          <td className="py-2 px-3">
-                            <button onClick={() => toggleSelect(inv.id)} className="p-1 cursor-pointer">
-                              {isSelected ? (
-                                <CheckSquare className="w-4 h-4 text-indigo-600" />
-                              ) : (
-                                <Square className="w-4 h-4 text-slate-300" />
-                              )}
-                            </button>
-                          </td>
-
-                          {/* Invoice # */}
-                          <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                            <button
-                              onClick={() => setSelectedDrawerInvoice(inv)}
-                              className="hover:text-indigo-600 hover:underline transition-colors text-left font-bold cursor-pointer"
-                              title="Click to inspect invoice lifecycle, breakdown & payment allocations"
-                            >
-                              {inv.invoice_number}
-                            </button>
-                          </td>
-
-                          {/* Case # */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            <button
-                              onClick={() => {
-                                const c = cases.find(cs => cs.id === inv.case_id || cs.case_number === inv.case_number);
-                                if (c) setViewSlipCase(c);
-                              }}
-                              className="font-mono font-semibold text-indigo-600 hover:underline"
-                              title="View Workstation Job Slip"
-                            >
-                              {inv.case_number}
-                            </button>
-                          </td>
-
-                          {/* Dental Clinic */}
-                          <td className="py-2 px-3 text-slate-900 font-semibold whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              <span>{inv.lab_name}</span>
-                              {(clinicSummary?.advance_balance || 0) > 0 && (
-                                <span 
-                                  className="text-[11px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded"
-                                  title={`Clinic holds PKR ${(clinicSummary.advance_balance || 0).toLocaleString()} unallocated advance deposit`}
-                                >
-                                  Adv Avail
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Material */}
-                          <td className="py-2 px-3 text-slate-600">
-                            {inv.case_type_name}
-                          </td>
-
-                          {/* Doctor */}
-                          <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
-                            {inv.doctor_name}
-                          </td>
-
-                          {/* Total Amount */}
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap tabular-nums">
-                            PKR {(inv.final_amount || 0).toLocaleString()}
-                          </td>
-
-                          {/* Paid Amount */}
-                          <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 whitespace-nowrap tabular-nums">
-                            PKR {(inv.amount_paid || 0).toLocaleString()}
-                          </td>
-
-                          {/* Remaining Due */}
-                          <td className={`py-2 px-3 text-right font-mono font-bold whitespace-nowrap tabular-nums ${
-                            remaining > 0 ? (isOverdue ? 'text-rose-600 font-bold' : 'text-amber-600') : 'text-slate-400'
-                          }`}>
-                            PKR {(remaining || 0).toLocaleString()}
-                          </td>
-
-                          {/* Due Date & Terms Column */}
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
-                            {isPaid ? (
-                              <div className="inline-flex flex-col items-center">
-                                <span className="text-slate-500 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
-                                <span className="text-[11px] text-emerald-600 font-bold">Settled</span>
-                              </div>
-                            ) : isOverdue ? (
-                              <div className="inline-flex flex-col items-center">
-                                <span className="text-rose-600 font-bold text-[11px] flex items-center gap-1">
-                                  <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
-                                  <span>{inv.due_date}</span>
-                                </span>
-                                <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-bold text-[11px] rounded mt-0.5 whitespace-nowrap">
-                                  EXPIRED ({diffDays}d)
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="inline-flex flex-col items-center">
-                                <span className="text-slate-700 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
-                                <span className="text-[11px] text-amber-700 font-semibold">
-                                  {inv.due_date ? 'Within Terms' : 'No Terms'}
-                                </span>
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Payment Status Indicator (Paid, Pending, Overdue) */}
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
-                            {getStatusBadge(inv)}
-                          </td>
-
-                          {/* Context-Aware Actions: Receive vs Pay/Refund & Drawer Inspect */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {!isPaid ? (
-                                <button
-                                  onClick={() => {
-                                    setUnifiedModalInvoiceId(inv.id);
-                                    setUnifiedModalLabId(inv.lab_id);
-                                    setUnifiedModalMode('payment');
-                                    setIsUnifiedRecordModalOpen(true);
-                                  }}
-                                  className={`px-2.5 py-1 text-white font-bold text-xs rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer ${
-                                    isOverdue
-                                      ? 'bg-rose-600 hover:bg-rose-700'
-                                      : 'bg-emerald-600 hover:bg-emerald-700'
-                                  }`}
-                                  title={isOverdue ? 'Receive overdue payment' : 'Receive payment against this invoice'}
-                                >
-                                  <ArrowDownLeft className="w-3.5 h-3.5" />
-                                  <span>{isOverdue ? 'Receive Overdue' : 'Receive'}</span>
-                                </button>
-                              ) : clinicSummary.outstanding_balance === 0 && clinicSummary.advance_balance > 0 ? (
-                                <button
-                                  onClick={() => {
-                                    setUnifiedModalInvoiceId(undefined);
-                                    setUnifiedModalLabId(inv.lab_id);
-                                    setUnifiedModalMode('refund');
-                                    setIsUnifiedRecordModalOpen(true);
-                                  }}
-                                  className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                                  title="Clinic has credit surplus. Click to pay refund or adjust"
-                                >
-                                  <ArrowUpRight className="w-3.5 h-3.5 text-purple-600" />
-                                  <span>Pay / Refund</span>
-                                </button>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>Cleared</span>
-                                </span>
-                              )}
-
-                              <button
-                                onClick={() => setSelectedDrawerInvoice(inv)}
-                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                title="Inspect Invoice Breakdown, Case Items & Settlement History" aria-label="Inspect invoice breakdown, case items and settlement history"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-
-                              <button
-                                onClick={() => setPrintModalInvoice(inv)}
-                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                title="Print Invoice Statement" aria-label="Print invoice statement"
-                              >
-                                <Printer className="w-4 h-4" />
-                              </button>
-
-                              <button
-                                onClick={() => { if (canPost(user, 'invoice:void')) setVoidTarget(inv); }}
-                                className={`p-1.5 rounded-lg transition-colors ${
-                                  canPost(user, 'invoice:void')
-                                    ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
-                                    : 'text-slate-200 cursor-not-allowed'
-                                }`}
-                                title={canPost(user, 'invoice:void') ? 'Void Invoice' : 'Void Invoice (admin only)'}
-                                aria-label={canPost(user, 'invoice:void') ? `Void invoice ${inv.invoice_number}` : `Void invoice ${inv.invoice_number} (admin only)`}
-                                aria-disabled={!canPost(user, 'invoice:void')}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {filteredInvoices.length > visibleInvoices.length && (
-                  <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
-                    <span className="text-xs text-slate-500">
-                      Showing {visibleInvoices.length} of {filteredInvoices.length} invoices
+                          Adv Avail
+                        </span>
+                      )}
+                    </div>
+                  );
+                },
+              },
+              {
+                header: 'Case Material',
+                className: 'text-slate-600',
+                render: (inv: Invoice) => inv.case_type_name,
+              },
+              {
+                header: 'Doctor',
+                className: 'text-slate-600 whitespace-nowrap',
+                render: (inv: Invoice) => inv.doctor_name,
+              },
+              {
+                header: 'Final Amount',
+                align: 'right',
+                className: 'font-mono font-bold text-slate-900 whitespace-nowrap tabular-nums',
+                render: (inv: Invoice) => `PKR ${(inv.final_amount || 0).toLocaleString()}`,
+              },
+              {
+                header: 'Paid',
+                align: 'right',
+                className: 'font-mono font-semibold text-emerald-600 whitespace-nowrap tabular-nums',
+                render: (inv: Invoice) => `PKR ${(inv.amount_paid || 0).toLocaleString()}`,
+              },
+              {
+                header: 'Remaining Due',
+                align: 'right',
+                className: 'whitespace-nowrap',
+                render: (inv: Invoice) => {
+                  const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+                  const { isOverdue } = isInvoiceOverdue(inv);
+                  return (
+                    <span className={`font-mono font-bold tabular-nums ${
+                      remaining > 0 ? (isOverdue ? 'text-rose-600 font-bold' : 'text-amber-600') : 'text-slate-400'
+                    }`}>
+                      PKR {(remaining || 0).toLocaleString()}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setRenderLimit((n) => n + RENDER_CAP_STEP)}
-                      className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                    >
-                      Show {Math.min(RENDER_CAP_STEP, filteredInvoices.length - visibleInvoices.length)} More
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                  );
+                },
+              },
+              {
+                header: 'Due Date & Terms',
+                align: 'center',
+                className: 'whitespace-nowrap',
+                render: (inv: Invoice) => {
+                  const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+                  const isPaid = inv.payment_status === 'paid' || remaining <= 0;
+                  const { isOverdue, diffDays } = isInvoiceOverdue(inv);
+                  if (isPaid) {
+                    return (
+                      <div className="inline-flex flex-col items-center">
+                        <span className="text-slate-500 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
+                        <span className="text-[11px] text-emerald-600 font-bold">Settled</span>
+                      </div>
+                    );
+                  }
+                  if (isOverdue) {
+                    return (
+                      <div className="inline-flex flex-col items-center">
+                        <span className="text-rose-600 font-bold text-[11px] flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                          <span>{inv.due_date}</span>
+                        </span>
+                        <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-bold text-[11px] rounded mt-0.5 whitespace-nowrap">
+                          EXPIRED ({diffDays}d)
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="inline-flex flex-col items-center">
+                      <span className="text-slate-700 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
+                      <span className="text-[11px] text-amber-700 font-semibold">
+                        {inv.due_date ? 'Within Terms' : 'No Terms'}
+                      </span>
+                    </div>
+                  );
+                },
+              },
+              {
+                header: 'Payment Status',
+                align: 'center',
+                className: 'whitespace-nowrap',
+                render: (inv: Invoice) => getStatusBadge(inv),
+              },
+              {
+                header: 'Actions',
+                align: 'right',
+                className: 'whitespace-nowrap',
+                render: (inv: Invoice) => {
+                  const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+                  const isPaid = inv.payment_status === 'paid' || remaining <= 0;
+                  const { isOverdue } = isInvoiceOverdue(inv);
+                  const clinicSummary = getLabFinancialSummary(inv.lab_id);
+                  return (
+                    <div className="flex items-center justify-end gap-1.5">
+                      {!isPaid ? (
+                        <button
+                          onClick={() => {
+                            setUnifiedModalInvoiceId(inv.id);
+                            setUnifiedModalLabId(inv.lab_id);
+                            setUnifiedModalMode('payment');
+                            setIsUnifiedRecordModalOpen(true);
+                          }}
+                          className={`px-2.5 py-1 text-white font-bold text-xs rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer ${
+                            isOverdue
+                              ? 'bg-rose-600 hover:bg-rose-700'
+                              : 'bg-emerald-600 hover:bg-emerald-700'
+                          }`}
+                          title={isOverdue ? 'Receive overdue payment' : 'Receive payment against this invoice'}
+                        >
+                          <ArrowDownLeft className="w-3.5 h-3.5" />
+                          <span>{isOverdue ? 'Receive Overdue' : 'Receive'}</span>
+                        </button>
+                      ) : clinicSummary.outstanding_balance === 0 && clinicSummary.advance_balance > 0 ? (
+                        <button
+                          onClick={() => {
+                            setUnifiedModalInvoiceId(undefined);
+                            setUnifiedModalLabId(inv.lab_id);
+                            setUnifiedModalMode('refund');
+                            setIsUnifiedRecordModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          title="Clinic has credit surplus. Click to pay refund or adjust"
+                        >
+                          <ArrowUpRight className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Pay / Refund</span>
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>Cleared</span>
+                        </span>
+                      )}
+
+                      <button
+                        onClick={() => setSelectedDrawerInvoice(inv)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="Inspect Invoice Breakdown, Case Items & Settlement History" aria-label="Inspect invoice breakdown, case items and settlement history"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => setPrintModalInvoice(inv)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="Print Invoice Statement" aria-label="Print invoice statement"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => { if (canPost(user, 'invoice:void')) setVoidTarget(inv); }}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          canPost(user, 'invoice:void')
+                            ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
+                            : 'text-slate-200 cursor-not-allowed'
+                        }`}
+                        title={canPost(user, 'invoice:void') ? 'Void Invoice' : 'Void Invoice (admin only)'}
+                        aria-label={canPost(user, 'invoice:void') ? `Void invoice ${inv.invoice_number}` : `Void invoice ${inv.invoice_number} (admin only)`}
+                        aria-disabled={!canPost(user, 'invoice:void')}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                },
+              },
+            ]}
+          />
 
         </div>
       )}

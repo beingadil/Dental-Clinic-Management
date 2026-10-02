@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { getTodayStr } from '../../utils/dateUtils';
 import { DollarSign, Plus, Trash2, Tag, ShieldAlert } from 'lucide-react';
 
 interface LabPricingManagerProps {
@@ -14,7 +15,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
   const [caseTypeId, setCaseTypeId] = useState(caseTypes[0]?.id || '');
   const [customPrice, setCustomPrice] = useState<number | ''>('');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
-  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
+  const [effectiveDate, setEffectiveDate] = useState(getTodayStr());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {

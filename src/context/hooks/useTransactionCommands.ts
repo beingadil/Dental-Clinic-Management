@@ -7,6 +7,7 @@ import type {
   ReconciliationItem,
 } from '../../types';
 import { formatPKR } from '../../services/financeDomain';
+import { getNowStamp } from '../../utils/dateUtils';
 import {
   buildPaymentJournal,
   buildAdvanceDepositJournal,
@@ -94,7 +95,7 @@ export function useTransactionCommands(deps: {
   }): { payment: PaymentRecord; receiptNumber: string; journal: JournalEntry } => {
     const lab = labs.find((l) => l.id === command.clinicId);
     const labName = lab ? lab.name : 'Dental Clinic';
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const paymentId = `pay-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const prepared = prepareTransaction({
@@ -193,7 +194,7 @@ export function useTransactionCommands(deps: {
   }): { advance: AdvancePayment; receiptNumber: string; journal: JournalEntry } => {
     const lab = labs.find((l) => l.id === command.clinicId);
     const labName = lab ? lab.name : 'Dental Clinic';
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const advanceId = `adv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const prepared = prepareAdvanceDeposit({
@@ -250,7 +251,7 @@ export function useTransactionCommands(deps: {
     const toApply = Math.min(command.amount, remainingDue, totalAvailable);
     if (toApply <= 0) return false;
 
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const actor = actorName || 'Staff';
 
     // FIFO deduction across the clinic's available advances.
@@ -355,7 +356,7 @@ export function useTransactionCommands(deps: {
     reason: string;
   }): boolean => {
     if (!command.reason.trim()) return false;
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const actor = actorName || 'Supervisor';
 
     if (command.referenceType === 'payment') {
@@ -475,7 +476,7 @@ export function useTransactionCommands(deps: {
   };
 
   const reconcileItemV2 = (id: string, matchNotes?: string) => {
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const actor = actorName || 'Auditor';
 
     setReconciliationItems((prev) =>
@@ -498,7 +499,7 @@ export function useTransactionCommands(deps: {
   };
 
   const flagReconciliationExceptionV2 = (id: string, reason: string) => {
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const actor = actorName || 'Auditor';
 
     setReconciliationItems((prev) =>

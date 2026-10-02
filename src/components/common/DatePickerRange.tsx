@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { getTodayStr } from '../../utils/dateUtils';
 
 /**
  * Enhanced date-range picker: text inputs with a proper calendar popup —
@@ -30,7 +31,7 @@ const toISODate = (d: Date) => {
   return `${y}-${m}-${day}`;
 };
 
-export const todayISO = () => toISODate(new Date());
+export const todayISO = () => getTodayStr();
 
 function CalendarGrid({
   viewYear,

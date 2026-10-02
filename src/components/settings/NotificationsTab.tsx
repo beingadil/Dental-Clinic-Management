@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { getTodayStr } from '../../utils/dateUtils';
 import { auditRepo } from '../../db/repos';
 import type { EmailTemplate, NotificationConfig } from '../../types';
 import {
@@ -42,7 +43,7 @@ export const NotificationsTab: React.FC = () => {
   const accent = resolveBrandSwatch(brandingSettings?.primaryColor);
 
   const sampleValues = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayStr();
     return {
       lab_name: brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Solutions',
       app_name: brandingSettings?.appName || 'Dental Solutions',

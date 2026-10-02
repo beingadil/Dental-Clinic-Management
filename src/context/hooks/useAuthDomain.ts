@@ -9,6 +9,7 @@ import {
 import type { UserRow } from '../../db/repos';
 import { usersRepo, sessionsRepo } from '../../db/repos';
 import { isDatabaseReady, getDatabase } from '../../db/core';
+import { getTodayStr } from '../../utils/dateUtils';
 import { hashPassword, verifyPassword } from '../../db/crypto';
 import {
   INITIAL_CASES,
@@ -30,6 +31,25 @@ import {
   INITIAL_RECONCILIATION_ITEMS,
 } from '../../data/initialData';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
+
+/**
+ * D3 — the tables a full wipe has to delete explicitly, because the collection
+ * sync does not own them: the write-through rebuild that follows a wipe only
+ * re-INSERTs the collections it does own, so anything listed here would
+ * otherwise survive a wipe that claims to leave a blank slate.
+ *
+ * `branding` and `user_preferences` are deliberately absent — setting their
+ * state above persists defaults through their own effects (useSettingsDomain).
+ */
+export const WIPE_EXPLICIT_TABLES = [
+  'chairside_appointments',
+  'clinical_materials',
+  'clinical_prep_types',
+  'shade_guides',
+  'implant_brands',
+  'notification_config',
+  'email_templates',
+] as const;
 
 /**
  * Auth + user management + backup/restore/wipe orchestration extracted from
@@ -153,7 +173,7 @@ export function useAuthDomain(deps: {
     );
     setUsers((prev) => [
       ...prev,
-      { id, username, email, name, role: 'Super Admin' as const, isSuperAdmin: true, created_at: new Date().toISOString().split('T')[0] },
+      { id, username, email, name, role: 'Super Admin' as const, isSuperAdmin: true, created_at: getTodayStr() },
     ]);
   };
 
@@ -235,7 +255,7 @@ export function useAuthDomain(deps: {
       showToast('A password of at least 8 characters is required to create a user', 'error');
       return;
     }
-    const created_at = new Date().toISOString().split('T')[0];
+    const created_at = getTodayStr();
     const id = genId('usr');
     const hash = await hashPassword(newUser.password);
 
@@ -424,12 +444,14 @@ export function useAuthDomain(deps: {
     setCaseNotes({});
     setQcInspections([]);
 
-    // Purge the SQLite tables that the collection sync does not own — the tables
-    // it does own are emptied by the write-through rebuild that follows.
+    // Purge the SQLite tables the collection sync does not own (D3) — the
+    // tables it does own are emptied by the write-through rebuild that follows,
+    // and branding / user preferences persist their defaults from the setters
+    // above. User accounts are intentionally kept, so staff can still sign in.
     if (isDatabaseReady()) {
       dbWrite(() => {
         const db = getDatabase();
-        for (const table of ['chairside_appointments', 'clinical_materials', 'clinical_prep_types', 'shade_guides', 'implant_brands']) {
+        for (const table of WIPE_EXPLICIT_TABLES) {
           try { db.run(`DELETE FROM ${table}`); } catch { /* table absent in this profile */ }
         }
       });

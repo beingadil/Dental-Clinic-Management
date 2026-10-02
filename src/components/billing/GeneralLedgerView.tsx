@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { LedgerEntry, DentalLab } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
+import { getDateStr, getTodayStr } from '../../utils/dateUtils';
 import { 
   Search, 
   Eye, 
@@ -86,37 +87,39 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     );
   }, [labs, clinicSearchText]);
 
-  // Quick-range helpers for the shared DatePickerRange
+  /* Quick-range helpers for the shared DatePickerRange. Every one of these
+     builds a LOCAL Date and must therefore read the local day back out —
+     toISOString() would roll a 00:00–05:00 PKT preset back to yesterday. */
   const mondayThisWeek = () => {
     const now = new Date();
     const dow = now.getDay() || 7;
     const mon = new Date(now);
     mon.setDate(now.getDate() - (dow - 1));
-    return mon.toISOString().slice(0, 10);
+    return getDateStr(mon);
   };
   const firstOfMonth = () => {
     const n = new Date();
-    return new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10);
+    return getDateStr(new Date(n.getFullYear(), n.getMonth(), 1));
   };
   const endOfMonth = () => {
     const n = new Date();
-    return new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().slice(0, 10);
+    return getDateStr(new Date(n.getFullYear(), n.getMonth() + 1, 0));
   };
   const firstOfLastMonth = () => {
     const n = new Date();
-    return new Date(n.getFullYear(), n.getMonth() - 1, 1).toISOString().slice(0, 10);
+    return getDateStr(new Date(n.getFullYear(), n.getMonth() - 1, 1));
   };
   const endOfLastMonth = () => {
     const n = new Date();
-    return new Date(n.getFullYear(), n.getMonth(), 0).toISOString().slice(0, 10);
+    return getDateStr(new Date(n.getFullYear(), n.getMonth(), 0));
   };
   const firstOfYear = () => {
     const n = new Date();
-    return new Date(n.getFullYear(), 0, 1).toISOString().slice(0, 10);
+    return getDateStr(new Date(n.getFullYear(), 0, 1));
   };
   const endOfYear = () => {
     const n = new Date();
-    return new Date(n.getFullYear(), 11, 31).toISOString().slice(0, 10);
+    return getDateStr(new Date(n.getFullYear(), 11, 31));
   };
 
   // Quick date presets
@@ -143,32 +146,32 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
       const dayOfWeek = now.getDay() || 7; // Sunday is 0, make it 7
       const monday = new Date(now);
       monday.setDate(now.getDate() - (dayOfWeek - 1));
-      setStartDate(monday.toISOString().slice(0, 10));
-      setEndDate(now.toISOString().slice(0, 10));
+      setStartDate(getDateStr(monday));
+      setEndDate(getDateStr(now));
       return;
     }
 
     if (preset === 'this_month') {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setStartDate(firstDay.toISOString().slice(0, 10));
-      setEndDate(lastDay.toISOString().slice(0, 10));
+      setStartDate(getDateStr(firstDay));
+      setEndDate(getDateStr(lastDay));
       return;
     }
 
     if (preset === 'last_month') {
       const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-      setStartDate(firstDay.toISOString().slice(0, 10));
-      setEndDate(lastDay.toISOString().slice(0, 10));
+      setStartDate(getDateStr(firstDay));
+      setEndDate(getDateStr(lastDay));
       return;
     }
 
     if (preset === 'this_year') {
       const firstDay = new Date(now.getFullYear(), 0, 1);
       const lastDay = new Date(now.getFullYear(), 11, 31);
-      setStartDate(firstDay.toISOString().slice(0, 10));
-      setEndDate(lastDay.toISOString().slice(0, 10));
+      setStartDate(getDateStr(firstDay));
+      setEndDate(getDateStr(lastDay));
       return;
     }
   };

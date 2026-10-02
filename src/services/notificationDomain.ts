@@ -1,4 +1,5 @@
 import type { AppNotification, DentalCase, Invoice } from '../types';
+import { getNowStamp } from '../utils/dateUtils';
 
 /**
  * Notification domain — the single home for notification-building rules that
@@ -8,7 +9,7 @@ import type { AppNotification, DentalCase, Invoice } from '../types';
  * taken as parameters so production and tests share one clock strategy.
  */
 
-const nowStamp = (): string => new Date().toISOString().replace('T', ' ').substring(0, 16);
+const nowStamp = (): string => getNowStamp();
 
 interface BaseInput {
   /** Notification id — pass the same generator used across the app. */
@@ -111,7 +112,7 @@ export const buildOverdueAlerts = (
       lab_id: c.lab_id,
       is_read: false,
       read: false,
-      created_at: new Date().toISOString(),
+      created_at: getNowStamp(),
     }));
 
 /** Deterministic unpaid-invoice reminders, one per invoice past its due date. */
@@ -137,7 +138,7 @@ export const buildUnpaidInvoiceAlerts = (
       lab_id: inv.lab_id,
       is_read: false,
       read: false,
-      created_at: new Date().toISOString(),
+      created_at: getNowStamp(),
     }));
 
 /**
@@ -161,7 +162,7 @@ export const buildGenericNotification = (
 ): AppNotification => ({
   ...n,
   id,
-  created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+  created_at: getNowStamp(),
   is_read: false,
   read: false,
   is_archived: false,

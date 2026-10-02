@@ -1,4 +1,5 @@
 import React from 'react';
+import { getTodayStr } from '../../utils/dateUtils';
 import {
   X,
   Pencil,
@@ -38,7 +39,7 @@ const formatDate = (d?: string) => {
 
 export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClose, onEdit, onStatusChange }) => {
   const c = caseData;
-  const isOverdue = c.delivery_date < new Date().toISOString().slice(0, 10) && c.status !== 'delivered' && c.status !== 'cancelled';
+  const isOverdue = c.delivery_date < getTodayStr() && c.status !== 'delivered' && c.status !== 'cancelled';
 
   return (
     <div className="fixed inset-0 z-40 bg-slate-100 overflow-y-auto">

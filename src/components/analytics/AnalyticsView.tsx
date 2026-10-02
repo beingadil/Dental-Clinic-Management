@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { getDateStr, getTodayStr } from '../../utils/dateUtils';
 import { useApp } from '../../context/AppContext';
 import { computeAnalyticsForPeriod } from '../../services/analyticsService';
 import { DatePickerRange } from '../common/DatePickerRange';
@@ -31,9 +32,9 @@ type PeriodId = 'this_month' | 'last_3_months' | 'this_year' | 'all_time' | 'cus
 const todayParts = () => {
   const now = new Date();
   return {
-    today: now.toISOString().slice(0, 10),
-    monthStart: now.toISOString().slice(0, 8) + '01',
-    threeMonthsAgo: new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 10),
+    today: getTodayStr(),
+    monthStart: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`,
+    threeMonthsAgo: getDateStr(new Date(now.getFullYear(), now.getMonth() - 2, 1)),
     yearStart: `${now.getFullYear()}-01-01`,
   };
 };

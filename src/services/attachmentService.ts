@@ -1,4 +1,5 @@
 import { sha256Hex } from '../db/crypto';
+import { getTodayStr } from '../utils/dateUtils';
 
 /**
  * Local attachment storage service (Phase 5).
@@ -99,7 +100,7 @@ export async function processFile(file: File, entityType: string, entityId: stri
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   const checksum = await sha256Hex(bytes);
 
-  const day = new Date().toISOString().slice(0, 10);
+  const day = getTodayStr();
   return {
     filename,
     file_type: mime,

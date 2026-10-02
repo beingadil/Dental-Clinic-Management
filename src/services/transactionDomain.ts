@@ -9,6 +9,7 @@ import type {
 } from '../types';
 import { deriveInvoiceStatus, formatPKR } from './financeDomain';
 import { maxDocumentSeq } from './ledgerDomain';
+import { getNowStamp } from '../utils/dateUtils';
 
 /**
  * Transaction domain — pure builders for the V2 cashier command flows
@@ -23,11 +24,11 @@ export const buildAuditEvent = (
   identity?: { id?: string; at?: string },
 ): AuditEvent => ({
   id: identity?.id ?? `aud-${Date.now()}`,
-  timestamp: identity?.at ?? new Date().toISOString().replace('T', ' ').substring(0, 16),
+  timestamp: identity?.at ?? getNowStamp(),
   ...event,
 });
 
-const nowStamp = (): string => new Date().toISOString().replace('T', ' ').substring(0, 16);
+const nowStamp = (): string => getNowStamp();
 const todayPart = (nowStr: string): string => nowStr.split(' ')[0];
 
 /** Status a fresh payment takes, given the cashier's verification flag. */

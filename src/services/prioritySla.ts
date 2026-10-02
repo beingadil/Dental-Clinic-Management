@@ -1,4 +1,5 @@
 import { PriorityLevel } from '../types';
+import { getDateStr } from '../utils/dateUtils';
 
 /**
  * Priority → SLA mapping. Each priority level carries an explicit turnaround
@@ -34,11 +35,14 @@ export function prioritySlaLabel(p: PriorityLevel): string {
   return `${PRIORITY_LABELS[p]} — ${days} day${days === 1 ? '' : 's'}`;
 }
 
-/** Due date = today + SLA days (YYYY-MM-DD). */
+/** Due date = today + SLA days, on the LOCAL calendar (YYYY-MM-DD). */
 export function computeSlaDueDate(priority: PriorityLevel, from: Date = new Date()): string {
   const d = new Date(from);
   d.setDate(d.getDate() + PRIORITY_SLA_DAYS[priority]);
-  return d.toISOString().split('T')[0];
+  // Local day, not toISOString(): setDate() works in local time, so reading
+  // the result back in UTC walked the date back a day for every clinic
+  // booking before 05:00 PKT.
+  return getDateStr(d);
 }
 
 /**

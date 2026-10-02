@@ -1,4 +1,5 @@
 import type { SavedVoucher, CaseNote } from '../types';
+import { getNowStamp } from '../utils/dateUtils';
 
 /**
  * Voucher domain — voucher + workslip logging rules extracted from AppContext
@@ -6,7 +7,7 @@ import type { SavedVoucher, CaseNote } from '../types';
  * trail; persistence and state updates stay with the caller.
  */
 
-const nowStamp = (): string => new Date().toISOString().replace('T', ' ').substring(0, 16);
+const nowStamp = (): string => getNowStamp();
 
 /** Complete a voucher skeleton with identity + provenance fields. */
 export const assembleVoucher = (

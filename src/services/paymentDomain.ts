@@ -1,5 +1,6 @@
 import type { Invoice, PaymentRecord, PaymentAllocation, SavedVoucher, JournalEntry, AppNotification } from '../types';
 import { buildPaymentJournal } from './financeDomain';
+import { getNowStamp } from '../utils/dateUtils';
 
 /**
  * Payment domain — the single home for payment-posting business rules that
@@ -34,7 +35,7 @@ export const buildInvoiceAllocation = ({ payment, invoice, actor }: BuildPayment
   invoice_id: invoice.id,
   invoice_number: invoice.invoice_number,
   amount: payment.amount,
-  allocated_at: payment.created_at || new Date().toISOString(),
+  allocated_at: payment.created_at || getNowStamp(),
   allocated_by: actor,
 });
 
@@ -77,5 +78,5 @@ export const buildPaidInFullNotification = (payment: PaymentRecord, invoice: Inv
   lab_id: invoice.lab_id,
   is_read: false,
   is_archived: false,
-  created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+  created_at: getNowStamp(),
 });

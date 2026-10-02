@@ -9,6 +9,7 @@ import type {
   LedgerEntryType,
   LabFinancialSummary,
 } from '../types';
+import { getTodayStr } from '../utils/dateUtils';
 
 /**
  * Ledger domain — pure financial views extracted from AppContext (audit
@@ -221,7 +222,7 @@ export const buildLedgerEntries = (input: {
 
     // 1. Invoices -> Debit (Increases Outstanding Receivable)
     targetInvoices.forEach((inv) => {
-      const invDate = inv.created_at || new Date().toISOString().slice(0, 10);
+      const invDate = inv.created_at || getTodayStr();
       const parsedTime = new Date(invDate).getTime();
       const invTime = isNaN(parsedTime) ? Date.now() : parsedTime;
       const invNum = inv.invoice_number || 'INV';
@@ -281,7 +282,7 @@ export const buildLedgerEntries = (input: {
 
     // 3. Advance Payments / Deposits received from Clinic -> Credit (Decreases Outstanding Receivable / Creates credit surplus)
     targetAdvances.forEach((adv, advIdx) => {
-      const advDate = adv.payment_date || adv.created_at || new Date().toISOString().slice(0, 10);
+      const advDate = adv.payment_date || adv.created_at || getTodayStr();
       // Business date first: a backdated deposit must file at its payment
       // date, never at the later record/sync created_at.
       const parsedTime = new Date(advDate).getTime();
@@ -314,7 +315,7 @@ export const buildLedgerEntries = (input: {
     targetAdjustments.forEach((adj, adjIdx) => {
       const isCreditNote = adj.type === 'credit_note';
       const isDebit = adj.type === 'debit_adjustment';
-      const adjDate = adj.date || adj.created_at || new Date().toISOString().slice(0, 10);
+      const adjDate = adj.date || adj.created_at || getTodayStr();
       // Business date first: credit notes file at their adjustment date.
       const parsedTime = new Date(adjDate).getTime();
       const adjTime = isNaN(parsedTime) ? Date.now() : parsedTime;

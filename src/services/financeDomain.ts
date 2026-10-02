@@ -8,6 +8,7 @@ import {
   PaymentAllocation,
   InvoiceStatusV2
 } from '../types';
+import { getTodayStr, getNowStamp } from '../utils/dateUtils';
 
 export const ACCOUNT_CODES = {
   CASH_BANK: { code: '1010', name: 'Cash & Bank Clearing', type: 'asset' as const },
@@ -136,7 +137,7 @@ export const buildInvoiceJournal = (
   return {
     id: generateId('jrn'),
     journal_number: `JRN-INV-${invoice.invoice_number.replace(/[^0-9]/g, '') || Date.now()}`,
-    date: invoice.created_at || new Date().toISOString().split('T')[0],
+    date: invoice.created_at || getTodayStr(),
     event_type: 'invoice_issued',
     reference_type: 'invoice',
     reference_id: invoice.id,
@@ -147,7 +148,7 @@ export const buildInvoiceJournal = (
     case_number: invoice.case_number,
     description: `Billing invoice ${invoice.invoice_number} for ${invoice.case_type_name} (${invoice.case_number})`,
     lines,
-    created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    created_at: getNowStamp(),
     created_by: creator
   };
 };
@@ -207,7 +208,7 @@ export const buildPaymentJournal = (
   return {
     id: generateId('jrn'),
     journal_number: `JRN-PAY-${payment.payment_number?.replace(/[^0-9]/g, '') || Date.now()}`,
-    date: payment.payment_date || new Date().toISOString().split('T')[0],
+    date: payment.payment_date || getTodayStr(),
     event_type: 'payment_received',
     reference_type: 'payment',
     reference_id: payment.id,
@@ -218,7 +219,7 @@ export const buildPaymentJournal = (
     case_number: payment.case_number || caseRef?.case_number,
     description: `Payment received ${payment.payment_number} via ${methodLabel}${allocations.length ? ` applied to ${allocations.map(a => a.invoice_number).join(', ')}` : ''}${unappliedAmount > 0 ? ` (+${formatPKR(unappliedAmount)} unapplied advance)` : ''}`,
     lines,
-    created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    created_at: getNowStamp(),
     created_by: creator
   };
 };
@@ -255,7 +256,7 @@ export const buildAdvanceDepositJournal = (
   return {
     id: generateId('jrn'),
     journal_number: `JRN-ADV-${advance.payment_number.replace(/[^0-9]/g, '') || Date.now()}`,
-    date: advance.payment_date || new Date().toISOString().split('T')[0],
+    date: advance.payment_date || getTodayStr(),
     event_type: 'advance_deposited',
     reference_type: 'advance_payment',
     reference_id: advance.id,
@@ -265,7 +266,7 @@ export const buildAdvanceDepositJournal = (
     // A deposit is a clinic-level event: genuinely no case relationship yet.
     description: `Advance deposit ${advance.payment_number} received from ${advance.lab_name} via ${methodLabel}`,
     lines,
-    created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    created_at: getNowStamp(),
     created_by: creator
   };
 };
@@ -303,7 +304,7 @@ export const buildApplyAdvanceJournal = (
   return {
     id: generateId('jrn'),
     journal_number: `JRN-ALLOC-${Date.now().toString(36).toUpperCase()}`,
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayStr(),
     event_type: 'advance_applied',
     reference_type: 'advance_allocation',
     reference_id: invoice.id,
@@ -314,7 +315,7 @@ export const buildApplyAdvanceJournal = (
     case_number: invoice.case_number,
     description: `Applied advance credit (${advanceRef}) of ${formatPKR(amount)} to invoice ${invoice.invoice_number}`,
     lines,
-    created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    created_at: getNowStamp(),
     created_by: creator
   };
 };
@@ -397,7 +398,7 @@ export const buildAdjustmentJournal = (
   return {
     id: generateId('jrn'),
     journal_number: `JRN-ADJ-${adj.adjustment_number.replace(/[^0-9]/g, '') || Date.now()}`,
-    date: adj.date || new Date().toISOString().split('T')[0],
+    date: adj.date || getTodayStr(),
     event_type: adj.type,
     reference_type: 'adjustment',
     reference_id: adj.id,
@@ -409,7 +410,7 @@ export const buildAdjustmentJournal = (
     case_number: adj.case_number,
     description: `${adj.type.replace('_', ' ').toUpperCase()}: ${adj.reason}`,
     lines,
-    created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    created_at: getNowStamp(),
     created_by: creator
   };
 };
@@ -436,7 +437,7 @@ export const buildReversalJournal = (
   return {
     id: generateId('jrn'),
     journal_number: `JRN-REV-${Date.now().toString(36).toUpperCase()}`,
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayStr(),
     event_type: 'reversal',
     reference_type: original.reference_type,
     reference_id: original.reference_id,
@@ -448,7 +449,7 @@ export const buildReversalJournal = (
     case_number: original.case_number,
     description: `REVERSAL of ${original.journal_number} (${original.reference_number}): ${reason}`,
     lines: compensatingLines,
-    created_at: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    created_at: getNowStamp(),
     created_by: actor
   };
 };

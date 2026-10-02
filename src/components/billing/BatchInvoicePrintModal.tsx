@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
+import { getDateStr, getTodayStr } from '../../utils/dateUtils';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
@@ -16,9 +17,9 @@ interface BatchInvoicePrintModalProps {
 }
 
 const firstOfMonth = (d: Date = new Date()) =>
-  new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  getDateStr(new Date(d.getFullYear(), d.getMonth(), 1));
 const lastOfMonth = (d: Date = new Date()) =>
-  new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+  getDateStr(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 const lastMonthStart = () => {
   const n = new Date();
   return firstOfMonth(new Date(n.getFullYear(), n.getMonth() - 1, 1));
@@ -35,8 +36,10 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   const { labs, invoices, brandingSettings, saveVoucherToSystem } = useApp();
 
   const [labId, setLabId] = useState<string>(initialLabId || labs[0]?.id || '');
-  const [from, setFrom] = useState<string>(firstOfMonth());
-  const [to, setTo] = useState<string>(lastOfMonth());
+  // Default the period to today, matching every other billing tab; the quick
+  // ranges below are the way out to a wider window.
+  const [from, setFrom] = useState<string>(() => todayISO());
+  const [to, setTo] = useState<string>(() => todayISO());
   const [excluded, setExcluded] = useState<string[]>([]);
   const [printSettings] = useState(() => loadPrintSettings());
   /* Same stored invoice content list as the single-invoice dialog. */
@@ -185,9 +188,9 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               to={to}
               className="w-full [&>button]:w-full [&>button]:justify-start"
               quickRanges={[
+                { label: 'Today', from: todayISO(), to: todayISO() },
                 { label: 'This Month', from: firstOfMonth(), to: lastOfMonth() },
                 { label: 'Last Month', from: lastMonthStart(), to: lastMonthEnd() },
-                { label: 'Today', from: todayISO(), to: todayISO() },
                 { label: 'All Time', from: '', to: '' },
               ]}
               onChange={(f, t) => {

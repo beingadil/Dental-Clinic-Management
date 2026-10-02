@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
+import { getTodayStr } from '../../utils/dateUtils';
 import { EmptyState } from '../common/ui';
 import { 
   BarChart3, 
@@ -39,7 +40,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     const groups: { [month: string]: { [labName: string]: { count: number; total: number; paid: number } } } = {};
 
     invoices.forEach((inv) => {
-      const month = inv.created_at ? inv.created_at.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      const month = inv.created_at ? inv.created_at.substring(0, 7) : getTodayStr().substring(0, 7);
       if (!groups[month]) {
         groups[month] = {};
       }

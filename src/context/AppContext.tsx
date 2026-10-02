@@ -55,7 +55,7 @@ import {
   qcReasonLabel,
   statusAfterQc,
 } from '../services/qcDomain';
-import { getTodayStr } from '../utils/dateUtils';
+import { getTodayStr, getNowStamp } from '../utils/dateUtils';
 import { useSettingsDomain } from './hooks/useSettingsDomain';
 import { useCasesDomain } from './hooks/useCasesDomain';
 import { selectCasesToAutoArchive } from './hooks/autoArchive';
@@ -941,7 +941,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addCase = (caseData: Omit<DentalCase, 'id' | 'case_number' | 'created_at' | 'updated_at' | 'history'>) => {
     const newId = genId('case');
     const caseNumber = generateCaseNumber();
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
 
     const newCase: DentalCase = {
       ...caseData,
@@ -1019,7 +1019,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updates: Partial<DentalCase>,
     note?: string
   ) => {
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
 
     setCases((prev) =>
       prev.map((c) => {
@@ -1111,7 +1111,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getQcMetrics = (): QcMetrics => computeQcMetrics(qcInspections, cases);
 
   const recordQcCase = (command: QcCommand): QcReceipt => {
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const actor = user ? user.name : 'System';
 
     const corrected = command.action === 'correct'
@@ -1219,7 +1219,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       voidAudits.push({
         id: `aud-${Date.now()}-${inv.id}`,
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        timestamp: getNowStamp(),
         actor,
         action: 'INVOICE_VOIDED',
         entity_type: 'Invoice',
@@ -1284,7 +1284,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCaseNote = (caseId: string, noteText: string, author: string) => {
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const newNote: CaseNote = {
       id: genId('note'),
       case_id: caseId,
@@ -1300,7 +1300,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const editCaseNote = (caseId: string, noteId: string, noteText: string) => {
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     setCaseNotes((prev) => ({
       ...prev,
       [caseId]: (prev[caseId] || []).map((n) => (n.id === noteId ? { ...n, note_text: noteText, updated_at: nowStr } : n))
@@ -1315,7 +1315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCaseAttachment = (caseId: string, fileData: Omit<CaseAttachment, 'id' | 'case_id' | 'uploaded_at'>) => {
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const newAtt: CaseAttachment = {
       ...fileData,
       id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -1356,7 +1356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       shade: caseData.shade,
       instructions: caseData.instructions,
       default_priority: caseData.priority,
-      created_at: new Date().toISOString().split('T')[0]
+      created_at: getTodayStr()
     };
     setTemplates((prev) => [newTmpl, ...prev]);
   };
@@ -1372,7 +1372,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `lab-${Date.now()}`,
       rating: 5.0,
       reviews_count: 0,
-      created_at: new Date().toISOString().split('T')[0]
+      created_at: getTodayStr()
     };
     setLabs((prev) => [newLab, ...prev]);
     return newLab;
@@ -1486,7 +1486,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           doctor_name: cleanName,
           lab_id: labId,
           lab_name: labName,
-          created_at: new Date().toISOString().split('T')[0]
+          created_at: getTodayStr()
         }
       ];
     });
@@ -1503,7 +1503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newCT: CaseType = {
       ...ct,
       id: `ct-${Date.now()}`,
-      created_at: new Date().toISOString().split('T')[0]
+      created_at: getTodayStr()
     };
     setCaseTypes((prev) => [...prev, newCT]);
   };
@@ -1606,7 +1606,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         newAudits.push({
           id: `aud-${Date.now()}-${inv.id}`,
-          timestamp: new Date().toISOString(),
+          timestamp: getNowStamp(),
           actor: user ? user.name : 'Staff',
           action: 'BULK_PAYMENT_RECORDED',
           entity_type: 'Invoice',
@@ -1667,7 +1667,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const auditEvt: AuditEvent = {
       id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      timestamp: getNowStamp(),
       actor,
       action: 'INVOICE_VOIDED',
       entity_type: 'Invoice',
@@ -1710,7 +1710,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const lab = labs.find((l) => l.id === labId);
     const labName = lab ? lab.name : 'Dental Clinic';
     const adjNum = generateAdjustmentNumber(type);
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nowStr = getNowStamp();
     const newId = `adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const newAdj: AccountAdjustment = {
