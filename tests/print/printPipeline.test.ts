@@ -51,6 +51,63 @@ describe('print CSS contract — slip pipeline isolation', () => {
       new RegExp(`body\\.${SLIP_PRINT_BODY_CLASS} \\.job-slip-printing\\.print-area\\s*\\{[^}]*position: static`),
     );
   });
+
+  it('defines every named @page it references', () => {
+    // Regression: the batch named its page `job-slip-a4` in two places but
+    // never defined it, so the sheets silently fell back to the generic
+    // 12mm-margin page and printed clipped/overflowed instead of as previewed.
+    const referenced = new Set(
+      Array.from(slipCss.matchAll(/page:\s*job-slip-[a-z0-9-]+/g)).map((m) => m[0].split(':')[1].trim()),
+    );
+    referenced.add('job-slip-single');
+    for (const name of referenced) {
+      expect(slipCss).toMatch(new RegExp(`@page\\s+${name.replace(/[-]/g, '\\-')}\\s*\\{`));
+    }
+  });
+
+  it('keeps the single-slip preview zoom out of paper', () => {
+    // The 0.9 screen zoom must be screen-only: as an inline style it was
+    // never stripped, so "Print Card" produced a 90mm × 85.5mm tag.
+    const screenBlock = slipCss.slice(slipCss.indexOf('.job-slip-preview-zoom'));
+    const mediaQuery = slipCss.lastIndexOf('@media print', slipCss.indexOf('.job-slip-preview-zoom'));
+    expect(mediaQuery).toBeLessThan(slipCss.indexOf('.job-slip-preview-zoom'));
+    expect(screenBlock).toContain('transform: scale(0.9)');
+    expect(slipCss).toMatch(/\.job-slip-preview-zoom\s*\{[^}]*transform: scale/);
+  });
+
+  it('does not size the single-slip wrapper as a second page box', () => {
+    expect(slipCss).toMatch(/\.job-slip-mode-single \.job-slip-page\s*\{[^}]*width: auto/);
+  });
+
+  it('names a page for the single slip so it does not inherit the batch A4 page', () => {
+    // <body> gets page: job-slip-a4 during slip printing. Without a
+    // single-slip override the 100 × 95 mm tag printed small in the corner
+    // of a full A4 sheet.
+    expect(slipCss).toMatch(
+      new RegExp(`body\\.${SLIP_PRINT_BODY_CLASS}:has\\(\\.job-slip-mode-single[^)]*\\)\\s*\\{[^}]*page: job-slip-single`),
+    );
+  });
+});
+
+describe('single slip print wiring (CaseJobSlipModal)', () => {
+  const modal = read('src/components/cases/CaseJobSlipModal.tsx');
+
+  it('runs the same scoped isolation as the batch modal', () => {
+    // The card used to stay a generic .print-area, so the tag printed
+    // through the app-wide 12mm-margin page instead of its own geometry.
+    expect(modal).toContain(SLIP_PRINT_BODY_CLASS);
+    expect(modal).toContain(SLIP_PRINT_ROOT_CLASS);
+  });
+
+  it('marks the compact slip preview as a print root', () => {
+    expect(modal).toMatch(/job-slip-print-root/);
+    expect(modal).toMatch(/job-slip-mode-single/);
+  });
+
+  it('does not inline a print-time transform on the slip', () => {
+    expect(modal).not.toMatch(/transform:\s*'scale\(/);
+    expect(modal).toContain('job-slip-preview-zoom');
+  });
 });
 
 describe('print CSS contract — generic pipeline (lab cards, invoices, batch)', () => {

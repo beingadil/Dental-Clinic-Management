@@ -193,6 +193,16 @@
    ========================================================================= */
 
 @media print {
+  /* Generic-page neutralizer. Only the @page names below (job-slip-single /
+     job-slip-a4) are honoured by print engines; index.css's unnamed
+     `@page { margin: 8mm; size: auto }` is ignored *for elements that
+     name a page*, but the single-slip card is not named by any rule while
+     the batch root is. Stating it here for both named pages keeps the
+     margin at 0 in engines that fall back to the unnamed rule. */
+  .job-slip-print-root {
+    margin: 0 !important;
+  }
+
   /* Slip isolation — scoped to slip printing so it can never blanket-hide
      invoice/report surfaces: the batch root temporarily carries the class
      .job-slip-printing (and <body> .job-slip-printing-on) during
@@ -254,10 +264,28 @@
   height: 95mm;
 }
 
+/* The single slip card sits inside this wrapper on screen, so the wrapper
+   must not add a second fixed box on top of the tag's own 100 × 95 mm. */
+.job-slip-mode-single .job-slip-page {
+  width: auto;
+  height: auto;
+}
+
 
 
 @page job-slip-single {
   size: 100mm 95mm;
+  margin: 0;
+}
+
+/* Batch A4 page — MUST exist. Both .job-slip-mode-a4 .job-slip-page and
+   body.job-slip-printing-on name `job-slip-a4`, but while this rule was
+   missing the reference resolved to no page at all, so the sheets fell back
+   to the generic 12mm-margin @page in printStyles.css: a 210mm-wide sheet
+   could not fit the printable width, and Chromium overflowed/clipped it
+   instead of printing the previewed sheet. */
+@page job-slip-a4 {
+  size: A4 portrait;
   margin: 0;
 }
 
@@ -299,6 +327,15 @@
 }
 
 @media screen {
+  /* Screen-only preview zoom for the single slip tag. Declared inside
+     @media screen so it can never reach paper, nor the print output of a
+     serialized standalone file — both would inherit it from the inlined CSS
+     otherwise. Print keeps the true 100 × 95 mm physical size. */
+  .job-slip-preview-zoom {
+    transform: scale(0.9);
+    transform-origin: top center;
+  }
+
   /* Screen preview: pages stacked, subtle shadow only — geometry identical */
   .job-slip-mode-a4 .job-slip-page {
     margin: 0 auto 24px;
@@ -349,4 +386,11 @@
    every other surface (slip printing never coexists with them). */
 body.job-slip-printing-on {
   page: job-slip-a4;
+}
+
+/* Single slip: name its own page so MODE A keeps the 100 × 95 mm request.
+   Without this the single-tag print inherited the batch A4 page from the
+   body rule above and the tag printed small in a corner of a full sheet. */
+body.job-slip-printing-on:has(.job-slip-mode-single .job-slip-print-root) {
+  page: job-slip-single;
 }

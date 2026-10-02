@@ -5,7 +5,12 @@ import { Printer, X, Download, CheckCircle2, BookmarkCheck } from 'lucide-react'
 import { JobSlipCard } from '../print/JobSlipCard';
 import { LabCardSlip } from './LabCardSlip';
 import { SavePdfButton } from '../print/SavePdfButton';
-import { buildStandaloneHtml, downloadStandaloneHtml } from '../print/printPipeline';
+import {
+  SLIP_PRINT_BODY_CLASS,
+  SLIP_PRINT_ROOT_CLASS,
+  buildStandaloneHtml,
+  downloadStandaloneHtml,
+} from '../print/printPipeline';
 import '../print/jobSlipPrint.css';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 
@@ -27,7 +32,42 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
   const { saveVoucherToSystem, brandingSettings } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
   const slipRef = React.useRef<HTMLDivElement>(null);
+  const cardRef = React.useRef<HTMLDivElement>(null);
   const [slipStyle] = useState<PrintSettings['jobSlipStyle']>(() => loadPrintSettings().jobSlipStyle);
+
+  /**
+   * "Print Card" — run the SAME isolation pipeline the batch modal uses.
+   *
+   * The card carried `.printable-area.print-area`, so index.css made it
+   * static/100%-wide while the compact slip stayed inside a `transform:
+   * scale(0.9)` preview wrapper that nothing stripped: the tag printed at
+   * 90% of 100 × 95 mm on the generic 12 mm-margin @page, i.e. not the
+   * preview. Scoped body class + `.job-slip-print-root` on the slip restores
+   * the true physical size and reveals only the tag.
+   */
+  const handleDirectPrint = () => {
+    if (slipStyle !== 'compact') {
+      setTimeout(() => window.print(), 100);
+      return;
+    }
+    const body = document.body;
+    const card = cardRef.current;
+    if (!card) {
+      setTimeout(() => window.print(), 100);
+      return;
+    }
+    body.classList.add(SLIP_PRINT_BODY_CLASS);
+    card.classList.add(SLIP_PRINT_ROOT_CLASS);
+    card.classList.remove('print-area', 'printable-area');
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        body.classList.remove(SLIP_PRINT_BODY_CLASS);
+        card.classList.remove(SLIP_PRINT_ROOT_CLASS);
+        card.classList.add('print-area', 'printable-area');
+      }, 500);
+    }, 60);
+  };
 
   const handleSaveAndPrint = (shouldDownloadFile = false) => {
     // Save to system database
@@ -52,14 +92,18 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
       // live at /assets/*.css and a serialized relative link 404s in the
       // standalone file — the old bug that saved an unstyled/blank slip.
       const slipHtml = slipRef.current ? slipRef.current.outerHTML : '';
+      // The compact slip wrapper already carries .job-slip-print-root /
+      // .job-slip-page (that is what the in-app print path reveals), so the
+      // standalone shell must NOT wrap it in a second copy — nesting two
+      // fixed-size page boxes duplicated the slip's own dimensions.
       const pageShell = slipStyle === 'compact'
-        ? `<div class="job-slip-mode-single"><div class="job-slip-print-root job-slip-page">${slipHtml}</div></div>`
+        ? slipHtml
         : `<div class="print-area printable-area">${slipHtml}</div>`;
       const pageCss = slipStyle === 'compact'
         ? `@page { size: 100mm 95mm; margin: 0; }
       body * { visibility: hidden !important; }
       .job-slip-print-root, .job-slip-print-root * { visibility: visible !important; }
-      .job-slip-print-root { position: absolute; left: 0; top: 0; }`
+      .job-slip-print-root { position: absolute; left: 0; top: 0; transform: none !important; }`
         : `body * { visibility: hidden !important; }
       .print-area, .print-area * { visibility: visible !important; }
       .print-area { position: absolute; left: 0; top: 0; width: 100%; }`;
@@ -78,14 +122,12 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
     }
 
     // Trigger Print — MODE A: one compact 100 × 95 mm slip
-    setTimeout(() => {
-      window.print();
-    }, 100);
+    handleDirectPrint();
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6 overflow-y-auto no-print-backdrop">
-      <div className="bg-white rounded-3xl max-w-md w-full p-5 md:p-6 border border-slate-200 shadow-2xl relative space-y-5 printable-area print-area my-auto">
+      <div ref={cardRef} className="bg-white rounded-3xl max-w-md w-full p-5 md:p-6 border border-slate-200 shadow-2xl relative space-y-5 printable-area print-area my-auto">
         {/* Header Actions (hidden on print) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
@@ -142,8 +184,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
         <div className="flex justify-center py-2">
           {slipStyle === 'compact' ? (
             <div
-              className="job-slip-preview"
-              style={{ transform: 'scale(0.9)', transformOrigin: 'top center' }}
+              className="job-slip-mode-single job-slip-preview job-slip-preview-zoom job-slip-print-root job-slip-page"
               ref={slipRef}
             >
               <JobSlipCard caseData={caseData} labName={brandingSettings.appName || 'DENTAL SOLUTIONS'} logoUrl={brandingSettings.logoUrl} />
