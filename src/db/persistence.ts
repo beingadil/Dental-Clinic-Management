@@ -105,19 +105,48 @@ export async function loadSnapshot(): Promise<Uint8Array | null> {
   }
 }
 
+/**
+ * Last persistence failure, or null when the last write succeeded.
+ *
+ * A failed save used to be a console.error and nothing else: the app kept
+ * running happily on in-memory data that no longer had a copy anywhere, and
+ * the clinic only found out when the work was gone at close. Surfacing this
+ * is the whole point of tracking it (audit D6).
+ */
+let lastSaveError: string | null = null;
+
+function noteSaveFailure(err: unknown): void {
+  lastSaveError = err instanceof Error ? err.message : String(err);
+  emitSaveStatus();
+}
+
+function noteSaveSuccess(): void {
+  if (lastSaveError === null) return;
+  lastSaveError = null;
+  emitSaveStatus();
+}
+
+function emitSaveStatus(): void {
+  try {
+    window.dispatchEvent(new Event('db:save-status'));
+  } catch {
+    /* no DOM (tests/Node) — nothing to notify */
+  }
+}
+
+export function getLastSaveError(): string | null {
+  return lastSaveError;
+}
+
 export async function saveSnapshot(engine: SqliteEngine): Promise<boolean> {
   try {
+    // engine.export() re-asserts PRAGMA foreign_keys itself (see SqliteEngine.export)
     const bytes = engine.export();
-    // sql.js resets PRAGMA foreign_keys to OFF as a side effect of export()
-    // (verified empirically). Every FK/cascade guarantee in the schema dies
-    // with it — sync's DELETE FROM + re-INSERT then orphans child rows. The
-    // connection-level flag is not stored in the file, so re-assert it after
-    // every export.
-    engine.run('PRAGMA foreign_keys = ON;');
     if (isDesktop()) {
       const tauri = await desktopDb();
       const res = await tauri.db_save_bytes({ bytesB64: b64encode(bytes) });
       localStorage.setItem(DIRTY_KEY, 'false');
+      noteSaveSuccess();
       // eslint-disable-next-line no-console
       console.info(`[db] saved ${res.bytes} bytes to ${res.path}`);
       return true;
@@ -125,17 +154,27 @@ export async function saveSnapshot(engine: SqliteEngine): Promise<boolean> {
     const encoded = MAGIC + ':' + b64encode(bytes);
     localStorage.setItem(SNAPSHOT_KEY, encoded);
     localStorage.setItem(DIRTY_KEY, 'false');
+    noteSaveSuccess();
     return true;
   } catch (err) {
     // Quota/IO: keep in-memory truth intact; surface clearly instead of failing silently.
     console.error('[db] SNAPSHOT SAVE FAILED — data still live in memory', err);
+    noteSaveFailure(err);
     return false;
   }
 }
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let dirty = false;
-let hooked = false;
+/**
+ * Engines already wrapped, tracked per-instance rather than by a one-shot flag.
+ * A backup restore swaps in a brand-new engine that must be watched exactly
+ * like the first one; the old boolean guard made the restored database
+ * silently unwatched, so nothing marked it dirty, nothing was ever written
+ * back, and the reload that follows a restore re-read the STALE snapshot.
+ */
+const hookedEngines = new WeakSet<SqliteEngine>();
+let lifecycleInstalled = false;
 
 function markDirty(): void {
   dirty = true;
@@ -165,10 +204,32 @@ export async function flushNow(): Promise<boolean> {
   }
 }
 
-/** Wraps engine mutation methods to schedule persistence. */
+/**
+ * Writes `engine`'s bytes straight through to the OS file (desktop) or
+ * localStorage (browser) right now, bypassing the debounce.
+ *
+ * This is the seam a backup restore MUST use: the restored engine is
+ * persisted BEFORE the app reloads, otherwise the reload re-reads the previous
+ * snapshot and the restore appears to have done nothing at all.
+ */
+export async function persistEngineNow(engine: SqliteEngine): Promise<boolean> {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  const ok = await saveSnapshot(engine);
+  if (ok) dirty = false;
+  return ok;
+}
+
+/** Wraps engine mutation methods to schedule persistence. Re-runnable per engine. */
 export function installAutoPersistence(engine: SqliteEngine): void {
-  if (hooked) return;
-  hooked = true;
+  if (hookedEngines.has(engine)) return;
+  hookedEngines.add(engine);
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
   dirty = false;
 
   const originalRun = engine.run.bind(engine);
@@ -178,63 +239,68 @@ export function installAutoPersistence(engine: SqliteEngine): void {
   } as typeof engine.run;
 
   // Page lifecycle hooks — flush synchronously on hide/unload.
-  if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => {
-      if (dirty) {
-        try {
-          // Best-effort fallback only: this async save races webview teardown.
-          // The reliable path is the onCloseRequested interception below, which
-          // awaits the flush BEFORE the window is allowed to close.
-          const engineNow = getDatabase();
-          const bytes = engineNow.export();
-          engineNow.run('PRAGMA foreign_keys = ON;'); // export() resets it — see saveSnapshot
-          if (isDesktop()) {
-            void desktopDb().then((t) => t.db_save_bytes({ bytesB64: b64encode(bytes) }));
-          } else {
-            localStorage.setItem(SNAPSHOT_KEY, MAGIC + ':' + b64encode(bytes));
-            localStorage.setItem(DIRTY_KEY, 'false');
-          }
-        } catch { /* best effort */ }
-      }
-    });
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && dirty) {
-        void flushNow();
-      }
-    });
-    // Periodic checkpoint: cap the at-risk window at 5 s even when the user
-    // never triggers the visibility/close paths (crash, power loss). Cheap:
-    // no-op when not dirty; flushNow clears any pending debounce first.
-    setInterval(() => {
-      if (dirty) void flushNow();
-    }, 5000);
-    // Desktop quit path: intercept window close (X button, WindowControls,
-    // Alt+F4) and finish the debounced SQLite write FIRST, then close. The
-    // plain beforeunload handler cannot do this — its fire-and-forget IPC
-    // save is killed mid-flight by webview teardown, losing the newest
-    // writes (the 'my data did not save' class of reports).
-    if (isDesktop()) {
-      void (async () => {
-        try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          const win = getCurrentWindow();
-          await win.onCloseRequested(async (event) => {
-            if (!dirty) return; // nothing pending — close proceeds normally
-            event.preventDefault();
-            try {
-              // Bound the wait: a hung IPC must never make the app
-              // unclosable. 3 s covers the largest realistic snapshot.
-              await Promise.race([
-                flushNow(),
-                new Promise((r) => setTimeout(r, 3000)),
-              ]);
-            } catch { /* still close — an unclosable app is worse than a
-                          bounded loss, and periodic flushes cap it */ }
-            win.destroy();
-          });
-        } catch { /* not a Tauri context — beforeunload fallback applies */ }
-      })();
+  if (typeof window !== 'undefined') installLifecycleHooks();
+}
+
+/** One-time page/OS lifecycle wiring. Safe to call repeatedly; runs once. */
+function installLifecycleHooks(): void {
+  if (lifecycleInstalled) return;
+  lifecycleInstalled = true;
+
+  window.addEventListener('beforeunload', () => {
+    if (dirty) {
+      try {
+        // Best-effort fallback only: this async save races webview teardown.
+        // The reliable path is the onCloseRequested interception below, which
+        // awaits the flush BEFORE the window is allowed to close.
+        const engineNow = getDatabase();
+        const bytes = engineNow.export();
+        if (isDesktop()) {
+          void desktopDb().then((t) => t.db_save_bytes({ bytesB64: b64encode(bytes) }));
+        } else {
+          localStorage.setItem(SNAPSHOT_KEY, MAGIC + ':' + b64encode(bytes));
+          localStorage.setItem(DIRTY_KEY, 'false');
+        }
+      } catch { /* best effort */ }
     }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && dirty) {
+      void flushNow();
+    }
+  });
+  // Periodic checkpoint: cap the at-risk window at 5 s even when the user
+  // never triggers the visibility/close paths (crash, power loss). Cheap:
+  // no-op when not dirty; flushNow clears any pending debounce first.
+  setInterval(() => {
+    if (dirty) void flushNow();
+  }, 5000);
+  // Desktop quit path: intercept window close (X button, WindowControls,
+  // Alt+F4) and finish the debounced SQLite write FIRST, then close. The
+  // plain beforeunload handler cannot do this — its fire-and-forget IPC
+  // save is killed mid-flight by webview teardown, losing the newest
+  // writes (the 'my data did not save' class of reports).
+  if (isDesktop()) {
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        await win.onCloseRequested(async (event) => {
+          if (!dirty) return; // nothing pending — close proceeds normally
+          event.preventDefault();
+          try {
+            // Bound the wait: a hung IPC must never make the app
+            // unclosable. 3 s covers the largest realistic snapshot.
+            await Promise.race([
+              flushNow(),
+              new Promise((r) => setTimeout(r, 3000)),
+            ]);
+          } catch { /* still close — an unclosable app is worse than a
+                        bounded loss, and periodic flushes cap it */ }
+          win.destroy();
+        });
+      } catch { /* not a Tauri context — beforeunload fallback applies */ }
+    })();
   }
 }
 

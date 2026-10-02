@@ -6,9 +6,15 @@ import {
   parseBackupFile,
   validateBackup,
   applyRestoredBytes,
-  createSafetySnapshot,
   APP_VERSION,
 } from '../../services/backupService';
+import {
+  saveSafetySnapshot,
+  loadSafetySnapshot,
+  readSafetySnapshotMeta,
+  clearSafetySnapshot,
+  SafetySnapshotMeta,
+} from '../../services/safetySnapshotStore';
 import { exportSqliteFile } from '../../services/sqliteStorage';
 import {
   getBackupSchedule,
@@ -31,20 +37,18 @@ import {
   AlertCircle,
   AlertTriangle,
   XCircle,
-  HardDrive,
+  RotateCcw,
   X,
-  Table,
   Check,
 } from 'lucide-react';
 
 /** TAB: BACKUP & RESTORE (+ boot integrity self-check) — extracted from
-    SettingsView (P3 split); backupMessage and liveTableStats are shared with
-    the container via props. */
+    SettingsView (P3 split); backupMessage is shared with the container via
+    props. */
 export const BackupTab: React.FC<{
   backupMessage: { type: 'success' | 'error'; text: string } | null;
   setBackupMessage: (m: { type: 'success' | 'error'; text: string } | null) => void;
-  liveTableStats: { name: string; rows: number }[];
-}> = ({ backupMessage, setBackupMessage, liveTableStats }) => {
+}> = ({ backupMessage, setBackupMessage }) => {
   const {
     cases,
     labs,
@@ -87,6 +91,22 @@ export const BackupTab: React.FC<{
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Pre-restore copy, surfaced as an explicit escape hatch after any restore.
+  const [undoMeta, setUndoMeta] = React.useState<SafetySnapshotMeta | null>(null);
+  const [undoBusy, setUndoBusy] = React.useState(false);
+  React.useEffect(() => {
+    void readSafetySnapshotMeta().then(setUndoMeta);
+  }, []);
+
+  function bytesToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  }
 
   // ---- Backup / restore state (Phase 8) ----
   const [busy, setBusy] = useState<null | 'backup' | 'restore'>(null);
@@ -171,34 +191,84 @@ export const BackupTab: React.FC<{
     if (!pendingRestore || pendingRestore.errors.length > 0) return;
     setBusy('restore');
     try {
-      // F3: the pre-restore snapshot is now ENFORCED, not just promised. If
-      // it cannot be written, the restore is blocked — a bad restore must
-      // never be unrecoverable.
-      let snapshot: { takenAt: string; data: string };
-      try {
-        snapshot = await createSafetySnapshot();
-        localStorage.setItem('dsw_pre_restore_snapshot', JSON.stringify(snapshot));
-      } catch (snapErr: any) {
-        setBackupMessage({
-          type: 'error',
-          text: `Restore BLOCKED — the pre-restore safety snapshot could not be written (${snapErr?.message || 'storage error'}). Free up space and retry; your current data stays untouched.`,
-        });
-        return;
-      }
-      await applyRestoredBytes(pendingRestore.pkg, (bytes) =>
+      // ENFORCED, not just promised: the outgoing database is copied somewhere
+      // durable BEFORE anything is replaced. A restore that cannot be undone
+      // must not run. IndexedDB holds this copy because a second full base64
+      // database does not fit in localStorage's quota alongside the live one.
+      const currentBytes = getDatabase().export();
+      await saveSafetySnapshot(currentBytes, {
+        takenAt: new Date().toISOString(),
+        schemaVersion: Number(getDatabase().scalar('SELECT MAX(version) FROM schema_migrations') ?? 0),
+      }).catch((snapErr: any) => {
+        throw new Error(
+          `the pre-restore safety copy could not be written (${snapErr?.message || 'storage error'})`,
+        );
+      });
+
+      const outcome = await applyRestoredBytes(pendingRestore.pkg, (bytes) =>
         initEngineFromBytes(bytes)
       );
       setPendingRestore(null);
+      setUndoMeta(await readSafetySnapshotMeta());
       setBackupMessage({
         type: 'success',
-        text: 'Restore complete — a recoverable snapshot of the previous data was kept. Reloading…',
+        text:
+          `Restored ${outcome.rowsRestored.toLocaleString()} rows from the backup (schema v${outcome.schemaVersion})` +
+          `${outcome.crossVersion ? ', upgraded from an older app version' : ''}. Reloading…`,
       });
       setTimeout(() => window.location.reload(), 1200);
     } catch (err: any) {
-      setBackupMessage({ type: 'error', text: `Restore failed: ${err?.message || 'unknown error'}` });
+      setBackupMessage({
+        type: 'error',
+        text: `Restore not applied: ${err?.message || 'unknown error'}`,
+      });
     } finally {
       setBusy(null);
-      setTimeout(() => setBackupMessage(null), 6000);
+    }
+  };
+
+  // Undo — puts the pre-restore copy back. Same enforced-write discipline as
+  // the restore itself: a copy is taken first, so undo is itself reversible.
+  const handleUndoRestore = async () => {
+    setUndoBusy(true);
+    try {
+      const snap = await loadSafetySnapshot();
+      if (!snap) {
+        setBackupMessage({ type: 'error', text: 'No pre-restore copy is available to recover.' });
+        return;
+      }
+      try {
+        await saveSafetySnapshot(getDatabase().export(), {
+          takenAt: new Date().toISOString(),
+          schemaVersion: Number(getDatabase().scalar('SELECT MAX(version) FROM schema_migrations') ?? 0),
+        });
+      } catch {
+        /* best effort — the restore below still has its own copy available */
+      }
+      await applyRestoredBytes(
+        {
+          manifest: {
+            magic: 'DENTALBACKUP',
+            format_version: 1,
+            app_version: APP_VERSION,
+            schema_version: snap.meta.schemaVersion,
+            created_at: snap.meta.takenAt,
+            table_counts: snap.meta.tableCounts ?? {},
+            db_checksum: '',
+            db_size_bytes: snap.data.length,
+          },
+          database_b64: bytesToBase64(snap.data),
+        },
+        (bytes) => initEngineFromBytes(bytes),
+      );
+      setUndoMeta(null);
+      await clearSafetySnapshot();
+      setBackupMessage({ type: 'success', text: 'Previous data recovered. Reloading…' });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err: any) {
+      setBackupMessage({ type: 'error', text: `Could not recover the previous data: ${err?.message || 'unknown error'}` });
+    } finally {
+      setUndoBusy(false);
     }
   };
 
@@ -221,22 +291,6 @@ export const BackupTab: React.FC<{
   };
 
   return (      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-2xl">
-            <Database className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Application Data Backup & Offline Portability</h2>
-            <p className="text-xs text-slate-500">Portable checksummed <code>.dentalbackup</code> packages — the entire SQLite database in one verifiable file</p>
-          </div>
-        </div>
-        <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-full flex items-center gap-1.5">
-          <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
-          <span>{liveTableStats.reduce((a, t) => a + t.rows, 0).toLocaleString()} rows in SQLite</span>
-        </span>
-      </div>
-
       {/* BOOT INTEGRITY SELF-CHECK — verify FK pragma, orphan rows, ledger
           balance; computed at boot by AppContext, surfaced here. */}
       <IntegrityPanel />
@@ -279,7 +333,10 @@ export const BackupTab: React.FC<{
 
             <h3 className="font-bold text-slate-900 text-base">Export Portable Backup</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Downloads a single <code>.dentalbackup</code> file containing the live SQLite database with a SHA-256 integrity manifest. Restorable on any installation — browser or desktop.
+              Downloads a single <code>.dentalbackup</code> file holding the complete SQLite database with a SHA-256
+              integrity manifest. Copy it to any machine — another clinic PC, a laptop, a USB stick — and restore it
+              from this app's Database &amp; Backup tab there. Backups taken by an older app version are upgraded
+              automatically on restore.
             </p>
 
             <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 text-[11px] text-slate-600">
@@ -331,7 +388,10 @@ export const BackupTab: React.FC<{
 
             <h3 className="font-bold text-slate-900 text-base">Restore From Backup</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Import a <code>.dentalbackup</code> package. The file is validated (header, schema version, SHA-256 checksum) before anything is touched, a safety snapshot of current data is taken, and only then is the database swapped — followed by an automatic reload.
+              Import a <code>.dentalbackup</code> package from this or any other machine. The file is validated
+              (header, schema version, SHA-256 checksum) before anything is touched, a full copy of the current data is
+              kept for recovery, and only then is the database swapped and written to disk. The app reloads into the
+              restored data.
             </p>
           </div>
 
@@ -398,31 +458,28 @@ export const BackupTab: React.FC<{
         </div>
       </div>
 
-      {/* SQLite Relational Tables Inspector */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
-            <Table className="w-4 h-4 text-blue-600" />
-            <span>Live SQLite Relational Schema & Table Metrics</span>
-          </div>
-          <span className="text-[10px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-            {liveTableStats.length} Relational Tables
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-          {liveTableStats.map((tbl) => (
-            <div key={tbl.name} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
-              <div>
-                <span className="font-mono font-bold text-slate-900 block text-[11px]">{tbl.name}</span>
-              </div>
-              <span className="px-2 py-0.5 bg-slate-100 font-mono font-bold text-slate-700 text-[11px] rounded-md">
-                {tbl.rows} rows
+      {/* Undo — the copy taken immediately before the last restore. */}
+      {undoMeta && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-2 min-w-0">
+            <RotateCcw className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <span className="font-bold text-amber-900">A pre-restore copy is available</span>
+              <span className="block text-amber-800">
+                {(undoMeta.bytes / 1024).toFixed(0)} KB taken {new Date(undoMeta.takenAt).toLocaleString()}.
+                Use it to roll back if the restored data is not what you expected.
               </span>
             </div>
-          ))}
+          </div>
+          <button
+            onClick={handleUndoRestore}
+            disabled={undoBusy}
+            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white font-bold rounded-lg shadow cursor-pointer"
+          >
+            {undoBusy ? 'Recovering…' : 'Recover previous data'}
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Automatic backups */}
       <div className="p-6 bg-white border border-slate-200 rounded-2xl space-y-4">

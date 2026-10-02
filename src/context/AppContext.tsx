@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { setBackupAuthorizationUser } from '../services/backupService';
 import {
   DentalCase,
   DentalLab,
@@ -699,6 +700,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.info(`[cutover] removed ${stale.length} legacy dsw_* key(s) — SQLite is the only store`);
       }
     } catch { /* storage unavailable — nothing to sweep */ }
+
+    // Defense in depth for restore (audit S2): authorization here is UI-only,
+    // so the destructive service re-checks the signed-in user's authority
+    // rather than trusting the Settings tab to stay hidden.
+    setBackupAuthorizationUser(user);
   }, [user]);
 
   // Session state lives in the SQLite `sessions` table. localStorage caches only

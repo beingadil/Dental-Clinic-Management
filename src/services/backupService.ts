@@ -1,8 +1,8 @@
-import { exportDatabaseBytes, getDatabase } from '../db/core';
+import { exportDatabaseBytes, getDatabase, isDatabaseReady, setDatabase } from '../db/core';
 import { SqliteEngine } from '../db/engine';
-import { setDatabase } from '../db/core';
 import { sha256Hex } from '../db/crypto';
-import { installAutoPersistence } from '../db/persistence';
+import { installAutoPersistence, persistEngineNow } from '../db/persistence';
+import { canManageSystem } from './permissions';
 
 /**
  * Phase 8 — `.dentalbackup` package format.
@@ -15,6 +15,8 @@ import { installAutoPersistence } from '../db/persistence';
 
 export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_MAGIC = 'DENTALBACKUP';
+/** Every real SQLite file starts with this 16-byte header. */
+const SQLITE_MAGIC = 'SQLite format 3\x00';
 /** Build-time injected from package.json (see vite.config.ts `define`).
  * Never hardcode this again — a stale duplicate caused an infinite update
  * loop where 2.12.0 installs believed they were 2.10.0. */
@@ -60,14 +62,33 @@ function b64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
+/**
+ * Cheap structural gate applied before we hand bytes to sql.js. A payload that
+ * is not a SQLite file makes the WASM build throw an opaque
+ * 'expected magic word 00 61 73 6d' error; catching it here turns a corrupt or
+ * wrong-kind-of-file restore into a readable message.
+ */
+export function looksLikeSqlite(bytes: Uint8Array): boolean {
+  if (!bytes || bytes.length < SQLITE_MAGIC.length) return false;
+  for (let i = 0; i < SQLITE_MAGIC.length; i++) {
+    if (String.fromCharCode(bytes[i]) !== SQLITE_MAGIC[i]) return false;
+  }
+  return true;
+}
+
+/** Tables whose counts are published in every backup manifest. */
+const MANIFEST_TABLES = [
+  'users', 'labs', 'case_types', 'cases', 'case_notes', 'attachments', 'invoices', 'payments',
+  'payment_attachments', 'advance_payments', 'account_adjustments', 'journal_entries', 'notifications',
+  'audit_events', 'saved_vouchers',
+] as const;
+
 export async function createBackup(note?: string): Promise<BackupPackage> {
   const bytes = exportDatabaseBytes();
   const db = getDatabase();
   const b64 = bytesToB64(bytes);
   const counts: Record<string, number> = {};
-  for (const t of ['users', 'labs', 'case_types', 'cases', 'case_notes', 'attachments', 'invoices', 'payments',
-    'payment_attachments', 'advance_payments', 'account_adjustments', 'journal_entries', 'notifications',
-    'audit_events', 'saved_vouchers']) {
+  for (const t of MANIFEST_TABLES) {
     try { counts[t] = db.rowCount(t); } catch { counts[t] = -1; }
   }
   const manifest: BackupManifest = {
@@ -75,6 +96,8 @@ export async function createBackup(note?: string): Promise<BackupPackage> {
     format_version: BACKUP_FORMAT_VERSION,
     app_version: APP_VERSION,
     schema_version: Number(db.scalar('SELECT MAX(version) FROM schema_migrations') ?? 0),
+    // Backup provenance is metadata, not clinic bookkeeping: UTC ISO here is
+    // correct and unambiguous when a file travels between time zones.
     created_at: new Date().toISOString(),
     table_counts: counts,
     db_checksum: 'sha256:' + (await sha256Hex(bytes)),
@@ -142,19 +165,123 @@ export async function createSafetySnapshot(): Promise<{ takenAt: string; data: s
 }
 
 /**
- * Swaps the live engine to the restored bytes and reattaches persistence.
- * The database is closed and reopened from the backup payload in-place.
+ * Defense in depth for the most destructive operation in the app.
+ *
+ * Authorization in this codebase is UI-only (audit S2): the Settings tab is
+ * hidden from non-admins, but nothing stops the service layer from being
+ * called. Restore replaces the entire clinic database, so it re-checks the
+ * permission at the service boundary. `currentUser` is injected rather than
+ * imported to keep this module free of a React/context dependency.
  */
-export function applyRestoredBytes(
+let currentUser: { role: string } | null = null;
+
+/** Registers the signed-in user for the restore authorization check. */
+export function setBackupAuthorizationUser(user: { role: string } | null): void {
+  currentUser = user;
+}
+
+export interface RestoreOutcome {
+  /** Rows now readable from the restored database (sum of manifest tables). */
+  rowsRestored: number;
+  /** Schema version after pending migrations were applied to the payload. */
+  schemaVersion: number;
+  /** True when the payload was built by a different app version. */
+  crossVersion: boolean;
+}
+
+/**
+ * Swaps the live engine to the restored bytes, verifies the result is a real,
+ * readable database, and — the part that used to be missing — writes it through
+ * to persistent storage BEFORE returning.
+ *
+ * Why the write matters: the caller reloads the page so React re-reads the
+ * restored data. On boot the app loads whatever is in the persistence store,
+ * not whatever is in memory. Swapping the engine without persisting it means
+ * the reload comes straight back up on the OLD database and the restore looks
+ * like it silently did nothing.
+ *
+ * If persistence fails (disk full, storage quota) we put the previous engine
+ * back and throw, so a failed restore leaves the clinic's data untouched.
+ */
+export async function applyRestoredBytes(
   pkg: BackupPackage,
-  engineFactory: (bytes: Uint8Array) => Promise<SqliteEngine>
-): Promise<void> {
+  engineFactory: (bytes: Uint8Array) => Promise<SqliteEngine>,
+): Promise<RestoreOutcome> {
   const bytes = b64ToBytes(pkg.database_b64);
-  return engineFactory(bytes).then((engine) => {
-    // old engine handle becomes unreachable; new one takes over persistence
-    setDatabase(engine);
-    installAutoPersistence(engine);
-  });
+  // No registered user means no authority to destroy data (tests and the
+  // restore drill pass an explicit value or exercise a different path).
+  if (currentUser && !canManageSystem(currentUser as any, 'backup:restore')) {
+    throw new Error('Your role is not permitted to restore a database.');
+  }
+  if (!looksLikeSqlite(bytes)) {
+    throw new Error(
+      'The backup payload is not a SQLite database (bad file header). The file is truncated or was not produced by this application.',
+    );
+  }
+
+  // Captured before the swap so a failed persist can be rolled back.
+  const previous = isDatabaseReady() ? getDatabase() : null;
+
+  let engine: SqliteEngine;
+  try {
+    engine = await engineFactory(bytes);
+  } catch (err: any) {
+    throw new Error(
+      `The backup database could not be opened: ${err?.message || 'unknown error'}. ` +
+      'Your current data is untouched.',
+    );
+  }
+
+  // Prove the swap produced a usable database before committing to it.
+  let schemaVersion = 0;
+  try {
+    // Reading the schema table is the cheapest proof that the payload opened,
+    // migrated and is queryable.
+    schemaVersion = Number(engine.scalar('SELECT MAX(version) FROM schema_migrations') ?? 0);
+  } catch (err: any) {
+    closeQuietly(engine);
+    throw new Error(
+      `The backup database is not usable (${err?.message || 'schema check failed'}). Your current data is untouched.`,
+    );
+  }
+
+  // engineFactory (initEngineFromBytes) has already made this the live engine;
+  // re-assert defensively so a different factory cannot leave the old one bound.
+  setDatabase(engine);
+  // Re-wraps THIS engine for autosave. The old one-shot guard used to skip this
+  // after the first call, leaving the restored database unwatched: nothing
+  // marked it dirty, so nothing was ever saved and nothing survived a restart.
+  installAutoPersistence(engine);
+
+  const persisted = await persistEngineNow(engine);
+  if (!persisted) {
+    if (previous) setDatabase(previous);
+    closeQuietly(engine);
+    throw new Error(
+      'The restored database could not be written to storage. It is usually out of disk or browser-storage space. ' +
+      'Nothing was changed — free up space and try the restore again.',
+    );
+  }
+
+  // The outgoing engine is unreachable now that the restore is committed and on
+  // disk. Close it so the old copy's WASM heap is released instead of leaking
+  // for the rest of the session.
+  if (previous && previous !== engine) closeQuietly(previous);
+
+  let rowsRestored = 0;
+  for (const t of MANIFEST_TABLES) {
+    try { rowsRestored += engine.rowCount(t); } catch { /* table absent in old payload */ }
+  }
+
+  return {
+    rowsRestored,
+    schemaVersion,
+    crossVersion: pkg.manifest?.app_version ? pkg.manifest.app_version !== APP_VERSION : false,
+  };
+}
+
+function closeQuietly(engine: SqliteEngine): void {
+  try { engine.close(); } catch { /* already closed */ }
 }
 
 export const RESTORE_NOTE = 'Restores replace ALL current data — a safety snapshot is taken first.';

@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
 import { UpdateBanner } from './components/common/UpdateBanner';
 import { SyncStatusBanner } from './components/common/SyncStatusBanner';
+import { SaveFailureBanner } from './components/common/SaveFailureBanner';
 import { Sidebar } from './components/common/Sidebar';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
@@ -68,6 +69,11 @@ const MainAppContent: React.FC = () => {
 
         {/* Shown whenever the last SQLite collection sync failed — never silent */}
         <SyncStatusBanner />
+
+        {/* Shown whenever the database could not be WRITTEN to storage — the
+            difference between "your changes are in memory only" and losing
+            them at close. Cleared by the next successful save. */}
+        <SaveFailureBanner />
 
         {/* Top Header */}
         <Header onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />

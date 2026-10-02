@@ -181,8 +181,28 @@ export class SqliteEngine {
     return this.all('PRAGMA foreign_key_check') as any;
   }
 
+  /**
+   * Serializes the whole SQLite file.
+   *
+   * CRITICAL: sql.js implements export() by closing the connection and
+   * reopening the file, which resets EVERY connection-level PRAGMA to its
+   * default — `foreign_keys` included (SQLite defaults it OFF for backwards
+   * compatibility). The flag is not stored in the file, so it is simply gone.
+   *
+   * That matters enormously here: every ON DELETE CASCADE in the schema stops
+   * firing after any export (backup file, autosave flush, beforeunload save),
+   * so the next whole-table sync orphans child rows and then dies on
+   * `UNIQUE constraint failed: journal_lines.id`. Re-assert it here — once —
+   * for every caller, instead of relying on each call site remembering.
+   */
   export(): Uint8Array {
-    return this.db.export();
+    const bytes = this.db.export();
+    try {
+      this.db.run('PRAGMA foreign_keys = ON;');
+    } catch {
+      /* non-fatal: pragma is advisory, data is already serialized */
+    }
+    return bytes;
   }
 
   close(): void {

@@ -189,7 +189,6 @@ export const SettingsView: React.FC = () => {
         <BackupTab
           backupMessage={backupMessage}
           setBackupMessage={setBackupMessage}
-          liveTableStats={liveTableStats}
         />
       )}
       {activeTab === 'testing' && may('data:wipe') && <TestingTab />}
