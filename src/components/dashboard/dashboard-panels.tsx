@@ -57,6 +57,7 @@ import {
   type WorkflowStage,
 } from './dashboardMetrics';
 import { formatTimeAgo } from '../../utils/dateUtils';
+import type { QueueId } from './CaseQueueModal';
 
 /* ── tone maps ────────────────────────────────────────────────────────── */
 
@@ -340,10 +341,25 @@ export const KpiCards: React.FC<{ kpis: KpiRow; onGo: (view: string) => void }> 
 
 /* ── 2 · Production workflow ──────────────────────────────────────────── */
 
+/** Queue each stage tile opens. Kept beside the tile so a stage's key and its
+ *  destination cannot drift apart. */
+export const STAGE_QUEUE: Record<string, QueueId> = {
+  received: 'stage_received',
+  in_progress: 'stage_in_progress',
+  qc: 'stage_qc',
+  ready: 'stage_ready',
+  dispatched: 'stage_dispatched',
+};
+
+/** A stage holding a case this long is the one that needs a technician, so the
+ *  age is the only part of the tile that earns colour. */
+const STALE_DAYS = 4;
+
 export const ProductionWorkflow: React.FC<{
   stages: WorkflowStage[];
   onViewAll: () => void;
-}> = ({ stages, onViewAll }) => (
+  onOpenStage: (stage: WorkflowStage) => void;
+}> = ({ stages, onViewAll, onOpenStage }) => (
   <section className="ds-panel p-5 ds-enter" data-purpose="production-workflow">
     <PanelHead
       title="Production Workflow"
@@ -353,23 +369,65 @@ export const ProductionWorkflow: React.FC<{
 
     {/* Tiles wrap instead of truncating: on a half-width card five tiles plus
         four connectors no longer fit, and a stage label that reads "In Pro…
-        uction" is worse than a second row. */}
-        <div className="mt-4 flex flex-wrap items-stretch gap-1">
-          {stages.map((stage, i) => (
-            <React.Fragment key={stage.key}>
-              {i > 0 && (
-                <span className="flex items-center text-ds-muted shrink-0" aria-hidden="true">
-                  <ArrowRight className="w-3 h-3" />
-                </span>
-              )}
-              <div className={`flex-1 basis-[86px] min-w-0 rounded-xl ${TONE_ICON_BG[stage.tone]} px-1.5 py-3 text-center`}>
-            <span className="block text-[11px] font-bold text-ds-ink-soft truncate">{stage.label}</span>
-            <span className="ds-figure block text-[24px] leading-tight mt-1.5">{stage.count}</span>
-            <span className="block text-[10px] text-ds-body">{stage.unit}</span>
-          </div>
-        </React.Fragment>
-      ))}
+        uction" is worse than a second row.
+
+        Each tile is a button so the number can be followed to the cases behind
+        it. A count you cannot click leaves the reader to retype the filter the
+        Workstation would have applied for them. */}
+    <div className="mt-4 flex flex-wrap items-stretch gap-1">
+      {stages.map((stage, i) => {
+        const stale = stage.oldestDays !== null && stage.oldestDays >= STALE_DAYS;
+        const age =
+          stage.oldestDays === null
+            ? null
+            : stage.oldestDays === 0
+              ? 'today'
+              : `${stage.oldestDays}d`;
+
+        return (
+          <React.Fragment key={stage.key}>
+            {i > 0 && (
+              <span className="flex items-center text-ds-muted shrink-0" aria-hidden="true">
+                <ArrowRight className="w-3 h-3" />
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => onOpenStage(stage)}
+              title={`${stage.count} ${stage.unit} in ${stage.label}${
+                age ? ` · oldest here ${age}` : ''
+              }`}
+              className={`flex-1 basis-[86px] min-w-0 rounded-xl ${TONE_ICON_BG[stage.tone]} px-1.5 py-3 text-center cursor-pointer transition hover:brightness-[0.97] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent`}
+            >
+              <span className="block text-[11px] font-bold text-ds-ink-soft truncate">
+                {stage.label}
+              </span>
+              <span className="ds-figure block text-[24px] leading-tight mt-1.5">{stage.count}</span>
+              <span className="block text-[10px] text-ds-body">
+                {age ? (
+                  <>
+                    {stage.unit}
+                    <span
+                      className={`ml-1 font-bold ${stale ? 'text-amber-700' : 'text-ds-muted'}`}
+                    >
+                      · {age}
+                    </span>
+                  </>
+                ) : (
+                  stage.unit
+                )}
+              </span>
+            </button>
+          </React.Fragment>
+        );
+      })}
     </div>
+
+    {stages.some((s) => s.oldestDays !== null && s.oldestDays >= STALE_DAYS) && (
+      <p className="mt-3 text-[10px] text-ds-muted leading-relaxed">
+        The figure after each stage is how long its oldest case has been sitting there.
+      </p>
+    )}
   </section>
 );
 
@@ -1115,79 +1173,5 @@ export const UpcomingDeliveries: React.FC<{
     )}
   </section>
 );
-
-/* ── 12 · Closing status bar ──────────────────────────────────────────── */
-
-/** Tooth mark. Drawn rather than imported because no icon set ships a molar,
- *  and an emoji is not an acceptable substitute for brand artwork. */
-const ToothMark: React.FC = () => (
-  <svg viewBox="0 0 48 48" className="w-9 h-9 shrink-0" aria-hidden="true">
-    <path
-      d="M24 6c-4.2 0-6.1-2-9.6-2C9 4 5 8.2 5 14.4c0 6.1 2.2 9.5 3.6 15.3C9.8 35.4 11 42 14.4 42c2.9 0 3.6-3.4 4.4-7.6.8-4 1.7-7.4 5.2-7.4s4.4 3.4 5.2 7.4C30 38.6 30.7 42 33.6 42 37 42 38.2 35.4 39.4 29.7 40.8 23.9 43 20.5 43 14.4 43 8.2 39 4 33.6 4 30.1 4 28.2 6 24 6Z"
-      fill="currentColor"
-    />
-  </svg>
-);
-
-/**
- * Closing status bar.
- *
- * This used to be a marketing strip — a drawn tooth, "Better Smiles • Better
- * Together", "Quality Restorations | On Time | Every Time". It looked like a
- * finished product and carried no information a technician could act on: the
- * tagline asserts an SLA the software cannot see, and the panel it replaced in
- * the layout was the one place to put facts about this install.
- *
- * It now answers the questions a lab manager actually has about the machine in
- * front of them — which version, how much of the day's work is already late,
- * how many cases are open, how many clinics — with every number already
- * computed above. Nothing here is decorative.
- */
-export const StatusFooter: React.FC<{
-  version: string;
-  clinicCount: number;
-  openCases: number;
-  atRiskCases: number;
-}> = ({ version, clinicCount, openCases, atRiskCases }) => {
-  const facts: { label: string; value: string; alert?: boolean }[] = [
-    { label: 'Clinics', value: String(clinicCount) },
-    { label: 'Open cases', value: String(openCases) },
-    {
-      label: 'Needing attention',
-      value: String(atRiskCases),
-      alert: atRiskCases > 0,
-    },
-  ];
-
-  return (
-    <footer
-      className="rounded-2xl bg-ds-inverse text-white px-5 py-3.5 flex flex-wrap items-center gap-x-6 gap-y-3 justify-between"
-      data-purpose="status-footer"
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="text-white/80">
-          <ToothMark />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[12.5px] font-bold tracking-[-0.01em]">Dental Solutions</p>
-          <p className="text-[10.5px] text-white/50 font-mono">v{version}</p>
-        </div>
-      </div>
-
-      <dl className="flex items-center gap-x-6 gap-y-2 flex-wrap">
-        {facts.map((fact) => (
-          <div key={fact.label} className="flex items-baseline gap-1.5">
-            <dt className="text-[10.5px] text-white/45 whitespace-nowrap">{fact.label}</dt>
-            <dd
-              className={`ds-figure text-[13px] font-bold ${fact.alert ? 'text-amber-300' : 'text-white'}`}
-            >
-              {fact.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </footer>
-  );
-};
 
 export type { DashboardMetrics };

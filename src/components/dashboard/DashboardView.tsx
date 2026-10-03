@@ -27,12 +27,12 @@ import {
   QuickActions,
   RecentActivity,
   RevenueCollections,
-  StatusFooter,
   TodaySchedule,
   UpcomingDeliveries,
   Workload,
   type QuickAction,
 } from './dashboard-panels';
+import { STAGE_QUEUE } from './dashboard-panels';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { RecordTransactionModal } from '../billing/RecordTransactionModal';
@@ -188,72 +188,52 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
 
       <KpiCards kpis={metrics.kpis} onGo={setCurrentView} />
 
-      {/* Every grid below switches to its multi-column layout at 2xl, not xl.
-          The sidebar is a fixed ~300px, so an `xl:` breakpoint fires while
-          there is still only ~980px of usable content — which squeezed the
-          narrow panels until their labels clipped. At 2xl there is genuinely
-          room for the reference proportions. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-12 gap-4">
-        <div className="2xl:col-span-6">
-          <ProductionWorkflow stages={metrics.workflow} onViewAll={() => setCurrentView('cases')} />
-        </div>
-        <div className="2xl:col-span-3">
-          <NeedsAttention
-            rows={metrics.attention}
-            onReview={(key) => setQueue(key as QueueId)}
-          />
-        </div>
-        <div className="2xl:col-span-3">
-          <TodaySchedule
-            rows={metrics.schedule}
-            dateLabel={scheduleDate}
-            onOpenCase={openCase}
-            onViewCalendar={() => setShowCalendar(true)}
-          />
-        </div>
-      </div>
+      {/* Masonry instead of three stacked 12-col rows.
 
-      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-12 gap-4">
-        <div className="2xl:col-span-5">
-          <RevenueCollections revenue={metrics.revenue} onInvoices={() => setCurrentView('billing')} />
-        </div>
-        <div className="2xl:col-span-4">
-          <CasesAtRisk
-            rows={metrics.atRisk}
-            onOpenCase={openCase}
-            onViewAll={() => setQueue('open')}
-          />
-        </div>
-        <div className="2xl:col-span-3">
-          <RecentActivity rows={metrics.activity} />
-        </div>
-      </div>
+          The row layout forced every panel in a row to the height of the
+          tallest sibling, so a short panel left a band of empty card below it
+          — the gaps this replaces. CSS columns flow panels into balanced
+          columns at their natural height, so the only space on the page is the
+          16px gutter between panels.
 
-      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-12 gap-4">
-        <div className="2xl:col-span-4">
-          <QuickActions actions={quickActions} />
-        </div>
-        <div className="2xl:col-span-3">
-          <Workload
-            rows={metrics.workload.rows}
-            overallPct={metrics.workload.overallPct}
-            unassigned={metrics.workload.unassigned}
-          />
-        </div>
-        <div className="2xl:col-span-2">
-          <LabPerformance rows={metrics.performance} />
-        </div>
-        <div className="2xl:col-span-3">
-          <UpcomingDeliveries rows={metrics.upcoming} onOpenCase={openCase} />
-        </div>
+          `break-inside-avoid` is what makes this work: without it the browser
+          is free to slice a panel across a column break, which would cut a
+          case list in half. Panels keep their full height and simply move. */}
+      <div className="columns-1 md:columns-2 2xl:columns-3 gap-4 [column-fill:_balance]">
+        <ProductionWorkflow
+          stages={metrics.workflow}
+          onViewAll={() => setCurrentView('cases')}
+          onOpenStage={(stage) => {
+            const q = STAGE_QUEUE[stage.key];
+            if (q) setQueue(q);
+          }}
+        />
+        <NeedsAttention
+          rows={metrics.attention}
+          onReview={(key) => setQueue(key as QueueId)}
+        />
+        <TodaySchedule
+          rows={metrics.schedule}
+          dateLabel={scheduleDate}
+          onOpenCase={openCase}
+          onViewCalendar={() => setShowCalendar(true)}
+        />
+        <RevenueCollections revenue={metrics.revenue} onInvoices={() => setCurrentView('billing')} />
+        <CasesAtRisk
+          rows={metrics.atRisk}
+          onOpenCase={openCase}
+          onViewAll={() => setQueue('open')}
+        />
+        <RecentActivity rows={metrics.activity} />
+        <QuickActions actions={quickActions} />
+        <Workload
+          rows={metrics.workload.rows}
+          overallPct={metrics.workload.overallPct}
+          unassigned={metrics.workload.unassigned}
+        />
+        <LabPerformance rows={metrics.performance} />
+        <UpcomingDeliveries rows={metrics.upcoming} onOpenCase={openCase} />
       </div>
-
-      <StatusFooter
-        version={APP_VERSION}
-        clinicCount={metrics.clinicCount}
-        openCases={metrics.kpis.activeCases}
-        atRiskCases={metrics.atRisk.length}
-      />
 
       {slipCase && (
         <CaseJobSlipModal caseData={slipCase} onClose={() => setSlipCase(null)} />

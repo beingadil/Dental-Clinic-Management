@@ -14,7 +14,22 @@ import { EmptyState, Badge, CaseStatusBadge } from '../common/ui';
 import { Search, ShieldAlert, CheckCircle2, TrendingUp } from 'lucide-react';
 import { getTodayStr, daysDiff } from '../../utils/dateUtils';
 
-export type QueueId = 'overdue' | 'due_today' | 'due_week' | 'qc' | 'ready' | 'revision' | 'open';
+export type QueueId =
+  | 'overdue'
+  | 'due_today'
+  | 'due_week'
+  | 'qc'
+  | 'ready'
+  | 'revision'
+  | 'open'
+  /* Production Workflow tiles drill into the stage they name. These mirror the
+     stage counts in computeWorkflow exactly — including the archived/draft
+     exclusion — so a tile's number and the list behind it never disagree. */
+  | 'stage_received'
+  | 'stage_in_progress'
+  | 'stage_qc'
+  | 'stage_ready'
+  | 'stage_dispatched';
 
 export const QUEUE_TITLES: Record<QueueId, { title: string; subtitle: string }> = {
   overdue: { title: 'Overdue Cases', subtitle: 'Past the promised delivery date and still open' },
@@ -24,11 +39,23 @@ export const QUEUE_TITLES: Record<QueueId, { title: string; subtitle: string }> 
   ready: { title: 'Ready for Dispatch', subtitle: 'Cleared and waiting to leave' },
   revision: { title: 'Sent for Revision', subtitle: 'Sent back for rework' },
   open: { title: 'Open Cases', subtitle: 'Every active case, soonest delivery first' },
+  stage_received: { title: 'Received', subtitle: 'Registered at the bench and waiting to start' },
+  stage_in_progress: { title: 'In Production', subtitle: 'On the bench right now' },
+  stage_qc: { title: 'Quality Check', subtitle: 'Awaiting inspection' },
+  stage_ready: { title: 'Ready', subtitle: 'Cleared and waiting to leave' },
+  stage_dispatched: { title: 'Dispatched Today', subtitle: 'Delivered on their promised date today' },
 };
 
 const isOpen = (c: DentalCase) => c.status !== 'delivered' && c.status !== 'cancelled';
 
+/** Mirrors the `live` filter in computeWorkflow: archived and draft cases are
+ *  not part of the live pipeline, so they never appear behind a stage tile. */
+const isLive = (c: DentalCase) => !c.archived_at && c.status !== 'draft';
+
 const inQueue = (c: DentalCase, queue: QueueId, today: string, horizon: string): boolean => {
+  if (queue === 'stage_dispatched') {
+    return isLive(c) && c.status === 'delivered' && c.delivery_date === today;
+  }
   if (!isOpen(c)) return false;
   switch (queue) {
     case 'overdue':
@@ -45,6 +72,19 @@ const inQueue = (c: DentalCase, queue: QueueId, today: string, horizon: string):
       return c.status === 'revision';
     case 'open':
       return true;
+    /* A stage queue is exactly one status, and "Received" is still an open
+       case — so isOpen is correct here, unlike the count which ignores
+       delivered entirely. */
+    case 'stage_received':
+      return isLive(c) && c.status === 'received';
+    case 'stage_in_progress':
+      return isLive(c) && c.status === 'in_progress';
+    case 'stage_qc':
+      return isLive(c) && c.status === 'qc';
+    case 'stage_ready':
+      return isLive(c) && c.status === 'ready';
+    default:
+      return false;
   }
 };
 

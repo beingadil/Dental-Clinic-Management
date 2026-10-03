@@ -298,6 +298,95 @@ describe('computeTodaySchedule', () => {
   });
 });
 
+describe('archived and draft cases never reach the dashboard', () => {
+  const archived = `${TODAY} 08:00`;
+
+  it('excludes them from the Active Cases KPI', () => {
+    const kpis = computeKpis(
+      base({
+        cases: [
+          makeCase({ status: 'in_progress' }),
+          makeCase({ status: 'in_progress', archived_at: archived }),
+          makeCase({ status: 'draft' }),
+        ],
+      })
+    );
+    expect(kpis.activeCases).toBe(1);
+  });
+
+  it("excludes them from Today's Schedule, which lists a delivered case due today", () => {
+    const rows = computeTodaySchedule(
+      base({
+        cases: [
+          makeCase({ delivery_date: TODAY, status: 'delivered' }),
+          makeCase({ delivery_date: TODAY, archived_at: archived }),
+          makeCase({ delivery_date: TODAY, status: 'draft' }),
+        ],
+      })
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('Ready');
+  });
+
+  it('excludes them from the stage counts', () => {
+    const received = computeWorkflow(
+      base({
+        cases: [
+          makeCase({ status: 'received' }),
+          makeCase({ status: 'received', archived_at: archived }),
+          makeCase({ status: 'draft' }),
+        ],
+      })
+    ).find((s) => s.key === 'received');
+    expect(received!.count).toBe(1);
+  });
+});
+
+describe('stage ageing', () => {
+  /** `days` before TODAY, as a local-day string. */
+  const daysAgo = (days: number) => {
+    const [y, m, d] = TODAY.split('-').map(Number);
+    const dt = new Date(y, m - 1, d - days);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(
+      dt.getDate(),
+    ).padStart(2, '0')}`;
+  };
+
+  const at = (days: number, over: Partial<DentalCase> = {}) =>
+    makeCase({
+      status: 'received',
+      delivery_date: '2026-10-30',
+      history: [
+        {
+          id: 'h',
+          case_id: 'c',
+          status: 'received',
+          notes: '',
+          timestamp: `${daysAgo(days)} 09:00`,
+          updated_by: 'adil',
+        },
+      ],
+      ...over,
+    });
+
+  it('reports how long the oldest case has sat in the stage', () => {
+    const stages = computeWorkflow(base({ cases: [at(1), at(6)] }));
+    const received = stages.find((s) => s.key === 'received')!;
+    expect(received.count).toBe(2);
+    expect(received.oldestDays).toBe(6);
+  });
+
+  it('is null for an empty stage rather than a misleading zero', () => {
+    const stages = computeWorkflow(base({ cases: [] }));
+    expect(stages.every((s) => s.oldestDays === null)).toBe(true);
+  });
+
+  it('never goes negative when a transition is stamped today', () => {
+    const stages = computeWorkflow(base({ cases: [at(0)] }));
+    expect(stages.find((s) => s.key === 'received')!.oldestDays).toBe(0);
+  });
+});
+
 describe('computeAtRisk', () => {
   it('grades a past-due case as Behind and a soon-due one as At Risk', () => {
     const rows = computeAtRisk(

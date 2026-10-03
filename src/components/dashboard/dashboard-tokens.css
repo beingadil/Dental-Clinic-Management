@@ -191,6 +191,13 @@
     border: 1px solid var(--ds-line);
     border-radius: var(--ds-radius-card);
     box-shadow: var(--ds-shadow-card);
+    /* The dashboard lays panels out in CSS columns. Without this the browser
+       may break one panel across a column boundary and slice a case list in
+       half; the panel instead moves whole into the next column. */
+    break-inside: avoid;
+    /* Columns stack on narrow screens, so each panel needs its own gap rather
+       than relying on the `columns-4` gutter alone. */
+    margin-bottom: 16px;
   }
 
   .ds-panel-title {

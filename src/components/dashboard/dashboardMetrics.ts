@@ -34,9 +34,17 @@ export interface MetricsInput {
 
 /* ── small shared helpers ─────────────────────────────────────────────── */
 
-const ACTIVE_STATUSES: CaseStatus[] = ['draft', 'received', 'in_progress', 'qc', 'ready', 'revision'];
+const ACTIVE_STATUSES: CaseStatus[] = ['received', 'in_progress', 'qc', 'ready', 'revision'];
 
-export const isActive = (c: DentalCase) => ACTIVE_STATUSES.includes(c.status);
+/**
+ * A case the dashboard should count as live, open work.
+ *
+ * Excludes archived cases (the user has already put them away) and drafts (a
+ * draft was never registered at the bench, so it is not work in progress).
+ * Both used to slip through and inflate the KPI row and Today's Schedule
+ * against the Workstation list, which hides archived rows by default.
+ */
+export const isActive = (c: DentalCase) => !c.archived_at && ACTIVE_STATUSES.includes(c.status);
 export const isBench = (c: DentalCase) =>
   c.status === 'in_progress' || c.status === 'qc' || c.status === 'ready';
 
@@ -149,6 +157,17 @@ export interface WorkflowStage {
   /** Unit word under the figure — "cases", "today" — matches the design. */
   unit: string;
   tone: 'muted' | 'accent' | 'qc' | 'pos' | 'dispatch';
+  /**
+   * Days the OLDEST case in this stage has been sitting there, or null when the
+   * stage is empty. A bare count cannot distinguish "three cases, all moving"
+   * from "three cases, one of them stuck since last month", and only the second
+   * one needs a technician to do something.
+   *
+   * Measured from the case's last real status transition (`history`), not from
+   * `delivery_date` — that is the promise, not the wait. Falls back to
+   * `updated_at` when a case has no recorded transition.
+   */
+  oldestDays: number | null;
 }
 
 export function computeWorkflow(input: MetricsInput): WorkflowStage[] {
@@ -158,19 +177,47 @@ export function computeWorkflow(input: MetricsInput): WorkflowStage[] {
      registered at the bench. Counting either inflates the stage totals against
      what the Workstation actually lists. */
   const live = input.cases.filter((c) => !c.archived_at && c.status !== 'draft');
-  const by = (s: CaseStatus) => live.filter((c) => c.status === s).length;
+
+  /* Whole days since the case last changed status. `lastTransition` returns
+     'YYYY-MM-DD HH:mm:ss'; slicing to the date keeps this a local-day
+     comparison, consistent with every other date in the dashboard. */
+  const stageSince = (c: DentalCase): number => {
+    const stamp = lastTransition(c);
+    if (!stamp) return 0;
+    const d = daysDiff(today, stamp.slice(0, 10));
+    return d > 0 ? d : 0;
+  };
+
+  const build = (
+    key: CaseStatus | 'dispatched',
+    label: string,
+    unit: string,
+    tone: WorkflowStage['tone'],
+    inStage: (c: DentalCase) => boolean,
+  ): WorkflowStage => {
+    const rows = live.filter(inStage);
+    return {
+      key,
+      label,
+      count: rows.length,
+      unit,
+      tone,
+      oldestDays: rows.length ? Math.max(...rows.map(stageSince)) : null,
+    };
+  };
+
   return [
-    { key: 'received', label: 'Received', count: by('received'), unit: 'cases', tone: 'muted' },
-    { key: 'in_progress', label: 'In Production', count: by('in_progress'), unit: 'cases', tone: 'accent' },
-    { key: 'qc', label: 'QC', count: by('qc'), unit: 'cases', tone: 'qc' },
-    { key: 'ready', label: 'Ready', count: by('ready'), unit: 'cases', tone: 'pos' },
-    {
-      key: 'dispatched',
-      label: 'Dispatched',
-      count: live.filter((c) => c.status === 'delivered' && c.delivery_date === today).length,
-      unit: 'today',
-      tone: 'dispatch',
-    },
+    build('received', 'Received', 'cases', 'muted', (c) => c.status === 'received'),
+    build('in_progress', 'In Production', 'cases', 'accent', (c) => c.status === 'in_progress'),
+    build('qc', 'QC', 'cases', 'qc', (c) => c.status === 'qc'),
+    build('ready', 'Ready', 'cases', 'pos', (c) => c.status === 'ready'),
+    build(
+      'dispatched',
+      'Dispatched',
+      'today',
+      'dispatch',
+      (c) => c.status === 'delivered' && c.delivery_date === today,
+    ),
   ];
 }
 
@@ -291,8 +338,17 @@ function lastTransition(c: DentalCase): string | undefined {
 
 export function computeTodaySchedule(input: MetricsInput, limit = 4): ScheduleRow[] {
   const today = input.todayStr ?? getTodayStr();
+  /* isActive, not a local status check: delivered cases due today still belong
+     on the day's schedule (they went out today), but archived ones and drafts
+     do not, and only the shared predicate knows that. */
   return input.cases
-    .filter((c) => c.delivery_date === today && c.status !== 'cancelled')
+    .filter(
+      (c) =>
+        c.delivery_date === today &&
+        !c.archived_at &&
+        c.status !== 'draft' &&
+        c.status !== 'cancelled',
+    )
     .sort(
       (a, b) =>
         (lastTransition(a) || '').localeCompare(lastTransition(b) || '') ||
