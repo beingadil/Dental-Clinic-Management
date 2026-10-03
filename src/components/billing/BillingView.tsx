@@ -256,7 +256,7 @@ export const BillingView: React.FC = () => {
       inv.payment_status.toUpperCase(),
       inv.due_date
     ]);
-    downloadCSV(`Dental_Solutions_Invoices_${new Date().toISOString().substring(0, 10)}`, [headers, ...rows]);
+    downloadCSV(`Dental_Solutions_Invoices_${getTodayStr()}`, [headers, ...rows]);
   };
 
   const getStatusBadge = (inv: Invoice) => {

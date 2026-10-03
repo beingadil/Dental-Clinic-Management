@@ -68,7 +68,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Dental_Solutions_Monthly_Billing_${new Date().toISOString().substring(0, 10)}.csv`;
+    a.download = `Dental_Solutions_Monthly_Billing_${getTodayStr()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

@@ -392,7 +392,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     if (!selectedClinic) return;
     try {
       const clinicTitle = selectedClinic.name;
-      const filename = `Ledger_${clinicTitle.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `Ledger_${clinicTitle.replace(/\s+/g, '_')}_${getTodayStr()}.csv`;
 
       const headers = ['Sr No.', 'Date', 'Clinic', 'Type', 'Narration', 'Debit (PKR)', 'Credit (PKR)', 'Closing Balance (PKR)'];
       const rows: string[][] = [];

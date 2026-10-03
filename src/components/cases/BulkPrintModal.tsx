@@ -17,6 +17,7 @@ import {
 import '../print/jobSlipPrint.css';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 import { LabCardSlip } from './LabCardSlip';
+import { getTodayStr } from '../../utils/dateUtils';
 
 /**
  * Screen-fit for A4 sheet previews: scale each 210mm-wide sheet to the
@@ -177,10 +178,10 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
     // Serialize the print container only (no modal chrome).
     const container = root.querySelector(PRINT_CONTAINER_SELECTOR) || root;
     const html = buildStandaloneHtml(container.outerHTML, {
-      title: `Job Slips ${new Date().toISOString().split('T')[0]}`,
+      title: `Job Slips ${getTodayStr()}`,
       extraCss: BATCH_STANDALONE_CSS,
     });
-    downloadStandaloneHtml(html, `Job-Slip-Sheets_${new Date().toISOString().split('T')[0]}.html`);
+    downloadStandaloneHtml(html, `Job-Slip-Sheets_${getTodayStr()}.html`);
   };
 
   // Map selected cases to corresponding invoices if available
@@ -247,7 +248,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                 </button>
               )}
               <SavePdfButton
-                suggestedName={`${printType === 'slips' ? 'Job-Slip-Sheets' : 'Case-Invoices'}_${new Date().toISOString().split('T')[0]}.pdf`}
+                suggestedName={`${printType === 'slips' ? 'Job-Slip-Sheets' : 'Case-Invoices'}_${getTodayStr()}.pdf`}
                 className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition-all cursor-pointer"
               />
               <button

@@ -130,7 +130,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <SavePdfButton
-              suggestedName={`Unpaid-Invoices-${new Date().toISOString().split('T')[0]}.pdf`}
+              suggestedName={`Unpaid-Invoices-${getTodayStr()}.pdf`}
               disabled={selected.length === 0}
               className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white border border-slate-300 px-4 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             />

@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
+import { getTodayStr } from '../../utils/dateUtils';
 
 export const CatalogView: React.FC = () => {
   const { caseTypes, addCaseType, updateCaseType, deleteCaseType, brandingSettings } = useApp();
@@ -186,7 +187,7 @@ export const CatalogView: React.FC = () => {
           <div className="text-right">
             <h2 className="text-base font-black">MATERIAL &amp; SERVICE CATALOG</h2>
             <p className="text-xs text-slate-600">Official Price List</p>
-            <p className="text-xs text-slate-500">Generated: {new Date().toISOString().replace('T', ' ').substring(0, 10)}</p>
+            <p className="text-xs text-slate-500">Generated: {getTodayStr()}</p>
           </div>
         </div>
       </div>

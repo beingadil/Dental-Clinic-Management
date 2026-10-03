@@ -4,6 +4,7 @@ import { ensureSequenceTable, ensureCounterAtLeast, SEQ_KEYS } from './sequences
 import { hashPassword } from './crypto';
 import { DEFAULT_MATERIALS, DEFAULT_PREP_TYPES, DEFAULT_SHADE_GUIDES, DEFAULT_IMPLANT_BRANDS } from '../services/clinicalSpecsService';
 import { DEFAULT_BRANDING_SETTINGS } from './defaults';
+import { getNowStamp } from '../utils/dateUtils';
 
 /**
  * Phase 3 — one-time migration of pre-existing browser localStorage records
@@ -340,8 +341,8 @@ export async function runLegacyMigration(): Promise<LegacyMigrationReport> {
           [pid, p.payment_number ?? null, p.receipt_number ?? null, String(p.invoice_id), p.invoice_number ?? null,
            p.case_id ?? null, p.case_number ?? null, p.lab_id ?? null, p.lab_name ?? null,
            amount, ['cash', 'bank', 'cheque', 'advance'].includes(p.payment_method) ? p.payment_method : 'cash',
-           p.payment_date ?? p.created_at ?? new Date().toISOString(), p.reference_number ?? null, p.notes ?? null,
-           p.recorded_by ?? 'Legacy Import', 'invoice_payment', 'posted', p.created_at ?? p.payment_date ?? new Date().toISOString()]
+           p.payment_date ?? p.created_at ?? getNowStamp(), p.reference_number ?? null, p.notes ?? null,
+           p.recorded_by ?? 'Legacy Import', 'invoice_payment', 'posted', p.created_at ?? p.payment_date ?? getNowStamp()]
         );
         for (const att of p.attachments || []) {
           tx.run(
@@ -405,9 +406,9 @@ export async function runLegacyMigration(): Promise<LegacyMigrationReport> {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [String(a.id), String(a.adjustment_number ?? key), a.credit_note_number ?? null, String(a.lab_id), String(a.lab_name ?? ''),
            ['credit_note', 'debit_adjustment', 'refund', 'write_off', 'reversal'].includes(a.type) ? a.type : 'credit_note',
-           amount, String(a.reason), a.date ?? a.created_at ?? new Date().toISOString(),
+           amount, String(a.reason), a.date ?? a.created_at ?? getNowStamp(),
            a.reference_number ?? null, a.invoice_id ?? null, a.invoice_number ?? null, a.notes ?? null,
-           a.recorded_by ?? 'Legacy Import', a.status ?? 'posted', a.created_at ?? new Date().toISOString()]
+           a.recorded_by ?? 'Legacy Import', a.status ?? 'posted', a.created_at ?? getNowStamp()]
         );
         for (const att of a.attachments || []) {
           tx.run(

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { getTodayStr } from '../../utils/dateUtils';
 import { useApp } from '../../context/AppContext';
 import { PaymentRecord, AdvancePayment, AccountAdjustment, Invoice, PaymentMethod } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
@@ -252,7 +253,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Dental_Solutions_Transactions_${new Date().toISOString().substring(0, 10)}.csv`;
+    link.download = `Dental_Solutions_Transactions_${getTodayStr()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

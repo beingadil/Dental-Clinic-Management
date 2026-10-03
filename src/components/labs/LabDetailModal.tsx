@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { getDaysOffsetStr } from '../../utils/dateUtils';
 import { DentalLab, DentalCase, PaymentRecord, Invoice } from '../../types';
 import { LabContactsManager } from './LabContactsManager';
 import { LabPricingManager } from './LabPricingManager';
@@ -792,7 +793,10 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             selected_teeth: [11, 21],
             tooth_details: {},
             shade: 'A2',
-            delivery_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            // Local calendar day, not toISOString(): at 01:30 PKT the UTC day
+            // is already yesterday, so +5 days off a UTC base stamped a due
+            // date one day early — the lab's own SLA clock started wrong.
+            delivery_date: getDaysOffsetStr(5),
             priority: 'normal',
             price: 15000,
             discount: 0,

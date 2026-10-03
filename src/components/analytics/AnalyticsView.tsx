@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { getDateStr, getTodayStr } from '../../utils/dateUtils';
+import { getDateStr, getTodayStr, getNowStamp } from '../../utils/dateUtils';
 import { useApp } from '../../context/AppContext';
 import { computeAnalyticsForPeriod } from '../../services/analyticsService';
 import { DatePickerRange } from '../common/DatePickerRange';
@@ -130,7 +130,7 @@ export const AnalyticsView: React.FC = () => {
   const handleExportCSV = () => {
     const rows = [
       [`Analytics Report — ${period.label}`, '', '', ''],
-      [`Generated`, new Date().toISOString().slice(0, 16).replace('T', ' '), '', ''],
+      [`Generated`, getNowStamp(), '', ''],
       ['', '', '', ''],
       ['Lab Name', 'Invoices', 'Total Billed (PKR)', 'Total Collected (PKR)', 'Outstanding (PKR)', 'Avg Days to Pay', 'Advance Credit (PKR)'],
       ...analytics.paymentBehavior.map((r) => [

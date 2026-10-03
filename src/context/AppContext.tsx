@@ -605,7 +605,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const today = new Date(`${getTodayStr()}T00:00:00`);
     const due = selectCasesToAutoArchive(cases, today);
     if (due.length === 0) return;
-    const stamp = new Date().toISOString();
+    // Local wall-clock stamp. toISOString() converts to UTC, so between 00:00
+    // and 05:00 PKT this wrote YESTERDAY's date into archived_at/updated_at —
+    // the window a clinic actually closes its books in.
+    const stamp = getNowStamp();
     const dueIds = new Set(due.map((c) => c.id));
     setCases((prev) =>
       prev.map((c) =>
@@ -722,6 +725,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const newToken: string =
             (crypto as any)?.randomUUID?.() ??
             `sess-${Date.now()}-${randomToken()}`;
+          // toISOString() is CORRECT here, unlike every other stamp in this file: a
+          // session expiry is an absolute instant compared against Date.now(),
+          // never a calendar day shown to a user. Switching it to a local-day
+          // helper would make the expiry silently depend on the operator's
+          // timezone. See utils/dateUtils.ts for the rule this file otherwise
+          // follows.
           sessionsRepo.create(newToken, user.id, new Date(Date.now() + 30 * 86400000).toISOString());
           safeSetJSON('dsw_session_token', newToken);
         }
@@ -1261,7 +1270,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      setting the timestamp here is the whole persistence story. */
   const archiveCase = (id: string) => {
     const target = cases.find((c) => c.id === id);
-    const stamp = new Date().toISOString();
+    const stamp = getNowStamp();
     setCases((prev) => prev.map((c) => (c.id === id ? { ...c, archived_at: stamp, updated_at: stamp } : c)));
     if (target) {
       showToast(`Case ${target.case_number} moved to archive`, 'success');
@@ -1270,7 +1279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const restoreCase = (id: string) => {
     const target = cases.find((c) => c.id === id);
-    const stamp = new Date().toISOString();
+    const stamp = getNowStamp();
     setCases((prev) => prev.map((c) => (c.id === id ? { ...c, archived_at: null, updated_at: stamp } : c)));
     if (target) {
       showToast(`Case ${target.case_number} restored to the workstation`, 'success');
@@ -1418,7 +1427,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const reassignLabRecords = (fromLabId: string, toLabId: string): boolean => {
     const target = labs.find((l) => l.id === toLabId);
     if (!target || fromLabId === toLabId) return false;
-    const stamp = new Date().toISOString();
+    const stamp = getNowStamp();
     setCases((prev) =>
       prev.map((c) => (c.lab_id === fromLabId ? { ...c, lab_id: target.id, lab_name: target.name, updated_at: stamp } : c))
     );

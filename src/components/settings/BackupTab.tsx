@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { getTodayStr } from '../../utils/dateUtils';
 import { useApp } from '../../context/AppContext';
 import {
   createBackup,
@@ -145,7 +146,7 @@ export const BackupTab: React.FC<{
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `dentalsolutions_${APP_VERSION}_${new Date().toISOString().slice(0, 10)}.dentalbackup`;
+      a.download = `dentalsolutions_${APP_VERSION}_${getTodayStr()}.dentalbackup`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

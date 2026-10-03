@@ -5,6 +5,7 @@ import { downloadCSV } from '../../services/csvExport';
 import { X, Printer, Download, Calendar, Building2, FileText, CheckCircle2 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { Modal } from '../common/ui';
+import { getTodayStr } from '../../utils/dateUtils';
 
 interface ClinicStatementModalProps {
   isOpen: boolean;
@@ -87,7 +88,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
       e.credit || 0,
       e.running_balance
     ]);
-    downloadCSV(`Statement_${clinic.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`, [headers, ...rows]);
+    downloadCSV(`Statement_${clinic.name.replace(/\s+/g, '_')}_${getTodayStr()}`, [headers, ...rows]);
   };
 
   return (
@@ -117,7 +118,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               <Download className="w-3.5 h-3.5 text-slate-500" />
               Export CSV
             </button>
-            <SavePdfButton suggestedName={`Statement_${clinic?.name?.replace(/\s+/g, '_') || 'Clinic'}_${new Date().toISOString().split('T')[0]}.pdf`} />
+            <SavePdfButton suggestedName={`Statement_${clinic?.name?.replace(/\s+/g, '_') || 'Clinic'}_${getTodayStr()}.pdf`} />
             <button
               onClick={handlePrint}
               className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
@@ -190,7 +191,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               <div className="text-lg font-bold text-indigo-700 uppercase tracking-wide">
                 STATEMENT OF ACCOUNT
               </div>
-              <div className="text-xs text-slate-500 mt-1">Date: {new Date().toISOString().split('T')[0]}</div>
+              <div className="text-xs text-slate-500 mt-1">Date: {getTodayStr()}</div>
               <div className="text-xs text-slate-500">Account ID: <strong className="font-mono text-slate-900">{clinic.id}</strong></div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { DentalCase, Invoice, BrandingSettings, PaymentRecord } from '../../types';
 import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
+import { getTodayStr } from '../../utils/dateUtils';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
 
@@ -439,7 +440,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           {on(sections, 'statementFor') && (
             <div className="grid grid-cols-2 gap-4 mb-3 text-[11px]">
               <Field label="Statement For" value={labName || '—'} />
-              <Field label="Generated" value={new Date().toISOString().slice(0, 10)} />
+              <Field label="Generated" value={getTodayStr()} />
             </div>
           )}
           {on(sections, 'period') && period && (
