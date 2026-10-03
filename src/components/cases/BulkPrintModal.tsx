@@ -15,6 +15,7 @@ import {
   downloadStandaloneHtml,
 } from '../print/printPipeline';
 import '../print/jobSlipPrint.css';
+import { isDesktop } from '../../db/persistence';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 import { LabCardSlip } from './LabCardSlip';
 import { getTodayStr } from '../../utils/dateUtils';
@@ -237,7 +238,12 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {printType === 'slips' && (
+              {/* Web-only, same reason as the single-slip modal: the desktop shell has no
+                  handler for a programmatic blob-URL download (no on_download
+                  handler, no download capability in src-tauri/capabilities), so
+                  the click produced no file and no error. Save PDF covers the
+                  desktop case natively. */}
+              {printType === 'slips' && !isDesktop() && (
                 <button
                   type="button"
                   onClick={handleSaveHtml}

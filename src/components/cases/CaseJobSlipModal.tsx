@@ -13,6 +13,7 @@ import {
 } from '../print/printPipeline';
 import '../print/jobSlipPrint.css';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
+import { isDesktop } from '../../db/persistence';
 
 interface CaseJobSlipModalProps {
   caseData: DentalCase;
@@ -127,7 +128,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 md:p-6 overflow-y-auto no-print-backdrop">
-      <div ref={cardRef} className="bg-white rounded-3xl max-w-md w-full p-5 md:p-6 border border-slate-200 shadow-2xl relative space-y-5 printable-area print-area my-auto">
+      <div ref={cardRef} className="bg-white rounded-3xl max-w-2xl w-full p-5 md:p-6 border border-slate-200 shadow-2xl relative space-y-5 printable-area print-area my-auto">
         {/* Header Actions (hidden on print) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
@@ -150,14 +151,26 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleSaveAndPrint(true)}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Save voucher in database and download the exact slip file"
-            >
-              <Download className="w-4 h-4" /> Save &amp; Download
-            </button>
+            {/* Web-only. The desktop shell has no handler for a programmatic
+                blob-URL download: Tauri wires the WebView2 download event to
+                a Rust-side save dialog, and this app registers none — there is
+                no on_download handler and no download capability in
+                src-tauri/capabilities. Clicking this on desktop therefore
+                produces NO file and NO error, which is worse than not offering
+                it. It is also redundant there: Save PDF (native
+                PrintToPdfStream) produces the artifact the operator actually
+                wants. The web build still needs it, since the browser has no
+                save-to-file path without the print dialog. */}
+            {!isDesktop() && (
+              <button
+                type="button"
+                onClick={() => handleSaveAndPrint(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Save voucher in database and download the exact slip file"
+              >
+                <Download className="w-4 h-4" /> Save &amp; Download
+              </button>
+            )}
             <SavePdfButton
               suggestedName={`Job-Slip_${caseData.case_number || 'tag'}.pdf`}
               className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
