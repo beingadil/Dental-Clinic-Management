@@ -1,40 +1,38 @@
-# Project loops
+# LOOPS.md
 
-Saved loops for this project. Each entry records the loop name, a one-sentence
-explanation, the exact prompt, and the save date.
+Reusable, bounded agent loops for this project. Each entry records what the
+loop does, the exact prompt that runs it, and when it was saved.
 
 ---
 
-## Post-Release Verify & Settle
+## Dashboard design-fidelity
 
-One-sentence: after a `v*` tag push finishes CI, verify the release actually
-served (manifest version, asset checksum, release state) and repair the
-smallest mismatch so end-user installs cannot loop or 404.
+Rebuilds or restyles a dashboard panel against a reference image, then measures
+the rendered DOM for overflowing containers and clipped strings at the target
+viewport and at one narrower viewport, fixing the worst finding and
+re-measuring until both counts reach zero.
 
-**Exact prompt:**
+**Why it exists:** eyeballing a screenshot reliably misses label clipping and
+the breakpoint at which a grid gets too narrow — the sidebar eats ~300px, so an
+`xl:` layout can fire while only ~980px of content remains. Counting
+`scrollWidth > clientWidth` in the live DOM catches both. During the v2.15
+dashboard rebuild this loop caught "PKR PKR 67,000" and four clipped labels
+that no screenshot review had flagged.
 
-```
-The v<VERSION> release just finished building on CI. Verify the release
-actually served end-to-end:
+**Save date:** 2026-10-03
 
-1. CI run for the tag: conclusion must be success.
-2. gh-pages update-manifest.json must report version <VERSION> and a
-   payload_checksum that matches the SHA-256 of the uploaded installer asset.
-3. Releases API latest must be v<VERSION> with the NSIS setup exe attached,
-   and the release must not be a draft.
-4. Download the asset and hash it; compare against the manifest checksum.
+Prompt:
+> Restyle the named dashboard panel to match the attached reference. After each
+> change, load the page and count elements where `scrollWidth > clientWidth` —
+> once at the target viewport and once ~25% narrower — plus any horizontal
+> scroll on the scroll container. Fix the worst finding and re-measure. Stop
+> when both counts are zero at both widths. Keep every figure backed by real
+> data: if the reference shows a value the schema cannot supply, substitute the
+> real equivalent and say which one you swapped. Ask before editing files
+> outside the panel.
 
-If everything matches: report a clean no-op with the checked values.
-If anything mismatches: diagnose against the commit the tag points at,
-apply the smallest repair (re-tag, re-run publish step, fix the workflow),
-then re-verify. If a check needs the installed app or GitHub auth, stop and
-report it as blocked with the exact command I should run. Never report a
-failed verification as success.
-```
+---
 
-**Save date:** 2026-09-29
+## Notes
 
-**Origin:** born from the v2.12.0 update-loop incident (stale `APP_VERSION`
-duplicate made updated installs re-download forever); would have caught it in
-one cycle instead of 14 install attempts. Companion automation: the
-`verify-release` CI job (same checks, runs automatically on every tag).
+These are this project's own loops, not entries from the public Loop Library.

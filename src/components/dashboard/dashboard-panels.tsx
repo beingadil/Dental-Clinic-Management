@@ -14,7 +14,7 @@
  *  · Figures use `.ds-figure` (tabular numerals) so columns align and totals
  *    do not shimmer as they change.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -510,12 +510,28 @@ export const TodaySchedule: React.FC<{
 
 /* ── 5 · Revenue & collections ────────────────────────────────────────── */
 
-/** Cumulative area chart. Hand-drawn SVG so the curve matches the design
- *  exactly without pulling a chart runtime into the dashboard bundle. */
+/** Cumulative area chart with a crosshair, hover tooltip and click-to-inspect.
+ *
+ *  Hand-drawn SVG rather than a chart runtime: the dashboard bundle does not
+ *  need to carry one for a six-point series, and the curve, gridline spacing
+ *  and dot styling then match the design exactly.
+ *
+ *  Interaction model, deliberately three-layer:
+ *    hover  → crosshair + tooltip follow the pointer (transient)
+ *    click  → pins that day, so the readout survives the pointer leaving
+ *    keys   → ← → move the cursor, Home/End jump to the ends
+ */
 const RevenueChart: React.FC<{ series: { label: string; value: number }[] }> = ({ series }) => {
   const W = 300;
   const H = 118;
   const PAD = { t: 10, r: 6, b: 20, l: 0 };
+
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  // A pinned day outranks a hovered one, so clicking really does "hold".
+  const active = pinned ?? hovered;
 
   const geometry = useMemo(() => {
     if (series.length < 2) return null;
@@ -547,6 +563,30 @@ const RevenueChart: React.FC<{ series: { label: string; value: number }[] }> = (
     return { pts, d, area, max, plotH, baseY: PAD.t + plotH };
   }, [series]);
 
+  /** Nearest sample to a pointer position, in viewBox units. Using the SVG's
+   *  own CTM means the answer is correct at any rendered size, which a
+   *  hand-rolled rect-width ratio is not once the chart is responsive. */
+  const nearest = (clientX: number): number | null => {
+    const svg = svgRef.current;
+    if (!svg || !geometry) return null;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    const loc = svg.createSVGPoint();
+    loc.x = clientX;
+    loc.y = 0;
+    const x = loc.matrixTransform(ctm.inverse()).x;
+    let best = 0;
+    let bestDist = Infinity;
+    geometry.pts.forEach(([px], i) => {
+      const d = Math.abs(px - x);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    });
+    return best;
+  };
+
   if (!geometry) {
     return (
       <div className="flex items-center justify-center h-[118px] text-[10px] text-ds-muted">
@@ -556,6 +596,24 @@ const RevenueChart: React.FC<{ series: { label: string; value: number }[] }> = (
   }
 
   const ticks = [geometry.max, geometry.max / 2, 0];
+  const activePoint = active === null ? null : geometry.pts[active];
+  const activeSeries = active === null ? null : series[active];
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const last = series.length - 1;
+    let next = active;
+    if (e.key === 'ArrowRight') next = Math.min(last, (active ?? -1) + 1);
+    else if (e.key === 'ArrowLeft') next = Math.max(0, (active ?? last) - 1);
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = last;
+    else if (e.key === 'Escape') {
+      setPinned(null);
+      setHovered(null);
+      return;
+    } else return;
+    e.preventDefault();
+    setPinned(next);
+  };
 
   return (
     <div className="min-w-0">
@@ -563,44 +621,106 @@ const RevenueChart: React.FC<{ series: { label: string; value: number }[] }> = (
         <div
           className="flex flex-col justify-between text-[9px] text-ds-muted tabular-nums shrink-0"
           style={{ height: H - PAD.t - PAD.b }}
+          aria-hidden="true"
         >
           {ticks.map((t) => (
             <span key={t}>{t >= 1000 ? `${Math.round(t / 1000)}K` : Math.round(t)}</span>
           ))}
         </div>
 
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full flex-1 min-w-0" role="img" aria-label="Cumulative collections this month">
-          <defs>
-            <linearGradient id="ds-rev-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--ds-pos)" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="var(--ds-pos)" stopOpacity="0.01" />
-            </linearGradient>
-          </defs>
+        <div className="relative flex-1 min-w-0">
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${W} ${H}`}
+            className="w-full block outline-none focus-visible:ring-2 focus-visible:ring-ds-accent-ring rounded"
+            role="img"
+            tabIndex={0}
+            aria-label={`Cumulative collections. ${
+              activeSeries
+                ? `${activeSeries.label}: PKR ${Math.round(activeSeries.value).toLocaleString()}`
+                : `${series.length} samples. Use arrow keys to inspect.`
+            }`}
+            onPointerMove={(e) => setHovered(nearest(e.clientX))}
+            onPointerLeave={() => setHovered(null)}
+            onPointerDown={(e) => {
+              const i = nearest(e.clientX);
+              setPinned((prev) => (i !== null && i === prev ? null : i));
+            }}
+            onKeyDown={onKeyDown}
+            onBlur={() => setHovered(null)}
+          >
+            <defs>
+              <linearGradient id="ds-rev-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--ds-pos)" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="var(--ds-pos)" stopOpacity="0.01" />
+              </linearGradient>
+            </defs>
 
-          {[0, 0.5, 1].map((f) => (
-            <line
-              key={f}
-              x1={PAD.l}
-              x2={W - PAD.r}
-              y1={geometry.baseY - f * geometry.plotH}
-              y2={geometry.baseY - f * geometry.plotH}
-              stroke="var(--ds-line)"
-              strokeWidth="1"
-              strokeDasharray={f === 1 ? undefined : '3 4'}
-            />
-          ))}
+            {[0, 0.5, 1].map((f) => (
+              <line
+                key={f}
+                x1={PAD.l}
+                x2={W - PAD.r}
+                y1={geometry.baseY - f * geometry.plotH}
+                y2={geometry.baseY - f * geometry.plotH}
+                stroke="var(--ds-line)"
+                strokeWidth="1"
+                strokeDasharray={f === 1 ? undefined : '3 4'}
+              />
+            ))}
 
-          <path d={geometry.area} fill="url(#ds-rev-fill)" />
-          <path d={geometry.d} fill="none" stroke="var(--ds-pos)" strokeWidth="2" strokeLinecap="round" />
-          {geometry.pts.map(([x, y], i) => (
-            <circle key={i} cx={x} cy={y} r="2.6" fill="white" stroke="var(--ds-pos)" strokeWidth="1.8" />
-          ))}
-        </svg>
+            <path d={geometry.area} fill="url(#ds-rev-fill)" />
+            <path d={geometry.d} fill="none" stroke="var(--ds-pos)" strokeWidth="2" strokeLinecap="round" />
+
+            {/* Crosshair sits under the markers so the active dot reads on top. */}
+            {activePoint && (
+              <line
+                x1={activePoint[0]}
+                x2={activePoint[0]}
+                y1={PAD.t}
+                y2={geometry.baseY}
+                stroke="var(--ds-accent)"
+                strokeWidth="1"
+                strokeDasharray="2 3"
+                opacity="0.7"
+              />
+            )}
+
+            {geometry.pts.map(([x, y], i) => (
+              <circle
+                key={i}
+                cx={x}
+                cy={y}
+                r={i === active ? 4 : 2.6}
+                fill="white"
+                stroke={i === active ? 'var(--ds-accent)' : 'var(--ds-pos)'}
+                strokeWidth={i === active ? 2.2 : 1.8}
+              />
+            ))}
+          </svg>
+
+          {/* Tooltip is HTML, not SVG, so text is selectable and never
+              squashed by the viewBox scaling. */}
+          {activePoint && activeSeries && (
+            <div
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-ds-inverse text-white px-2 py-1.5 shadow-ds-lift whitespace-nowrap"
+              style={{ left: `${(activePoint[0] / W) * 100}%`, top: `${(activePoint[1] / H) * 100}%` }}
+            >
+              <div className="text-[9px] text-white/60">{activeSeries.label}</div>
+              <div className="text-[11px] font-bold tabular-nums">
+                PKR {Math.round(activeSeries.value).toLocaleString()}
+              </div>
+              {pinned === active && (
+                <div className="text-[8px] text-white/50 mt-0.5">pinned · click to release</div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex justify-between mt-1 text-[9px] text-ds-muted">
+      <div className="flex justify-between mt-1 text-[9px] text-ds-muted" aria-hidden="true">
         {series.map((p, i) => (
-          <span key={p.label + i}>
+          <span key={p.label + i} className={i === active ? 'text-ds-accent font-bold' : undefined}>
             {i === 0 || i === series.length - 1 || i === Math.floor(series.length / 2) ? p.label : ''}
           </span>
         ))}
@@ -896,22 +1016,42 @@ export const Workload: React.FC<{
 
 /* ── 10 · Lab performance ─────────────────────────────────────────────── */
 
-export const LabPerformance: React.FC<{ rows: PerformanceRow[] }> = ({ rows }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="lab-performance">
-    <PanelHead icon={Activity} title="Lab Performance" subtitle="This month" />
+export const LabPerformance: React.FC<{ rows: PerformanceRow[] }> = ({ rows }) => {
+  /* Only metrics with a basis. The mock showed seven filled rows; a new
+     install can fill two or three, and padding the rest with em dashes made
+     the panel look broken rather than sparse. The count in the subtitle tells
+     the reader a short list is the whole truth, not a failed load. */
+  const supported = rows.filter((r) => r.supported);
 
-    <dl className="mt-3.5 space-y-2">
-      {rows.map((row) => (
-        <div key={row.label} className="flex items-center justify-between gap-3 text-[11.5px]">
-          <dt className="text-ds-body truncate">{row.label}</dt>
-          <dd className="ds-figure text-[11.5px] font-bold truncate max-w-[52%]" title={row.value}>
-            {row.value}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  </section>
-);
+  return (
+    <section className="ds-panel p-5 ds-enter" data-purpose="lab-performance">
+      <PanelHead
+        icon={Activity}
+        title="Lab Performance"
+        subtitle={
+          supported.length === rows.length
+            ? 'This month'
+            : `${supported.length} of ${rows.length} · this month`
+        }
+      />
+
+      {supported.length === 0 ? (
+        <Empty message="Nothing completed yet" hint="Metrics appear once cases are delivered." />
+      ) : (
+        <dl className="mt-3.5 space-y-2">
+          {supported.map((row) => (
+            <div key={row.label} className="flex items-center justify-between gap-3 text-[11.5px]">
+              <dt className="text-ds-body truncate">{row.label}</dt>
+              <dd className="ds-figure text-[11.5px] font-bold truncate max-w-[52%]" title={row.value}>
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+};
 
 /* ── 11 · Upcoming deliveries ─────────────────────────────────────────── */
 

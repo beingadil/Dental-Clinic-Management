@@ -34,16 +34,18 @@ import {
   type QuickAction,
 } from './dashboard-panels';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
+import { RecordTransactionModal } from '../billing/RecordTransactionModal';
+import { ShadeGuideModal } from './ShadeGuideModal';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
   ClipboardList,
   CreditCard,
+  FlaskConical,
   Hospital,
   Package,
   Receipt,
   Send,
   ShoppingCart,
-  UserPlus,
 } from 'lucide-react';
 import type { DentalCase } from '../../types';
 
@@ -55,6 +57,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
   const { cases, invoices, allPayments, labs, user, setCurrentView, updateCase } = useApp();
 
   const [selectedCase, setSelectedCase] = React.useState<DentalCase | null>(null);
+const [paymentModalClinicId, setPaymentModalClinicId] = React.useState<string | undefined>(undefined);
+const [showPaymentModal, setShowPaymentModal] = React.useState(false);
+const [showShadeGuide, setShowShadeGuide] = React.useState(false);
+const [pendingShade, setPendingShade] = React.useState<string | null>(null);
+  /** The shell's new-case modal takes no shade, so the shade-guide path opens
+   *  its own wizard instance carrying the pick through. */
+  const [shadeWizardOpen, setShadeWizardOpen] = React.useState(false);
 
   const todayStr = getTodayStr();
 
@@ -85,15 +94,84 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
     }
   };
 
+  /* Every tile below now opens something genuinely distinct.
+ *
+ * Three of the original eight were category errors rather than duplicates:
+ * there is no Patient entity at all (a patient is a field on a case), there
+ * is no purchase-order entity (the "Catalog" view is the materials and
+ * services price list), and invoices are created automatically the moment a
+ * case is registered, so there is no invoice composer to open. Rather than
+ * leave two tiles pointing at the same view and one pointing at a screen that
+ * cannot exist, those became the actions this build can actually perform. */
   const quickActions: QuickAction[] = [
-    { key: 'new', label: 'New Case', hint: 'Create a new case', icon: ClipboardList, tone: 'accent', onClick: onOpenNewCaseModal },
-    { key: 'invoice', label: 'Invoice', hint: 'Generate invoice', icon: Receipt, tone: 'pos', onClick: () => setCurrentView('billing') },
-    { key: 'payment', label: 'Payment', hint: 'Record payment', icon: CreditCard, tone: 'warn', onClick: () => setCurrentView('billing') },
-    { key: 'patient', label: 'Patient', hint: 'Add to a new case', icon: UserPlus, tone: 'qc', onClick: onOpenNewCaseModal },
-    { key: 'clinic', label: 'Clinic', hint: 'Add dental clinic', icon: Hospital, tone: 'accent', onClick: () => setCurrentView('labs') },
-    { key: 'purchase', label: 'Purchase', hint: 'New purchase order', icon: ShoppingCart, tone: 'warn', onClick: () => setCurrentView('catalog') },
-    { key: 'receive', label: 'Receive Case', hint: 'Log a received case', icon: Package, tone: 'pos', onClick: () => advanceOldest('received', 'in_progress', 'Moved to production from the dashboard') },
-    { key: 'dispatch', label: 'Dispatch', hint: 'Mark for dispatch', icon: Send, tone: 'dispatch', onClick: () => advanceOldest('qc', 'ready', 'Cleared QC from the dashboard') },
+    {
+      key: 'new_case',
+      label: 'New Case',
+      hint: 'Case + invoice',
+      icon: ClipboardList,
+      tone: 'accent',
+      onClick: onOpenNewCaseModal,
+    },
+    {
+      key: 'payment',
+      label: 'Record Payment',
+      hint: 'Allocate to invoices',
+      icon: CreditCard,
+      tone: 'pos',
+      onClick: () => {
+        setPaymentModalClinicId(undefined);
+        setShowPaymentModal(true);
+      },
+    },
+    {
+      key: 'invoices',
+      label: 'Receivables',
+      hint: 'Invoices & balances',
+      icon: Receipt,
+      tone: 'warn',
+      onClick: () => setCurrentView('billing'),
+    },
+    {
+      key: 'shade',
+      label: 'Shade Guide',
+      hint: 'Pre-fill a shade',
+      icon: FlaskConical,
+      tone: 'qc',
+      onClick: () => setShowShadeGuide(true),
+    },
+    {
+      key: 'clinic',
+      label: 'Add Clinic',
+      hint: 'New dental clinic',
+      icon: Hospital,
+      tone: 'accent',
+      onClick: () => setCurrentView('labs'),
+    },
+    {
+      key: 'catalog',
+      label: 'Materials',
+      hint: 'Pricing catalog',
+      icon: ShoppingCart,
+      tone: 'warn',
+      onClick: () => setCurrentView('catalog'),
+    },
+    {
+      key: 'receive',
+      label: 'Receive Case',
+      hint: 'Received → production',
+      icon: Package,
+      tone: 'pos',
+      onClick: () =>
+        advanceOldest('received', 'in_progress', 'Moved to production from the dashboard'),
+    },
+    {
+      key: 'dispatch',
+      label: 'Dispatch',
+      hint: 'QC → ready to ship',
+      icon: Send,
+      tone: 'dispatch',
+      onClick: () => advanceOldest('qc', 'ready', 'Cleared QC from the dashboard'),
+    },
   ];
 
   const scheduleDate = new Date().toLocaleDateString('en-US', {
@@ -161,6 +239,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
 
       {selectedCase && (
         <CaseDetailModal initialCase={selectedCase} onClose={() => setSelectedCase(null)} />
+      )}
+
+      {/* Payment and Shade Guide are the two tiles that needed a real modal
+          rather than a navigation hop. */}
+      {showPaymentModal && (
+        <RecordTransactionModal
+          isOpen
+          initialMode="payment"
+          initialClinicId={paymentModalClinicId}
+          onClose={() => setShowPaymentModal(false)}
+        />
+      )}
+
+      {showShadeGuide && (
+        <ShadeGuideModal
+          onClose={() => setShowShadeGuide(false)}
+          onSelectShade={(shade) => {
+            // Carry the picked shade straight into a new case, which is what
+            // the shade guide is for — otherwise the pick goes nowhere.
+            setShowShadeGuide(false);
+            setPendingShade(shade);
+            setShadeWizardOpen(true);
+          }}
+        />
+      )}
+
+      {shadeWizardOpen && (
+        <CaseDetailModal
+          initialShade={pendingShade ?? undefined}
+          onClose={() => {
+            setShadeWizardOpen(false);
+            setPendingShade(null);
+          }}
+        />
       )}
     </div>
   );

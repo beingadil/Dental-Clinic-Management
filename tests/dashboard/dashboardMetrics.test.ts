@@ -13,9 +13,9 @@ import {
   computeWorkload,
   computeTodaySchedule,
   computeAtRisk,
-  computePerformance,
   type MetricsInput,
 } from '../../src/components/dashboard/dashboardMetrics';
+import { computePerformance } from '../../src/components/dashboard/dashboardPerformance';
 import type { DentalCase, Invoice, PaymentRecord } from '../../src/types';
 
 const TODAY = '2026-10-03';
@@ -269,28 +269,48 @@ describe('computeAtRisk', () => {
 });
 
 describe('computePerformance', () => {
-  it('renders an em dash for metrics with no basis, never a fake zero', () => {
-    const rows = computePerformance(base());
-    const byLabel = Object.fromEntries(rows.map((r) => [r.label, r.value]));
-    expect(byLabel['Avg. Turnaround']).toBe('—');
-    expect(byLabel['On-Time Delivery']).toBe('—');
-    expect(byLabel['Rework Rate']).toBe('—');
+  it('marks every metric unsupported on an empty dataset, so the panel drops them all', () => {
+    const rows = computePerformance({ cases: [], invoices: [], todayStr: TODAY });
+    expect(rows.every((r) => !r.supported)).toBe(true);
+    expect(rows.every((r) => r.value === '—')).toBe(true);
+  });
+
+  it('supports only the metrics the data actually backs', () => {
+    const rows = computePerformance({
+      cases: [
+        makeCase({
+          status: 'delivered',
+          delivery_date: '2026-10-02',
+          history: [
+            { id: 'h', case_id: 'c', status: 'delivered', notes: '', timestamp: `${TODAY} 10:00`, updated_by: 'a' },
+          ],
+        }),
+      ],
+      invoices: [makeInvoice({ created_at: `${TODAY} 10:00`, final_amount: 900 })],
+      todayStr: TODAY,
+    });
+    const supported = rows.filter((r) => r.supported).map((r) => r.label);
+    expect(supported).toContain('On-Time Delivery');
+    expect(supported).toContain('Cases Completed');
+    expect(supported).toContain('Revenue / Case');
+    // Nothing has been marked ready to ship in this fixture.
+    expect(supported).not.toContain('Ready to Ship');
   });
 
   it('measures on-time delivery against the promised date', () => {
-    const rows = computePerformance(
-      base({
-        cases: [
-          makeCase({
-            status: 'delivered',
-            delivery_date: '2026-10-02',
-            history: [
-              { id: 'h', case_id: 'c', status: 'delivered', notes: '', timestamp: `${TODAY} 10:00`, updated_by: 'a' },
-            ],
-          }),
-        ],
-      })
-    );
+    const rows = computePerformance({
+      cases: [
+        makeCase({
+          status: 'delivered',
+          delivery_date: '2026-10-02',
+          history: [
+            { id: 'h', case_id: 'c', status: 'delivered', notes: '', timestamp: `${TODAY} 10:00`, updated_by: 'a' },
+          ],
+        }),
+      ],
+      invoices: [],
+      todayStr: TODAY,
+    });
     const byLabel = Object.fromEntries(rows.map((r) => [r.label, r.value]));
     // Promised 10-02, actually delivered 10-03 — that is a late delivery.
     expect(byLabel['On-Time Delivery']).toBe('0%');
