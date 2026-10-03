@@ -13,6 +13,8 @@ import {
   computeWorkload,
   computeTodaySchedule,
   computeAtRisk,
+  computeUpcoming,
+  computeWorkflow,
   type MetricsInput,
 } from '../../src/components/dashboard/dashboardMetrics';
 import { computePerformance } from '../../src/components/dashboard/dashboardPerformance';
@@ -297,17 +299,78 @@ describe('computeTodaySchedule', () => {
 });
 
 describe('computeAtRisk', () => {
-  it('grades a past-due case as Behind and a distant one as On Track', () => {
+  it('grades a past-due case as Behind and a soon-due one as At Risk', () => {
     const rows = computeAtRisk(
       base({
         cases: [
           makeCase({ delivery_date: '2026-09-28' }), // 5 days late
           makeCase({ delivery_date: '2026-10-05' }), // 2 days out
-          makeCase({ delivery_date: '2026-10-20' }), // comfortable
         ],
       })
     );
-    expect(rows.map((r) => r.level)).toEqual(['Behind', 'At Risk', 'On Track']);
+    expect(rows.map((r) => r.level)).toEqual(['Behind', 'At Risk']);
+  });
+
+  it('omits On Track cases — the panel is titled "Cases At Risk"', () => {
+    const rows = computeAtRisk(
+      base({
+        cases: [
+          makeCase({ delivery_date: '2026-11-20' }), // 48 days out
+          makeCase({ delivery_date: '2026-09-28' }), // late, must survive
+        ],
+      })
+    );
+    expect(rows.map((r) => r.caseNumber)).toEqual([`#DS-${String(seq).padStart(4, '0')}`]);
+    expect(rows.every((r) => r.level !== 'On Track')).toBe(true);
+  });
+
+  it('returns nothing when every open case is comfortably on track', () => {
+    const rows = computeAtRisk(
+      base({ cases: [makeCase({ delivery_date: '2026-12-01' })] })
+    );
+    expect(rows).toEqual([]);
+  });
+});
+
+describe('computeWorkflow', () => {
+  it('counts only live cases — archived and draft are not on the bench', () => {
+    const stages = computeWorkflow(
+      base({
+        cases: [
+          makeCase({ status: 'received', archived_at: `${TODAY} 08:00` }),
+          makeCase({ status: 'draft' }),
+          makeCase({ status: 'received' }),
+        ],
+      })
+    );
+    expect(stages.find((s) => s.key === 'received')!.count).toBe(1);
+  });
+
+  it('counts an archived delivery as not dispatched today', () => {
+    const stages = computeWorkflow(
+      base({
+        cases: [
+          makeCase({ status: 'delivered', delivery_date: TODAY, archived_at: `${TODAY} 08:00` }),
+          makeCase({ status: 'delivered', delivery_date: TODAY }),
+        ],
+      })
+    );
+    expect(stages.find((s) => s.key === 'dispatched')!.count).toBe(1);
+  });
+});
+
+describe('computeUpcoming', () => {
+  it('starts from tomorrow — today already has its own panel', () => {
+    const rows = computeUpcoming(
+      base({
+        cases: [
+          makeCase({ delivery_date: TODAY }),
+          makeCase({ delivery_date: '2026-10-04' }),
+        ],
+      })
+    );
+    expect(rows.map((r) => r.dateLabel)).toEqual(['10/04']);
+    expect(rows.every((r) => r.dateLabel !== 'Today')).toBe(true);
   });
 });
 

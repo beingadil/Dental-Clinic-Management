@@ -1071,10 +1071,17 @@ export const UpcomingDeliveries: React.FC<{
   onOpenCase: (id: string) => void;
 }> = ({ rows, onOpenCase }) => (
   <section className="ds-panel p-5 ds-enter" data-purpose="upcoming-deliveries">
-    <PanelHead icon={Send} tone="dispatch" title="Upcoming Deliveries" />
+    <PanelHead icon={Send} tone="dispatch" title="Upcoming Deliveries" subtitle="Promised after today" />
 
     {rows.length === 0 ? (
-      <Empty message="No open deliveries" hint="Schedule a delivery date on an active case." />
+      /* Deliberately not "No open deliveries": this panel starts from tomorrow,
+         so a lab whose every open case is due today has plenty of deliveries —
+         they are just all in Today's Schedule above. Saying otherwise would
+         report an empty lab when the bench is full. */
+      <Empty
+        message="Nothing scheduled ahead"
+        hint="Every open case is due today or already past — see Today's Schedule."
+      />
     ) : (
       <ul className="mt-3.5 space-y-3">
         {rows.map((row) => (
@@ -1109,12 +1116,12 @@ export const UpcomingDeliveries: React.FC<{
   </section>
 );
 
-/* ── 12 · Closing brand bar ───────────────────────────────────────────── */
+/* ── 12 · Closing status bar ──────────────────────────────────────────── */
 
 /** Tooth mark. Drawn rather than imported because no icon set ships a molar,
  *  and an emoji is not an acceptable substitute for brand artwork. */
 const ToothMark: React.FC = () => (
-  <svg viewBox="0 0 48 48" className="w-12 h-12 shrink-0" aria-hidden="true">
+  <svg viewBox="0 0 48 48" className="w-9 h-9 shrink-0" aria-hidden="true">
     <path
       d="M24 6c-4.2 0-6.1-2-9.6-2C9 4 5 8.2 5 14.4c0 6.1 2.2 9.5 3.6 15.3C9.8 35.4 11 42 14.4 42c2.9 0 3.6-3.4 4.4-7.6.8-4 1.7-7.4 5.2-7.4s4.4 3.4 5.2 7.4C30 38.6 30.7 42 33.6 42 37 42 38.2 35.4 39.4 29.7 40.8 23.9 43 20.5 43 14.4 43 8.2 39 4 33.6 4 30.1 4 28.2 6 24 6Z"
       fill="currentColor"
@@ -1122,32 +1129,65 @@ const ToothMark: React.FC = () => (
   </svg>
 );
 
-export const BrandBar: React.FC = () => (
-  <footer
-    className="rounded-2xl bg-ds-inverse text-white px-5 py-4 flex flex-wrap items-center gap-4 justify-between"
-    data-purpose="brand-bar"
-  >
-    <div className="flex items-center gap-4 min-w-0">
-      <span className="text-white/90">
-        <ToothMark />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[13px] font-bold tracking-[-0.01em]">
-          Better Smiles <span className="text-white/40">•</span> Better Together
-        </p>
-        <p className="text-[10.5px] text-white/50 truncate">
-          Precision. Quality. Your Trusted Dental Lab Partner.
-        </p>
+/**
+ * Closing status bar.
+ *
+ * This used to be a marketing strip — a drawn tooth, "Better Smiles • Better
+ * Together", "Quality Restorations | On Time | Every Time". It looked like a
+ * finished product and carried no information a technician could act on: the
+ * tagline asserts an SLA the software cannot see, and the panel it replaced in
+ * the layout was the one place to put facts about this install.
+ *
+ * It now answers the questions a lab manager actually has about the machine in
+ * front of them — which version, how much of the day's work is already late,
+ * how many cases are open, how many clinics — with every number already
+ * computed above. Nothing here is decorative.
+ */
+export const StatusFooter: React.FC<{
+  version: string;
+  clinicCount: number;
+  openCases: number;
+  atRiskCases: number;
+}> = ({ version, clinicCount, openCases, atRiskCases }) => {
+  const facts: { label: string; value: string; alert?: boolean }[] = [
+    { label: 'Clinics', value: String(clinicCount) },
+    { label: 'Open cases', value: String(openCases) },
+    {
+      label: 'Needing attention',
+      value: String(atRiskCases),
+      alert: atRiskCases > 0,
+    },
+  ];
+
+  return (
+    <footer
+      className="rounded-2xl bg-ds-inverse text-white px-5 py-3.5 flex flex-wrap items-center gap-x-6 gap-y-3 justify-between"
+      data-purpose="status-footer"
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="text-white/80">
+          <ToothMark />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-bold tracking-[-0.01em]">Dental Solutions</p>
+          <p className="text-[10.5px] text-white/50 font-mono">v{version}</p>
+        </div>
       </div>
-    </div>
-    <p className="text-[10.5px] text-white/45 flex items-center gap-2 whitespace-nowrap">
-      <span>Quality Restorations</span>
-      <span className="text-white/25">|</span>
-      <span>On Time</span>
-      <span className="text-white/25">|</span>
-      <span>Every Time</span>
-    </p>
-  </footer>
-);
+
+      <dl className="flex items-center gap-x-6 gap-y-2 flex-wrap">
+        {facts.map((fact) => (
+          <div key={fact.label} className="flex items-baseline gap-1.5">
+            <dt className="text-[10.5px] text-white/45 whitespace-nowrap">{fact.label}</dt>
+            <dd
+              className={`ds-figure text-[13px] font-bold ${fact.alert ? 'text-amber-300' : 'text-white'}`}
+            >
+              {fact.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </footer>
+  );
+};
 
 export type { DashboardMetrics };

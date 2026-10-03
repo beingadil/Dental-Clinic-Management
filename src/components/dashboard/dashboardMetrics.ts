@@ -153,7 +153,12 @@ export interface WorkflowStage {
 
 export function computeWorkflow(input: MetricsInput): WorkflowStage[] {
   const today = input.todayStr ?? getTodayStr();
-  const by = (s: CaseStatus) => input.cases.filter((c) => c.status === s).length;
+  /* Archived and draft cases are not "live status of cases in production" —
+     an archived case has already left the workflow, and a draft was never
+     registered at the bench. Counting either inflates the stage totals against
+     what the Workstation actually lists. */
+  const live = input.cases.filter((c) => !c.archived_at && c.status !== 'draft');
+  const by = (s: CaseStatus) => live.filter((c) => c.status === s).length;
   return [
     { key: 'received', label: 'Received', count: by('received'), unit: 'cases', tone: 'muted' },
     { key: 'in_progress', label: 'In Production', count: by('in_progress'), unit: 'cases', tone: 'accent' },
@@ -162,8 +167,7 @@ export function computeWorkflow(input: MetricsInput): WorkflowStage[] {
     {
       key: 'dispatched',
       label: 'Dispatched',
-      count: input.cases.filter((c) => c.status === 'delivered' && c.delivery_date === today)
-        .length,
+      count: live.filter((c) => c.status === 'delivered' && c.delivery_date === today).length,
       unit: 'today',
       tone: 'dispatch',
     },
@@ -471,6 +475,12 @@ export function computeAtRisk(input: MetricsInput, limit = 4): RiskRow[] {
         level,
       };
     })
+    /* This panel is titled "Cases At Risk". A case already graded "On Track"
+       is the opposite of at risk, and rendering it under a warning heading —
+       with a green chip, next to genuinely late work — trains the reader to
+       stop trusting the panel. Grading stays (the level drives tone and
+       wording); only the rows shown are filtered. */
+    .filter((r) => r.level !== 'On Track')
     .sort((a, b) => a.daysOut - b.daysOut || a.caseNumber.localeCompare(b.caseNumber))
     .slice(0, limit);
 }
@@ -615,8 +625,11 @@ export interface UpcomingRow {
 
 export function computeUpcoming(input: MetricsInput, limit = 4): UpcomingRow[] {
   const today = input.todayStr ?? getTodayStr();
+  /* Strictly after today. Today's Schedule already lists everything due today,
+     so including those rows again showed the identical case in two panels on
+     the same screen — the second copy read as duplication, not reinforcement. */
   return input.cases
-    .filter((c) => isActive(c) && c.delivery_date && c.delivery_date >= today)
+    .filter((c) => isActive(c) && c.delivery_date && c.delivery_date > today)
     .sort(
       (a, b) =>
         (a.delivery_date || '').localeCompare(b.delivery_date || '') ||

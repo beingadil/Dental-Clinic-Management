@@ -18,7 +18,6 @@ import React, { useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { computeDashboardMetrics } from './dashboardMetrics';
 import {
-  BrandBar,
   CasesAtRisk,
   GreetingHeader,
   KpiCards,
@@ -28,6 +27,7 @@ import {
   QuickActions,
   RecentActivity,
   RevenueCollections,
+  StatusFooter,
   TodaySchedule,
   UpcomingDeliveries,
   Workload,
@@ -40,6 +40,7 @@ import { ShadeGuideModal } from './ShadeGuideModal';
 import { DeliveryCalendarModal } from './DeliveryCalendarModal';
 import { CaseQueueModal, type QueueId } from './CaseQueueModal';
 import { getTodayStr } from '../../utils/dateUtils';
+import { APP_VERSION } from '../../services/backupService';
 import {
   ClipboardList,
   CreditCard,
@@ -89,18 +90,26 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
    *  advance a case rather than navigate. Advancing the *oldest* such case is
    *  deliberate: picking arbitrarily would change whichever row happened to
    *  render first, which is not a decision the user made. */
-  const advanceOldest = (status: DentalCase['status'], to: DentalCase['status'], note: string) => {
-    const candidate = cases
-      .filter((c) => c.status === status)
-      .sort((a, b) => (a.delivery_date || '').localeCompare(b.delivery_date || ''))[0];
-    if (candidate) {
-      updateCase(candidate.id, { status: to }, note);
-    } else {
-      // Nothing in that stage — fall back to the workstation rather than
-      // silently doing nothing, so the click always explains itself.
-      setCurrentView('cases');
-    }
-  };
+  /* These two tiles used to call `advanceOldest`, which picked whichever case
+   * happened to be earliest in a stage and wrote a status change the user
+   * never saw, to a case they were not looking at. A tile that mutates an
+   * invisible record is worse than no tile: the click appears to do nothing
+   * and the workflow changes underneath. They now open the relevant queue and
+   * let the technician move the case they actually mean, in the open. */
+  const nextStageTile = (
+    queue: QueueId,
+    label: string,
+    hint: string,
+    icon: typeof Package,
+    tone: QuickAction['tone'],
+  ): QuickAction => ({
+    key: queue,
+    label,
+    hint,
+    icon,
+    tone,
+    onClick: () => setQueue(queue),
+  });
 
   /* Every tile below now opens something genuinely distinct.
  *
@@ -163,23 +172,8 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
       tone: 'warn',
       onClick: () => setCurrentView('catalog'),
     },
-    {
-      key: 'receive',
-      label: 'Receive Case',
-      hint: 'Received → production',
-      icon: Package,
-      tone: 'pos',
-      onClick: () =>
-        advanceOldest('received', 'in_progress', 'Moved to production from the dashboard'),
-    },
-    {
-      key: 'dispatch',
-      label: 'Dispatch',
-      hint: 'QC → ready to ship',
-      icon: Send,
-      tone: 'dispatch',
-      onClick: () => advanceOldest('qc', 'ready', 'Cleared QC from the dashboard'),
-    },
+    nextStageTile('due_today', 'Due Today', 'Promised for today', Package, 'pos'),
+    nextStageTile('ready', 'Ready to Dispatch', 'Cleared and waiting', Send, 'dispatch'),
   ];
 
   const scheduleDate = new Date().toLocaleDateString('en-US', {
@@ -254,7 +248,12 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
         </div>
       </div>
 
-      <BrandBar />
+      <StatusFooter
+        version={APP_VERSION}
+        clinicCount={metrics.clinicCount}
+        openCases={metrics.kpis.activeCases}
+        atRiskCases={metrics.atRisk.length}
+      />
 
       {slipCase && (
         <CaseJobSlipModal caseData={slipCase} onClose={() => setSlipCase(null)} />
