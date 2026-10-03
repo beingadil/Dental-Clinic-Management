@@ -3,9 +3,12 @@ import { hashPassword, verifyPassword, sha256Hex } from '../../src/db/crypto';
 
 describe('password hashing (WebCrypto PBKDF2)', () => {
   it('produces a verifiable hash', async () => {
-    const hash = await hashPassword('REDACTED-CREDENTIAL');
+    // Deliberately NOT a real credential: an earlier revision used the
+    // operator's actual password here, which kept that string in the public
+    // repository even after bootstrap accounts were removed from src/.
+    const hash = await hashPassword('fixture-password');
     expect(hash.startsWith('pbkdf2$')).toBe(true);
-    expect(await verifyPassword('REDACTED-CREDENTIAL', hash)).toBe(true);
+    expect(await verifyPassword('fixture-password', hash)).toBe(true);
     expect(await verifyPassword('wrong', hash)).toBe(false);
   });
 
