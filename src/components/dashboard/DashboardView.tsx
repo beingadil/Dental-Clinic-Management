@@ -5,28 +5,21 @@ import {
   DollarSign, 
   Clock, 
   AlertTriangle, 
-  CheckCircle2, 
-  Plus, 
-  Calendar,
-  CalendarCheck,
+  CheckCircle2,Plus,
   X,
   ChevronRight,
   Building2,
   Receipt,
   Sparkles,
-  Cpu,
-  Truck,
-  Download
+  Cpu
 } from 'lucide-react';
-import { DentalCase, DentalLab, Invoice } from '../../types';
+import { DentalCase, DentalLab, CaseStatus } from '../../types';
 import { computeAnalytics } from '../../services/analyticsService';
+import { getDaysOffsetStr } from '../../utils/dateUtils';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { ShadeGuideModal } from './ShadeGuideModal';
 import { InteractiveDeliveryCalendar } from './InteractiveDeliveryCalendar';
-import { ClinicStatementModal } from './ClinicStatementModal';
-import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { ClinicNotesModal } from './ClinicNotesModal';
-import { ChairsideCalendarModal } from './ChairsideCalendarModal';
 import { UpdateStatusPill } from '../common/UpdateStatusPill';
 
 interface DashboardViewProps {
@@ -60,10 +53,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
 
   // Modal states
   const [showShadeGuide, setShowShadeGuide] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState<{ open: boolean; clinicId?: string }>({ open: false });
-  const [showStatementModal, setShowStatementModal] = useState<{ open: boolean; clinicName?: string }>({ open: false });
   const [showClinicNotes, setShowClinicNotes] = useState(false);
-  const [showChairsideModal, setShowChairsideModal] = useState(false);
 
   // Financial metrics
   const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.amount_paid || 0), 0);
@@ -90,67 +80,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
     const implants = pick((m) => m.includes('implant') || m.includes('titanium') || m.includes('abutment'));
     const aligners = pick((m) => m.includes('aligner') || m.includes('ortho'));
     const other = Math.max(0, 100 - zirconia - emax - implants - aligners);
-    return { total: rows.length, zirconia, emax, implants, aligners, other };
+    return { total: rows.length, revenue: totalRev, zirconia, emax, implants, aligners, other };
   }, [dashboardAnalytics.restorationRevenue]);
 
-  // Real chairside queue: active cases sorted by delivery date (no fabricated times)
-  const chairsideToday = useMemo(() =>
-    [...activeCases]
-      .filter((c) => c.delivery_date)
-      .sort((a, b) => (a.delivery_date || '').localeCompare(b.delivery_date || ''))
-      .slice(0, 3)
-      .map((c) => ({
-        id: c.id,
-        dueLabel: (c.delivery_date || '').slice(5).replace('-', '/'),
-        patient: c.patient_name || `${c.case_type_name || 'Case'} — ${c.lab_name || 'clinic'}`,
-        detail: `${c.case_type_name || 'Case'}${c.selected_teeth?.length ? ` • Tooth #${c.selected_teeth.join(', #')}` : ''}`,
-        status: c.status,
-      })),
-  [activeCases]);
-
-  /* Clinic accounts ledger with calculated balances. Indexed by id, not by
-     name matching (name lookups were O(clinics × cases) and stalled the
-     dashboard at a few hundred clinics). Rows are ordered by outstanding
-     balance and capped — every clinic remains in Dental Clinics. */
-  const clinicAccounts = useMemo(() => {
-    const invoicesByLab = new Map<string, Invoice[]>();
-    for (const inv of invoices) {
-      const bucket = invoicesByLab.get(inv.lab_id);
-      if (bucket) bucket.push(inv); else invoicesByLab.set(inv.lab_id, [inv]);
-    }
-    const casesByLab = new Map<string, DentalCase[]>();
+  /* Production pipeline — where the bench's work is actually sitting, counted
+     from live case rows. The delivery calendar answers "when does it ship";
+     this answers "what is stuck where", which the calendar cannot show. */
+  const pipeline = useMemo(() => {
+    const stages: { key: CaseStatus; label: string; dot: string; count: number }[] = [
+      { key: 'received', label: 'Received', dot: 'bg-sky-500', count: 0 },
+      { key: 'in_progress', label: 'In Production', dot: 'bg-cyan-500', count: 0 },
+      { key: 'qc', label: 'Quality Check', dot: 'bg-violet-500', count: 0 },
+      { key: 'ready', label: 'Ready to Dispatch', dot: 'bg-emerald-500', count: 0 },
+      { key: 'delivered', label: 'Delivered (7d)', dot: 'bg-slate-400', count: 0 },
+    ];
+    const weekAgo = getDaysOffsetStr(-7);
     for (const c of cases) {
-      if (c.status === 'delivered' || c.status === 'cancelled') continue;
-      const bucket = casesByLab.get(c.lab_id);
-      if (bucket) bucket.push(c); else casesByLab.set(c.lab_id, [c]);
+      const stage = stages.find((s) => s.key === c.status);
+      if (stage) {
+        if (c.status === 'delivered' && (c.delivery_date || '') < weekAgo) continue;
+        stage.count++;
+      }
     }
-    return labs.map(lab => {
-      const labInvoices = invoicesByLab.get(lab.id) || [];
-      const labCases = casesByLab.get(lab.id) || [];
-      const billed = labInvoices.reduce((sum, i) => sum + i.final_amount, 0);
-      const paid = labInvoices.reduce((sum, i) => sum + i.amount_paid, 0);
-      const balance = billed - paid;
-      const hasOverdue = labInvoices.some(i => i.payment_status !== 'paid' && i.due_date && i.due_date < (todayStr || '2026-09-17'));
+    const peak = Math.max(1, ...stages.map((s) => s.count));
+    return { stages, peak, revisions: cases.filter((c) => c.status === 'revision').length };
+  }, [cases]);
 
-      return {
-        lab,
-        name: lab.name,
-        doctor: lab.doctor_name || lab.contact_person || 'Lead Doctor',
-        phone: lab.phone || '—',
-        activeCases: labCases,
-        turnaround: `${labCases.length} active case${labCases.length === 1 ? '' : 's'}`,
-        balance: balance > 0 ? balance : (('balance' in lab) ? (lab as any).balance : 0),
-        hasOverdue,
-        status: balance === 0 ? 'Settled' : hasOverdue ? 'Overdue' : 'Partial / Active',
-      };
-    }).sort((a, b) => b.balance - a.balance);
-  }, [labs, invoices, cases, todayStr]);
-
-  /* The dashboard table shows the accounts that need attention, not the whole
-     directory — 1000 rendered rows made the home screen crawl. */
-  const VISIBLE_CLINIC_ACCOUNTS = 12;
-  const visibleClinicAccounts = clinicAccounts.slice(0, VISIBLE_CLINIC_ACCOUNTS);
-  const hiddenClinicAccounts = Math.max(0, clinicAccounts.length - VISIBLE_CLINIC_ACCOUNTS);
+  /* Only cases that actually carry a note. The card used to re-filter the entire
+     case list three times per render (map, empty check, again for the count)
+     and then hold a full card slot open to say "nothing here". */
+  const notedCases = useMemo(
+    () => cases.filter((c) => (c.instructions || '').trim()),
+    [cases]
+  );
 
   const currentFormattedDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -251,205 +213,181 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
       )}
       {/* END: Urgent Overdue Warning Banner */}
 
-      {/* BEGIN: Dental KPI Stats Matrix (5 Cards) */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" data-purpose="kpi-metric-cards">
-        
-        {/* KPI 1: Pending Cases Today — every case still open whose delivery
-            date is today. Real rows only, no fabricated placeholder number. */}
-        <div 
+      {/* BEGIN: KPI strip — 3 cards.
+          Was 5, and two of them rendered the SAME number: "Pending Cases Today"
+          and "Deliveries Today" both read `dueTodayCount`, so the row showed
+          3 / 3 / 0 / 3 with no way to tell the first and last apart. Merged
+          into Today's Work, Money and Attention, each with a unique headline
+          figure. Footers use min-w-0 + truncate + whitespace-nowrap so the
+          "Open Workstation →" links stop breaking across three lines. */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4" data-purpose="kpi-metric-cards">
+
+        {/* 1 — TODAY'S WORK: the day's workload, split open vs delivered. */}
+        <div
           onClick={() => setCurrentView('cases')}
           className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Cases Today</span>
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Today's Work</span>
+            <div className="w-8 h-8 shrink-0 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
               <FolderKanban className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-slate-900">{dueTodayCount}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Still Open</span>
+              <span className="text-3xl font-extrabold text-slate-900 tabular-nums">{totalCasesToday}</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 whitespace-nowrap">
+                {totalCasesToday - dueTodayCount} delivered
+              </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">Due today, not delivered yet</p>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>{activeCases.length} case{activeCases.length === 1 ? '' : 's'} on the bench overall</span>
-            <span className="text-blue-600 font-bold group-hover:underline">Open Workstation →</span>
-          </div>
-        </div>
-
-        {/* KPI 2: Total Cases Today — today's full delivery workload (delivered
-            cases included), so pending ÷ total is readable at a glance. */}
-        <div 
-          onClick={() => setCurrentView('cases')}
-          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-amber-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Cases Today</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <CalendarCheck className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-slate-900">{totalCasesToday}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Due Today</span>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">
-              {totalCasesToday - dueTodayCount} already delivered today
+            <p className="text-[11px] text-slate-500 mt-1 font-medium">
+              {dueTodayCount} still open · {activeCases.length} on the bench
             </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>{cases.length} case{cases.length === 1 ? '' : 's'} on record</span>
-            <span className="text-amber-700 font-bold group-hover:underline">Review Today →</span>
+          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+            <span className="truncate">{cases.length} on record</span>
+            <span className="text-blue-600 font-bold whitespace-nowrap group-hover:underline">Workstation →</span>
           </div>
         </div>
 
-        {/* KPI 3: Receivables Total */}
-        <div 
+        {/* 2 — MONEY: receivables, with collected total as the secondary. */}
+        <div
           onClick={() => setCurrentView('billing')}
           className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-emerald-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Receivables Total</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Receivables</span>
+            <div className="w-8 h-8 shrink-0 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
           <div>
+            {/* tabular-nums so the currency stays aligned as the figure grows. */}
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-slate-900">PKR {totalOutstanding.toLocaleString()}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{labs.length} Clinics</span>
+              <span className="text-2xl font-extrabold text-slate-900 tabular-nums whitespace-nowrap">
+                {totalOutstanding.toLocaleString()}
+              </span>
+              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">PKR</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">
+            <p className="text-[11px] text-slate-500 mt-1 font-medium">
               {(() => {
                 const unpaid = invoices.filter(i => i.payment_status !== 'paid' && i.due_date);
-                if (unpaid.length === 0) return 'No outstanding invoices';
+                if (unpaid.length === 0) return 'Nothing outstanding';
                 const avgDays = Math.round(
                   unpaid.reduce((s, i) => s + Math.max(0, Math.round((Date.now() - new Date(i.due_date!).getTime()) / 86400000)), 0) / unpaid.length
                 );
-                return `Avg Aging: ${avgDays} day${avgDays === 1 ? '' : 's'}`;
+                return `Across ${labs.length} clinics · avg ${avgDays}d overdue`;
               })()}
             </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>Total Collected</span>
-            <span className="font-bold text-slate-700">PKR {totalRevenue.toLocaleString()}</span>
+          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+            <span className="truncate">Collected</span>
+            <span className="font-bold text-slate-700 whitespace-nowrap tabular-nums">PKR {totalRevenue.toLocaleString()}</span>
           </div>
         </div>
 
-        {/* KPI 4: Rush / Overdue */}
-        <div 
+        {/* 3 — ATTENTION: red ONLY when something is actually wrong. An
+            always-red card at zero trains staff to ignore red, which is the
+            opposite of what an alert is for. */}
+        <div
           onClick={() => setCurrentView('cases')}
-          className="bg-white rounded-2xl p-4 border border-rose-200 shadow-xs hover:shadow-md hover:border-rose-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group bg-rose-50/20"
+          className={`bg-white rounded-2xl p-4 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
+            overdueCount > 0
+              ? 'border-rose-300 bg-rose-50/30 hover:border-rose-500'
+              : 'border-slate-200/80 hover:border-slate-300'
+          }`}
         >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Rush / Overdue</span>
-            <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${overdueCount > 0 ? 'text-rose-700' : 'text-slate-500'}`}>
+              Needs Attention
+            </span>
+            <div className={`w-8 h-8 shrink-0 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform ${overdueCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
               <Clock className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-rose-600">{overdueCount}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">Urgent</span>
+              <span className={`text-3xl font-extrabold tabular-nums ${overdueCount > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                {overdueCount}
+              </span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${overdueCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                {overdueCount > 0 ? 'Urgent' : 'All clear'}
+              </span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1 font-medium">Past SLA / Remake cases</p>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium">Past SLA or remake cases</p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-rose-600 font-medium">
-            <span>Requires Action</span>
-            <span className="underline font-bold">Review Now →</span>
-          </div>
-        </div>
-
-        {/* KPI 5: Deliveries Today */}
-        <div 
-          onClick={() => {
-            const calendarEl = document.getElementById('delivery-calendar');
-            calendarEl?.scrollIntoView({ behavior: 'smooth' });
-          }}
-          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-purple-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Deliveries Today</span>
-            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Truck className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-slate-900">{dueTodayCount}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Scheduled</span>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">Cases with delivery due today</p>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-            <span>{dueThisWeekCount} more due within 7 days</span>
-            <span className="font-bold text-purple-700">View Schedule →</span>
+          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+            <span className="truncate">{dueThisWeekCount} due in 7 days</span>
+            <span className={`font-bold whitespace-nowrap ${overdueCount > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+              {overdueCount > 0 ? 'Review →' : 'Schedule →'}
+            </span>
           </div>
         </div>
       </section>
-      {/* END: Dental KPI Stats Matrix */}
+      {/* END: KPI strip */}
 
       {/* BEGIN: Main Operations Grid (12 Cols) */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6" data-purpose="mid-dashboard-details">
         
-        {/* LEFT COLUMN (4 Cols): Today's Chairside Clinical Cases & Quick Modules */}
+        {/* LEFT COLUMN (4 Cols): Production Pipeline & Quick Modules */}
         <div className="lg:col-span-4 space-y-6">
-          
-          {/* Chairside Appointments Card */}
+
+          {/* Production Pipeline — replaced "Today's Chairside Clinical Cases".
+              Chairside scheduling was a duplicate of the Cases view and had no
+              data of its own beyond the case rows the calendar already lists.
+              This stage funnel is the operational question the dashboard was
+              failing to answer: which queue is backing up. */}
           <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Today's Chairside Clinical Cases</h3>
-                <p className="text-[11px] text-slate-400">Clinic floor trials, shade checks & try-ins</p>
-              </div>
-              <button 
-                onClick={() => setShowChairsideModal(true)}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
+            <div className="flex items-center justify-between mb-1 gap-2">
+              <h3 className="text-sm font-bold text-slate-900 truncate">Production Pipeline</h3>
+              <button
+                onClick={() => setCurrentView('cases')}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer whitespace-nowrap shrink-0"
               >
-                View all
+                Workstation →
               </button>
             </div>
-            
-            <div className="space-y-3">
-              {chairsideToday.length === 0 && (
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-center">
-                  <p className="text-[11px] text-slate-500 font-medium">No upcoming chairside cases</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Cases with delivery dates appear here</p>
-                </div>
-              )}
-              {chairsideToday.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => setShowChairsideModal(true)}
-                  className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/50 border border-slate-100 transition flex items-center justify-between cursor-pointer"
+            <p className="text-[11px] text-slate-400 mb-3">
+              Live case counts by bench stage
+            </p>
+
+            <div className="space-y-2">
+              {pipeline.stages.map((stage) => (
+                <button
+                  key={stage.key}
+                  onClick={() => setCurrentView('cases')}
+                  className="w-full flex items-center gap-3 group cursor-pointer text-left"
+                  title={`${stage.count} ${stage.label} — open in Case Workstation`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="text-center w-12 py-1 bg-white rounded-xl border border-slate-200 text-slate-800">
-                      <span className="block text-[11px] font-extrabold leading-none">{item.dueLabel}</span>
-                      <span className="text-[9px] text-slate-400 font-semibold uppercase">Due</span>
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-800">{item.patient}</h5>
-                      <p className="text-[11px] text-slate-500">{item.detail}</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 capitalize">
-                    {String(item.status).replace('_', ' ')}
+                  <span className="w-[108px] shrink-0 text-[11px] font-medium text-slate-600 truncate group-hover:text-slate-900 transition-colors">
+                    {stage.label}
                   </span>
-                </div>
+                  {/* Bar width is a share of the busiest stage, so the shape of
+                      the backlog reads even when the counts are small. */}
+                  <span className="flex-1 min-w-0 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <span
+                      className={`block h-full rounded-full ${stage.dot} transition-all duration-500`}
+                      style={{ width: `${Math.round((stage.count / pipeline.peak) * 100)}%` }}
+                    />
+                  </span>
+                  <span className="w-7 shrink-0 text-right text-xs font-bold text-slate-800 tabular-nums">
+                    {stage.count}
+                  </span>
+                </button>
               ))}
             </div>
 
-            <button 
-              onClick={() => setShowChairsideModal(true)}
-              className="w-full mt-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600 transition flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>View Full Chairside Calendar</span>
-            </button>
+            {pipeline.revisions > 0 && (
+              <button
+                onClick={() => setCurrentView('cases')}
+                className="mt-4 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-rose-50 border border-rose-100 hover:bg-rose-100/70 transition cursor-pointer"
+              >
+                <span className="text-[11px] font-bold text-rose-700 truncate">Revisions open</span>
+                <span className="text-[11px] font-extrabold text-rose-700 tabular-nums shrink-0">
+                  {pipeline.revisions}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Quick Action Links Grid (6 Bento Modules) */}
@@ -533,12 +471,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
           {/* Prosthetics Material Distribution Chart */}
           <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Prosthetics Material Share</h3>
-                <p className="text-[11px] text-slate-400">Current active fabrication breakdown</p>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-900 truncate">Material Revenue Share</h3>
+                <p className="text-[11px] text-slate-400 truncate">Share of billed revenue by material</p>
               </div>
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
-                {cases.length} Units Total
+              {/* The ring is a share of REVENUE, so the badge must state the same
+                  denominator. It used to read "{cases.length} Units Total", which
+                  counted every case ever created and did not match the slices. */}
+              <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0 tabular-nums">
+                {materialStats.revenue > 0 ? `PKR ${Math.round(materialStats.revenue).toLocaleString()}` : 'No billed cases'}
               </span>
             </div>
 
@@ -572,92 +513,92 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
               <button 
                 onClick={() => setCurrentView('cases')}
-                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition cursor-pointer text-left"
+                className={`flex items-center gap-2 p-1.5 rounded-lg transition cursor-pointer text-left ${materialStats.zirconia > 0 ? 'hover:bg-slate-50' : 'opacity-40'}`}
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#2563eb]" />
-                <span className="text-slate-600 font-medium">Zirconia ({materialStats.zirconia}%)</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shrink-0" />
+                <span className="text-slate-600 font-medium truncate">Zirconia ({materialStats.zirconia}%)</span>
               </button>
               <button 
                 onClick={() => setCurrentView('cases')}
-                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition cursor-pointer text-left"
+                className={`flex items-center gap-2 p-1.5 rounded-lg transition cursor-pointer text-left ${materialStats.emax > 0 ? 'hover:bg-slate-50' : 'opacity-40'}`}
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#0284c7]" />
-                <span className="text-slate-600 font-medium">E-max ({materialStats.emax}%)</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#0284c7] shrink-0" />
+                <span className="text-slate-600 font-medium truncate">E-max ({materialStats.emax}%)</span>
               </button>
               <button 
                 onClick={() => setCurrentView('cases')}
-                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition cursor-pointer text-left"
+                className={`flex items-center gap-2 p-1.5 rounded-lg transition cursor-pointer text-left ${materialStats.implants > 0 ? 'hover:bg-slate-50' : 'opacity-40'}`}
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
-                <span className="text-slate-600 font-medium">Implants ({materialStats.implants}%)</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] shrink-0" />
+                <span className="text-slate-600 font-medium truncate">Implants ({materialStats.implants}%)</span>
               </button>
               <button 
                 onClick={() => setCurrentView('cases')}
-                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition cursor-pointer text-left"
+                className={`flex items-center gap-2 p-1.5 rounded-lg transition cursor-pointer text-left ${materialStats.aligners > 0 ? 'hover:bg-slate-50' : 'opacity-40'}`}
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
-                <span className="text-slate-600 font-medium">Aligners ({materialStats.aligners}%)</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b] shrink-0" />
+                <span className="text-slate-600 font-medium truncate">Aligners ({materialStats.aligners}%)</span>
               </button>
               {materialStats.other > 0 && (
                 <button 
                   onClick={() => setCurrentView('cases')}
                   className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition cursor-pointer text-left"
                 >
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#94a3b8]" />
-                  <span className="text-slate-600 font-medium">Other ({materialStats.other}%)</span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#94a3b8] shrink-0" />
+                  <span className="text-slate-600 font-medium truncate">Other ({materialStats.other}%)</span>
                 </button>
               )}
             </div>
 
             {/* Benchmark stats */}
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-              <div className="text-center">
-                <span className="text-[10px] text-slate-400 uppercase block">Avg Turnaround</span>
-                <span className="font-bold text-slate-800">
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+              <div className="text-center min-w-0">
+                <span className="text-[10px] text-slate-400 uppercase block whitespace-nowrap">Avg Turnaround</span>
+                <span className="font-bold text-slate-800 whitespace-nowrap tabular-nums">
                   {dashboardAnalytics.overall.avgDays === null ? '—' : `${dashboardAnalytics.overall.avgDays} Days`}
                 </span>
               </div>
-              <div className="h-6 w-px bg-slate-200" />
-              <div className="text-center">
-                <span className="text-[10px] text-slate-400 uppercase block">In Production</span>
-                <span className="font-bold text-slate-800">{activeCases.length}</span>
+              <div className="h-6 w-px bg-slate-200 shrink-0" />
+              <div className="text-center min-w-0">
+                <span className="text-[10px] text-slate-400 uppercase block whitespace-nowrap">In Production</span>
+                <span className="font-bold text-slate-800 tabular-nums">{activeCases.length}</span>
               </div>
             </div>
           </div>
 
-          {/* Doctor Patient Case Notes */}
+          {/* Doctor Patient Case Notes — hidden entirely when no case carries an
+              instruction, so the column does not open with an empty card. */}
+          {notedCases.length > 0 && (
           <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900">Recent Dental Clinic Instructions</h3>
-              <button 
+            <div className="flex items-center justify-between mb-3 gap-2">
+              <h3 className="text-sm font-bold text-slate-900 truncate">Clinic Instructions</h3>
+              <button
                 onClick={() => setShowClinicNotes(true)}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer whitespace-nowrap shrink-0"
               >
                 All Notes →
               </button>
             </div>
-            
+
             <div className="space-y-3 text-xs">
-              {cases.filter((c) => (c.instructions || '').trim()).slice(0, 2).map((c) => (
-                <div 
+              {notedCases.slice(0, 2).map((c) => (
+                <div
                   key={c.id}
                   onClick={() => setSelectedCaseModal(c)}
                   className="p-3 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-100 transition cursor-pointer"
                 >
-                  <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                    <span>{c.lab_name}</span>
-                    <span className="text-[10px] text-slate-400 font-normal">#{c.case_number}</span>
+                  <div className="flex items-center justify-between font-bold text-slate-800 mb-1 gap-2">
+                    <span className="truncate min-w-0">{c.lab_name}</span>
+                    <span className="text-[10px] text-slate-400 font-normal shrink-0 tabular-nums">#{c.case_number}</span>
                   </div>
                   <p className="text-slate-500 text-[11px] leading-relaxed line-clamp-2">
                     {c.instructions}
                   </p>
                 </div>
               ))}
-              {cases.filter((c) => (c.instructions || '').trim()).length === 0 && (
-                <p className="text-[11px] text-slate-400 text-center py-3">No clinic instructions recorded yet.</p>
-              )}
             </div>
           </div>
+          )}
 
         </div>
 
@@ -674,99 +615,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
 
       </section>
       {/* END: Main Operations Grid */}
-
-      {/* BEGIN: Dental Clinics Accounts & Invoicing Ledger Table */}
-      <section className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs mb-6" data-purpose="invoicing-summary">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">Dental Clinics Accounts & Invoicing Ledger</h3>
-            <p className="text-xs text-slate-500">Real-time clinic balances, pending PKR collections, and active statements</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setShowStatementModal({ open: true })}
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 transition cursor-pointer flex items-center gap-1.5"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Download PDF Statements</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto mt-4">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              <tr>
-                <th className="py-3 px-4 rounded-l-xl">Clinic Name & Contact</th>
-                <th className="py-3 px-3">Active Cases</th>
-                <th className="py-3 px-3">Standard Turnaround</th>
-                <th className="py-3 px-3">Outstanding Balance</th>
-                <th className="py-3 px-3">Payment Status</th>
-                <th className="py-3 px-4 text-right rounded-r-xl">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {visibleClinicAccounts.map(account => (
-                <tr key={account.lab.id} className="hover:bg-slate-50/60 transition">
-                  <td className="py-3.5 px-4 font-semibold text-slate-900">
-                    {account.name}
-                    <span className="block text-[11px] font-normal text-slate-400">{account.doctor} • {account.phone}</span>
-                  </td>
-                  <td className="py-3.5 px-3">
-                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
-                      {account.activeCases.length} Active
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-3 font-medium">{account.turnaround}</td>
-                  <td className="py-3.5 px-3 font-bold text-slate-900">PKR {account.balance.toLocaleString()}</td>
-                  <td className="py-3.5 px-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      account.status === 'Settled' 
-                        ? 'bg-emerald-100 text-emerald-800' 
-                        : account.status === 'Overdue'
-                        ? 'bg-rose-100 text-rose-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}>
-                      {account.status}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={() => setShowPaymentModal({ open: true, clinicId: account.lab?.id })}
-                        className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 cursor-pointer"
-                      >
-                        Collect Payment
-                      </button>
-                      <span className="text-slate-300">|</span>
-                      <button 
-                        onClick={() => setShowStatementModal({ open: true, clinicName: account.name })}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
-                      >
-                        Statement
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {hiddenClinicAccounts > 0 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
-              <span>
-                Showing {visibleClinicAccounts.length} of {clinicAccounts.length} clinics — ordered by outstanding balance
-              </span>
-              <button
-                onClick={() => setCurrentView('labs')}
-                className="font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
-              >
-                Open Dental Clinics →
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
-      {/* END: Dental Clinics Accounts & Invoicing Ledger Table */}
 
       {/* Case Detail / FDI Tooth Chart Modal */}
       {selectedCaseModal && (
@@ -787,26 +635,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
         />
       )}
 
-      {/* Record Transaction Modal (unified, DB-backed) */}
-      {showPaymentModal.open && (
-        <RecordTransactionModal
-          isOpen
-          onClose={() => setShowPaymentModal({ open: false })}
-          initialMode="payment"
-          initialClinicId={showPaymentModal.clinicId}
-        />
-      )}
-
-      {/* Clinic Statement Modal */}
-      {showStatementModal.open && (
-        <ClinicStatementModal
-          clinicName={showStatementModal.clinicName}
-          invoices={invoices}
-          cases={cases}
-          labs={labs}
-          onClose={() => setShowStatementModal({ open: false })}
-        />
-      )}
+      {/* Record Transaction / Statement modals moved to the Billing tab along with
+          the clinic accounts ledger they were opened from. */}
 
       {/* Clinic Notes & Instructions Modal */}
       {showClinicNotes && (
@@ -817,14 +647,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
         />
       )}
 
-      {/* Chairside Appointments Schedule Modal */}
-      {showChairsideModal && (
-        <ChairsideCalendarModal
-          cases={cases}
-          onClose={() => setShowChairsideModal(false)}
-          onSelectCase={(c) => setSelectedCaseModal(c)}
-        />
-      )}
+      
 
     </div>
   );

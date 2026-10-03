@@ -147,13 +147,21 @@ export const InteractiveDeliveryCalendar: React.FC<InteractiveDeliveryCalendarPr
     return cases.filter(c => c.delivery_date === selectedDateStr);
   }, [cases, selectedDateStr]);
 
-  // Next upcoming deliveries if selected date has 0
-  const upcomingDeliveries = useMemo(() => {
+  /* The "Upcoming Laboratory Queue" strip that used to live here was a second,
+     unordered copy of the calendar grid next to it — and because it sorted by
+     due date regardless of the selected day, it contradicted the dispatch list
+     directly above it. Replaced with a single jump-to-next-busy-day action,
+     which is what a user on an empty day actually wants. */
+  const nextBusyDay = useMemo(() => {
     return cases
-      .filter(c => c.status !== 'delivered' && c.status !== 'cancelled')
-      .sort((a, b) => (a.delivery_date || '').localeCompare(b.delivery_date || ''))
-      .slice(0, 4);
-  }, [cases]);
+      .filter(c => c.delivery_date && (c.status !== 'cancelled'))
+      .reduce<string | null>((best, c) => {
+        const d = c.delivery_date as string;
+        if (d < selectedDateStr) return best;
+        if (best === null || d < best) return d;
+        return best;
+      }, null);
+  }, [cases, selectedDateStr]);
 
   return (
     <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between">
@@ -248,13 +256,13 @@ export const InteractiveDeliveryCalendar: React.FC<InteractiveDeliveryCalendarPr
       {/* Selected Date Summary Strip */}
       <div className="pt-3 border-t border-slate-100">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            <Truck className="w-3.5 h-3.5 text-blue-600" />
-            <span className="text-xs font-bold text-slate-800">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span className="text-xs font-bold text-slate-800 truncate" title={`Dispatch runs for ${selectedDateStr}`}>
               Dispatch Runs for {selectedDateStr}
             </span>
           </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 whitespace-nowrap shrink-0 tabular-nums">
             {casesOnSelectedDate.length} {casesOnSelectedDate.length === 1 ? 'Delivery' : 'Deliveries'}
           </span>
         </div>
@@ -279,27 +287,33 @@ export const InteractiveDeliveryCalendar: React.FC<InteractiveDeliveryCalendarPr
                       : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200/70'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${isDelivered ? 'bg-emerald-500' : isUrgent ? 'bg-rose-500' : 'bg-blue-500'}`} />
-                      <button 
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    {/* min-w-0 + truncate on the name, whitespace-nowrap on the
+                        id: without them "Muzaffarabad…" swallowed the slot and
+                        "#DS-0003" broke across two lines. */}
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <span className={`w-2 h-2 shrink-0 rounded-full ${isDelivered ? 'bg-emerald-500' : isUrgent ? 'bg-rose-500' : 'bg-blue-500'}`} />
+                      <button
                         onClick={() => onSelectCase(c)}
-                        className="font-bold text-blue-700 hover:underline flex items-center gap-1 text-left"
+                        className="font-bold text-blue-700 hover:underline whitespace-nowrap shrink-0"
+                        title={`Open case #${c.case_number}`}
                       >
                         #{c.case_number}
                       </button>
-                      <span className="text-slate-400">•</span>
-                      <span className="font-semibold text-slate-800 truncate max-w-[120px]">{c.lab_name}</span>
+                      <span className="text-slate-400 shrink-0">•</span>
+                      <span className="font-semibold text-slate-800 truncate min-w-0">{c.lab_name}</span>
                     </div>
 
-                    <span className="text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap shrink-0">
                       {timeSlot}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="truncate">{c.case_type_name} ({c.patient_name}) • Shade {c.shade || 'A2'}</span>
-                    <span className="text-[10px] font-medium text-slate-400">{assignedRider}</span>
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                    <span className="truncate min-w-0">{c.case_type_name} ({c.patient_name}) • Shade {c.shade || 'A2'}</span>
+                    <span className="text-[10px] font-medium text-slate-400 truncate max-w-[104px] shrink-0" title={assignedRider}>
+                      {assignedRider}
+                    </span>
                   </div>
 
                   {/* Action row */}
@@ -334,40 +348,33 @@ export const InteractiveDeliveryCalendar: React.FC<InteractiveDeliveryCalendarPr
             })
           ) : (
             <div className="p-4 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center space-y-2">
-              <p className="text-xs font-semibold text-slate-600">No dispatches scheduled for {selectedDateStr}</p>
-              <p className="text-[11px] text-slate-400">Select another date with delivery dots or view upcoming runs.</p>
-              <button
-                onClick={onOpenNewCase}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Schedule New Case</span>
-              </button>
+              <p className="text-xs font-semibold text-slate-600">No dispatches scheduled</p>
+              <p className="text-[11px] text-slate-400">Pick a dotted day on the calendar, or jump to the next one.</p>
+              <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                {nextBusyDay && (
+                  <button
+                    onClick={() => {
+                      setSelectedDateStr(nextBusyDay);
+                      const [y, m] = nextBusyDay.split('-').map(Number);
+                      setCurrentYear(y);
+                      setCurrentMonth(m - 1);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 font-bold text-xs transition cursor-pointer whitespace-nowrap"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                    <span>Next: {nextBusyDay}</span>
+                  </button>
+                )}
+                <button
+                  onClick={onOpenNewCase}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs transition cursor-pointer whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Schedule New Case</span>
+                </button>
+              </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Upcoming Dispatch Queue Preview */}
-      <div className="pt-2 border-t border-slate-100">
-        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1.5">
-          <span>Upcoming Laboratory Queue</span>
-          <span className="text-[10px] text-slate-400">Sorted by Due Date</span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          {upcomingDeliveries.slice(0, 2).map(c => (
-            <div 
-              key={c.id}
-              onClick={() => onSelectCase(c)}
-              className="p-1.5 rounded-lg bg-slate-50 hover:bg-blue-50/60 border border-slate-100 cursor-pointer text-[10px] transition"
-            >
-              <div className="flex items-center justify-between font-bold text-slate-800">
-                <span className="text-blue-700">#{c.case_number}</span>
-                <span className="text-slate-500">{c.delivery_date}</span>
-              </div>
-              <p className="truncate text-slate-500 mt-0.5">{c.lab_name}</p>
-            </div>
-          ))}
         </div>
       </div>
 

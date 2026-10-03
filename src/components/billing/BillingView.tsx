@@ -18,6 +18,7 @@ import { JournalEntryModal } from './JournalEntryModal';
 import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
+import { ClinicAccountsTable } from './ClinicAccountsTable';
 import { PageHeader, EmptyState, TabsNav, Badge, DataTable, FilterBar } from '../common/ui';
 import { todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
@@ -31,7 +32,8 @@ import {
   Search, 
   Download, 
   Trash2, 
-  FileText, 
+  FileText,
+  Building2, 
   CheckCircle2, 
   AlertCircle,
   AlertTriangle,
@@ -60,11 +62,12 @@ export const BillingView: React.FC = () => {
     getLabFinancialSummary,
     journalEntries,
     auditEvents,
-    user
+    user,
+    setCurrentView
   } = useApp();
 
   // Core navigation: 5 tabs for complete dental laboratory ERP accounting
-  const [activeTab, setActiveTab] = useState<'invoices' | 'transactions' | 'general_ledger' | 'audit_log' | 'reports'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'transactions' | 'clinic_accounts' | 'general_ledger' | 'audit_log' | 'reports'>('invoices');
 
   // Invoices tab filter states
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -473,6 +476,7 @@ export const BillingView: React.FC = () => {
         tabs={[
           { id: 'invoices', label: 'Invoices & Receivables', icon: FileText },
           { id: 'transactions', label: 'Payments & Transactions', icon: DollarSign },
+          { id: 'clinic_accounts', label: 'Clinic Accounts', icon: Building2 },
           { id: 'general_ledger', label: 'General Ledger', icon: BookOpen },
           { id: 'audit_log', label: 'Audit Trail', icon: ShieldCheck },
           { id: 'reports', label: 'Reports & Statements', icon: BarChart3 },
@@ -820,6 +824,26 @@ export const BillingView: React.FC = () => {
           onPrintReceipt={(pay, inv) => setSelectedReceiptPayment({ payment: pay, invoice: inv })}
           onReverseTransaction={(target) => setReversalTarget(target)}
           onOpenJournalModal={(refId) => setJournalModalRef(refId)}
+        />
+      )}
+
+      {/* TAB 3: CLINIC ACCOUNTS LEDGER — moved here from the dashboard, where
+          it was the widest element on screen and had to be capped at 12 rows.
+          Money lives in the finance workspace; this gives it full width. */}
+      {activeTab === 'clinic_accounts' && (
+        <ClinicAccountsTable
+          labs={labs}
+          invoices={invoices}
+          cases={cases}
+          todayStr={getTodayStr()}
+          onCollect={(clinicId) => {
+            setUnifiedModalLabId(clinicId);
+            setUnifiedModalInvoiceId(undefined);
+            setUnifiedModalMode('payment');
+            setIsUnifiedRecordModalOpen(true);
+          }}
+          onStatement={(clinicId) => setClinicStatementModalId(clinicId)}
+          onOpenClinics={() => setCurrentView('labs')}
         />
       )}
 
