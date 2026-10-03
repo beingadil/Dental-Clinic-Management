@@ -19,21 +19,21 @@
     },
     {
       "package": "@img/sharp-win32-x64",
-      "version": "0.34.4",
+      "version": "0.35.5",
       "file": "@img/sharp-win32-x64/lib/libvips-42.dll",
-      "sha256": "50433ce2e1d402dc0b898fe173408922a2ce88198d57a3a073e604ea50902b3a"
+      "sha256": "06dab07cc386748513337a31672b1d5269fbc770a14ff403080575665bf0813f"
     },
     {
       "package": "@img/sharp-win32-x64",
-      "version": "0.34.4",
-      "file": "@img/sharp-win32-x64/lib/libvips-cpp-8.17.2.dll",
-      "sha256": "63d64e4625111244890d78b6487519e3b5b78828dfa00fd81efd41340140951b"
+      "version": "0.35.5",
+      "file": "@img/sharp-win32-x64/lib/libvips-cpp-8.18.7.dll",
+      "sha256": "25001dbd05305a0a29119ab49933622c70b4a20ea12ef1d5d20ca40181db53bf"
     },
     {
       "package": "@img/sharp-win32-x64",
-      "version": "0.34.4",
-      "file": "@img/sharp-win32-x64/lib/sharp-win32-x64.node",
-      "sha256": "3e75c83d511bf498913bacd08980648fc77c91a2751e90d8c6cfd0d722135814"
+      "version": "0.35.5",
+      "file": "@img/sharp-win32-x64/lib/sharp-win32-x64-0.35.5.node",
+      "sha256": "971048779f9c8598df14641dfc03c625885c93f473a788e65ca2deb50d0b083e"
     },
     {
       "package": "@rollup/rollup-win32-x64-gnu",
