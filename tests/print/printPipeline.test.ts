@@ -167,3 +167,70 @@ describe('pipeline constants', () => {
     expect(PRINT_CONTAINER_SELECTOR).toBe('.space-y-8');
   });
 });
+
+/**
+ * Layout-space contract.
+ *
+ * `visibility: hidden` still generates a box, so blanket-hiding the document
+ * left the app shell (h-screen) and <main> occupying a full viewport of blank
+ * paper ABOVE the first sheet, and the fixed centre-aligned modal backdrop
+ * held it away from the page edge. window.print() therefore produced one
+ * mostly-empty sheet with the slips near the bottom, while Save to File —
+ * which serializes ONLY .space-y-8 into a bare <body> — was always correct.
+ *
+ * These pin the two rules that close that gap, so the fix cannot silently
+ * regress back to a preview that disagrees with the saved file.
+ */
+describe('print CSS contract — layout space removal', () => {
+  it('removes non-print elements from the flow, not just their visibility', () => {
+    // display:none is the only way to drop the box; visibility cannot.
+    expect(slipCss).toMatch(
+      /body\.job-slip-printing-on \*:not\(:has\(\.job-slip-print-root\)\):not\(\.job-slip-print-root\):not\(\.job-slip-print-root \*\)\s*\{\s*display: none/,
+    );
+  });
+
+  it('collapses the ancestors on the print path so the sheet starts at the top', () => {
+    // display:contents removes the ancestor's own box while keeping the slip
+    // subtree in flow — this is what removes the blank page above the slips.
+    expect(slipCss).toMatch(
+      /body\.job-slip-printing-on \*:has\(\.job-slip-print-root\)\s*\{\s*display: contents/,
+    );
+  });
+
+  it('never forces a display onto the print root itself', () => {
+    // The A4 sheet is a 2 x 3 CSS grid (.job-slip-mode-a4 .job-slip-page) and
+    // the single tag is its own fixed page. Overriding display here would
+    // flatten the six-up sheet into a block and collapse the grid.
+    const printRootBlocks = Array.from(
+      slipCss.matchAll(/body\.job-slip-printing-on \.job-slip-print-root\s*\{([^}]*)\}/g),
+    ).flatMap((m) => m[1].split(';'));
+    for (const decl of printRootBlocks) {
+      expect(decl.trim()).not.toMatch(/^display\s*:/);
+    }
+  });
+
+  it('neutralises the fixed, centre-aligned modal backdrop for paper', () => {
+    // position:fixed + align-items:center + padding on a full-viewport
+    // backdrop is what pinned the sheet away from the page edge.
+    expect(slipCss).toMatch(
+      /body\.job-slip-printing-on \.no-print-backdrop[\s\S]*?position: static !important/,
+    );
+    expect(slipCss).toMatch(
+      /body\.job-slip-printing-on \.no-print-backdrop[\s\S]*?align-items: normal !important/,
+    );
+    expect(slipCss).toMatch(
+      /body\.job-slip-printing-on \.no-print-backdrop[\s\S]*?padding: 0 !important/,
+    );
+  });
+
+  it('keeps the layout rules separate from the visibility isolation', () => {
+    // If a print engine lacks :has(), a combined selector would be dropped
+    // whole and the app would print everything. Separate rules degrade to
+    // the old visibility-only behaviour instead.
+    const hideRule = slipCss.match(
+      /body\.job-slip-printing-on \*:not\(:has\(\.job-slip-print-root\)\)[\s\S]*?\n  \}/,
+    );
+    expect(hideRule).toBeTruthy();
+    expect(hideRule![0]).not.toContain('visibility: hidden');
+  });
+});

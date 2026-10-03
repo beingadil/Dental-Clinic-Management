@@ -215,6 +215,65 @@
     visibility: visible !important;
   }
 
+  /* ---------------------------------------------------------------------
+     LAYOUT SPACE — the half of isolation that `visibility` cannot do.
+
+     `visibility: hidden` still generates a box. Every invisible element
+     keeps its layout, so the app shell (h-screen) and <main> went to paper
+     as a full viewport of blank before the first sheet, and the fixed,
+     centre-aligned backdrop hung the sheet off the page edge. The preview
+     showed the slips near the bottom of a mostly empty sheet while Save to
+     File was correct — the standalone serializer puts ONLY the slips in
+     <body>, so it never carried that space.
+
+     Two rules reproduce that structure for window.print():
+       1. anything that is not on the path to the print root leaves the flow
+          entirely (display:none, not visibility);
+       2. every ancestor ON that path gives up its own box (display:contents),
+          so the sheet starts at the top of the paper.
+
+     Kept as separate rules from the visibility pair above on purpose: if a
+     print engine lacks :has(), these two selectors are dropped as invalid
+     and the app falls back to today's visibility-only behaviour instead of
+     printing the entire application.
+     --------------------------------------------------------------------- */
+  body.job-slip-printing-on *:not(:has(.job-slip-print-root)):not(.job-slip-print-root):not(.job-slip-print-root *) {
+    display: none !important;
+  }
+  body.job-slip-printing-on *:has(.job-slip-print-root) {
+    display: contents !important;
+  }
+
+  /* NB: .job-slip-print-root is excluded from BOTH rules above on purpose —
+     it is the only element that must keep generating its own box, because the
+     A4 sheet is a 2 x 3 CSS grid (.job-slip-mode-a4 .job-slip-page) and the
+     single tag is its own fixed page. Forcing a display here would flatten the
+     six-up sheet. Its grid/page sizing comes from .job-slip-page below. */
+
+  /* Backstop for engines that ignore display:contents — neutralise the
+     modal chrome directly. Same declarations the standalone file gets for
+     free from its bare <body>. */
+  body.job-slip-printing-on .no-print-backdrop,
+  body.job-slip-printing-on .batch-panel,
+  body.job-slip-printing-on .batch-scroll-area,
+  body.job-slip-printing-on .batch-zoom-wrap {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    align-items: normal !important;
+    justify-content: normal !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
   /* Screen-fit preview transforms must never reach paper. !important
      beats the inline styles the ResizeObserver fit hook sets. */
   body.job-slip-printing-on .job-slip-mode-a4 {
