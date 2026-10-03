@@ -1,0 +1,326 @@
+/*
+ * Dashboard design tokens — three layers, per the design-system architecture.
+ *
+ *   primitive  → raw hex ramps, named by hue. Never referenced by components.
+ *   semantic   → purpose aliases (what a token is FOR, not what it looks like).
+ *   component  → the specific surfaces the dashboard composes from.
+ *
+ * The semantic layer is what makes the palette swappable: repointing
+ * `--ds-accent` at a different primitive repaints every accent surface in the
+ * dashboard without touching a single component class.
+ *
+ * Reference palette: a neutral slate canvas so clinical data reads as neutral,
+ * with one saturated accent (blue) and status hues reserved for status only.
+ * No purple/blue neon glows, no pure black, no second "AI" accent.
+ */
+
+/* ── Layer 1 · PRIMITIVE ──────────────────────────────────────────────── */
+:root {
+  --p-slate-25: #fbfcfd;
+  --p-slate-50: #f6f7f9;
+  --p-slate-100: #eef0f4;
+  --p-slate-200: #e4e7ec;
+  --p-slate-300: #d3d8e0;
+  --p-slate-400: #9aa3b2;
+  --p-slate-500: #6b7687;
+  --p-slate-600: #4d5766;
+  --p-slate-800: #263141;
+  --p-slate-900: #141c2b;
+  --p-slate-950: #0b1220;
+
+  --p-blue-50: #eff5ff;
+  --p-blue-100: #dbe8fe;
+  --p-blue-200: #bfd7fe;
+  --p-blue-500: #3b82f6;
+  --p-blue-600: #2563eb;
+  --p-blue-700: #1d4ed8;
+
+  --p-emerald-50: #ecfdf5;
+  --p-emerald-100: #d1fae5;
+  --p-emerald-500: #10b981;
+  --p-emerald-600: #059669;
+  --p-emerald-700: #047857;
+
+  --p-amber-50: #fffbeb;
+  --p-amber-100: #fef3c7;
+  --p-amber-500: #f59e0b;
+  --p-amber-600: #d97706;
+  --p-amber-700: #b45309;
+
+  --p-rose-50: #fef2f2;
+  --p-rose-100: #fee2e2;
+  --p-rose-500: #ef4444;
+  --p-rose-600: #dc2626;
+  --p-rose-700: #b91c1c;
+
+  --p-violet-50: #f5f3ff;
+  --p-violet-100: #ede9fe;
+  --p-violet-500: #8b5cf6;
+  --p-violet-600: #7c3aed;
+
+  --p-cyan-50: #ecfeff;
+  --p-cyan-100: #cffafe;
+  --p-cyan-500: #06b6d4;
+  --p-cyan-600: #0891b2;
+
+  --p-white: #ffffff;
+}
+
+/* ── Layer 2 · SEMANTIC ───────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --ds-canvas: var(--p-slate-50);
+  --ds-surface: var(--p-white);
+  --ds-surface-sunken: var(--p-slate-50);
+  --ds-line: var(--p-slate-200);
+  --ds-line-strong: var(--p-slate-300);
+
+  /* Type */
+  --ds-ink: var(--p-slate-950);
+  --ds-ink-soft: var(--p-slate-600);
+  --ds-body: var(--p-slate-500);
+  --ds-muted: var(--p-slate-400);
+
+  /* Brand + status. Exactly one accent; everything else is reserved meaning. */
+  --ds-accent: var(--p-blue-600);
+  --ds-accent-strong: var(--p-blue-700);
+  --ds-accent-soft: var(--p-blue-50);
+  --ds-accent-ring: var(--p-blue-200);
+
+  --ds-pos: var(--p-emerald-600);
+  --ds-pos-soft: var(--p-emerald-50);
+  --ds-pos-ink: var(--p-emerald-700);
+
+  --ds-warn: var(--p-amber-500);
+  --ds-warn-soft: var(--p-amber-50);
+  --ds-warn-ink: var(--p-amber-700);
+
+  --ds-risk: var(--p-rose-500);
+  --ds-risk-soft: var(--p-rose-50);
+  --ds-risk-ink: var(--p-rose-700);
+
+  --ds-qc: var(--p-violet-500);
+  --ds-qc-soft: var(--p-violet-50);
+  --ds-qc-ink: var(--p-violet-600);
+
+  --ds-dispatch: var(--p-cyan-500);
+  --ds-dispatch-soft: var(--p-cyan-50);
+
+  /* Inverse surface for the closing brand bar */
+  --ds-inverse: var(--p-slate-950);
+  --ds-inverse-soft: var(--p-slate-800);
+
+  /* Numbers must align in columns — the whole point of tabular figures here. */
+  --ds-numeric: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ── Layer 3 · COMPONENT ──────────────────────────────────────────────── */
+:root {
+  --ds-radius-card: 16px;
+  --ds-radius-tile: 12px;
+  --ds-radius-pill: 9999px;
+
+  /* Wide, low-opacity, hue-tinted — depth without a hard edge. */
+  --ds-shadow-card: 0 1px 2px rgba(20, 28, 43, 0.04), 0 1px 3px rgba(20, 28, 43, 0.03);
+  --ds-shadow-tile: 0 1px 2px rgba(20, 28, 43, 0.05);
+  --ds-shadow-lift: 0 4px 12px -2px rgba(20, 28, 43, 0.08);
+
+  --ds-pad-card: 20px;
+  --ds-gap-grid: 16px;
+  --ds-control-h: 36px;
+}
+
+@theme inline {
+  /* Surfaces */
+  --color-ds-canvas: var(--ds-canvas);
+  --color-ds-surface: var(--ds-surface);
+  --color-ds-sunken: var(--ds-surface-sunken);
+  --color-ds-line: var(--ds-line);
+  --color-ds-line-strong: var(--ds-line-strong);
+
+  /* Type */
+  --color-ds-ink: var(--ds-ink);
+  --color-ds-ink-soft: var(--ds-ink-soft);
+  --color-ds-body: var(--ds-body);
+  --color-ds-muted: var(--ds-muted);
+
+  /* Accent */
+  --color-ds-accent: var(--ds-accent);
+  --color-ds-accent-strong: var(--ds-accent-strong);
+  --color-ds-accent-soft: var(--ds-accent-soft);
+  --color-ds-accent-ring: var(--ds-accent-ring);
+
+  /* Status */
+  --color-ds-pos: var(--ds-pos);
+  --color-ds-pos-soft: var(--ds-pos-soft);
+  --color-ds-pos-ink: var(--ds-pos-ink);
+  --color-ds-warn: var(--ds-warn);
+  --color-ds-warn-soft: var(--ds-warn-soft);
+  --color-ds-warn-ink: var(--ds-warn-ink);
+  --color-ds-risk: var(--ds-risk);
+  --color-ds-risk-soft: var(--ds-risk-soft);
+  --color-ds-risk-ink: var(--ds-risk-ink);
+  --color-ds-qc: var(--ds-qc);
+  --color-ds-qc-soft: var(--ds-qc-soft);
+  --color-ds-qc-ink: var(--ds-qc-ink);
+  --color-ds-dispatch: var(--ds-dispatch);
+  --color-ds-dispatch-soft: var(--ds-dispatch-soft);
+  --color-ds-inverse: var(--ds-inverse);
+  --color-ds-inverse-soft: var(--ds-inverse-soft);
+
+  /* Shape */
+  --radius-ds-card: var(--ds-radius-card);
+  --radius-ds-tile: var(--ds-radius-tile);
+
+  /* Elevation */
+  --shadow-ds-card: var(--ds-shadow-card);
+  --shadow-ds-tile: var(--ds-shadow-tile);
+  --shadow-ds-lift: var(--ds-shadow-lift);
+
+  /* Type scale — the dashboard is deliberately dense (density 8/10) */
+  --font-numeric: var(--ds-numeric);
+}
+
+/* ── Dashboard-local primitives ───────────────────────────────────────── */
+
+@layer components {
+  /* The one card shell. Every panel is this + a header row + content, so
+     radius, border and elevation are defined once and cannot drift. */
+  .ds-panel {
+    background: var(--ds-surface);
+    border: 1px solid var(--ds-line);
+    border-radius: var(--ds-radius-card);
+    box-shadow: var(--ds-shadow-card);
+  }
+
+  .ds-panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ds-ink);
+    letter-spacing: -0.01em;
+  }
+
+  .ds-panel-sub {
+    font-size: 11px;
+    color: var(--ds-muted);
+    margin-top: 1px;
+  }
+
+  /* Section eyebrow inside a panel */
+  .ds-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ds-muted);
+  }
+
+  /* Figures. Tabular + slightly negative tracking stops PKR totals from
+     shimmering as they change, which is the classic dashboard tell. */
+  .ds-figure {
+    font-family: var(--ds-numeric);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: var(--ds-ink);
+    font-weight: 700;
+  }
+
+  .ds-link {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ds-accent);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 150ms ease;
+  }
+  .ds-link:hover { color: var(--ds-accent-strong); }
+
+  /* Square icon tile — 36px, rounded, tone-tinted. */
+  .ds-icon-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  /* Motion is transform/opacity only, and always short. */
+  .ds-tap {
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 200ms ease,
+                border-color 200ms ease;
+  }
+  .ds-tap:active { transform: scale(0.98); }
+
+  /* Horizontal meter used by the workload panel */
+  .ds-meter-track {
+    height: 8px;
+    border-radius: var(--ds-radius-pill);
+    background: var(--p-slate-100);
+    overflow: hidden;
+  }
+  .ds-meter-fill {
+    display: block;
+    height: 100%;
+    border-radius: var(--ds-radius-pill);
+    transform-origin: left center;
+    animation: ds-meter-grow 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes ds-meter-grow {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  /* Panels stagger in on mount. Respects reduced-motion (see below). */
+  .ds-enter {
+    animation: ds-panel-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--ds-i, 0) * 45ms);
+  }
+
+  @keyframes ds-panel-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* The trend dot that marks "live" */
+  .ds-live-dot {
+    position: relative;
+    display: inline-flex;
+    width: 6px;
+    height: 6px;
+  }
+  .ds-live-dot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: var(--ds-pos);
+    opacity: 0.55;
+    animation: ds-ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  .ds-live-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: var(--ds-pos);
+  }
+
+  @keyframes ds-ping {
+    0% { transform: scale(1); opacity: 0.55; }
+    70%, 100% { transform: scale(2.6); opacity: 0; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-enter,
+  .ds-meter-fill,
+  .ds-live-dot::before {
+    animation: none !important;
+  }
+  .ds-meter-fill { transform: scaleX(1) !important; }
+  .ds-enter { opacity: 1 !important; transform: none !important; }
+}

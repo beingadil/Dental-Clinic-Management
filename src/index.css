@@ -1,5 +1,6 @@
 @import "./fonts.css";
 @import "tailwindcss";
+@import "./components/dashboard/dashboard-tokens.css";
 
 /*
  * D7 — brand accent. These five tokens are the only things `applyBrandColor()`
