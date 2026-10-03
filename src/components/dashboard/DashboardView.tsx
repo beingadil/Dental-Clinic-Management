@@ -33,6 +33,10 @@ import {
   type QuickAction,
 } from './dashboard-panels';
 import { STAGE_QUEUE } from './dashboard-panels';
+import { Masonry, type MasonryItem } from './useMasonry';
+import { useDashboardLayout, visiblePanels } from './useDashboardLayout';
+import { PanelShell } from './PanelControls';
+import { PanelLayoutBar } from './PanelLayoutBar';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { RecordTransactionModal } from '../billing/RecordTransactionModal';
@@ -182,58 +186,113 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
     year: 'numeric',
   });
 
+  /* One registry, three consumers: the masonry items below, the hidden-panel
+     recovery list, and the preference filter. Adding a panel in one place is
+     enough — a key the registry does not know is dropped on read. */
+  const PANEL_LABELS: Record<string, string> = {
+    workflow: 'Production Workflow',
+    attention: 'Needs Attention',
+    schedule: "Today's Schedule",
+    revenue: 'Revenue & Collections',
+    atRisk: 'Cases At Risk',
+    activity: 'Recent Activity',
+    quickActions: 'Quick Actions',
+    workload: 'Bench Workload',
+    performance: 'Lab Performance',
+    upcoming: 'Upcoming Deliveries',
+  };
+  const PANEL_KEYS = Object.keys(PANEL_LABELS);
+
+  const layout = useDashboardLayout(user?.id, PANEL_KEYS);
+  const { keys: visibleKeys, spans } = visiblePanels(PANEL_KEYS, layout.prefs);
+
+  const panelContent: Record<string, React.ReactNode> = {
+    workflow: (
+      <ProductionWorkflow
+        stages={metrics.workflow}
+        onViewAll={() => setCurrentView('cases')}
+        onOpenStage={(stage) => {
+          const q = STAGE_QUEUE[stage.key];
+          if (q) setQueue(q);
+        }}
+      />
+    ),
+    attention: (
+      <NeedsAttention rows={metrics.attention} onReview={(key) => setQueue(key as QueueId)} />
+    ),
+    schedule: (
+      <TodaySchedule
+        rows={metrics.schedule}
+        dateLabel={scheduleDate}
+        onOpenCase={openCase}
+        onViewCalendar={() => setShowCalendar(true)}
+      />
+    ),
+    revenue: (
+      <RevenueCollections revenue={metrics.revenue} onInvoices={() => setCurrentView('billing')} />
+    ),
+    atRisk: (
+      <CasesAtRisk
+        rows={metrics.atRisk}
+        onOpenCase={openCase}
+        onViewAll={() => setQueue('open')}
+      />
+    ),
+    activity: <RecentActivity rows={metrics.activity} />,
+    quickActions: <QuickActions actions={quickActions} />,
+    workload: (
+      <Workload
+        rows={metrics.workload.rows}
+        overallPct={metrics.workload.overallPct}
+        unassigned={metrics.workload.unassigned}
+      />
+    ),
+    performance: <LabPerformance rows={metrics.performance} />,
+    upcoming: <UpcomingDeliveries rows={metrics.upcoming} onOpenCase={openCase} />,
+  };
+
+  const masonryItems: MasonryItem[] = visibleKeys.map((k) => ({
+    key: k,
+    span: spans[k] ?? 1,
+    children: (
+      <PanelShell
+        label={PANEL_LABELS[k]}
+        pinned={layout.prefs.pinned.includes(k)}
+        wide={layout.prefs.wide.includes(k)}
+        onPin={() => layout.togglePin(k)}
+        onWide={() => layout.toggleWide(k)}
+        onHide={() => layout.toggleHidden(k)}
+      >
+        {panelContent[k]}
+      </PanelShell>
+    ),
+  }));
+
   return (
     <div className="space-y-4 pb-10" data-purpose="dashboard">
       <GreetingHeader userName={user?.name || 'there'} onNewCase={onOpenNewCaseModal} />
 
       <KpiCards kpis={metrics.kpis} onGo={setCurrentView} />
 
-      {/* Masonry instead of three stacked 12-col rows.
+      {/* Panels are measured and packed into equal-height columns (see
+          useMasonry.ts) rather than left to CSS columns, which only
+          approximately balanced them. Order is tallest-first inside the packer,
+          so the tall panels pair across the top instead of stacking at the end.
 
-          The row layout forced every panel in a row to the height of the
-          tallest sibling, so a short panel left a band of empty card below it
-          — the gaps this replaces. CSS columns flow panels into balanced
-          columns at their natural height, so the only space on the page is the
-          16px gutter between panels.
+          Which panels appear, in what order, and how wide is the reader's
+          choice, persisted per user — so the canonical order below is the
+          default, not a cage. */}
+      <PanelLayoutBar
+        hiddenCount={layout.prefs.hidden.length}
+        hidden={layout.prefs.hidden}
+        labels={PANEL_LABELS}
+        onRestore={(k) => {
+          if (layout.prefs.hidden.includes(k)) layout.toggleHidden(k);
+        }}
+        onReset={layout.reset}
+      />
 
-          `break-inside-avoid` is what makes this work: without it the browser
-          is free to slice a panel across a column break, which would cut a
-          case list in half. Panels keep their full height and simply move. */}
-      <div className="columns-1 md:columns-2 2xl:columns-3 gap-4 [column-fill:_balance]">
-        <ProductionWorkflow
-          stages={metrics.workflow}
-          onViewAll={() => setCurrentView('cases')}
-          onOpenStage={(stage) => {
-            const q = STAGE_QUEUE[stage.key];
-            if (q) setQueue(q);
-          }}
-        />
-        <NeedsAttention
-          rows={metrics.attention}
-          onReview={(key) => setQueue(key as QueueId)}
-        />
-        <TodaySchedule
-          rows={metrics.schedule}
-          dateLabel={scheduleDate}
-          onOpenCase={openCase}
-          onViewCalendar={() => setShowCalendar(true)}
-        />
-        <RevenueCollections revenue={metrics.revenue} onInvoices={() => setCurrentView('billing')} />
-        <CasesAtRisk
-          rows={metrics.atRisk}
-          onOpenCase={openCase}
-          onViewAll={() => setQueue('open')}
-        />
-        <RecentActivity rows={metrics.activity} />
-        <QuickActions actions={quickActions} />
-        <Workload
-          rows={metrics.workload.rows}
-          overallPct={metrics.workload.overallPct}
-          unassigned={metrics.workload.unassigned}
-        />
-        <LabPerformance rows={metrics.performance} />
-        <UpcomingDeliveries rows={metrics.upcoming} onOpenCase={openCase} />
-      </div>
+      <Masonry items={masonryItems} measureKey={`${metrics.atRisk.length}-${metrics.schedule.length}-${metrics.upcoming.length}-${metrics.workload.rows.length}`} />
 
       {slipCase && (
         <CaseJobSlipModal caseData={slipCase} onClose={() => setSlipCase(null)} />
