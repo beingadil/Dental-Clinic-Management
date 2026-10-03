@@ -270,11 +270,17 @@ export const InteractiveDeliveryCalendar: React.FC<InteractiveDeliveryCalendarPr
         {/* Dispatch Items List */}
         <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
           {casesOnSelectedDate.length > 0 ? (
-            casesOnSelectedDate.map((c, i) => {
+            casesOnSelectedDate.map((c) => {
               const isDelivered = c.status === 'delivered';
               const isUrgent = c.priority === 'urgent' || c.status === 'revision';
-              const assignedRider = i % 2 === 0 ? 'Lab Rider 01 (Central)' : 'Lab Rider 02 (North)';
-              const timeSlot = i === 0 ? '10:30 AM' : i === 1 ? '02:00 PM' : '04:30 PM';
+              /* No dispatch time or rider is stored on a case, and the previous
+                 implementation invented both from the row's index ("10:30 AM",
+                 "Lab Rider 02 (North)"). The clock shown is now the real time
+                 the case entered its current stage. */
+              const history = c.history || [];
+              const lastStamp = history.length ? history[history.length - 1].timestamp : c.updated_at;
+              const rawClock = (lastStamp || '').slice(11, 16);
+              const timeSlot = /^\d{2}:\d{2}$/.test(rawClock) ? rawClock : null;
 
               return (
                 <div 
@@ -304,15 +310,18 @@ export const InteractiveDeliveryCalendar: React.FC<InteractiveDeliveryCalendarPr
                       <span className="font-semibold text-slate-800 truncate min-w-0">{c.lab_name}</span>
                     </div>
 
-                    <span className="text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap shrink-0">
-                      {timeSlot}
-                    </span>
+                    {timeSlot && (
+                      <span className="text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap shrink-0 tabular-nums">
+                        {timeSlot}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                    <span className="truncate min-w-0">{c.case_type_name} ({c.patient_name}) • Shade {c.shade || 'A2'}</span>
-                    <span className="text-[10px] font-medium text-slate-400 truncate max-w-[104px] shrink-0" title={assignedRider}>
-                      {assignedRider}
+                    <span className="truncate min-w-0">
+                      {c.case_type_name}
+                      {c.patient_name ? ` (${c.patient_name})` : ''}
+                      {c.shade ? ` • Shade ${c.shade}` : ''}
                     </span>
                   </div>
 

@@ -34,8 +34,11 @@ import {
   type QuickAction,
 } from './dashboard-panels';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
+import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { ShadeGuideModal } from './ShadeGuideModal';
+import { DeliveryCalendarModal } from './DeliveryCalendarModal';
+import { CaseQueueModal, type QueueId } from './CaseQueueModal';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
   ClipboardList,
@@ -56,10 +59,15 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal }) => {
   const { cases, invoices, allPayments, labs, user, setCurrentView, updateCase } = useApp();
 
-  const [selectedCase, setSelectedCase] = React.useState<DentalCase | null>(null);
+  /* Dashboard rows open the same Job Slip the Case Workstation opens, so a
+   case behaves identically wherever it is clicked. The full CaseDetailModal
+   is reserved for editing. */
+  const [slipCase, setSlipCase] = React.useState<DentalCase | null>(null);
 const [paymentModalClinicId, setPaymentModalClinicId] = React.useState<string | undefined>(undefined);
 const [showPaymentModal, setShowPaymentModal] = React.useState(false);
 const [showShadeGuide, setShowShadeGuide] = React.useState(false);
+const [showCalendar, setShowCalendar] = React.useState(false);
+const [queue, setQueue] = React.useState<QueueId | null>(null);
 const [pendingShade, setPendingShade] = React.useState<string | null>(null);
   /** The shell's new-case modal takes no shade, so the shade-guide path opens
    *  its own wizard instance carrying the pick through. */
@@ -74,7 +82,7 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
 
   const openCase = (id: string) => {
     const match = cases.find((c) => c.id === id);
-    if (match) setSelectedCase(match);
+    if (match) setSlipCase(match);
   };
 
   /** First case sitting in the given status — used by the quick actions that
@@ -196,14 +204,17 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
           <ProductionWorkflow stages={metrics.workflow} onViewAll={() => setCurrentView('cases')} />
         </div>
         <div className="2xl:col-span-3">
-          <NeedsAttention rows={metrics.attention} onReview={() => setCurrentView('cases')} />
+          <NeedsAttention
+            rows={metrics.attention}
+            onReview={(key) => setQueue(key as QueueId)}
+          />
         </div>
         <div className="2xl:col-span-3">
           <TodaySchedule
             rows={metrics.schedule}
             dateLabel={scheduleDate}
             onOpenCase={openCase}
-            onViewCalendar={() => setCurrentView('cases')}
+            onViewCalendar={() => setShowCalendar(true)}
           />
         </div>
       </div>
@@ -213,7 +224,11 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
           <RevenueCollections revenue={metrics.revenue} onInvoices={() => setCurrentView('billing')} />
         </div>
         <div className="2xl:col-span-4">
-          <CasesAtRisk rows={metrics.atRisk} onOpenCase={openCase} />
+          <CasesAtRisk
+            rows={metrics.atRisk}
+            onOpenCase={openCase}
+            onViewAll={() => setQueue('open')}
+          />
         </div>
         <div className="2xl:col-span-3">
           <RecentActivity rows={metrics.activity} />
@@ -237,9 +252,33 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
 
       <BrandBar />
 
-      {selectedCase && (
-        <CaseDetailModal initialCase={selectedCase} onClose={() => setSelectedCase(null)} />
+      {slipCase && (
+        <CaseJobSlipModal caseData={slipCase} onClose={() => setSlipCase(null)} />
       )}
+
+      <DeliveryCalendarModal
+        isOpen={showCalendar}
+        cases={cases}
+        todayStr={todayStr}
+        onSelectCase={(c) => setSlipCase(c)}
+        onOpenNewCase={() => {
+          setShowCalendar(false);
+          onOpenNewCaseModal();
+        }}
+        onUpdateCaseStatus={updateCase}
+        onClose={() => setShowCalendar(false)}
+      />
+
+      <CaseQueueModal
+        queue={queue}
+        cases={cases}
+        onSelectCase={setSlipCase}
+        onOpenWorkstation={() => {
+          setQueue(null);
+          setCurrentView('cases');
+        }}
+        onClose={() => setQueue(null)}
+      />
 
       {/* Payment and Shade Guide are the two tiles that needed a real modal
           rather than a navigation hop. */}

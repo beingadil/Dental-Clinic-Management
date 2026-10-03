@@ -381,17 +381,13 @@ const ATTENTION_ICON: Record<AttentionRow['tone'], LucideIcon> = {
   pos: ShieldCheck,
 };
 
-export const NeedsAttention: React.FC<{ rows: AttentionRow[]; onReview: () => void }> = ({
-  rows,
-  onReview,
-}) => (
+export const NeedsAttention: React.FC<{
+  rows: AttentionRow[];
+  /** Opens the queue for THAT row, not a generic review screen. */
+  onReview: (key: AttentionRow['key']) => void;
+}> = ({ rows, onReview }) => (
   <section className="ds-panel p-5 ds-enter" data-purpose="needs-attention">
-    <PanelHead
-      icon={ShieldAlert}
-      tone="risk"
-      title="Needs Attention"
-      action={{ label: 'Review', onClick: onReview }}
-    />
+    <PanelHead icon={ShieldAlert} tone="risk" title="Needs Attention" />
 
     <ul className="mt-3.5 space-y-2.5">
       {rows.map((row) => {
@@ -413,7 +409,7 @@ export const NeedsAttention: React.FC<{ rows: AttentionRow[]; onReview: () => vo
                   {row.count} {row.title}
                 </span>
                 {!dim && (
-                  <button type="button" onClick={onReview} className="ds-link shrink-0">
+                  <button type="button" onClick={() => onReview(row.key)} className="ds-link shrink-0">
                     View
                   </button>
                 )}
@@ -844,12 +840,19 @@ const RISK_ICON: Record<RiskLevel, LucideIcon> = {
   'On Track': CheckCircle2,
 };
 
-export const CasesAtRisk: React.FC<{ rows: RiskRow[]; onOpenCase: (id: string) => void }> = ({
-  rows,
-  onOpenCase,
-}) => (
+export const CasesAtRisk: React.FC<{
+  rows: RiskRow[];
+  onOpenCase: (id: string) => void;
+  /** Opens the full ordered list rather than the four shown here. */
+  onViewAll: () => void;
+}> = ({ rows, onOpenCase, onViewAll }) => (
   <section className="ds-panel p-5 ds-enter" data-purpose="cases-at-risk">
-    <PanelHead icon={ShieldAlert} tone="risk" title="Cases At Risk" />
+    <PanelHead
+      icon={ShieldAlert}
+      tone="risk"
+      title="Cases At Risk"
+      action={{ label: 'View all', onClick: onViewAll }}
+    />
 
     {rows.length === 0 ? (
       <Empty message="Nothing at risk" hint="Every open case is tracking to its promised date." />
