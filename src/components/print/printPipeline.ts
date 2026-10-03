@@ -14,6 +14,8 @@
  * their own preview state.
  */
 
+import { saveFile } from '../../lib/saveFile';
+
 /** Class on <body> while slip printing/Save-PDF is active — jobSlipPrint.css keys on it. */
 export const SLIP_PRINT_BODY_CLASS = 'job-slip-printing-on';
 /** Class on the modal root while slip printing/Save-PDF is active. */
@@ -84,15 +86,19 @@ export function buildStandaloneHtml(
 </html>`;
 }
 
-/** Download a standalone HTML document via a temporary object URL. */
+/**
+ * Save a standalone HTML document.
+ *
+ * Routed through saveTextFile: the previous Blob-URL + `<a download>` click is
+ * silently ignored by the Tauri shell (no download handler was ever
+ * registered), so "Save & Download" produced nothing on the installed build. On
+ * web this is unchanged — a browser download, now with a deferred
+ * revokeObjectURL so the download cannot be cancelled mid-flight.
+ */
 export function downloadStandaloneHtml(html: string, filename: string): void {
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  void saveFile(filename, html, {
+    extension: '.html',
+    mimeType: 'text/html;charset=utf-8',
+    dialogTitle: 'Save document',
+  });
 }

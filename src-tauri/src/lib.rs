@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 #[cfg(windows)]
 pub mod pdf_save;
+pub mod file_export;
 #[cfg(windows)]
 use winreg::enums::HKEY_CURRENT_USER;
 #[cfg(windows)]
@@ -712,7 +713,8 @@ pub fn run() {
             open_external,
             update_install,
             update_diagnostics,
-            pdf_save::save_webview_as_pdf
+            pdf_save::save_webview_as_pdf,
+            file_export::save_file_bytes
         ])
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())

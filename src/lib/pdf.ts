@@ -1,3 +1,5 @@
+import { saveFile } from './saveFile';
+
 /**
  * Minimal dependency-free PDF writer (PDF 1.4, WinAnsi, Helvetica).
  * Pure text/vector output — real pages, selectable text, no screenshots.
@@ -474,16 +476,16 @@ const closingDrCr = (n: number) =>
 
 /* ---------- download helper ---------- */
 
+/**
+ * Save a PDF. Routed through saveFile so the desktop build writes a real file
+ * instead of silently ignoring the Blob download; the web path is unchanged.
+ */
 export function downloadPdf(filename: string, pdf: string) {
   const bytes = new Uint8Array(pdf.length);
   for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  void saveFile(filename, bytes, {
+    extension: '.pdf',
+    mimeType: 'application/pdf',
+    dialogTitle: 'Save PDF',
+  });
 }

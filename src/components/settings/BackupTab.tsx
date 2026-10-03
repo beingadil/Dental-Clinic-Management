@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { getTodayStr } from '../../utils/dateUtils';
+import { saveFile } from '../../lib/saveFile';
 import { useApp } from '../../context/AppContext';
 import {
   createBackup,
@@ -142,19 +143,34 @@ export const BackupTab: React.FC<{
     setBusy('backup');
     try {
       const pkg = await createBackup();
-      const blob = new Blob([serializeBackup(pkg)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `dentalsolutions_${APP_VERSION}_${getTodayStr()}.dentalbackup`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Routed through saveFile: the previous Blob-URL click was silently
+      // ignored by the Tauri shell, so "Export backup" appeared to succeed and
+      // left no file anywhere. That is the worst possible failure for a data
+      // safety feature, so the outcome is checked and reported.
+      const saved = await saveFile(
+        `dentalsolutions_${APP_VERSION}_${getTodayStr()}.dentalbackup`,
+        serializeBackup(pkg),
+        {
+          extension: '.dentalbackup',
+          mimeType: 'application/json',
+          dialogTitle: 'Save backup file',
+        },
+      );
+      if (saved.status === 'cancelled') {
+        setBackupMessage({ type: 'error', text: 'Backup export cancelled — nothing was written.' });
+        return;
+      }
+      if (saved.status !== 'saved') {
+        setBackupMessage({
+          type: 'error',
+          text: `Backup could not be written: ${saved.status === 'error' ? saved.message : saved.status}`,
+        });
+        return;
+      }
       const tables = Object.entries(pkg.manifest.table_counts).filter(([, n]) => n > 0);
       setBackupMessage({
         type: 'success',
-        text: `Backup verified (checksum OK) — ${tables.length} tables, ${(pkg.manifest.db_size_bytes / 1024).toFixed(1)} KB. File downloaded.`,
+        text: `Backup verified (checksum OK) — ${tables.length} tables, ${(pkg.manifest.db_size_bytes / 1024).toFixed(1)} KB. Saved to ${saved.path}`,
       });
     } catch (err: any) {
       setBackupMessage({ type: 'error', text: `Backup failed: ${err?.message || 'unknown error'}` });

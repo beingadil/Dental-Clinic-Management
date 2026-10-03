@@ -1,3 +1,5 @@
+import { saveFile } from '../lib/saveFile';
+
 /**
  * SQLite & Offline Database Persistence Engine for Dental Solutions Lab ERP
  * 
@@ -405,18 +407,16 @@ export function generateSqliteExport(appData: {
 }
 
 /**
- * Triggers a browser download of the SQLite .sql dump file
+ * Save the SQLite .sql dump. Routed through saveFile so the desktop build
+ * writes a real file (the Tauri shell ignores a Blob-URL download entirely);
+ * the web path is unchanged.
  */
 export function downloadSqliteDump(sqlContent: string, fileName = 'dentallab_database.sql'): void {
-  const blob = new Blob([sqlContent], { type: 'application/sql;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  void saveFile(fileName, sqlContent, {
+    extension: '.sql',
+    mimeType: 'application/sql;charset=utf-8',
+    dialogTitle: 'Save SQL dump',
+  });
 }
 
 /**

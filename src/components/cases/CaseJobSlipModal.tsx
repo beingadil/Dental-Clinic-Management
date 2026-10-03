@@ -13,7 +13,6 @@ import {
 } from '../print/printPipeline';
 import '../print/jobSlipPrint.css';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
-import { isDesktop } from '../../db/persistence';
 
 interface CaseJobSlipModalProps {
   caseData: DentalCase;
@@ -151,26 +150,18 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Web-only. The desktop shell has no handler for a programmatic
-                blob-URL download: Tauri wires the WebView2 download event to
-                a Rust-side save dialog, and this app registers none — there is
-                no on_download handler and no download capability in
-                src-tauri/capabilities. Clicking this on desktop therefore
-                produces NO file and NO error, which is worse than not offering
-                it. It is also redundant there: Save PDF (native
-                PrintToPdfStream) produces the artifact the operator actually
-                wants. The web build still needs it, since the browser has no
-                save-to-file path without the print dialog. */}
-            {!isDesktop() && (
-              <button
-                type="button"
-                onClick={() => handleSaveAndPrint(true)}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Save voucher in database and download the exact slip file"
-              >
-                <Download className="w-4 h-4" /> Save &amp; Download
-              </button>
-            )}
+            {/* Downloads a self-contained HTML file via saveFile, which opens the native
+                save dialog on desktop and the browser download on web. It was
+                briefly hidden on desktop while its dead blob-download path was
+                being replaced; that path is gone now. */}
+            <button
+              type="button"
+              onClick={() => handleSaveAndPrint(true)}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Save voucher in database and download the exact slip file"
+            >
+              <Download className="w-4 h-4" /> Save &amp; Download
+            </button>
             <SavePdfButton
               suggestedName={`Job-Slip_${caseData.case_number || 'tag'}.pdf`}
               className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
