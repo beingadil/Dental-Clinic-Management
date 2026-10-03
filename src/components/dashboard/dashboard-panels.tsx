@@ -83,6 +83,7 @@ const TONE_ICON_BG: Record<Tone, string> = {
 };
 
 const TONE_BAR: Record<WorkloadRow['tone'], string> = {
+  muted: 'bg-slate-300',
   accent: 'bg-ds-accent',
   qc: 'bg-ds-qc',
   pos: 'bg-ds-pos',
@@ -973,12 +974,13 @@ export const QuickActions: React.FC<{ actions: QuickAction[] }> = ({ actions }) 
 export const Workload: React.FC<{
   rows: WorkloadRow[];
   overallPct: number | null;
-}> = ({ rows, overallPct }) => (
+  unassigned: number;
+}> = ({ rows, overallPct, unassigned }) => (
   <section className="ds-panel p-5 ds-enter" data-purpose="workload">
-    <PanelHead icon={Gauge} title="Workload by Material" subtitle="Share of cases on the bench" />
+    <PanelHead icon={Gauge} title="Bench Workload" subtitle="Share of open cases per bench" />
 
     {rows.length === 0 ? (
-      <Empty message="No active cases" hint="Start a case to see bench utilisation." />
+      <Empty message="No open cases" hint="Start a case to see bench workload." />
     ) : (
       <>
         <ul className="mt-3.5 space-y-2.5">
@@ -1011,6 +1013,12 @@ export const Workload: React.FC<{
               style={{ width: `${Math.max(overallPct ?? 0, 2)}%` }}
             />
           </div>
+          {unassigned > 0 && (
+            <p className="mt-2.5 text-[10px] text-ds-muted leading-relaxed">
+              {unassigned} {unassigned === 1 ? 'case has' : 'cases have'} no bench set — open a case to route{' '}
+              {unassigned === 1 ? 'it' : 'them'}.
+            </p>
+          )}
         </div>
       </>
     )}

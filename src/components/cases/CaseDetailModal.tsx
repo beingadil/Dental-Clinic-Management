@@ -7,6 +7,7 @@ import { CaseNotesPanel } from './CaseNotesPanel';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
 import { openFileInBrowser } from '../../utils/fileUtils';
+import { LAB_DEPARTMENTS } from '../../utils/labDepartments';
 import { getClinicalSpecs, ClinicalMaterial } from '../../services/clinicalSpecsService';
 import {
   X,
@@ -130,6 +131,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [material, setMaterial] = useState<string>(
     initialCase?.material || 'Zirconia (Multi-layer 3D Pro)'
   );
+  /* Bench routing (migration 015). Empty means "not routed yet", which the
+     dashboard reports as Unassigned rather than guessing. */
+  const [department, setDepartment] = useState<string>(initialCase?.department || '');
   const [shade, setShade] = useState(initialCase?.shade || appliedTemplate?.shade || initialShade || 'A2');
   const [clinicalSpecs, setClinicalSpecs] = useState(getClinicalSpecs());
 
@@ -475,6 +479,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           tooth_details: toothDetails,
           shade: shade.trim(),
           material: material.trim(),
+          department: department || null,
           delivery_date: deliveryDate,
           priority,
           price,
@@ -498,6 +503,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         tooth_details: toothDetails,
         shade: shade.trim(),
         material: material.trim(),
+        department: department || null,
         delivery_date: deliveryDate,
         priority,
         price,
@@ -879,6 +885,40 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 {priorityFeedback}
               </div>
             )}
+
+            {/* Bench routing (migration 015). Optional by design: a case can be
+                registered before anyone routes it, and the dashboard reports
+                un-routed cases as "Unassigned" instead of inventing a bench. */}
+            <div className="mt-5">
+              <FieldLabel>Bench Department</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDepartment('')}
+                  className={`rounded-xl px-3 py-2 text-xs font-semibold transition-all duration-300 ${EASE} active:scale-[0.97] ${
+                    department === ''
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300'
+                  }`}
+                >
+                  Not routed
+                </button>
+                {LAB_DEPARTMENTS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDepartment(d)}
+                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition-all duration-300 ${EASE} active:scale-[0.97] ${
+                      department === d
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="mt-5">
               <FieldLabel required>Target Delivery Date</FieldLabel>

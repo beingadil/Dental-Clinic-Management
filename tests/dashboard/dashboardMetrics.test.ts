@@ -197,23 +197,66 @@ describe('computeRevenue', () => {
 
 describe('computeWorkload', () => {
   it('reports an empty bench as empty, not as zero-width bars', () => {
-    const { rows, overallPct } = computeWorkload(base());
+    const { rows, overallPct, unassigned } = computeWorkload(base());
     expect(rows).toEqual([]);
     expect(overallPct).toBeNull();
+    expect(unassigned).toBe(0);
   });
 
-  it('shares sum to a real proportion of actual bench cases', () => {
+  it('groups by cases.department, not by material', () => {
     const { rows } = computeWorkload(
       base({
         cases: [
-          makeCase({ material: 'Zirconia' }),
-          makeCase({ material: 'Zirconia' }),
-          makeCase({ material: 'e_max' }),
+          makeCase({ department: 'CAD / CAM', material: 'Zirconia' }),
+          makeCase({ department: 'CAD / CAM', material: 'E.max' }),
+          makeCase({ department: 'Sintering', material: 'Zirconia' }),
         ],
       })
     );
-    expect(rows[0]).toMatchObject({ label: 'Zirconia', pct: 67 });
-    expect(rows[1]).toMatchObject({ label: 'E Max', pct: 33 });
+    // Two distinct materials must not split the CAD / CAM bench.
+    expect(rows.map((r) => r.label).sort()).toEqual(['CAD / CAM', 'Sintering']);
+    expect(rows.find((r) => r.label === 'CAD / CAM')?.pct).toBe(67);
+  });
+
+  it('shows un-routed cases as a visible Unassigned row, never spreading them across benches', () => {
+    const { rows, unassigned } = computeWorkload(
+      base({
+        cases: [makeCase({ department: null }), makeCase({ department: 'Waxing' })],
+      })
+    );
+    expect(unassigned).toBe(1);
+    const unassignedRow = rows.find((r) => r.label === 'Unassigned');
+    expect(unassignedRow).toMatchObject({ pct: 50, tone: 'muted' });
+  });
+
+  it('excludes delivered, cancelled and draft cases from the bench', () => {
+    const { rows } = computeWorkload(
+      base({
+        cases: [
+          makeCase({ department: 'Waxing' }),
+          makeCase({ department: 'Waxing', status: 'delivered' }),
+          makeCase({ department: 'Waxing', status: 'cancelled' }),
+          makeCase({ department: 'Waxing', status: 'draft' }),
+        ],
+      })
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].pct).toBe(100);
+  });
+
+  it('orders rows by the department roster so bars stay comparable between loads', () => {
+    const { rows } = computeWorkload(
+      base({
+        cases: [
+          makeCase({ department: 'QC' }),
+          makeCase({ department: 'CAD / CAM' }),
+          makeCase({ department: 'Waxing' }),
+          makeCase({ department: 'Waxing' }),
+        ],
+      })
+    );
+    // Roster order, not count order — Waxing has the most work but is listed last.
+    expect(rows.map((r) => r.label)).toEqual(['CAD / CAM', 'Waxing', 'QC']);
   });
 });
 

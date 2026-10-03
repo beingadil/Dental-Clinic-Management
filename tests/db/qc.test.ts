@@ -58,11 +58,19 @@ function seedCase(id: string, caseNumber: string): void {
 }
 
 describe('QC persistence — schema', () => {
-  it('ships migrations through 014 and records the current schema_version', () => {
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+  it('ships migrations through 015 and records the current schema_version', () => {
+    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     expect(MIGRATIONS[7].name).toBe('purge_demo_users');
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('14');
+    expect(row?.value).toBe('15');
+  });
+
+  it('exposes cases.department as a nullable column so pre-v15 rows survive', () => {
+    const cols = engine.all<{ name: string; notnull: number }>('PRAGMA table_info(cases)');
+    const department = cols.find((c) => c.name === 'department');
+    expect(department).toBeDefined();
+    // Not-null would have failed the migration on every existing case.
+    expect(department?.notnull).toBe(0);
   });
 
   it('re-running migrations is idempotent and preserves QC rows', () => {

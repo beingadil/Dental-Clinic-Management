@@ -162,6 +162,8 @@ export interface DentalCase {
   tooth_details?: Record<number, ToothDetail>;
   shade?: string;
   material?: string;
+  /** Bench this case is routed to. See utils/labDepartments for the list. */
+  department?: string | null;
   delivery_date: string;
   priority: PriorityLevel;
   price: number;

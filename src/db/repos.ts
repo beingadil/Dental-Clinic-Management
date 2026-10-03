@@ -493,12 +493,12 @@ export const casesRepo = {
       const id = c.id || genId('case');
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
-                            selected_teeth, tooth_details, shade, material, delivery_date, priority, price, discount, final_price,
+                            selected_teeth, tooth_details, shade, material, department, delivery_date, priority, price, discount, final_price,
                             instructions, photo_url, status, archived_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, c.case_number, c.patient_name ?? null, c.lab_id, c.lab_name, c.case_type_id ?? null, c.case_type_name ?? null,
          c.units_count ?? null, c.doctor_name, JSON.stringify(c.selected_teeth ?? []), c.tooth_details ? JSON.stringify(c.tooth_details) : null,
-         c.shade ?? null, c.material ?? null, c.delivery_date, c.priority ?? 'normal', c.price ?? 0, c.discount ?? 0, c.final_price ?? 0,
+         c.shade ?? null, c.material ?? null, c.department ?? null, c.delivery_date, c.priority ?? 'normal', c.price ?? 0, c.discount ?? 0, c.final_price ?? 0,
          c.instructions ?? null, c.photo_url ?? null, c.status ?? 'received', c.archived_at ?? null, c.created_at ?? now(), now()]
       );
       // normalize teeth
@@ -524,7 +524,7 @@ export const casesRepo = {
     const db = requireEngine();
     return db.withTransaction((tx) => {
       const allowed = ['patient_name', 'lab_id', 'lab_name', 'case_type_id', 'case_type_name', 'units_count', 'doctor_name',
-        'shade', 'material', 'delivery_date', 'priority', 'price', 'discount', 'final_price', 'instructions', 'photo_url', 'status', 'archived_at'] as const;
+        'shade', 'material', 'department', 'delivery_date', 'priority', 'price', 'discount', 'final_price', 'instructions', 'photo_url', 'status', 'archived_at'] as const;
       const sets: string[] = [];
       const params: any[] = [];
       for (const key of allowed) {

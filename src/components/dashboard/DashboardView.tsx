@@ -240,7 +240,11 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
           <QuickActions actions={quickActions} />
         </div>
         <div className="2xl:col-span-3">
-          <Workload rows={metrics.workload.rows} overallPct={metrics.workload.overallPct} />
+          <Workload
+            rows={metrics.workload.rows}
+            overallPct={metrics.workload.overallPct}
+            unassigned={metrics.workload.unassigned}
+          />
         </div>
         <div className="2xl:col-span-2">
           <LabPerformance rows={metrics.performance} />

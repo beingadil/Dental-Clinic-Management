@@ -16,6 +16,7 @@
  */
 import type { DentalCase, DentalLab, Invoice, PaymentRecord, CaseStatus } from '../../types';
 import { computePerformance, type PerformanceRow } from './dashboardPerformance';
+import { LAB_DEPARTMENTS, UNASSIGNED, departmentLabel, isRealDepartment } from '../../utils/labDepartments';
 
 /* Re-exported so the panel and the tests have one import site even though the
    performance metrics now live in their own module. */
@@ -69,13 +70,7 @@ const inMonth = (dateStr: string | undefined, monthPrefix: string) =>
 
 const uniq = <T,>(xs: T[]) => Array.from(new Set(xs));
 
-/** Material label for a case, falling back to the case type when unset. */
-const materialOf = (c: DentalCase) =>
-  (c.material || '').trim() || (c.case_type_name || '').trim() || 'Unspecified';
 
-/** Title-cases a snake/lower material string for display ("e_max" → "E Max"). */
-const titleCase = (s: string) =>
-  s.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\w/g, (m) => m.toUpperCase());
 
 /* ── 1 · KPI row ──────────────────────────────────────────────────────── */
 
@@ -546,44 +541,62 @@ export function computeRecentActivity(input: MetricsInput, limit = 5): ActivityR
 export interface WorkloadRow {
   label: string;
   pct: number;
-  tone: 'accent' | 'qc' | 'pos' | 'warn' | 'dispatch';
+  tone: 'accent' | 'qc' | 'pos' | 'warn' | 'dispatch' | 'muted';
 }
 
 /**
- * Share of on-bench work per material.
+ * Share of on-bench work per bench department.
  *
- * The reference mock shows bench-department utilisation (CAD/CAM, Waxing,
- * Sintering…), which needs a per-case department assignment the schema does
- * not have. Rather than invent five constant percentages, this reports the
- * split that IS real: which materials are sitting on the bench, and how much
- * of the bench each one is. Same shape, same reading, no fiction.
+ * Backed by `cases.department` (migration 015), which the case form sets. Cases
+ * registered before that column existed have no department and are reported as
+ * a visible "Unassigned" row rather than being spread across real benches —
+ * which would be a nicer-looking chart and a lie.
+ *
+ * The bar is a share OF THE BENCH, never a share of a headcount capacity the
+ * schema does not record. "This bench holds 40% of open work" is checkable;
+ * "this bench is 78% utilised" is not.
  */
-export function computeWorkload(input: MetricsInput): { rows: WorkloadRow[]; overallPct: number | null } {
+export function computeWorkload(input: MetricsInput): {
+  rows: WorkloadRow[];
+  overallPct: number | null;
+  unassigned: number;
+} {
   const today = input.todayStr ?? getTodayStr();
   const bench = input.cases.filter((c) => isActive(c) && c.status !== 'draft');
-  if (bench.length === 0) return { rows: [], overallPct: null };
+  if (bench.length === 0) return { rows: [], overallPct: null, unassigned: 0 };
 
   const counts = new Map<string, number>();
   for (const c of bench) {
-    const key = titleCase(materialOf(c));
+    const key = departmentLabel(c.department);
     counts.set(key, (counts.get(key) || 0) + 1);
   }
 
   const toneCycle: WorkloadRow['tone'][] = ['accent', 'qc', 'pos', 'warn', 'dispatch'];
-  const rows = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 5)
-    .map(([label, count], i) => ({
+  // Roster order, not count order: a bench at 10% still matters, and a stable
+  // order lets the eye compare bars between reloads.
+  const ordered = [
+    ...LAB_DEPARTMENTS.filter((d) => counts.has(d)),
+    ...(counts.has(UNASSIGNED) ? [UNASSIGNED] : []),
+    ...[...counts.keys()]
+      .filter((k) => k !== UNASSIGNED && !isRealDepartment(k))
+      .sort(),
+  ];
+
+  const rows = ordered
+    .filter((label) => (counts.get(label) || 0) > 0)
+    .map((label, i) => ({
       label,
-      // Share of the bench, never a share of a made-up capacity ceiling.
-      pct: Math.round((count / bench.length) * 100),
-      tone: toneCycle[i % toneCycle.length],
+      pct: Math.round(((counts.get(label) || 0) / bench.length) * 100),
+      tone: label === UNASSIGNED ? 'muted' : toneCycle[i % toneCycle.length],
     }));
 
-  // "Overall load": the share of the bench that is due within seven days.
   const horizon = offsetDay(today, 7);
   const dueSoon = bench.filter((c) => c.delivery_date && c.delivery_date <= horizon).length;
-  return { rows, overallPct: Math.round((dueSoon / bench.length) * 100) };
+  return {
+    rows,
+    overallPct: Math.round((dueSoon / bench.length) * 100),
+    unassigned: counts.get(UNASSIGNED) || 0,
+  };
 }
 
 /* ── 10 · Upcoming deliveries ─────────────────────────────────────────── */
@@ -632,7 +645,7 @@ export interface DashboardMetrics {
   revenue: RevenueSummary;
   atRisk: RiskRow[];
   activity: ActivityRow[];
-  workload: { rows: WorkloadRow[]; overallPct: number | null };
+  workload: { rows: WorkloadRow[]; overallPct: number | null; unassigned: number };
   performance: PerformanceRow[];
   upcoming: UpcomingRow[];
   /** Distinct clinics with any activity — the "across N clinics" line. */

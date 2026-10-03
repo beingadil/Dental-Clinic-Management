@@ -860,6 +860,21 @@ export const MIGRATION_014_USER_PREFERENCES: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 015 — bench department
+// The dashboard's workload panel needs to know which bench a case is routed to.
+// Until now the schema had no such field, so the panel could only report a
+// share of cases by material — real, but not the question a lab manager asks.
+// `department` is nullable: existing rows stay NULL and the panel groups them
+// under "Unassigned" rather than silently inventing a department for them.
+export const MIGRATION_015_CASE_DEPARTMENT: Migration = {
+  version: 15,
+  name: 'case_department',
+  statements: [
+    `ALTER TABLE cases ADD COLUMN department TEXT`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '15')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -875,4 +890,5 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_012_INVOICE_JOURNALS,
   MIGRATION_013_JOURNAL_CASE_REFS,
   MIGRATION_014_USER_PREFERENCES,
+  MIGRATION_015_CASE_DEPARTMENT,
 ];
