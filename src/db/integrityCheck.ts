@@ -41,6 +41,16 @@ const LEDGER_IMBALANCE_SQL = `
     HAVING ABS(d - c) > 0.005
   )`;
 
+/** Money attachments whose owner document no longer exists. Migration 016
+ *  replaced a wrong single-parent FK with owner_type + cascade triggers, so
+ *  this is the only thing standing between a deleted payment/advance and a
+ *  file row nobody will ever list again. */
+const ORPHAN_MONEY_ATTACHMENTS_SQL = `
+  SELECT COUNT(*) AS n FROM payment_attachments a
+  WHERE (a.owner_type = 'payment' AND a.payment_id NOT IN (SELECT id FROM payments))
+     OR (a.owner_type = 'advance' AND a.payment_id NOT IN (SELECT id FROM advance_payments))
+     OR (a.owner_type = 'adjustment' AND a.payment_id NOT IN (SELECT id FROM account_adjustments))`;
+
 /** Invoices missing their issuance journal (every invoice must post one). */
 const INVOICES_WITHOUT_JOURNAL_SQL = `
   SELECT COUNT(*) AS n FROM invoices i
@@ -105,6 +115,21 @@ export function runIntegrityCheck(engine: SqliteEngine): IntegrityReport {
       check: 'Invoice journal coverage',
       ok: unjournaled === 0,
       detail: unjournaled === 0 ? 'Every invoice has a posted journal' : `${unjournaled} invoice(s) without journal — reload to trigger the migration 012 backfill`,
+    });
+  }
+
+  // 6 — money attachments still pointing at a deleted document.
+  let orphanAttachments = -1;
+  try {
+    orphanAttachments = Number(engine.scalar(ORPHAN_MONEY_ATTACHMENTS_SQL) ?? 0);
+  } catch { /* pre-016 schemas have no owner_type */ }
+  if (orphanAttachments >= 0) {
+    findings.push({
+      check: 'Money attachment owners',
+      ok: orphanAttachments === 0,
+      detail: orphanAttachments === 0
+        ? 'Every receipt/proof points at a live payment, advance or adjustment'
+        : `${orphanAttachments} attachment(s) reference a deleted money document`,
     });
   }
 

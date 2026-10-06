@@ -875,6 +875,170 @@ export const MIGRATION_015_CASE_DEPARTMENT: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 016 — money attachment owner
+// `payment_attachments` has always been used polymorphically: the repo layer
+// (advancePaymentsRepo.insert, adjustmentsRepo.insert), the legacy migrator
+// and syncCore all store an ADVANCE or ADJUSTMENT id in `payment_id`. But the
+// table declared `FOREIGN KEY (payment_id) REFERENCES payments(id)`, so every
+// one of those writes raised "FOREIGN KEY constraint failed" — and because
+// syncCollectionsToDb writes the whole app inside ONE SAVEPOINT, a single
+// advance with a receipt scan killed persistence for the entire database
+// (advances, adjustments, notifications, vouchers, audit events, templates,
+// every table synced after that point).
+//
+// The FK was also the only reason `PRAGMA foreign_key_check` was quiet, and it
+// was never true for the rows that actually mattered: with foreign_keys OFF
+// (which sql.js silently does on every export() before the P2 fix) those very
+// inserts succeeded and left genuine orphans.
+//
+// So make the table say what it always was: an attachment owned by a money
+// document, tagged with `owner_type`. The FK cannot express "one of three
+// parents", so it is replaced by three AFTER DELETE triggers that reproduce the
+// exact cascade the schema used to get for free.
+export const MIGRATION_016_PAYMENT_ATTACHMENT_OWNER: Migration = {
+  version: 16,
+  name: 'payment_attachment_owner',
+  statements: [
+    `CREATE TABLE payment_attachments_v16 (
+      id TEXT PRIMARY KEY,
+      owner_type TEXT NOT NULL DEFAULT 'payment'
+        CHECK (owner_type IN ('payment','advance','adjustment')),
+      payment_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      file_type TEXT NOT NULL,
+      file_size TEXT,
+      file_url TEXT NOT NULL,
+      uploaded_at TEXT NOT NULL,
+      uploaded_by TEXT
+    )`,
+
+    // Carry every existing row over. owner_type is inferred from the id that
+    // is actually there — those rows are real advance/adjustment proofs that
+    // the FK used to reject, and they are the operator's receipts, so they
+    // must not be dropped on the floor by the fix.
+    `INSERT INTO payment_attachments_v16
+       (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+     SELECT id,
+            CASE
+              WHEN payment_id IN (SELECT id FROM advance_payments) THEN 'advance'
+              WHEN payment_id IN (SELECT id FROM account_adjustments) THEN 'adjustment'
+              ELSE 'payment'
+            END,
+            payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by
+     FROM payment_attachments`,
+
+    `DROP TABLE payment_attachments`,
+    `ALTER TABLE payment_attachments_v16 RENAME TO payment_attachments`,
+    `CREATE INDEX idx_payatt_payment ON payment_attachments(payment_id)`,
+
+    // Cascade deletes, re-implemented as triggers (the old FK covered only the
+    // `payment` owner type, so advances/adjustments never cascaded anyway).
+    `CREATE TRIGGER trg_payment_attachments_cascade_payment AFTER DELETE ON payments BEGIN
+       DELETE FROM payment_attachments WHERE owner_type = 'payment' AND payment_id = OLD.id;
+     END`,
+    `CREATE TRIGGER trg_payment_attachments_cascade_advance AFTER DELETE ON advance_payments BEGIN
+       DELETE FROM payment_attachments WHERE owner_type = 'advance' AND payment_id = OLD.id;
+     END`,
+    `CREATE TRIGGER trg_payment_attachments_cascade_adjustment AFTER DELETE ON account_adjustments BEGIN
+       DELETE FROM payment_attachments WHERE owner_type = 'adjustment' AND payment_id = OLD.id;
+     END`,
+
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '16')`,
+  ],
+};
+
+// ---------------------------------------------------------------- 017 — drop dead indexes
+/**
+ * Measured, not guessed. Every SQL statement the app can issue was extracted from
+ * src/ and planned with EXPLAIN QUERY PLAN against a migrated database; the
+ * indexes below are chosen by NO statement. The reason is structural: the app
+ * loads whole collections into memory and filters, sorts and searches them in
+ * JavaScript (CaseListView, NotificationsView, AuditLogView, dashboardMetrics),
+ * so the only SQL that ever runs is `SELECT * FROM t` plus id-keyed lookups.
+ *
+ * Cost, measured by dropping each index and VACUUMing:
+ *
+ *   index                 empty DB    2,000 rows/table
+ *   idx_cases_delivery     4,096 B          40,960 B
+ *   idx_cases_archived     4,096 B          20,480 B
+ *   idx_invoices_status    4,096 B          32,768 B
+ *   idx_payments_lab       4,096 B          32,768 B
+ *   idx_alloc_invoice      4,096 B          32,768 B
+ *   idx_alloc_source       4,096 B          45,056 B  (replaced below)
+ *   idx_journal_ref        4,096 B          45,056 B
+ *   idx_audit_entity       4,096 B          40,960 B
+ *   idx_notif_read         4,096 B          24,576 B
+ *   idx_ledger_ref         4,096 B          32,768 B  (superseded by UNIQUE(entry_type, reference_id))
+ *   idx_print_templates_kind 4,096 B        36,864 B  (superseded by UNIQUE(kind, name))
+ *
+ * An index costs exactly one 4 KB page when the table is empty — which is why
+ * the empty database floor was 569,344 bytes — and 20-45 KB once the clinic has
+ * real rows, roughly 9% of a 4.4 MB working database.
+ *
+ * `idx_qc_created` is deliberately KEPT: `qcRepo.all()` orders by
+ * `created_at, inspection_no` and SQLite does use the index for the first term
+ * (`SCAN qc_inspections USING INDEX idx_qc_created` + temp b-tree for the last).
+ *
+ * `idx_alloc_source` is not simply dropped, it is REPLACED. It was declared on
+ * `(source_type, source_id)`, but every lookup filters `source_id` alone
+ * (`repos.ts`: payment allocations are read and deleted by source id), and a
+ * two-column index is unusable when only the second column is constrained —
+ * `EXPLAIN QUERY PLAN DELETE FROM payment_allocations WHERE source_id = ?`
+ * returned `SCAN payment_allocations`. The replacement index makes that delete
+ * and that read indexed instead of a full table scan.
+ */
+export const MIGRATION_017_DROP_UNUSED_INDEXES: Migration = {
+  version: 17,
+  name: 'drop_unused_indexes',
+  statements: [
+    `DROP INDEX IF EXISTS idx_cases_delivery`,
+    `DROP INDEX IF EXISTS idx_cases_archived`,
+    `DROP INDEX IF EXISTS idx_invoices_status`,
+    `DROP INDEX IF EXISTS idx_payments_lab`,
+    `DROP INDEX IF EXISTS idx_alloc_invoice`,
+    `DROP INDEX IF EXISTS idx_alloc_source`,
+    `DROP INDEX IF EXISTS idx_journal_ref`,
+    `DROP INDEX IF EXISTS idx_audit_entity`,
+    `DROP INDEX IF EXISTS idx_notif_read`,
+    `DROP INDEX IF EXISTS idx_ledger_ref`,
+    `DROP INDEX IF EXISTS idx_print_templates_kind`,
+    // Replaces the unusable (source_type, source_id) index: lookups filter
+    // source_id alone, which SQLite cannot use a composite index for.
+    `CREATE INDEX IF NOT EXISTS idx_alloc_source_id ON payment_allocations(source_id)`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '17')`,
+  ],
+};
+
+// ---------------------------------------------------------------- 018 — doc_sequences
+/**
+ * `doc_sequences` was the one table NOT owned by a migration: it was created
+ * lazily on first use by `ensureSequenceTable()` (sequences.ts) and by the
+ * seeder, so it existed in every real database while appearing in none of them
+ * declared schema.
+ *
+ * That was invisible until the export DDL was derived from MIGRATIONS, at which
+ * point the .sql dump came out with 44 of the live 45 tables — discovered by
+ * replaying the real export against the running app's schema, not by reading the
+ * code. A dump missing the document-number counters would hand out document
+ * numbers that already exist after a restore, which is exactly the class of
+ * collision the sync's duplicate healer exists to paper over.
+ *
+ * `IF NOT EXISTS` keeps this a no-op for every existing database (they already
+ * have the table), and `ensureSequenceTable()` stays as the belt-and-braces
+ * guard for any path that reaches a counter before migrations have run.
+ */
+export const MIGRATION_018_DOC_SEQUENCES: Migration = {
+  version: 18,
+  name: 'doc_sequences',
+  statements: [
+    `CREATE TABLE IF NOT EXISTS doc_sequences (
+      seq_key TEXT PRIMARY KEY,
+      next_value INTEGER NOT NULL DEFAULT 1
+    )`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '18')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -891,4 +1055,37 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_013_JOURNAL_CASE_REFS,
   MIGRATION_014_USER_PREFERENCES,
   MIGRATION_015_CASE_DEPARTMENT,
+  MIGRATION_016_PAYMENT_ATTACHMENT_OWNER,
+  MIGRATION_017_DROP_UNUSED_INDEXES,
+  MIGRATION_018_DOC_SEQUENCES,
 ];
+
+/**
+ * The migration ledger itself. Created by the engine before it replays
+ * MIGRATIONS (see `SqliteEngine.migrate`), and by the export script, so a dump
+ * restores as a database that already knows which migrations ran.
+ */
+export const SCHEMA_MIGRATIONS_DDL =
+  'CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)';
+
+/**
+ * The whole schema as one ordered SQL script, straight from MIGRATIONS.
+ *
+ * This is the ONLY correct way to produce a schema for an export. The .sql
+ * dump used to carry its own hand-maintained DDL string, which had already
+ * drifted — it predated `payment_attachments.owner_type` (migration 016) and
+ * 30-odd other tables, so a dump taken from Settings > Database & Backup was
+ * NOT the schema the app actually runs on. Replaying MIGRATIONS cannot drift:
+ * a new migration ships and the export picks it up automatically.
+ *
+ * Data backfills inside migrations are included on purpose; they are written
+ * to be no-ops against an empty database (INSERT…SELECT guarded by NOT EXISTS,
+ * INSERT OR REPLACE into app_meta), and replaying them keeps the dumped
+ * `schema_version` in step with the live app.
+ */
+export function schemaScript(): string {
+  const body = MIGRATIONS.map(
+    (m) => `-- ── migration ${m.version}: ${m.name} ──\n${m.statements.map((s) => `${s.trim().replace(/;+$/, '')};`).join('\n')}`,
+  ).join('\n\n');
+  return `-- ── migration ledger ──\n${SCHEMA_MIGRATIONS_DDL};\n\n${body}`;
+}

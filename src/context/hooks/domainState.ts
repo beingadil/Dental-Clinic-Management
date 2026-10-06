@@ -30,6 +30,12 @@ export function groupByCase<T extends { case_id: string }>(rows: T[]): Record<st
 /** AttachmentRow (entity-keyed, DB column names) → per-case CaseAttachment map. */
 export function attachmentsByCase(rows: any[]): Record<string, any[]> {
   const out: Record<string, any[]> = {};
+  const format = (bytes: number | null | undefined): string | undefined => {
+    if (bytes === null || bytes === undefined) return undefined;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+    return `${bytes} B`;
+  };
   for (const r of rows) {
     (out[r.entity_id] ||= []).push({
       id: r.id,
@@ -39,7 +45,14 @@ export function attachmentsByCase(rows: any[]): Record<string, any[]> {
       file_url: r.data_url || '',
       uploaded_at: r.created_at,
       uploaded_by: r.uploaded_by || 'System',
-      file_size: r.description ?? undefined, // syncCore stores size here
+      // `description` is whatever the UI last showed ("2.34 MB") and predates a
+      // real size column in state; `size_bytes`/`checksum` are the machine
+      // values. Carry BOTH so the next sync writes back what the row actually
+      // holds instead of blanking the integers.
+      file_size: r.description ?? format(r.size_bytes),
+      size_bytes: r.size_bytes ?? undefined,
+      checksum: r.checksum ?? undefined,
+      description: r.description ?? undefined,
     });
   }
   return out;

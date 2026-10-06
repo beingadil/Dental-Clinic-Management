@@ -72,9 +72,22 @@ export type { SqliteEngine };
  * snapshot store — the caller owns closing it.
  */
 export async function createTransientEngine(bytes?: Uint8Array): Promise<SqliteEngine> {
-  const init = (initSqlJs ?? null) as unknown as (cfg?: any) => Promise<SqlJsStatic>;
-  const SQL = await init(wasmLocator ? { locateFile: wasmLocator } : undefined);
-  const engine = await SqliteEngine.create(SQL, bytes);
+  const engine = await createScratchEngine(bytes);
   engine.migrate();
   return engine;
+}
+
+/**
+ * A bare in-memory engine with the pragmas the app opens databases with, but
+ * WITHOUT migrations.
+ *
+ * `createTransientEngine` is the wrong tool for replaying a `.sql` dump: it
+ * runs `migrate()` first, which creates the whole schema, and the dump's own
+ * `CREATE TABLE` statements would then collide with tables that already exist.
+ * The importer needs the opposite order — an empty database the dump builds.
+ */
+export async function createScratchEngine(bytes?: Uint8Array): Promise<SqliteEngine> {
+  const init = (initSqlJs ?? null) as unknown as (cfg?: any) => Promise<SqlJsStatic>;
+  const SQL = await init(wasmLocator ? { locateFile: wasmLocator } : undefined);
+  return SqliteEngine.create(SQL, bytes);
 }

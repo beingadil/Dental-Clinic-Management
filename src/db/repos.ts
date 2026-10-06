@@ -1005,6 +1005,9 @@ export interface AdvanceRow {
   recorded_by: string;
   status: string;
   is_reversed: number;
+  reversal_reason?: string | null;
+  reversed_at?: string | null;
+  reversed_by?: string | null;
   journal_id?: string | null;
   created_at: string;
 }
@@ -1046,8 +1049,8 @@ export const advancePaymentsRepo = {
       );
       for (const att of a.attachments || []) {
         tx.run(
-          `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+           VALUES (?, 'advance', ?, ?, ?, ?, ?, ?, ?)`,
           [att.id || genId('pa'), id, att.file_name, att.file_type, att.file_size ?? null, att.file_url, att.uploaded_at ?? now(), att.uploaded_by ?? null]
         );
       }
@@ -1082,8 +1085,8 @@ export const advancePaymentsRepo = {
         tx.run('DELETE FROM payment_attachments WHERE payment_id = ?', [id]);
         for (const att of updates.attachments) {
           tx.run(
-            `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+             VALUES (?, 'advance', ?, ?, ?, ?, ?, ?, ?)`,
             [att.id || genId('pa'), id, att.file_name, att.file_type, att.file_size ?? null, att.file_url, att.uploaded_at ?? now(), att.uploaded_by ?? null]
           );
         }
@@ -1126,6 +1129,9 @@ export interface AdjustmentRow {
   approved_by?: string | null;
   status: string;
   is_reversed: number;
+  reversal_reason?: string | null;
+  reversed_at?: string | null;
+  reversed_by?: string | null;
   journal_id?: string | null;
   created_at: string;
 }
@@ -1165,8 +1171,8 @@ export const adjustmentsRepo = {
       );
       for (const att of a.attachments || []) {
         tx.run(
-          `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+           VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, ?)`,
           [att.id || genId('pa'), id, att.file_name, att.file_type, att.file_size ?? null, att.file_url, att.uploaded_at ?? now(), att.uploaded_by ?? null]
         );
       }

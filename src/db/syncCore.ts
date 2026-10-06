@@ -1,4 +1,5 @@
 import { getDatabase, isDatabaseReady } from './core';
+import { getFailureSummary, recordFailure, recordSuccess } from './failureLog';
 
 /**
  * Collection syncer: persists the AppContext collections into SQLite inside
@@ -36,9 +37,20 @@ export interface SyncCollections {
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let lastError: string | null = null;
+/**
+ * When this session last synced successfully. Kept in memory rather than only
+ * in the failure journal because the journal deliberately skips its storage
+ * write while healthy — without this, a healthy app reported "last sync never".
+ */
+let lastSyncAt: string | null = null;
 
 export function getLastSyncError(): string | null {
   return lastError;
+}
+
+/** When this session last wrote the collections to SQLite; null before then. */
+export function getLastSyncSuccessAt(): string | null {
+  return lastSyncAt;
 }
 
 /** Debounced entry point (called from a useEffect on every state change). */
@@ -50,8 +62,23 @@ export function syncCollectionsToDb(collections: SyncCollections): void {
     try {
       syncNow(collections);
       lastError = null;
+      lastSyncAt = new Date().toISOString();
+      // Only touch the journal when there is a streak to clear. This runs on
+      // every debounced state change, and a localStorage write per tick would
+      // be a real cost for a counter that is normally already zero.
+      if (getFailureSummary().sync.streak > 0) recordSuccess('sync');
     } catch (e: any) {
       lastError = e?.message || String(e);
+      // The message from SqliteEngine already carries SQLite's own wording plus
+      // the offending statement ([sql: INSERT INTO …]), which is exactly what
+      // is needed to find the one row that aborted the whole transaction.
+      recordFailure('sync', e, {
+        cause: e?.code === 'CONSTRAINT' ? 'data-constraint' : undefined,
+        detail:
+          `rows cases=${collections.cases.length} labs=${collections.labs.length} ` +
+          `invoices=${collections.invoices.length} journal=${collections.journalEntries.length} ` +
+          `notes=${Object.values(collections.caseNotes ?? {}).reduce((n, a) => n + a.length, 0)}`,
+      });
       // eslint-disable-next-line no-console
       console.error('[sync] SQLite collection sync failed:', lastError);
     }
@@ -63,6 +90,19 @@ export function syncCollectionsToDb(collections: SyncCollections): void {
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Parse the human file_size strings the UI stores ("2.34 MB", "812 KB", "512")
+ *  into the INTEGER the schema actually declares. */
+function parseBytes(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value) : null;
+  if (typeof value !== 'string') return null;
+  const m = /^\s*([0-9]+(?:\.[0-9]+)?)\s*(kb|mb|gb|b)?\s*$/i.exec(value);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  const mult: Record<string, number> = { b: 1, kb: 1024, mb: 1024 * 1024, gb: 1024 * 1024 * 1024 };
+  return Math.round(n * mult[(m[2] || 'b').toLowerCase()]);
 }
 
 function syncNow(c: SyncCollections): void {
@@ -85,6 +125,18 @@ function syncNow(c: SyncCollections): void {
   const usedNoteIds = new Set<string>();
   const usedQcIds = new Set<string>();
   const usedQcKeys = new Set<string>();
+
+  /* Parent-existence guards. Every one of these tables carries a REAL foreign
+     key, and this whole function is a single SAVEPOINT — so ONE row whose
+     parent is not in state (a case whose lab was deleted, an allocation
+     pointing at an invoice that no longer exists) aborts the transaction and
+     silently stops ALL persistence for the whole app. Skip the orphan instead
+     of saving nothing. The live-parent sets are computed from the collections
+     themselves, so they stay correct as the rebuild deletes rows below. */
+  const liveLabIds = new Set<string>(c.labs.map((l: any) => l.id));
+  const liveCaseIds = new Set<string>(c.cases.map((x: any) => x.id));
+  const liveInvoiceIds = new Set<string>(c.invoices.map((i: any) => i.id));
+  const liveCaseTypeIds = new Set<string>(c.caseTypes.map((t: any) => t.id));
   const uniqueNumber = (value: string, used: Set<string>): string => {
     if (!used.has(value)) { used.add(value); return value; }
     let n = 2;
@@ -108,9 +160,17 @@ function syncNow(c: SyncCollections): void {
     // advance_payments/account_adjustments reference labs (no cascade) and are
     // re-synced later in this transaction, so clear them before labs.
     tx.run('DELETE FROM advance_allocations');
+    tx.run('DELETE FROM invoice_items');
     tx.run('DELETE FROM advance_payments');
     tx.run('DELETE FROM account_adjustments');
     tx.run('DELETE FROM invoices');
+    // `attachments` has no FK to cases (entity_id is free text), so nothing
+    // else ever clears it — and this block INSERTs every row back below.
+    // Without the DELETE here the SECOND sync of any case that owns a file
+    // dies on `UNIQUE constraint failed: attachments.id`, the SAVEPOINT rolls
+    // back, and ALL persistence in the app stops (audit F1). Case attachments
+    // are the only entity type this table carries.
+    tx.run('DELETE FROM attachments');
     tx.run('DELETE FROM cases');
     tx.run('DELETE FROM doctor_preferred_labs');
     tx.run('DELETE FROM lab_contacts');
@@ -143,14 +203,12 @@ function syncNow(c: SyncCollections): void {
            ad.postal_code ?? '', ad.country ?? '', ad.is_default ? 1 : 0, ad.created_at ?? now]
         );
       }
-      for (const po of c.pricingOverrides.filter((x) => x.lab_id === l.id)) {
-        tx.run(
-          `INSERT OR REPLACE INTO lab_pricing_overrides (id, lab_id, case_type_id, case_type_name, standard_price, custom_price, discount_percentage, effective_date, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [po.id, l.id, po.case_type_id ?? null, po.case_type_name ?? null, po.standard_price ?? 0,
-           po.custom_price ?? 0, po.discount_percentage ?? null, po.effective_date ?? null, po.created_at ?? now]
-        );
-      }
+      // Pricing overrides used to be inserted here, inside the labs loop. That
+      // is before `case_types` is rewritten below, and lab_pricing_overrides
+      // has a REAL FK to case_types — so the insert either violated the FK (and
+      // aborted everything) or pointed at rows the very next statement
+      // cascade-deleted, silently losing every pricing override on every save.
+      // They are written in the catalog block instead, once case_types exist.
       for (const rv of c.labReviews.filter((x) => x.lab_id === l.id)) {
         tx.run(
           `INSERT OR REPLACE INTO lab_reviews (id, lab_id, rating, review_text, reviewer_name, case_number, created_at)
@@ -178,14 +236,28 @@ function syncNow(c: SyncCollections): void {
          ct.warranty_months ?? null, ct.description ?? null, ct.created_at ?? now, now]
       );
     }
+    // Catalog children — written here, once every case_types row exists in this
+    // transaction. lab_pricing_overrides.case_type_id is a REAL FK to
+    // case_types(id) ON DELETE CASCADE: inserted earlier it either aborted the
+    // whole save or was cascade-deleted by the catalog rewrite itself.
+    for (const po of c.pricingOverrides) {
+      if (!liveLabIds.has(po.lab_id)) continue;
+      if (po.case_type_id && !liveCaseTypeIds.has(po.case_type_id)) continue;
+      tx.run(
+        `INSERT OR REPLACE INTO lab_pricing_overrides (id, lab_id, case_type_id, case_type_name, standard_price, custom_price, discount_percentage, effective_date, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [po.id, po.lab_id, po.case_type_id ?? null, po.case_type_name ?? null, po.standard_price ?? 0,
+         po.custom_price ?? 0, po.discount_percentage ?? null, po.effective_date ?? null, po.created_at ?? now]
+      );
+    }
 
     // ── cases (+ teeth, history, notes, attachments) ──
     // (already emptied up front for FK-safe ordering; this DELETE is a no-op)
     // Child tables are wiped explicitly: the rebuild below re-inserts every row,
     // and FK cascade cannot be relied upon on every engine/connection.
     // (children already emptied up front for FK-safe ordering)
-    const liveCaseIds = new Set(c.cases.map((x: any) => x.id));
     for (const cse of c.cases) {
+      if (!liveLabIds.has(cse.lab_id)) continue; // cases.lab_id FK -> labs
       const caseNumber = uniqueNumber(String(cse.case_number || 'DS-LEGACY'), usedCaseNumbers);
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
@@ -231,11 +303,20 @@ function syncNow(c: SyncCollections): void {
         );
       }
       for (const a of c.caseAttachments[cse.id] || []) {
+        // The table has real `size_bytes` (INTEGER) and `checksum` columns.
+        // This block used to write NULL into both and park the human-readable
+        // size in `description`, which meant: quota/dedupe features (attachment
+        // Service) saw 0 bytes for every file uploaded through the UI, checksums
+        // computed at upload were wiped on the next save, and any row inserted
+        // through attachmentsRepo with a REAL description had that description
+        // overwritten with NULL by the next whole-table sync.
+        const description = a.description ?? a.file_size ?? null;
         tx.run(
           `INSERT INTO attachments (id, entity_type, entity_id, original_filename, stored_filename, mime_type, size_bytes, checksum, description, storage_path, data_url, uploaded_by, created_at)
            VALUES (?, 'case', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [a.id, cse.id, a.filename ?? 'file', a.filename ?? 'file', a.file_type ?? 'application/octet-stream',
-           null, null, a.file_size ?? null, `cases/${cse.id}/${a.id}`, a.file_url ?? '', a.uploaded_by ?? null, a.uploaded_at ?? now]
+           a.size_bytes ?? parseBytes(a.file_size), a.checksum ?? null, description,
+           `cases/${cse.id}/${a.id}`, a.file_url ?? '', a.uploaded_by ?? null, a.uploaded_at ?? now]
         );
       }
     }
@@ -274,98 +355,12 @@ function syncNow(c: SyncCollections): void {
       );
     }
 
-    // ── invoices (+ payments + proof attachments) — after labs & cases ──
-    // (invoices/payments/attachments already emptied up front for FK-safe ordering)
-    for (const inv of c.invoices) {
-      const invoiceNumber = uniqueNumber(String(inv.invoice_number || 'INV-LEGACY'), usedInvoiceNumbers);
-      tx.run(
-        `INSERT INTO invoices (id, invoice_number, case_id, case_number, lab_id, lab_name, case_type_id, case_type_name, doctor_name, patient_name,
-                               amount, discount, final_amount, amount_paid, payment_status, status_v2, issue_date, due_date, journal_id, credit_notes_total, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [inv.id, invoiceNumber, inv.case_id || null, inv.case_number || null, inv.lab_id, inv.lab_name,
-         inv.case_type_id ?? null, inv.case_type_name ?? null, inv.doctor_name || null, inv.patient_name ?? null,
-         inv.amount ?? 0, inv.discount ?? 0, inv.final_amount ?? 0, inv.amount_paid ?? 0,
-         inv.payment_status ?? 'unpaid', inv.status_v2 ?? 'open', inv.issue_date ?? null,
-         inv.due_date || null, inv.journal_id ?? null, inv.credit_notes_total ?? 0,
-         inv.created_at ?? now, now]
-      );
-      (inv.payments || []).forEach((p: any, pIdx: number) => {
-        let pid = p.id || `${inv.id}-p${pIdx}`;
-        if (usedPaymentIds.has(pid)) pid = genId('pmt');
-        usedPaymentIds.add(pid);
-        const payNum = p.payment_number ? uniqueNumber(String(p.payment_number), usedPaymentNumbers) : null;
-        tx.run(
-          `INSERT INTO payments (id, payment_number, receipt_number, invoice_id, invoice_number, case_id, case_number, lab_id, lab_name,
-                                 amount, payment_method, payment_date, reference_number, notes, recorded_by, payment_type, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [pid, payNum, p.receipt_number || null, inv.id, inv.invoice_number,
-           p.case_id || inv.case_id || null, p.case_number || inv.case_number || null,
-           p.lab_id || inv.lab_id, p.lab_name || inv.lab_name,
-           p.amount, p.payment_method, p.payment_date, p.reference_number || null, p.notes || null,
-           p.recorded_by || 'System', p.payment_type || 'invoice_payment', p.status ?? 'posted',
-           p.created_at || p.payment_date || now]
-        );
-        for (const a of p.attachments || []) {
-          tx.run(
-            `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [a.id || genId('pa'), pid, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
-             a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
-          );
-        }
-      });
-    }
-
-    // ── advances ──
-    tx.run('DELETE FROM advance_payments');
-    for (const adv of c.advancePayments) {
-      let advId = adv.id || genId('adv');
-      if (usedAdvanceIds.has(advId)) advId = genId('adv');
-      usedAdvanceIds.add(advId);
-      const advNum = uniqueNumber(String(adv.payment_number || genId('ADV')), usedAdvanceNumbers);
-      tx.run(
-        `INSERT INTO advance_payments (id, payment_number, receipt_number, lab_id, lab_name, amount, allocated_amount, remaining_amount,
-                                       payment_method, payment_date, reference_number, notes, recorded_by, status, is_reversed, journal_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [advId, advNum, adv.receipt_number || null, adv.lab_id, adv.lab_name, adv.amount,
-         adv.allocated_amount ?? 0, adv.remaining_amount ?? 0, adv.payment_method, adv.payment_date,
-         adv.reference_number || null, adv.notes || null, adv.recorded_by, adv.status ?? 'available',
-         adv.is_reversed ? 1 : 0, adv.journal_id ?? null, adv.created_at ?? now]
-      );
-      for (const a of adv.attachments || []) {
-        tx.run(
-          `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [a.id || genId('pa'), advId, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
-           a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
-        );
-      }
-    }
-
-    // ── adjustments ──
-    tx.run('DELETE FROM account_adjustments');
-    for (const adj of c.accountAdjustments) {
-      tx.run(
-        `INSERT INTO account_adjustments (id, adjustment_number, credit_note_number, lab_id, lab_name, type, amount, reason, date,
-                                          reference_number, invoice_id, invoice_number, notes, recorded_by, approved_by, status, is_reversed, journal_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [adj.id, adj.adjustment_number, adj.credit_note_number || null, adj.lab_id, adj.lab_name,
-         adj.type, adj.amount, adj.reason, adj.date, adj.reference_number || null,
-         adj.invoice_id || null, adj.invoice_number || null, adj.notes || null, adj.recorded_by,
-         adj.approved_by ?? null, adj.status ?? 'posted', adj.is_reversed ? 1 : 0,
-         adj.journal_id ?? null, adj.created_at ?? now]
-      );
-      for (const a of adj.attachments || []) {
-        tx.run(
-          `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [a.id || genId('pa'), adj.id, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
-           a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
-        );
-      }
-    }
-
     // ── journal ──
+    // MUST run before invoices: `invoices.journal_id` carries a real foreign
+    // key to journal_entries (migration 016), so the parent row has to exist
+    // before a child points at it. journal_entries declares no FKs of its own
+    // (lab_id/case_id are free text), so nothing it needs is missing here.
+    //
     // Clear the child table EXPLICITLY before the parent. Relying on
     // ON DELETE CASCADE silently failed whenever PRAGMA foreign_keys had
     // been turned off (the snapshot/export reset does exactly that): the
@@ -396,6 +391,143 @@ function syncNow(c: SyncCollections): void {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [lineId, j.id, line.account_code, line.account_name, line.account_type,
            line.debit || 0, line.credit || 0, line.description || null, line.lab_name || null]
+        );
+      }
+    }
+
+    // Issuance-journal healer. An invoice whose `journal_id` names a journal
+    // that is not in this collection is a DANGLING pointer: the journal was
+    // dropped (audit F2 — journals minted inside a setState updater) while the
+    // invoice kept the id. With the new FK that state is unrepresentable, so
+    // resolve it here: trust the id only when it exists, otherwise re-link to
+    // the invoice's own issuance journal, otherwise leave it NULL for the
+    // boot-time backfill to pick up.
+    const knownJournalIds = new Set<string>((c.journalEntries || []).map((j: any) => j.id));
+    const issuanceJournalByInvoice = new Map<string, string>();
+    for (const j of c.journalEntries || []) {
+      if (j.event_type === 'invoice_issued' && j.reference_id && !issuanceJournalByInvoice.has(j.reference_id)) {
+        issuanceJournalByInvoice.set(j.reference_id, j.id);
+      }
+    }
+
+    // ── invoices (+ payments + proof attachments) — after labs, cases & journal ──
+    // (invoices/payments/attachments already emptied up front for FK-safe ordering)
+    for (const inv of c.invoices) {
+      if (!liveLabIds.has(inv.lab_id)) continue; // invoices.lab_id FK -> labs
+      const invoiceNumber = uniqueNumber(String(inv.invoice_number || 'INV-LEGACY'), usedInvoiceNumbers);
+      const journalId =
+        inv.journal_id && knownJournalIds.has(inv.journal_id)
+          ? inv.journal_id
+          : (issuanceJournalByInvoice.get(inv.id) ?? null);
+      tx.run(
+        `INSERT INTO invoices (id, invoice_number, case_id, case_number, lab_id, lab_name, case_type_id, case_type_name, doctor_name, patient_name,
+                               amount, discount, final_amount, amount_paid, payment_status, status_v2, issue_date, due_date, journal_id, credit_notes_total, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [inv.id, invoiceNumber, inv.case_id || null, inv.case_number || null, inv.lab_id, inv.lab_name,
+         inv.case_type_id ?? null, inv.case_type_name ?? null, inv.doctor_name || null, inv.patient_name ?? null,
+         inv.amount ?? 0, inv.discount ?? 0, inv.final_amount ?? 0, inv.amount_paid ?? 0,
+         inv.payment_status ?? 'unpaid', inv.status_v2 ?? 'open', inv.issue_date ?? null,
+         inv.due_date || null, journalId, inv.credit_notes_total ?? 0,
+         inv.created_at ?? now, now]
+      );
+      (inv.payments || []).forEach((p: any, pIdx: number) => {
+        let pid = p.id || `${inv.id}-p${pIdx}`;
+        if (usedPaymentIds.has(pid)) pid = genId('pmt');
+        usedPaymentIds.add(pid);
+        const payNum = p.payment_number ? uniqueNumber(String(p.payment_number), usedPaymentNumbers) : null;
+        tx.run(
+          `INSERT INTO payments (id, payment_number, receipt_number, invoice_id, invoice_number, case_id, case_number, lab_id, lab_name,
+                                 amount, payment_method, payment_date, reference_number, notes, recorded_by, payment_type, status,
+                                 unapplied_amount, advance_payment_id, is_reversed, reversal_reason, reversed_at, reversed_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [pid, payNum, p.receipt_number || null, inv.id, inv.invoice_number,
+           p.case_id || inv.case_id || null, p.case_number || inv.case_number || null,
+           p.lab_id || inv.lab_id, p.lab_name || inv.lab_name,
+           p.amount, p.payment_method, p.payment_date, p.reference_number || null, p.notes || null,
+           p.recorded_by || 'System', p.payment_type || 'invoice_payment', p.status ?? 'posted',
+           // Without these the whole-table rebuild silently reset every
+           // reversal: is_reversed fell back to its DEFAULT 0 and the reason,
+           // timestamp and actor were dropped, so a reversed payment read back
+           // as live money after one debounce window (audit F6).
+           p.unapplied_amount ?? 0, p.advance_payment_id ?? null,
+           p.is_reversed ? 1 : 0, p.reversal_reason ?? null, p.reversed_at ?? null, p.reversed_by ?? null,
+           p.created_at || p.payment_date || now]
+        );
+        for (const a of p.attachments || []) {
+          tx.run(
+            `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+             VALUES (?, 'payment', ?, ?, ?, ?, ?, ?, ?)`,
+            [a.id || genId('pa'), pid, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
+             a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
+          );
+        }
+      });
+    }
+
+    // ── advances ──
+    tx.run('DELETE FROM advance_payments');
+    for (const adv of c.advancePayments) {
+      if (!liveLabIds.has(adv.lab_id)) continue; // advance_payments.lab_id FK -> labs
+      let advId = adv.id || genId('adv');
+      if (usedAdvanceIds.has(advId)) advId = genId('adv');
+      usedAdvanceIds.add(advId);
+      const advNum = uniqueNumber(String(adv.payment_number || genId('ADV')), usedAdvanceNumbers);
+      tx.run(
+        `INSERT INTO advance_payments (id, payment_number, receipt_number, lab_id, lab_name, amount, allocated_amount, remaining_amount,
+                                       payment_method, payment_date, reference_number, notes, recorded_by, status, is_reversed,
+                                       reversal_reason, reversed_at, reversed_by, journal_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [advId, advNum, adv.receipt_number || null, adv.lab_id, adv.lab_name, adv.amount,
+         adv.allocated_amount ?? 0, adv.remaining_amount ?? 0, adv.payment_method, adv.payment_date,
+         adv.reference_number || null, adv.notes || null, adv.recorded_by, adv.status ?? 'available',
+         adv.is_reversed ? 1 : 0, adv.reversal_reason ?? null, adv.reversed_at ?? null, adv.reversed_by ?? null,
+         adv.journal_id ?? null, adv.created_at ?? now]
+      );
+      // Advance allocations. The table was cleared up front but never
+      // rewritten, so every advance→invoice allocation the repo layer (or
+      // state) holds was destroyed within one debounce window — the advance
+      // wallet read back with its money but none of its history (audit F3).
+      for (const al of adv.allocations || []) {
+        if (!liveInvoiceIds.has(al.invoice_id)) continue; // FK -> invoices
+        tx.run(
+          `INSERT INTO advance_allocations (id, advance_id, invoice_id, amount, allocated_at, allocated_by, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [al.id || genId('aa'), advId, al.invoice_id, al.amount,
+           al.allocated_at || now, al.allocated_by || null, al.notes || null]
+        );
+      }
+      for (const a of adv.attachments || []) {
+        tx.run(
+          `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+           VALUES (?, 'advance', ?, ?, ?, ?, ?, ?, ?)`,
+          [a.id || genId('pa'), advId, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
+           a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
+        );
+      }
+    }
+
+    // ── adjustments ──
+    tx.run('DELETE FROM account_adjustments');
+    for (const adj of c.accountAdjustments) {
+      if (!liveLabIds.has(adj.lab_id)) continue; // account_adjustments.lab_id FK -> labs
+      tx.run(
+        `INSERT INTO account_adjustments (id, adjustment_number, credit_note_number, lab_id, lab_name, type, amount, reason, date,
+                                          reference_number, invoice_id, invoice_number, notes, recorded_by, approved_by, status, is_reversed,
+                                          reversal_reason, reversed_at, reversed_by, journal_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [adj.id, adj.adjustment_number, adj.credit_note_number || null, adj.lab_id, adj.lab_name,
+         adj.type, adj.amount, adj.reason, adj.date, adj.reference_number || null,
+         adj.invoice_id || null, adj.invoice_number || null, adj.notes || null, adj.recorded_by,
+         adj.approved_by ?? null, adj.status ?? 'posted', adj.is_reversed ? 1 : 0,
+         adj.reversal_reason ?? null, adj.reversed_at ?? null, adj.reversed_by ?? null,
+         adj.journal_id ?? null, adj.created_at ?? now]
+      );
+      for (const a of adj.attachments || []) {
+        tx.run(
+          `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+           VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, ?)`,
+          [a.id || genId('pa'), adj.id, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
+           a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
         );
       }
     }
@@ -431,6 +563,14 @@ function syncNow(c: SyncCollections): void {
     // silently stop ALL persistence for the profile (no saves at all).
     // First occurrence wins; later duplicates are dropped.
     const seenNotificationIds = new Set<string>();
+    // Enum healer. `notifications.type` is a CHECK list, and state can hold a
+    // type the schema no longer accepts (a retired kind, or an import that
+    // invented one). One bad value aborts this whole transaction — same blast
+    // radius as the duplicate-id bug — so unknown kinds degrade to 'system'
+    // instead of taking the entire database's persistence down with them.
+    const NOTIFICATION_TYPES = new Set([
+      'overdue_case', 'pending_payment', 'escalation', 'status_change', 'unpaid_invoice', 'system',
+    ]);
     tx.run('DELETE FROM notifications');
     for (const n of c.notifications) {
       if (seenNotificationIds.has(n.id)) continue;
@@ -438,7 +578,7 @@ function syncNow(c: SyncCollections): void {
       tx.run(
         `INSERT INTO notifications (id, type, title, message, case_id, case_number, invoice_id, lab_id, read, is_archived, priority, link_url, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [n.id, n.type, n.title, n.message, n.case_id || null, n.case_number || null,
+        [n.id, NOTIFICATION_TYPES.has(n.type) ? n.type : 'system', n.title, n.message, n.case_id || null, n.case_number || null,
          n.invoice_id || null, n.lab_id || null, (n.is_read || n.read) ? 1 : 0,
          n.is_archived ? 1 : 0, n.priority || null, n.link_url || null, n.created_at ?? now]
       );

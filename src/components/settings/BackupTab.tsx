@@ -19,6 +19,11 @@ import {
 } from '../../services/safetySnapshotStore';
 import { exportSqliteFile } from '../../services/sqliteStorage';
 import {
+  analyzeSqlDumpFile,
+  importSqlDump,
+  SqlDumpAnalysis,
+} from '../../services/sqlDumpImport';
+import {
   getBackupSchedule,
   saveBackupSchedule,
   getBackupRuns,
@@ -28,6 +33,7 @@ import {
   BackupRun,
 } from '../../services/backupScheduler';
 import { runRestoreDrill, RestoreDrillResult } from '../../services/restoreDrill';
+import { PersistenceHealthPanel } from './PersistenceHealthPanel';
 import { initEngineFromBytes, getDatabase } from '../../db';
 import { getDesktopDatabasePath, getLastSaveError } from '../../db/persistence';
 import {
@@ -41,6 +47,7 @@ import {
   AlertTriangle,
   XCircle,
   RotateCcw,
+  FileCode,
   X,
   Check,
 } from 'lucide-react';
@@ -94,6 +101,13 @@ export const BackupTab: React.FC<{
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  // The .sql dump importer has its own input and its own pending state: a
+  // half-validated SQL dump and a half-validated .dentalbackup must never be
+  // confusable, because the two buttons do the same destructive thing.
+  const sqlInputRef = React.useRef<HTMLInputElement>(null);
+  const [sqlBusy, setSqlBusy] = useState(false);
+  const [pendingSql, setPendingSql] = useState<SqlDumpAnalysis | null>(null);
+  const [sqlFileName, setSqlFileName] = useState<string | null>(null);
 
   // Pre-restore copy, surfaced as an explicit escape hatch after any restore.
   const [undoMeta, setUndoMeta] = React.useState<SafetySnapshotMeta | null>(null);
@@ -306,11 +320,15 @@ export const BackupTab: React.FC<{
     }
   };
 
-  // SQLite .SQL Dump Export
+  // SQLite .SQL Dump Export — dumps every table from the live database, so the
+  // script carries the same row data as a .dentalbackup. `data` is only used
+  // for the header's laboratory name; the rows are read from SQLite.
   const handleExportSqliteDump = () => {
     try {
+      // getBackupData() nests the collections under `tables`; the branding
+      // name is a default empty string until the clinic sets one.
       const data = getBackupData();
-      const filename = exportSqliteFile(data);
+      const filename = exportSqliteFile({ labName: data?.tables?.brandingSettings?.appName });
       setBackupMessage({
         type: 'success',
         text: `Successfully exported SQLite database script: ${filename}`
@@ -319,10 +337,64 @@ export const BackupTab: React.FC<{
     } catch (err) {
       setBackupMessage({
         type: 'error',
-        text: 'Failed to generate SQLite SQL dump.'
+        text: `Failed to generate SQLite SQL dump: ${err instanceof Error ? err.message : 'unknown error'}`
       });
     }
   };
+
+  // ---- .SQL dump importer ----------------------------------------------------
+  // A `.sql` dump is what you get when someone opens the database with the
+  // sqlite3 CLI, so clinics receive them by email and USB with no `.dentalbackup`
+  // in sight. Reading the file is itself untrusted input, hence the validate →
+  // confirm → safety copy → swap sequence below, mirroring handleConfirmRestore.
+  const handleSelectSqlFile = async (file: File) => {
+    setSqlBusy(true);
+    setSqlFileName(file.name);
+    try {
+      // Analysis replays the whole script into a THROWAWAY database, so a
+      // malformed or hostile file never reaches the live engine.
+      setPendingSql(await analyzeSqlDumpFile(file));
+    } catch (err: any) {
+      setBackupMessage({ type: 'error', text: `Could not read SQL dump: ${err?.message || 'invalid file'}` });
+    } finally {
+      setSqlBusy(false);
+      if (sqlInputRef.current) sqlInputRef.current.value = '';
+    }
+  };
+
+  const handleConfirmSqlImport = async () => {
+    if (!pendingSql?.ok) return;
+    setSqlBusy(true);
+    try {
+      const outcome = await importSqlDump(pendingSql);
+      setPendingSql(null);
+      setSqlFileName(null);
+      setUndoMeta(await readSafetySnapshotMeta());
+      setBackupMessage({
+        type: 'success',
+        text:
+          `Imported ${outcome.rowsImported.toLocaleString()} rows from the SQL dump (schema v${outcome.schemaVersion}` +
+          `${outcome.upgraded ? ', upgraded to the current schema' : ''}). Reloading…`,
+      });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err: any) {
+      setBackupMessage({
+        type: 'error',
+        text: `Import not applied: ${err?.message || 'unknown error'}`,
+      });
+    } finally {
+      setSqlBusy(false);
+    }
+  };
+
+  // Row counts only \u2014 the longest tables are the ones worth eyeballing.
+  const sqlTableSummary = pendingSql
+    ? Object.entries(pendingSql.tableCounts)
+        .filter(([, n]) => n > 0)
+        .slice(0, 12)
+        .map(([t, n]) => `${t}: ${n}`)
+        .join(' \u00b7 ')
+    : '';
 
   return (      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
       {/* DATABASE STATUS — location, schema version, last-save verdict. */}
@@ -350,6 +422,11 @@ export const BackupTab: React.FC<{
           )}
         </div>
       )}
+
+      {/* SAVE & SYNC HEALTH — the persisted failure journal. Every failed save
+          and sync with its cause, so "is my data actually being written?" is
+          answerable inside the app instead of only in a console.error. */}
+      <PersistenceHealthPanel />
 
       {/* BOOT INTEGRITY SELF-CHECK — verify FK pragma, orphan rows, ledger
           balance; computed at boot by AppContext, surfaced here. */}
@@ -515,6 +592,111 @@ export const BackupTab: React.FC<{
               )}
             </div>
           )}
+
+          {/* SQL DUMP IMPORTER — the sibling of the .dentalbackup restore above,
+              for clinics handed a raw `sqlite3 .dump` script. */}
+          <div className="pt-3 mt-1 border-t border-slate-200 space-y-3">
+            <h3 className="font-bold text-slate-900 text-sm">Restore From a SQL Dump (.sql)</h3>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              For a plain <code>.sql</code> dump — the file you get from{' '}
+              <code>sqlite3 clinic.sqlite .dump</code> or from this app's SQLite export button. The file is replayed
+              into a throwaway database first and you get a full report of what it contains before anything is
+              replaced. Statements that would reach outside the sandbox (<code>ATTACH</code>, <code>VACUUM INTO</code>,{' '}
+              <code>load_extension</code>) are refused rather than run. A copy of your current data is kept for
+              recovery before the swap.
+            </p>
+
+            <input
+              ref={sqlInputRef}
+              type="file"
+              accept=".sql,.sqlite,.txt"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleSelectSqlFile(f);
+              }}
+              className="hidden"
+            />
+
+            <button
+              onClick={() => sqlInputRef.current?.click()}
+              disabled={sqlBusy}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+            >
+              <FileCode className="w-4 h-4" />
+              <span>{sqlBusy ? 'Analysing…' : 'Select & Validate a .sql Dump'}</span>
+            </button>
+
+            {pendingSql && (
+              <div className={`p-3 rounded-xl border text-[11px] space-y-2 ${
+                pendingSql.ok ? 'bg-blue-50 border-blue-300 text-blue-950' : 'bg-rose-50 border-rose-300 text-rose-900'
+              }`}>
+                <p className="font-bold">
+                  {sqlFileName ? `${sqlFileName} — ` : ''}
+                  {pendingSql.ok ? 'Valid dump, ready to import.' : 'Validation failed — import blocked.'}
+                </p>
+                <p className="font-mono">
+                  {pendingSql.schemaVersion > 0 && `schema v${pendingSql.schemaVersion} · `}
+                  {Object.keys(pendingSql.tableCounts).length} tables ·{' '}
+                  {pendingSql.totalRows.toLocaleString()} rows
+                </p>
+                {sqlTableSummary && (
+                  <p className="font-mono break-words">{sqlTableSummary}</p>
+                )}
+                {/* Counts and schema facts only — a dump carries users.password_hash,
+                    so no cell value is ever rendered here. */}
+                {pendingSql.warnings.map((w, i) => (
+                  <p key={i} className="text-amber-700 font-semibold flex items-start gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {w}
+                  </p>
+                ))}
+                {pendingSql.errors.map((er, i) => (
+                  <p key={i} className="font-semibold text-rose-700 flex items-start gap-1">
+                    <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {er}
+                  </p>
+                ))}
+                {pendingSql.rejected.length > 0 && (
+                  <details className="text-rose-800">
+                    <summary className="cursor-pointer font-semibold">
+                      {pendingSql.rejected.length} refused statement{pendingSql.rejected.length === 1 ? '' : 's'}
+                    </summary>
+                    <ul className="mt-1 space-y-1 font-mono text-[10px]">
+                      {pendingSql.rejected.slice(0, 20).map((r, i) => (
+                        <li key={i}>
+                          #{r.index} {r.reason}
+                          <span className="block text-slate-500 truncate">{r.snippet}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {pendingSql.ok && (
+                  <>
+                    <p className="font-bold text-rose-700">
+                      This replaces every case, invoice, lab and user currently in the app.
+                    </p>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          setPendingSql(null);
+                          setSqlFileName(null);
+                        }}
+                        className="px-3 py-1.5 bg-white/70 hover:bg-white text-slate-700 font-bold rounded-lg cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleConfirmSqlImport}
+                        disabled={sqlBusy}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-lg shadow cursor-pointer"
+                      >
+                        {sqlBusy ? 'Importing…' : 'Import & Reload (replaces all data)'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

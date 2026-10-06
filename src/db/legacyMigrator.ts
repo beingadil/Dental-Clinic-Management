@@ -412,8 +412,8 @@ export async function runLegacyMigration(): Promise<LegacyMigrationReport> {
         );
         for (const att of a.attachments || []) {
           tx.run(
-            `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
+             VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, ?)`,
             [att.id || `pa-${Math.random().toString(36).slice(2, 8)}`, String(a.id), att.file_name ?? 'proof',
              att.file_type ?? 'application/octet-stream', att.file_size ?? null, att.file_url ?? '',
              att.uploaded_at ?? new Date().toISOString(), att.uploaded_by ?? null]

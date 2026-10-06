@@ -1,4 +1,4 @@
-import { MIGRATIONS, Migration } from './migrations';
+import { MIGRATIONS, Migration, SCHEMA_MIGRATIONS_DDL } from './migrations';
 
 /**
  * Minimal typed wrapper around sql.js (SQLite compiled to WebAssembly).
@@ -76,6 +76,29 @@ export class SqliteEngine {
     }
   }
 
+  /**
+   * Executes a MULTI-STATEMENT SQL script (a `.sql` dump) against this engine.
+   *
+   * Deliberately not `run()`. `db.run(sql, params)` with an empty params array
+   * silently executes NOTHING — sql.js treats the array as "this statement has
+   * parameters" and never steps it — so an importer built on `run()` would
+   * report success on a completely empty database. Passing no params at all
+   * makes sql.js iterate every statement, which is what a script needs.
+   *
+   * IMPORTANT for callers: sql.js aborts at the FIRST failing statement and
+   * leaves everything before it applied. There is no implicit transaction, so
+   * a script that fails at the end leaves a partial database behind. Only ever
+   * point this at a throwaway engine, or wrap the script in its own
+   * BEGIN/COMMIT.
+   */
+  execScript(sql: string): void {
+    try {
+      this.db.run(sql);
+    } catch (err) {
+      throw new DbError(this.explain(err, sql), this.classify(err, sql), err);
+    }
+  }
+
   all<T = Record<string, any>>(sql: string, params: SqlValue[] = []): T[] {
     try {
       const stmt = this.db.prepare(sql);
@@ -141,7 +164,7 @@ export class SqliteEngine {
   migrate(migrations: Migration[] = MIGRATIONS): { applied: number[]; skipped: number[] } {
     const applied: number[] = [];
     const skipped: number[] = [];
-    this.run('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');
+    this.run(SCHEMA_MIGRATIONS_DDL);
 
     for (const m of migrations) {
       const done = this.get('SELECT version FROM schema_migrations WHERE version = ?', [m.version]);
@@ -163,7 +186,27 @@ export class SqliteEngine {
         throw new DbError(`Migration ${m.version} (${m.name}) failed — database left at prior version`, 'MIGRATION', err);
       }
     }
+
+    // Migrations that DROP objects (017 drops twelve dead indexes) leave the
+    // freed pages on the file's freelist, where they still count towards the
+    // exported byte length — the whole point of dropping them was to shrink the
+    // in-memory database, since the webview keeps the engine as bytes and
+    // re-encodes it on every save. VACUUM is the only way to release them, and
+    // it must run outside a transaction, so it goes after the loop rather than
+    // inside it. Skipped entirely on an up-to-date database (the common boot),
+    // so this costs nothing after the first run.
+    if (applied.length > 0) this.compact();
+
     return { applied, skipped };
+  }
+
+  /**
+   * Rebuild the database file, releasing freelist pages left by dropped
+   * objects and rebuild-and-reswap sync cycles. Cheap enough to run after any
+   * migration that changed the schema; never runs inside a transaction.
+   */
+  compact(): void {
+    this.run('VACUUM');
   }
 
   // ------------------------------------------------------------- helpers

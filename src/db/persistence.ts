@@ -1,11 +1,20 @@
 import { SqliteEngine } from './engine';
 import { getDatabase } from './core';
+import { recordFailure, recordSuccess, type FailureCause } from './failureLog';
 
 /**
  * Local persistence for the SQLite database.
  *
- * - Browser: snapshots serialize the full SQLite file into localStorage under
- *   a single binary-safe base64 key (zero-config, survives restarts).
+ * - Browser: snapshots serialize the full SQLite file into IndexedDB under a
+ *   single binary-safe base64 key (zero-config, survives restarts), falling
+ *   back to localStorage only when IndexedDB is unavailable.
+ *
+ *   IndexedDB, not localStorage, is the primary browser store on purpose. A
+ *   localStorage origin quota is ~5 MB and base64 inflates the database by
+ *   4/3, so a real clinic database (~3.7 MB) hits the ceiling and every
+ *   subsequent save throws QuotaExceededError — persistence stops silently
+ *   and the banner reports "changes are not being written to disk". IndexedDB
+ *   is quota'd against free disk instead, so the same snapshot simply fits.
  * - Desktop (Tauri): the exact same engine bytes are written to a real
  *   `dental_solutions.sqlite` file in the OS app-data directory via IPC,
  *   atomically (tmp file + fsync + rename). Same engine, same file format.
@@ -14,6 +23,102 @@ import { getDatabase } from './core';
 const SNAPSHOT_KEY = 'dsw_sqlite_snapshot';
 const DIRTY_KEY = 'dsw_sqlite_dirty';
 const MAGIC = 'DSDB1';
+
+/** IndexedDB location for the browser snapshot. */
+const IDB_NAME = 'dsw_sqlite';
+const IDB_STORE = 'snapshots';
+const IDB_KEY = 'database';
+
+/**
+ * Retry backoff after a failed save, in ms.
+ *
+ * A permanently failing save used to be retried every 5 s by the checkpoint
+ * timer, and each attempt re-serialized the WHOLE database (export + base64
+ * over megabytes) before throwing the same QuotaExceededError. That is what
+ * made the app "become slow" once the snapshot outgrew localStorage: a
+ * multi-megabyte re-encode every five seconds, forever, on the UI thread.
+ */
+const SAVE_BACKOFF_MS = [0, 1_000, 5_000, 15_000, 60_000, 300_000];
+/**
+ * Consecutive failed saves. Mirrored from the PERSISTED journal in failureLog
+ * rather than owned here: as a plain module variable it reset to 0 on every
+ * reload, so a save that had been failing for a week looked brand new — and
+ * healthy — each morning when the clinic reopened the app.
+ */
+let saveFailures = 0;
+let lastSaveAttemptAt = 0;
+/** Where the last snapshot actually landed. Reported by Settings > Database & Backup. */
+let lastBackend: SnapshotBackend | null = null;
+/** Serialized size of the last snapshot, so a quota message can state it. */
+let lastSnapshotBytes = 0;
+/**
+ * In-memory time of the last successful save in THIS session. The journal only
+ * writes a success timestamp when it is clearing a streak (to stay off the
+ * checkpoint path), so without this a perfectly healthy app reported "last save
+ * OK never", which reads like a bug to the person relying on it.
+ */
+let lastSaveAt: string | null = null;
+
+export type SnapshotBackend = 'desktop' | 'indexeddb' | 'localstorage' | 'none';
+
+function backoffDelay(failures: number): number {
+  return SAVE_BACKOFF_MS[Math.min(failures, SAVE_BACKOFF_MS.length - 1)];
+}
+
+/**
+ * Tag an error with the cause known at the throw site. The save path can see
+ * WHY it failed (quota vs blocked IndexedDB vs missing storage) but only as a
+ * local condition; without this tag the catch below could only report a string.
+ */
+function withCause(err: Error, cause: FailureCause): Error {
+  (err as Error & { failureCause?: FailureCause }).failureCause = cause;
+  return err;
+}
+
+function causeOf(err: unknown): FailureCause | undefined {
+  return (err as { failureCause?: FailureCause } | null)?.failureCause;
+}
+
+/** Chromium reports this as a name; Safari and jsdom only set `code`. */
+function isQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { name?: string; code?: number };
+  return e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22;
+}
+
+function formatBytes(n: number): string {
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * localStorage is not merely quota-limited: in Node (tests), in jsdom, and in
+ * some private-mode browsers it is absent entirely, and touching it threw out
+ * of an otherwise successful save. The dirty flag is an optimisation hint —
+ * it must never be able to fail a save.
+ */
+function ls(): Storage | null {
+  try {
+    return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function lsSet(key: string, value: string): void {
+  try {
+    ls()?.setItem(key, value);
+  } catch {
+    /* quota or unavailable — the snapshot itself is what matters */
+  }
+}
+
+function lsRemove(key: string): void {
+  try {
+    ls()?.removeItem(key);
+  } catch {
+    /* nothing to reclaim */
+  }
+}
 
 /** Every real SQLite database file starts with this 16-byte header. */
 const SQLITE_MAGIC = 'SQLite format 3\x00';
@@ -83,7 +188,101 @@ function b64decode(text: string): Uint8Array {
   return bytes;
 }
 
-/** Loads the persisted engine bytes: real file on desktop, localStorage in browser. */
+// ------------------------------------------------------------- IndexedDB store
+let idbPromise: Promise<IDBDatabase | null> | null = null;
+
+/**
+ * Opens the snapshot database, or resolves null when IndexedDB is missing or
+ * blocked (Node tests, jsdom, private-mode browsers). Cached: the open is a
+ * round trip to the browser and runs on every load and every save.
+ */
+function openIdb(): Promise<IDBDatabase | null> {
+  if (idbPromise) return idbPromise;
+  const attempt = new Promise<IDBDatabase | null>((resolve) => {
+    try {
+      const idb = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+      if (!idb) {
+        resolve(null);
+        return;
+      }
+      const req = idb.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };        req.onsuccess = () => resolve(req.result);
+      // A blocked or unavailable IndexedDB must degrade to localStorage, not
+      // take the whole boot down.
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  }).then((db) => {
+    // Runs a microtask later, so the assignment below has already happened and
+    // clearing the cache here actually sticks.
+    if (db === null) forgetIdbFailure();
+    return db;
+  });
+  idbPromise = attempt;
+  return attempt;
+}
+
+/**
+ * Forgets the cached open result after ANY non-success, so "blocked right now"
+ * does not become "unavailable forever".
+ *
+ * The realistic case: two app windows, one of them mid-version-change, so the
+ * open fires `onblocked`. Caching that null meant this session silently wrote
+ * to the ~5 MB localStorage fallback instead — and, once the database outgrew
+ * it, silently stopped persisting at all — for a condition that clears by
+ * itself a second later. Retrying costs one promise allocation per save.
+ */
+function forgetIdbFailure(): void {
+  idbPromise = null;
+}
+
+function idbRequest<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest): Promise<T | null> {
+  return openIdb().then(
+    (db) =>
+      new Promise<T | null>((resolve, reject) => {
+        if (!db) {
+          resolve(null);
+          return;
+        }
+        let req: IDBRequest;
+        try {
+          req = fn(db.transaction(IDB_STORE, mode).objectStore(IDB_STORE));
+        } catch (err) {
+          reject(err);
+          return;
+        }
+        req.onsuccess = () => resolve(req.result as T);
+        req.onerror = () => reject(req.error ?? new Error('IndexedDB request failed'));
+      }),
+  );
+}
+
+/** Reads the browser snapshot from IndexedDB; null when absent/unavailable. */
+async function readIdbSnapshot(): Promise<string | null> {
+  const value = await idbRequest<string>('readonly', (s) => s.get(IDB_KEY) as IDBRequest);
+  return typeof value === 'string' ? value : null;
+}
+
+/** Writes the browser snapshot to IndexedDB. Throws on a real write failure. */
+async function writeIdbSnapshot(text: string): Promise<void> {
+  await idbRequest('readwrite', (s) => s.put(text, IDB_KEY) as IDBRequest);
+}
+
+/**
+ * Drops the legacy localStorage snapshot once IndexedDB holds the same data.
+ * Without this the app carries two full copies of the database, which on a
+ * near-quota origin is the difference between fitting and not.
+ */
+function dropLegacySnapshot(): void {
+  lsRemove(SNAPSHOT_KEY);
+}
+
+/** Loads the persisted engine bytes: real file on desktop, IndexedDB (or localStorage) in browser. */
 export async function loadSnapshot(): Promise<Uint8Array | null> {
   if (isDesktop()) {
     try {
@@ -100,11 +299,14 @@ export async function loadSnapshot(): Promise<Uint8Array | null> {
     }
   }
   try {
-    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    let raw = await readIdbSnapshot();
+    let fromIdb = raw !== null;
+    if (raw === null) raw = ls()?.getItem(SNAPSHOT_KEY) ?? null;
     if (!raw) return null;
     if (!raw.startsWith(MAGIC + ':')) {
       console.warn('[db] snapshot header mismatch — starting from empty database');
-      localStorage.removeItem(SNAPSHOT_KEY);
+      if (fromIdb) await idbRequest('readwrite', (s) => s.delete(IDB_KEY) as IDBRequest).catch(() => null);
+      else lsRemove(SNAPSHOT_KEY);
       return null;
     }
     return asSqliteBytes(b64decode(raw.slice(MAGIC.length + 1)));
@@ -124,14 +326,23 @@ export async function loadSnapshot(): Promise<Uint8Array | null> {
  */
 let lastSaveError: string | null = null;
 
-function noteSaveFailure(err: unknown): void {
+function noteSaveFailure(err: unknown, detail?: string): void {
   lastSaveError = err instanceof Error ? err.message : String(err);
+  // The streak comes back from the persisted journal, so backoff resumes (and
+  // the panel can report "failing since <date>") across restarts.
+  saveFailures = recordFailure('save', err, { cause: causeOf(err), detail }).streak;
   emitSaveStatus();
 }
 
 function noteSaveSuccess(): void {
-  if (lastSaveError === null) return;
+  lastSaveAt = new Date().toISOString();
+  // Stay a no-op while healthy: this runs on every checkpoint, and the journal
+  // write is a localStorage round trip we must not pay for 17,280 times a day.
+  const recovering = saveFailures > 0 || lastSaveError !== null;
+  saveFailures = 0;
+  if (!recovering) return;
   lastSaveError = null;
+  recordSuccess('save');
   emitSaveStatus();
 }
 
@@ -147,28 +358,126 @@ export function getLastSaveError(): string | null {
   return lastSaveError;
 }
 
-export async function saveSnapshot(engine: SqliteEngine): Promise<boolean> {
+/** Where the last successful snapshot was written (null before the first save). */
+export function getLastSaveBackend(): SnapshotBackend | null {
+  return lastBackend;
+}
+
+/** Byte length of the last snapshot handed to the store, 0 before the first save. */
+export function getLastSnapshotBytes(): number {
+  return lastSnapshotBytes;
+}
+
+/** When this session last wrote a snapshot successfully; null before then. */
+export function getLastSaveAt(): string | null {
+  return lastSaveAt;
+}
+
+/**
+ * Writes the engine's bytes to disk / storage.
+ *
+ * Browser order of preference:
+ *   1. IndexedDB — quota is disk-backed, so it holds any realistic database.
+ *   2. localStorage — legacy fallback, ~5 MB origin quota.
+ * A failure at either level keeps the in-memory truth, records a message the
+ * banner can act on, and backs off so the 5 s checkpoint does not re-encode
+ * megabytes forever.
+ */
+export async function saveSnapshot(engine: SqliteEngine, opts: { force?: boolean } = {}): Promise<boolean> {
+  if (!opts.force) {
+    const wait = backoffDelay(saveFailures) - (Date.now() - lastSaveAttemptAt);
+    if (saveFailures > 0 && wait > 0) return false;
+  }
+  lastSaveAttemptAt = Date.now();
   try {
     // engine.export() re-asserts PRAGMA foreign_keys itself (see SqliteEngine.export)
     const bytes = engine.export();
+    lastSnapshotBytes = bytes.length;
     if (isDesktop()) {
-      const tauri = await desktopDb();
-      const res = await tauri.db_save_bytes({ bytesB64: b64encode(bytes) });
-      localStorage.setItem(DIRTY_KEY, 'false');
-      noteSaveSuccess();
-      // eslint-disable-next-line no-console
-      console.info(`[db] saved ${res.bytes} bytes to ${res.path}`);
-      return true;
+      try {
+        const tauri = await desktopDb();
+        const res = await tauri.db_save_bytes({ bytesB64: b64encode(bytes) });
+        lastBackend = 'desktop';
+        lsSet(DIRTY_KEY, 'false');
+        noteSaveSuccess();
+        // eslint-disable-next-line no-console
+        console.info(`[db] saved ${res.bytes} bytes to ${res.path}`);
+        return true;
+      } catch (err) {
+        // File write failed (disk full, permissions, revoked access).
+        if (err instanceof Error) throw withCause(err, 'disk-io');
+        throw err;
+      }
     }
+
     const encoded = MAGIC + ':' + b64encode(bytes);
-    localStorage.setItem(SNAPSHOT_KEY, encoded);
-    localStorage.setItem(DIRTY_KEY, 'false');
+    let stored = false;
+    let idbError: unknown = null;
+    try {
+      if (await openIdb()) {
+        await writeIdbSnapshot(encoded);
+        stored = true;
+        lastBackend = 'indexeddb';
+        // IndexedDB now owns the only copy; reclaim the legacy one.
+        dropLegacySnapshot();
+      }
+    } catch (err) {
+      // A failing IndexedDB must not lose the save — fall through to
+      // localStorage rather than reporting an error we can still recover from.
+      idbError = err;
+      console.warn('[db] IndexedDB snapshot write failed — falling back to localStorage', err);
+    }
+    if (!stored && !idbError) {
+      // IndexedDB unavailable entirely: the legacy path is all we have.
+      if (!ls()) {
+        throw withCause(
+          new Error(
+            'This browser exposes no storage for the database snapshot (IndexedDB and localStorage ' +
+              'are both unavailable). Export a .dentalbackup from Settings > Database & Backup now to protect this work.',
+          ),
+          'no-storage',
+        );
+      }
+      try {
+        localStorage.setItem(SNAPSHOT_KEY, encoded);
+        stored = true;
+        lastBackend = 'localstorage';
+      } catch (err) {
+        if (isQuotaError(err)) {
+          throw withCause(
+            new Error(
+              `Browser storage is full: this database snapshot is ${formatBytes(bytes.length)} ` +
+                `(${formatBytes(encoded.length)} encoded) and the site can hold about 5 MB. ` +
+                'Export a .dentalbackup from Settings > Database & Backup now to protect this work.',
+            ),
+            'storage-full',
+          );
+        }
+        throw err;
+      }
+    } else if (!stored && idbError) {
+      // A blocked or failing IndexedDB with no usable fallback. The cause is
+      // usually the same quota — the same snapshot that overflows localStorage
+      // is simply too large for a quota-limited IndexedDB in a private window.
+      throw withCause(
+        new Error(
+          `Snapshot could not be saved (${idbError instanceof Error ? idbError.message : String(idbError)}). ` +
+            'Export a .dentalbackup from Settings > Database & Backup now to protect this work.',
+        ),
+        isQuotaError(idbError) ? 'storage-full' : 'indexeddb',
+      );
+    }
+
+    lsSet(DIRTY_KEY, 'false');
     noteSaveSuccess();
     return true;
   } catch (err) {
     // Quota/IO: keep in-memory truth intact; surface clearly instead of failing silently.
     console.error('[db] SNAPSHOT SAVE FAILED — data still live in memory', err);
-    noteSaveFailure(err);
+    noteSaveFailure(
+      err,
+      `backend=${lastBackend ?? 'none'} snapshot=${formatBytes(lastSnapshotBytes)}`,
+    );
     return false;
   }
 }
@@ -187,9 +496,7 @@ let lifecycleInstalled = false;
 
 function markDirty(): void {
   dirty = true;
-  try {
-    localStorage.setItem(DIRTY_KEY, 'true');
-  } catch { /* non-fatal */ }
+  lsSet(DIRTY_KEY, 'true');
   if (!flushTimer) {
     flushTimer = setTimeout(() => {
       flushTimer = null;
@@ -226,7 +533,9 @@ export async function persistEngineNow(engine: SqliteEngine): Promise<boolean> {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
-  const ok = await saveSnapshot(engine);
+  // force: a restore must write through even inside the failure backoff,
+  // otherwise the reload after the restore re-reads the pre-restore snapshot.
+  const ok = await saveSnapshot(engine, { force: true });
   if (ok) dirty = false;
   return ok;
 }
@@ -267,8 +576,16 @@ function installLifecycleHooks(): void {
         if (isDesktop()) {
           void desktopDb().then((t) => t.db_save_bytes({ bytesB64: b64encode(bytes) }));
         } else {
-          localStorage.setItem(SNAPSHOT_KEY, MAGIC + ':' + b64encode(bytes));
-          localStorage.setItem(DIRTY_KEY, 'false');
+          // IndexedDB first (it holds any realistic size); the localStorage
+          // write stays as the synchronous fallback for engines that tear the
+          // page down before an async store transaction settles.
+          void writeIdbSnapshot(MAGIC + ':' + b64encode(bytes)).catch(() => {
+            try {
+              localStorage.setItem(SNAPSHOT_KEY, MAGIC + ':' + b64encode(bytes));
+              localStorage.setItem(DIRTY_KEY, 'false');
+            } catch { /* best effort */ }
+          });
+          lsSet(DIRTY_KEY, 'false');
         }
       } catch { /* best effort */ }
     }
@@ -314,7 +631,7 @@ function installLifecycleHooks(): void {
 }
 
 export function isSnapshotDirty(): boolean {
-  return dirty || localStorage.getItem(DIRTY_KEY) === 'true';
+  return dirty || ls()?.getItem(DIRTY_KEY) === 'true';
 }
 
 export const SNAPSHOT_INFO = { SNAPSHOT_KEY, MAGIC };

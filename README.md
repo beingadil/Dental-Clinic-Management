@@ -70,6 +70,13 @@ App icon: `public/icon.svg` → PNG set + `icon.ico`/`icon.icns` via
   taken → the engine is swapped → app reloads.
 - Desktop builds additionally keep timestamped `.bak` copies next to the live
   database file (`db_backup_file`).
+- **Import a plain `.sql` dump:** *Restore From a SQL Dump (.sql)* — for a dump from
+  `sqlite3 clinic.sqlite .dump` or from *Export SQLite (.SQL)*. The file is replayed
+  into a throwaway database first and reported (schema version, table and row counts,
+  refused statements) before anything is replaced; statements that would escape the
+  sandbox (`ATTACH`, `VACUUM INTO`, `load_extension`, `readfile`) are refused rather
+  than run. A safety snapshot of current data is taken before the swap, and the app
+  reloads. Reports never show cell values — a dump carries password hashes.
 
 ## Updates
 
