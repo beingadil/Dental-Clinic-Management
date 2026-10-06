@@ -6,7 +6,7 @@
  * an undo that does not depend on seeing the card — this is it.
  */
 import React from 'react';
-import { Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, RotateCcw, Lock } from 'lucide-react';
 
 export const PanelLayoutBar: React.FC<{
   hiddenCount: number;
@@ -15,7 +15,9 @@ export const PanelLayoutBar: React.FC<{
   /** Canonical panel labels for the hidden ones, keyed by panel id. */
   labels: Record<string, string>;
   hidden: string[];
-}> = ({ hiddenCount, onRestore, onReset, labels, hidden }) => {
+  /** True when the panel order is frozen — dragging is disabled app-wide. */
+  dragLocked?: boolean;
+}> = ({ hiddenCount, onRestore, onReset, labels, hidden, dragLocked = false }) => {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -68,6 +70,13 @@ export const PanelLayoutBar: React.FC<{
             </div>
           )}
         </div>
+      )}
+
+      {dragLocked && (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-surface-sunken px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
+          <Lock className="w-3.5 h-3.5" />
+          Locked — unlock in Settings → Preferences
+        </span>
       )}
 
       <button

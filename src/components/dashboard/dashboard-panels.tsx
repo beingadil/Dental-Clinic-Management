@@ -360,7 +360,7 @@ export const ProductionWorkflow: React.FC<{
   onViewAll: () => void;
   onOpenStage: (stage: WorkflowStage) => void;
 }> = ({ stages, onViewAll, onOpenStage }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="production-workflow">
+  <section className="ds-panel ds-enter" data-purpose="production-workflow">
     <PanelHead
       title="Production Workflow"
       subtitle="Live status of cases in production"
@@ -445,7 +445,7 @@ export const NeedsAttention: React.FC<{
   /** Opens the queue for THAT row, not a generic review screen. */
   onReview: (key: AttentionRow['key']) => void;
 }> = ({ rows, onReview }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="needs-attention">
+  <section className="ds-panel ds-enter" data-purpose="needs-attention">
     <PanelHead icon={ShieldAlert} tone="risk" title="Needs Attention" />
 
     <ul className="mt-3.5 space-y-2.5">
@@ -506,7 +506,7 @@ export const TodaySchedule: React.FC<{
   onOpenCase: (id: string) => void;
   onViewCalendar: () => void;
 }> = ({ rows, dateLabel, onOpenCase, onViewCalendar }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="today-schedule">
+  <section className="ds-panel ds-enter" data-purpose="today-schedule">
     <PanelHead
       icon={CalendarDays}
       title="Today's Schedule"
@@ -807,7 +807,7 @@ export const RevenueCollections: React.FC<{
   ];
 
   return (
-    <section className="ds-panel p-5 ds-enter" data-purpose="revenue-collections">
+    <section className="ds-panel ds-enter" data-purpose="revenue-collections">
       <PanelHead icon={DollarSign} tone="pos" title="Revenue & Collections" />
 
       <div className="flex items-center justify-between gap-2 mt-3">
@@ -905,7 +905,7 @@ export const CasesAtRisk: React.FC<{
   /** Opens the full ordered list rather than the four shown here. */
   onViewAll: () => void;
 }> = ({ rows, onOpenCase, onViewAll }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="cases-at-risk">
+  <section className="ds-panel ds-enter" data-purpose="cases-at-risk">
     <PanelHead
       icon={ShieldAlert}
       tone="risk"
@@ -961,7 +961,7 @@ const ACTIVITY_ICON: Record<ActivityRow['tone'], LucideIcon> = {
 };
 
 export const RecentActivity: React.FC<{ rows: ActivityRow[] }> = ({ rows }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="recent-activity">
+  <section className="ds-panel ds-enter" data-purpose="recent-activity">
     <PanelHead icon={Zap} tone="warn" title="Recent Activity" />
 
     {rows.length === 0 ? (
@@ -999,7 +999,7 @@ export interface QuickAction {
 }
 
 export const QuickActions: React.FC<{ actions: QuickAction[] }> = ({ actions }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="quick-actions">
+  <section className="ds-panel ds-enter" data-purpose="quick-actions">
     <PanelHead icon={Zap} tone="warn" title="Quick Actions" subtitle="Get things done, faster" />
 
     <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1034,7 +1034,7 @@ export const Workload: React.FC<{
   overallPct: number | null;
   unassigned: number;
 }> = ({ rows, overallPct, unassigned }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="workload">
+  <section className="ds-panel ds-enter" data-purpose="workload">
     <PanelHead icon={Gauge} title="Bench Workload" subtitle="Share of open cases per bench" />
 
     {rows.length === 0 ? (
@@ -1093,7 +1093,7 @@ export const LabPerformance: React.FC<{ rows: PerformanceRow[] }> = ({ rows }) =
   const supported = rows.filter((r) => r.supported);
 
   return (
-    <section className="ds-panel p-5 ds-enter" data-purpose="lab-performance">
+    <section className="ds-panel ds-enter" data-purpose="lab-performance">
       <PanelHead
         icon={Activity}
         title="Lab Performance"
@@ -1128,7 +1128,7 @@ export const UpcomingDeliveries: React.FC<{
   rows: UpcomingRow[];
   onOpenCase: (id: string) => void;
 }> = ({ rows, onOpenCase }) => (
-  <section className="ds-panel p-5 ds-enter" data-purpose="upcoming-deliveries">
+  <section className="ds-panel ds-enter" data-purpose="upcoming-deliveries">
     <PanelHead icon={Send} tone="dispatch" title="Upcoming Deliveries" subtitle="Promised after today" />
 
     {rows.length === 0 ? (

@@ -35,6 +35,7 @@ import {
 import { STAGE_QUEUE } from './dashboard-panels';
 import { Masonry, type MasonryItem } from './useMasonry';
 import { useDashboardLayout, visiblePanels } from './useDashboardLayout';
+import { PANEL_KEYS, PANEL_LABELS } from './panelRegistry';
 import { PanelShell } from './PanelControls';
 import { PanelLayoutBar } from './PanelLayoutBar';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
@@ -62,7 +63,7 @@ interface DashboardViewProps {
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal }) => {
-  const { cases, invoices, allPayments, labs, user, setCurrentView, updateCase } = useApp();
+  const { cases, invoices, allPayments, labs, user, userPreferences, setCurrentView, updateCase } = useApp();
 
   /* Dashboard rows open the same Job Slip the Case Workstation opens, so a
    case behaves identically wherever it is clicked. The full CaseDetailModal
@@ -186,25 +187,28 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
     year: 'numeric',
   });
 
-  /* One registry, three consumers: the masonry items below, the hidden-panel
-     recovery list, and the preference filter. Adding a panel in one place is
-     enough — a key the registry does not know is dropped on read. */
-  const PANEL_LABELS: Record<string, string> = {
-    workflow: 'Production Workflow',
-    attention: 'Needs Attention',
-    schedule: "Today's Schedule",
-    revenue: 'Revenue & Collections',
-    atRisk: 'Cases At Risk',
-    activity: 'Recent Activity',
-    quickActions: 'Quick Actions',
-    workload: 'Bench Workload',
-    performance: 'Lab Performance',
-    upcoming: 'Upcoming Deliveries',
-  };
-  const PANEL_KEYS = Object.keys(PANEL_LABELS);
+  /* Registry, labels and key list come from panelRegistry so the Settings layout
+     card filters saved layouts against exactly these keys. */
 
   const layout = useDashboardLayout(user?.id, PANEL_KEYS);
-  const { keys: visibleKeys, spans } = visiblePanels(PANEL_KEYS, layout.prefs);
+  const { keys: visibleKeys, spans } = visiblePanels(PANEL_KEYS, layout.prefs, layout.order);
+  // Density and the drag lock are UserPreferences fields: Settings writes them
+  // through the context, so the dashboard must read them from the same place.
+  // Reading them off `user` (UserProfile) — where they never live — pinned the
+  // dashboard to the default density and kept dragging locked for good.
+  const density = userPreferences?.dashboard_density ?? 'default';
+  const activeLayoutId = userPreferences?.dashboard_layout_id;
+  const dragLocked = !activeLayoutId || activeLayoutId === 'default';
+
+  /** Drag state for manual panel reordering (locked unless a custom layout is active). */
+  const [dragKey, setDragKey] = React.useState<string | null>(null);
+  const [overKey, setOverKey] = React.useState<string | null>(null);
+  const handleDrop = (targetKey: string | null) => {
+    if (!dragKey || dragLocked) return;
+    layout.movePanel(dragKey, targetKey);
+    setDragKey(null);
+    setOverKey(null);
+  };
 
   const panelContent: Record<string, React.ReactNode> = {
     workflow: (
@@ -263,13 +267,50 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
         onWide={() => layout.toggleWide(k)}
         onHide={() => layout.toggleHidden(k)}
       >
-        {panelContent[k]}
+        {/* Drag handle + drop target live on the panel wrapper, so a locked
+            layout simply never mounts them and the cards cannot be moved. */}
+        <div
+          className="ds-panel-pad h-full"
+          draggable={!dragLocked}
+          onDragStart={(e) => {
+            if (dragLocked) return;
+            setDragKey(k);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', k);
+          }}
+          onDragEnd={() => {
+            setDragKey(null);
+            setOverKey(null);
+          }}
+          onDragOver={(e) => {
+            if (dragLocked || !dragKey || dragKey === k) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (overKey !== k) setOverKey(k);
+          }}
+          onDragLeave={() => {
+            if (overKey === k) setOverKey(null);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            handleDrop(k);
+          }}
+          data-dragging={dragKey === k || undefined}
+          data-drop-target={overKey === k || undefined}
+          /* The packer emits panels column-major, so DOM order is NOT the
+             reading order. This tag makes a panel identifiable by position on
+             screen, which is the only way to see that a drag actually moved
+             something (and that it survived a reload). */
+          data-panel-key={k}
+        >
+          {panelContent[k]}
+        </div>
       </PanelShell>
     ),
   }));
 
   return (
-    <div className="space-y-4 pb-10" data-purpose="dashboard">
+    <div className={`space-y-4 pb-10 ds-density-${density}`} data-purpose="dashboard">
       <GreetingHeader userName={user?.name || 'there'} onNewCase={onOpenNewCaseModal} />
 
       <KpiCards kpis={metrics.kpis} onGo={setCurrentView} />
@@ -286,13 +327,14 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
         hiddenCount={layout.prefs.hidden.length}
         hidden={layout.prefs.hidden}
         labels={PANEL_LABELS}
+        dragLocked={dragLocked}
         onRestore={(k) => {
           if (layout.prefs.hidden.includes(k)) layout.toggleHidden(k);
         }}
         onReset={layout.reset}
       />
 
-      <Masonry items={masonryItems} measureKey={`${metrics.atRisk.length}-${metrics.schedule.length}-${metrics.upcoming.length}-${metrics.workload.rows.length}`} />
+      <Masonry items={masonryItems} measureKey={`${density}-${metrics.atRisk.length}-${metrics.schedule.length}-${metrics.upcoming.length}-${metrics.workload.rows.length}`} />
 
       {slipCase && (
         <CaseJobSlipModal caseData={slipCase} onClose={() => setSlipCase(null)} />

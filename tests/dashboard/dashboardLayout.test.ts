@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { packColumns, columnsForWidth } from '../../src/components/dashboard/useMasonry';
-import { parsePrefs, orderPanels, visiblePanels, type PanelPrefs } from '../../src/components/dashboard/useDashboardLayout';
+import { parsePrefs, parseOrder, parseLayouts, orderPanels, visiblePanels, type PanelPrefs, type NamedLayout } from '../../src/components/dashboard/useDashboardLayout';
 
 const KEYS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
@@ -116,14 +116,52 @@ describe('parsePrefs', () => {
     expect(parsePrefs(undefined, KEYS)).toEqual({ pinned: [], hidden: [], wide: [] });
   });
 
+  it('reads the namespaced blob (dashboard.panels) the hook stores', () => {
+    const blob = { 'dashboard.panels': { pinned: ['a'], hidden: [], wide: ['b'] } };
+    expect(parsePrefs(blob, KEYS)).toEqual({ pinned: ['a'], hidden: [], wide: ['b'] });
+  });
+
   it('drops panels this build does not know about', () => {
-    const stale = { pinned: ['a', 'removed_panel'], hidden: ['gone'], wide: ['b'] };
+    const stale = { 'dashboard.panels': { pinned: ['a', 'removed_panel'], hidden: ['gone'], wide: ['b'] } };
     expect(parsePrefs(stale, KEYS)).toEqual({ pinned: ['a'], hidden: [], wide: ['b'] });
   });
 
   it('survives a corrupted or wrongly-typed blob', () => {
-    expect(parsePrefs({ pinned: 'not-an-array' }, KEYS)).toEqual({ pinned: [], hidden: [], wide: [] });
-    expect(parsePrefs({ hidden: [1, 2, 'c'] }, KEYS)).toEqual({ pinned: [], hidden: ['c'], wide: [] });
+    expect(parsePrefs({ 'dashboard.panels': { pinned: 'not-an-array' } }, KEYS)).toEqual({ pinned: [], hidden: [], wide: [] });
+    expect(parsePrefs({ 'dashboard.panels': { hidden: [1, 2, 'c'] } }, KEYS)).toEqual({ pinned: [], hidden: ['c'], wide: [] });
+  });
+
+  it('parseOrder keeps only known keys, in stored order', () => {
+    expect(parseOrder({ 'dashboard.order': ['b', 'ghost', 'a'] }, KEYS)).toEqual(['b', 'a']);
+    expect(parseOrder(undefined, KEYS)).toEqual([]);
+    expect(parseOrder({ 'dashboard.order': 'nope' }, KEYS)).toEqual([]);
+  });
+
+  it('parseLayouts validates entries and rejects junk', () => {
+    const good: NamedLayout = { name: 'Morning', panels: { pinned: ['a'], hidden: [], wide: [] }, order: ['a'], density: 'compact', savedAt: '2026-10-06 09:00' };
+    const blob = { 'dashboard.layouts': { Morning: good, broken: { nope: 1 }, badName: { name: '', panels: {}, order: [], density: 'default', savedAt: '' } } };
+    const out = parseLayouts(blob);
+    expect(Object.keys(out)).toEqual(['Morning']);
+    expect(out.Morning.density).toBe('compact');
+    expect(parseLayouts(undefined)).toEqual({});
+    // Invalid density falls back to default rather than propagating.
+    const badDensity = parseLayouts({ 'dashboard.layouts': { X: { ...good, density: 'huge' as never } } });
+    expect(badDensity.X.density).toBe('default');
+  });
+
+  it('orderPanels puts pinned first, then manual order, then canonical', () => {
+    const prefs: PanelPrefs = { pinned: ['c'], hidden: [], wide: [] };
+    expect(orderPanels(KEYS, prefs)).toEqual(['c', 'a', 'b', 'd', 'e', 'f']);
+    expect(orderPanels(KEYS, prefs, ['b', 'a'])).toEqual(['c', 'b', 'a', 'd', 'e', 'f']);
+    // Manual order entries for unknown keys are ignored.
+    expect(orderPanels(KEYS, prefs, ['ghost', 'a'])).toEqual(['c', 'a', 'b', 'd', 'e', 'f']);
+  });
+
+  it('visiblePanels filters hidden and computes spans', () => {
+    const prefs: PanelPrefs = { pinned: [], hidden: ['b'], wide: ['a'] };
+    const v = visiblePanels(KEYS, prefs, ['b', 'a']);
+    expect(v.keys).toEqual(['a', 'c', 'd', 'e', 'f']);
+    expect(v.spans).toEqual({ a: 2, c: 1, d: 1, e: 1, f: 1 });
   });
 });
 

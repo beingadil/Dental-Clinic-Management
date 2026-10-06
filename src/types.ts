@@ -518,6 +518,17 @@ export interface UserPreferences {
   auto_archive_completed_cases?: boolean;
   /** Global interface zoom (screen only; print output is never scaled). */
   ui_zoom?: number;
+
+  /** Active dashboard layout: 'default' or the name of a saved arrangement
+   *  (registry lives beside this key in the per-user preferences blob, written
+   *  by useDashboardLayout). Persisted per user.
+   */
+  dashboard_layout_id?: string;
+  /** Dashboard panel density. 'default' inherits the app-wide scale;
+   *  'compact' tightens padding and reduces panel font scale;
+   *  'roomy' expands padding for readability.
+   */
+  dashboard_density?: 'default' | 'compact' | 'roomy';
 }
 
 export interface UserProfile {

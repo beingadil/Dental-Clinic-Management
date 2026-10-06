@@ -128,6 +128,23 @@
   --ds-pad-card: 20px;
   --ds-gap-grid: 16px;
   --ds-control-h: 36px;
+  --ds-font-scale: 1;
+}
+
+/* Density modes. The dashboard wrapper carries ds-density-{compact,roomy};
+   panels read the same component tokens, so one class re-pads and re-scales
+   every panel without touching any component class. Printed output is never
+   affected — these are screen-only surface tokens. */
+.ds-density-compact {
+  --ds-pad-card: 12px;
+  --ds-gap-grid: 10px;
+  --ds-font-scale: 0.94;
+}
+
+.ds-density-roomy {
+  --ds-pad-card: 26px;
+  --ds-gap-grid: 20px;
+  --ds-font-scale: 1.04;
 }
 
 @theme inline {
@@ -191,24 +208,48 @@
     border: 1px solid var(--ds-line);
     border-radius: var(--ds-radius-card);
     box-shadow: var(--ds-shadow-card);
+    /* Density: padding + font scale follow the mode tokens. */
+    padding: var(--ds-pad-card);
+    font-size: calc(13px * var(--ds-font-scale));
     /* The dashboard lays panels out in CSS columns. Without this the browser
        may break one panel across a column boundary and slice a case list in
        half; the panel instead moves whole into the next column. */
     break-inside: avoid;
     /* Columns stack on narrow screens, so each panel needs its own gap rather
        than relying on the `columns-4` gutter alone. */
-    margin-bottom: 16px;
+    margin-bottom: var(--ds-gap-grid);
+  }
+
+  /* Wrapper the dashboard sets around each panel for drag-and-drop. It must
+     not pad anything itself — .ds-panel owns padding — but it carries the
+     drag affordance states. */
+  .ds-panel-pad {
+    height: 100%;
+  }
+  .ds-panel-pad[draggable='true'] {
+    cursor: grab;
+  }
+  .ds-panel-pad[draggable='true']:active {
+    cursor: grabbing;
+  }
+  .ds-panel-pad[data-dragging] {
+    opacity: 0.45;
+  }
+  .ds-panel-pad[data-drop-target] {
+    outline: 2px dashed var(--ds-accent);
+    outline-offset: 4px;
+    border-radius: var(--ds-radius-card);
   }
 
   .ds-panel-title {
-    font-size: 13px;
+    font-size: calc(13px * var(--ds-font-scale));
     font-weight: 700;
     color: var(--ds-ink);
     letter-spacing: -0.01em;
   }
 
   .ds-panel-sub {
-    font-size: 11px;
+    font-size: calc(11px * var(--ds-font-scale));
     color: var(--ds-muted);
     margin-top: 1px;
   }

@@ -27,6 +27,54 @@ function dbWrite(fn: () => void): void {
   }
 }
 
+/**
+ * The dashboard keys this module must not clobber. They live in the same JSON
+ * row as UserPreferences but belong to `useDashboardLayout`.
+ *
+ * The drag lock is deliberately absent: it is the `dashboard_layout_id` FIELD
+ * ON the preferences object, not a dotted key, so it rides along in the
+ * preferences half of the merge.
+ */
+export const DASHBOARD_ROW_KEYS = ['dashboard.panels', 'dashboard.layouts', 'dashboard.order'];
+
+/**
+ * The preference half of the row, with the namespaced dashboard keys removed.
+ *
+ * Hydration loads a whole row into UserPreferences state, and that row also
+ * carries `dashboard.layouts`. A stale copy riding along in state then wins
+ * the merge below and silently discards the layout the user saved a moment
+ * ago — the toggle appeared to work, then the layout vanished on the next
+ * settings write. Dotted keys belong to the layout half; they never belong in
+ * a preferences object, so they are dropped on the way in and on the way out.
+ */
+function preferenceFields(source: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!source || typeof source !== 'object') return out;
+  for (const [k, v] of Object.entries(source as Record<string, unknown>)) {
+    if (!k.includes('.')) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Merge a UserPreferences object into the per-user row WITHOUT dropping the
+ * dashboard keys stored beside it.
+ *
+ * The row is shared, and whoever writes last wins unless it reads first. Only
+ * the dashboard keys actually present are carried over, so an absent key is
+ * not resurrected as `undefined`.
+ */
+export function mergePreferencesIntoRow(existing: unknown, prefs: UserPreferences): Record<string, unknown> {
+  const savedLayouts: Record<string, unknown> = {};
+  if (existing && typeof existing === 'object') {
+    const row = existing as Record<string, unknown>;
+    for (const k of DASHBOARD_ROW_KEYS) {
+      if (k in row) savedLayouts[k] = row[k];
+    }
+  }
+  return { ...savedLayouts, ...preferenceFields(prefs) };
+}
+
 export function useSettingsDomain(user?: UserProfile | null): {
   brandingSettings: BrandingSettings;
   setBrandingSettings: React.Dispatch<React.SetStateAction<BrandingSettings>>;
@@ -47,8 +95,13 @@ export function useSettingsDomain(user?: UserProfile | null): {
     if (isDatabaseReady()) {
       try {
         if (user?.id) {
-          const own = userPreferencesRepo.get(user.id) as UserPreferences | undefined;
-          if (own) return own;
+          const own = userPreferencesRepo.get(user.id) as Partial<UserPreferences> | undefined;
+          // Layered over the defaults, never replacing them. This row is
+          // SHARED with the dashboard layout keys, so a row that only the
+          // layout hook ever wrote holds no preference fields at all —
+          // returning it verbatim would load "no preferences" as real state,
+          // and the next persist would then write that hole back to disk.
+          if (own && typeof own === 'object') return { ...INITIAL_USER_PREFERENCES, ...preferenceFields(own) } as UserPreferences;
         }
         return (settingsRepo.get('preferences', 'global') as UserPreferences) || INITIAL_USER_PREFERENCES;
       } catch { /* fall through */ }
@@ -60,8 +113,8 @@ export function useSettingsDomain(user?: UserProfile | null): {
   useEffect(() => {
     if (!user?.id || !isDatabaseReady()) return;
     try {
-      const own = userPreferencesRepo.get(user.id) as UserPreferences | undefined;
-      if (own) setUserPreferences(own);
+      const own = userPreferencesRepo.get(user.id) as Partial<UserPreferences> | undefined;
+      if (own && typeof own === 'object') setUserPreferences({ ...INITIAL_USER_PREFERENCES, ...preferenceFields(own) } as UserPreferences);
       // No row yet: keep the current (legacy global / default) values — the
       // next save writes this user's own row.
     } catch { /* best-effort hydration */ }
@@ -90,7 +143,18 @@ export function useSettingsDomain(user?: UserProfile | null): {
     dbWrite(() => {
       // D4: signed-in users get their own row; the legacy global blob stays
       // as the fallback for pre-login surfaces.
-      if (user?.id) userPreferencesRepo.set(user.id, userPreferences);
+      //
+      // The row is SHARED with the dashboard layout keys (owned by
+      // useDashboardLayout), so this write MERGES rather than replaces — see
+      // mergePreferencesIntoRow. A best-effort read failure degrades to a
+      // plain write of the preferences, never to a thrown persist.
+      let merged: Record<string, unknown> | null = null;
+      if (user?.id) {
+        try {
+          merged = mergePreferencesIntoRow(userPreferencesRepo.get(user.id), userPreferences);
+        } catch { merged = null; /* best-effort; worst case the user re-arranges */ }
+      }
+      if (user?.id && merged) userPreferencesRepo.set(user.id, merged);
       settingsRepo.set('preferences', 'global', userPreferences);
     });
   }, [userPreferences, user?.id]);
