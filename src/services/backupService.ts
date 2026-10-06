@@ -1,5 +1,6 @@
 import { exportDatabaseBytes, getDatabase, isDatabaseReady, setDatabase } from '../db/core';
 import { SqliteEngine } from '../db/engine';
+import { MIGRATIONS } from '../db/migrations';
 import { sha256Hex } from '../db/crypto';
 import { installAutoPersistence, persistEngineNow } from '../db/persistence';
 import { canManageSystem } from './permissions';
@@ -15,6 +16,13 @@ import { canManageSystem } from './permissions';
 
 export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_MAGIC = 'DENTALBACKUP';
+/**
+ * Highest schema this build can read. A backup migrated further than this
+ * would load tables/columns the running app does not know — it must be
+ * refused, not silently loaded (older backups are fine: the normal
+ * migration pass upgrades them at apply time).
+ */
+export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
 /** Every real SQLite file starts with this 16-byte header. */
 const SQLITE_MAGIC = 'SQLite format 3\x00';
 /** Build-time injected from package.json (see vite.config.ts `define`).
@@ -139,6 +147,13 @@ export async function validateBackup(pkg: BackupPackage): Promise<RestoreValidat
   if (m.format_version < BACKUP_FORMAT_VERSION) {
     warnings.push(`Backup uses older format v${m.format_version}; it will be upgraded automatically.`);
   }
+  if (typeof m.schema_version === 'number' && m.schema_version > LATEST_SCHEMA_VERSION) {
+    errors.push(
+      `This backup was created with a newer version of Dental Management ` +
+      `(database schema v${m.schema_version}, this app supports v${LATEST_SCHEMA_VERSION}). ` +
+      'Update the application before restoring this backup.',
+    );
+  }
   try {
     const bytes = b64ToBytes(pkg.database_b64);
     const expected = 'sha256:' + (await sha256Hex(bytes));
@@ -222,26 +237,32 @@ export async function applyRestoredBytes(
   // Captured before the swap so a failed persist can be rolled back.
   const previous = isDatabaseReady() ? getDatabase() : null;
 
-  let engine: SqliteEngine;
-  try {
-    engine = await engineFactory(bytes);
-  } catch (err: any) {
-    throw new Error(
-      `The backup database could not be opened: ${err?.message || 'unknown error'}. ` +
-      'Your current data is untouched.',
-    );
-  }
-
-  // Prove the swap produced a usable database before committing to it.
+  // Everything between here and the persist step runs against a candidate
+  // engine that the factory may ALREADY have installed globally
+  // (initEngineFromBytes calls setDatabase). Any failure in the block must
+  // put the previous engine back — a failed restore must never leave the
+  // half-restored database live.
+  let engine: SqliteEngine | null = null;
   let schemaVersion = 0;
   try {
-    // Reading the schema table is the cheapest proof that the payload opened,
-    // migrated and is queryable.
+    engine = await engineFactory(bytes);
+
+    // Prove the swap produced a usable database before committing to it:
+    // migration ledger present, readable, and structurally sound.
+    if (!engine.tableExists('schema_migrations')) {
+      throw new Error('backup database has no migration ledger (schema_migrations missing)');
+    }
     schemaVersion = Number(engine.scalar('SELECT MAX(version) FROM schema_migrations') ?? 0);
+    const integrity = String(engine.scalar('PRAGMA integrity_check') ?? '');
+    if (integrity !== 'ok') {
+      throw new Error(`SQLite integrity_check reported: ${integrity}`);
+    }
   } catch (err: any) {
-    closeQuietly(engine);
+    setDatabase(previous);
+    if (engine && engine !== previous) closeQuietly(engine);
     throw new Error(
-      `The backup database is not usable (${err?.message || 'schema check failed'}). Your current data is untouched.`,
+      `The backup database could not be prepared (${err?.message || 'unknown error'}). ` +
+      'Your current data is untouched.',
     );
   }
 

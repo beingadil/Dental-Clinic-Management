@@ -7,7 +7,12 @@ import { SqliteEngine, DbError } from './engine';
 
 let current: SqliteEngine | null = null;
 
-export function setDatabase(engine: SqliteEngine): void {
+/**
+ * Installs the live engine. `null` clears it — used by backup/restore
+ * rollback so a failed swap can never leave a half-restored database
+ * presenting itself as the live one.
+ */
+export function setDatabase(engine: SqliteEngine | null): void {
   current = engine;
 }
 

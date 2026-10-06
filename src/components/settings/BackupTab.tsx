@@ -29,6 +29,7 @@ import {
 } from '../../services/backupScheduler';
 import { runRestoreDrill, RestoreDrillResult } from '../../services/restoreDrill';
 import { initEngineFromBytes, getDatabase } from '../../db';
+import { getDesktopDatabasePath, getLastSaveError } from '../../db/persistence';
 import {
   Settings,
   ShieldCheck,
@@ -121,6 +122,22 @@ export const BackupTab: React.FC<{
     schema_version?: number;
     table_counts?: Record<string, number>;
   } | null>(null);
+
+  // Database status — the facts a backup decision depends on: where the data
+  // lives, which schema it is on, and whether the last snapshot save reached
+  // disk. Computed once per mount; export() is deliberately NOT called here
+  // (it re-serializes the whole database).
+  const dbStatus = useMemo(() => {
+    try {
+      return {
+        schemaVersion: Number(getDatabase().scalar('SELECT MAX(version) FROM schema_migrations') ?? 0),
+        path: getDesktopDatabasePath(),
+        saveError: getLastSaveError(),
+      };
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Storage metrics (shared with the System Reset tab diagnostics in the
   // original monolith — kept local here; reset tab computes its own counts)
@@ -308,6 +325,32 @@ export const BackupTab: React.FC<{
   };
 
   return (      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
+      {/* DATABASE STATUS — location, schema version, last-save verdict. */}
+      {dbStatus && (
+        <div className={`p-4 rounded-2xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
+          dbStatus.saveError
+            ? 'bg-rose-50 border-rose-300 text-rose-900'
+            : 'bg-slate-50 border-slate-200 text-slate-700'
+        }`}>
+          <div className="flex items-center gap-2 min-w-0">
+            <Database className="w-4 h-4 text-indigo-600 shrink-0" />
+            <div className="min-w-0">
+              <span className="font-bold block">Database status{dbStatus.saveError ? ' — LAST SAVE FAILED' : ''}</span>
+              <span className="text-[11px] font-mono break-all">
+                {dbStatus.path ?? 'Browser local storage (no file on this device)'} · schema v{dbStatus.schemaVersion}
+              </span>
+            </div>
+          </div>
+          {dbStatus.saveError ? (
+            <span className="font-semibold">{dbStatus.saveError} — data is live in memory only; export a backup now.</span>
+          ) : (
+            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+              Last save OK
+            </span>
+          )}
+        </div>
+      )}
+
       {/* BOOT INTEGRITY SELF-CHECK — verify FK pragma, orphan rows, ledger
           balance; computed at boot by AppContext, surfaced here. */}
       <IntegrityPanel />

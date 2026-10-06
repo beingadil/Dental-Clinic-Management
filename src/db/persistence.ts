@@ -43,6 +43,14 @@ export function isDesktop(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+/** Absolute path of the desktop database file, once db_load has resolved it. */
+let desktopDbPath: string | null = null;
+
+/** The live database file location (desktop only; null in the browser). */
+export function getDesktopDatabasePath(): string | null {
+  return desktopDbPath;
+}
+
 /** Desktop IPC bindings (only callable when isDesktop()). */
 async function desktopDb(): Promise<{
   db_load: (args: { path?: string }) => Promise<{ path: string; existed: boolean }>;
@@ -81,6 +89,7 @@ export async function loadSnapshot(): Promise<Uint8Array | null> {
     try {
       const tauri = await desktopDb();
       const info = await tauri.db_load({});
+      desktopDbPath = info.path;
       // eslint-disable-next-line no-console
       console.info(`[db] desktop database file: ${info.path} (${info.existed ? 'existing' : 'new'})`);
       const b64 = await tauri.db_read_bytes();
