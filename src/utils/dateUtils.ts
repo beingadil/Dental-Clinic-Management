@@ -87,6 +87,21 @@ export const formatTimeAgo = (dateStr?: string): string => {
   }
 };
 
+/**
+ * The day a slip prints as "Received Date".
+ *
+ * `cases.received_date` (migration 019) is the operator's answer and is what
+ * prints. Rows created before that migration have it NULL, and for those the
+ * registration day IS the day the lab received the job — so `created_at` is
+ * the honest fallback. Never `delivery_date`: that is a future promised date
+ * and would silently mislabel a slip.
+ */
+export const receivedDateFor = (c: { received_date?: string | null; created_at?: string | null }): string => {
+  const received = (c.received_date || '').trim();
+  if (received) return received;
+  return (c.created_at || '').slice(0, 10);
+};
+
 export const daysDiff = (targetDateStr: string, baseDateStr = getTodayStr()): number => {
   try {
     const t = new Date(targetDateStr.split('T')[0]).getTime();

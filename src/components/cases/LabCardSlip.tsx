@@ -1,6 +1,7 @@
 import React from 'react';
 import { DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { receivedDateFor } from '../../utils/dateUtils';
 import { QRCodeSVG } from 'qrcode.react';
 import { Phone, MapPin, Mail, Facebook, Calendar, Clock, Sparkles } from 'lucide-react';
 
@@ -24,14 +25,15 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
         year: 'numeric',
       }).replace(/\//g, '-');
 
-  // Format delivery date
-  const delivDateFormatted = caseData.delivery_date
-    ? new Date(caseData.delivery_date).toLocaleDateString('en-GB', {
+  // The slip records the day the lab received the job — never the future
+  // promised delivery date.
+  const receivedDateFormatted = caseData.received_date || caseData.created_at
+    ? new Date(receivedDateFor(caseData)).toLocaleDateString('en-GB', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
       }).replace(/\//g, '-')
-    : caseData.delivery_date;
+    : '';
 
   // Teeth string or representation
   const teethStr = caseData.selected_teeth.length > 0 
@@ -46,7 +48,7 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
     type: caseData.case_type_name,
     shade: caseData.shade || 'N/A',
     teeth: caseData.selected_teeth,
-    delivery: caseData.delivery_date,
+    received: receivedDateFor(caseData),
     status: caseData.status,
     lab_app: brandingSettings.appName || 'Dental Solutions'
   });
@@ -182,12 +184,12 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
           </div>
         </div>
 
-        {/* Delivery Date & Time */}
+        {/* Received Date & Time */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
           <div className="flex items-baseline gap-2">
-            <span className="font-extrabold text-slate-900 min-w-[95px]">Delivery Date:</span>
+            <span className="font-extrabold text-slate-900 min-w-[95px]">Received Date:</span>
             <div className="flex-1 border-b-2 border-slate-900 font-mono font-black text-base text-slate-900 px-2 py-0.5">
-              {delivDateFormatted}
+              {receivedDateFormatted}
             </div>
           </div>
           <div className="flex items-baseline gap-2">

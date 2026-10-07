@@ -38,6 +38,7 @@ import { useDashboardLayout, visiblePanels } from './useDashboardLayout';
 import { PANEL_KEYS, PANEL_LABELS } from './panelRegistry';
 import { PanelShell } from './PanelControls';
 import { PanelLayoutBar } from './PanelLayoutBar';
+import { UpdatePill } from './UpdatePill';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { RecordTransactionModal } from '../billing/RecordTransactionModal';
@@ -312,6 +313,10 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
   return (
     <div className={`space-y-4 pb-10 ds-density-${density}`} data-purpose="dashboard">
       <GreetingHeader userName={user?.name || 'there'} onNewCase={onOpenNewCaseModal} />
+
+      {/* Update notice: install a new version and restart from here without
+          leaving the dashboard. Silent until there is something to do. */}
+      <UpdatePill />
 
       <KpiCards kpis={metrics.kpis} onGo={setCurrentView} />
 

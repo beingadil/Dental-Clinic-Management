@@ -2,6 +2,7 @@ import React from 'react';
 import { DentalCase } from '../../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { slipBandFor, guessCategory } from '../../lib/slipBanding';
+import { receivedDateFor } from '../../utils/dateUtils';
 
 /**
  * Compact physical laboratory job tag — the ONE true job slip.
@@ -37,6 +38,9 @@ interface JobSlipCardProps {
 
 export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName, logoUrl }) => {
   const teeth = (c.selected_teeth || []).map((t) => `#${t}`).join(', ');
+  // The tag carries the day the lab received the job, not the future promised
+  // delivery date — a bag in a pile is sorted by when it arrived.
+  const receivedDate = receivedDateFor(c);
   const instructions = (c.instructions || '').trim();
   const band = slipBandFor(guessCategory(c.case_type_name));
 
@@ -57,7 +61,7 @@ export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName, 
               n: c.case_number,
               p: c.patient_name || undefined,
               t: c.selected_teeth,
-              due: c.delivery_date,
+              received: receivedDate,
             })}
             size={44}
             level="M"
@@ -117,10 +121,10 @@ export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName, 
         )}
       </div>
 
-      {/* Due band — second-most-visible line */}
+      {/* Received-date band — second-most-visible line */}
       <div className="js-due">
-        <span className="js-due-k">DUE</span>
-        <span className="js-due-v">{fmtDate(c.delivery_date) || c.delivery_date}</span>
+        <span className="js-due-k">RECEIVED</span>
+        <span className="js-due-v">{fmtDate(receivedDate) || receivedDate}</span>
         <span className="js-due-t">05:00 PM</span>
       </div>
 

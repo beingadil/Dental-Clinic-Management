@@ -165,6 +165,8 @@ export interface DentalCase {
   /** Bench this case is routed to. See utils/labDepartments for the list. */
   department?: string | null;
   delivery_date: string;
+  /** Day the lab received the job. Optional; slips print this instead of the delivery date. */
+  received_date?: string | null;
   priority: PriorityLevel;
   price: number;
   discount: number;

@@ -22,12 +22,24 @@ import {
   Building2
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
+import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
 import { ACCOUNT_CODES } from '../../services/financeDomain';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { DentalCase } from '../../types';
 
 interface GeneralLedgerViewProps {
   onOpenJournalModal?: (referenceId: string) => void;
+}
+
+/** One row of the narration cell: the type badge, the headline and the
+    full case block the invoice belongs to. */
+interface NarrationDetails {
+  typeLabel: string;
+  typeBadgeBg: string;
+  icon: React.ComponentType<{ className?: string }>;
+  narration: string;
+  subText?: string;
+  caseDetail: { label: string; value: string }[];
 }
 
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJournalModal }) => {
@@ -285,24 +297,28 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
   );
 
   // Helper to format narration and determine entry category
-  const getNarrationDetails = (entry: LedgerEntry) => {
+  const getNarrationDetails = (entry: LedgerEntry): NarrationDetails => {
     if (!entry) {
       return {
         typeLabel: 'Entry',
         typeBadgeBg: 'bg-slate-50 text-slate-700 border-slate-200',
         icon: FileText,
         narration: 'Transaction',
-        subText: undefined
+        subText: undefined,
+        caseDetail: [] as { label: string; value: string }[]
       };
     }
 
     if (entry.entry_type === 'invoice') {
+      const c = findCaseForEntry(entry, cases);
+      const detail = c ? caseDetailLines(c) : [];
       return {
         typeLabel: 'Case Invoice',
         typeBadgeBg: 'bg-blue-50 text-blue-700 border-blue-200',
         icon: FileText,
         narration: `${entry.reference_number || ''} • ${entry.description || 'Restoration'}`,
-        subText: entry.doctor_name ? `Doctor: ${entry.doctor_name}` : undefined
+        subText: detail.length ? undefined : (entry.doctor_name ? `Doctor: ${entry.doctor_name}` : undefined),
+        caseDetail: detail
       };
     }
 
@@ -332,7 +348,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         typeBadgeBg,
         icon,
         narration: `${typeLabel} #${entry.reference_number || ''}${entry.notes ? ` • ${entry.notes}` : ''}`,
-        subText: entry.doctor_name ? `Doctor: ${entry.doctor_name}` : undefined
+        subText: entry.doctor_name ? `Doctor: ${entry.doctor_name}` : undefined,
+        caseDetail: []
       };
     }
 
@@ -343,7 +360,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         typeBadgeBg: 'bg-teal-50 text-teal-700 border-teal-200',
         icon: DollarSign,
         narration: `Advance Deposit Received (${method}) #${entry.reference_number || ''}${entry.notes ? ` • ${entry.notes}` : ''}`,
-        subText: undefined
+        subText: undefined,
+        caseDetail: []
       };
     }
 
@@ -353,7 +371,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         typeBadgeBg: 'bg-sky-50 text-sky-700 border-sky-200',
         icon: Receipt,
         narration: `Advance Allocation to ${entry.reference_number || 'Invoice'}${entry.notes ? ` • ${entry.notes}` : ''}`,
-        subText: undefined
+        subText: undefined,
+        caseDetail: []
       };
     }
 
@@ -363,7 +382,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         typeBadgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
         icon: ArrowDownLeft,
         narration: `Credit Note #${entry.reference_number || ''} • ${entry.description || 'Adjustment / Discount'}`,
-        subText: entry.notes
+        subText: entry.notes,
+        caseDetail: []
       };
     }
 
@@ -373,7 +393,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         typeBadgeBg: 'bg-orange-50 text-orange-700 border-orange-200',
         icon: ArrowUpRight,
         narration: `Debit Adjustment #${entry.reference_number || ''} • ${entry.description || 'Surcharge'}`,
-        subText: entry.notes
+        subText: entry.notes,
+        caseDetail: []
       };
     }
 
@@ -383,7 +404,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
       typeBadgeBg: 'bg-rose-50 text-rose-700 border-rose-200',
       icon: RotateCcw,
       narration: `${entry.description || 'Adjustment'} #${entry.reference_number || ''}`,
-      subText: entry.notes
+      subText: entry.notes,
+      caseDetail: []
     };
   };
 
@@ -404,12 +426,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
       ledgerItems.forEach((item, idx) => {
         const details = getNarrationDetails(item);
+        const c = findCaseForEntry(item, cases);
+        const narration = [details.narration, c ? caseDetailText(c) : ''].filter(Boolean).join(' • ');
         rows.push([
           (idx + 1).toString(),
           String(item.date || '').slice(0, 10),
           `"${String(item.lab_name || '').replace(/"/g, '""')}"`,
           `"${String(details.typeLabel || '')}"`,
-          `"${String(details.narration || '').replace(/"/g, '""')}"`,
+          `"${String(narration).replace(/"/g, '""')}"`,
           (item.debit || 0).toString(),
           (item.credit || 0).toString(),
           (item.closing_balance || 0).toString()
@@ -441,12 +465,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
       const result = buildLedgerPdf(
         caseScope.items.map((item) => {
           const details = getNarrationDetails(item);
+          const c = findCaseForEntry(item, cases);
           return {
             date: String(item.date || '').slice(0, 10),
             clinic: item.lab_name || '',
             caseNumber: item.case_number || '',
             typeLabel: details.typeLabel,
-            narration: details.narration,
+            narration: [details.narration, c ? caseDetailText(c) : ''].filter(Boolean).join(' • '),
             debit: item.debit || 0,
             credit: item.credit || 0,
             closing: item.closing_balance || 0,
@@ -858,6 +883,23 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                                 <p className="text-[11px] text-slate-500 font-normal pl-0.5">
                                   {details.subText}
                                 </p>
+                              )}
+                              {details.caseDetail.length > 0 && (
+                                /* The full case the money is booked against —
+                                   procedure, doctor, patient, teeth, shade,
+                                   material, received and delivery days. */
+                                <dl className="mt-1 grid grid-cols-1 gap-x-4 gap-y-0.5 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2 sm:grid-cols-2">
+                                  {details.caseDetail.map((d) => (
+                                    <div key={d.label} className="flex items-baseline gap-1.5 min-w-0">
+                                      <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                        {d.label}
+                                      </dt>
+                                      <dd className="truncate text-[11px] text-slate-700" title={d.value}>
+                                        {d.value}
+                                      </dd>
+                                    </div>
+                                  ))}
+                                </dl>
                               )}
                             </div>
                           </td>

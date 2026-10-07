@@ -6,6 +6,7 @@ import { X, Printer, Download, Calendar, Building2, FileText, CheckCircle2 } fro
 import { SavePdfButton } from '../print/SavePdfButton';
 import { Modal } from '../common/ui';
 import { getTodayStr } from '../../utils/dateUtils';
+import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
 
 interface ClinicStatementModalProps {
   isOpen: boolean;
@@ -18,7 +19,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   onClose,
   clinicId
 }) => {
-  const { labs, getLabFinancialSummary, getLedgerEntries, brandingSettings } = useApp();
+  const { labs, getLabFinancialSummary, getLedgerEntries, brandingSettings, cases } = useApp();
 
   const [dateRange, setDateRange] = useState<'all' | 'this_month' | 'last_month' | 'custom'>('all');
   const [startDate, setStartDate] = useState<string>('');
@@ -78,16 +79,20 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   };
 
   const handleExportCSV = () => {
-    const headers = ['Date', 'Type', 'Reference', 'Description', 'Debit (PKR)', 'Credit (PKR)', 'Running Balance (PKR)'];
-    const rows = filteredLedger.map((e) => [
-      e.date,
-      e.type,
-      e.reference_number,
-      e.description,
-      e.debit || 0,
-      e.credit || 0,
-      e.running_balance
-    ]);
+    const headers = ['Date', 'Type', 'Reference', 'Case/Job', 'Description', 'Debit (PKR)', 'Credit (PKR)', 'Running Balance (PKR)'];
+    const rows = filteredLedger.map((e) => {
+      const c = findCaseForEntry(e, cases);
+      return [
+        e.date,
+        e.type,
+        e.reference_number,
+        c ? c.case_number : '',
+        [e.description, c ? caseDetailText(c) : ''].filter(Boolean).join(' • '),
+        e.debit || 0,
+        e.credit || 0,
+        e.running_balance
+      ];
+    });
     downloadCSV(`Statement_${clinic.name.replace(/\s+/g, '_')}_${getTodayStr()}`, [headers, ...rows]);
   };
 
@@ -240,6 +245,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
                   <th scope="col" className="px-3.5 py-2.5">Date</th>
                   <th scope="col" className="px-3.5 py-2.5">Type</th>
                   <th scope="col" className="px-3.5 py-2.5">Reference #</th>
+                  <th scope="col" className="px-3.5 py-2.5">Case/Job</th>
                   <th scope="col" className="px-3.5 py-2.5">Description</th>
                   <th scope="col" className="px-3.5 py-2.5 text-right">Debit (PKR)</th>
                   <th scope="col" className="px-3.5 py-2.5 text-right">Credit (PKR)</th>
@@ -249,17 +255,40 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               <tbody className="divide-y divide-slate-100 font-mono">
                 {filteredLedger.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500 font-sans">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500 font-sans">
                       No statement movements in selected period.
                     </td>
                   </tr>
                 ) : (
-                  filteredLedger.map((entry) => (
+                  filteredLedger.map((entry) => {
+                    const c = findCaseForEntry(entry, cases);
+                    const detail = c ? caseDetailLines(c) : [];
+                    return (
                     <tr key={entry.id}>
                       <td className="px-3.5 py-2 text-slate-600 font-sans">{entry.date}</td>
                       <td className="px-3.5 py-2 font-sans capitalize">{entry.type}</td>
                       <td className="px-3.5 py-2 font-bold text-slate-800">{entry.reference_number}</td>
-                      <td className="px-3.5 py-2 font-sans text-slate-700">{entry.description}</td>
+                      <td className="px-3.5 py-2 font-sans text-indigo-800 font-bold">{c ? c.case_number : '—'}</td>
+                      <td className="px-3.5 py-2 font-sans text-slate-700">
+                        {entry.description}
+                        {/* The full case the money is booked against, so the
+                            printed statement identifies the job, not just
+                            the invoice number. */}
+                        {detail.length > 0 && (
+                          <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
+                            {detail.map((d) => (
+                              <div key={d.label} className="flex items-baseline gap-1 min-w-0">
+                                <dt className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                  {d.label}
+                                </dt>
+                                <dd className="truncate text-[10px] text-slate-600" title={d.value}>
+                                  {d.value}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+                      </td>
                       <td className="px-3.5 py-2 text-right font-semibold text-slate-900">
                         {entry.debit > 0 ? formatPKR(entry.debit).replace('PKR ', '') : '—'}
                       </td>
@@ -270,12 +299,13 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
                         {formatPKR(entry.running_balance).replace('PKR ', '')}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
               <tfoot>
                 <tr className="bg-slate-50 border-t-2 border-slate-300 font-bold font-mono">
-                  <td colSpan={4} className="px-3.5 py-2.5 text-right font-sans text-slate-700">
+                  <td colSpan={5} className="px-3.5 py-2.5 text-right font-sans text-slate-700">
                     Statement Totals:
                   </td>
                   <td className="px-3.5 py-2.5 text-right text-slate-900">

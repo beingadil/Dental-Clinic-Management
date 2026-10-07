@@ -40,6 +40,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { PRIORITY_SLA_DAYS, prioritySlaLabel, computeSlaDueDate } from '../../services/prioritySla';
+import { DatePickerSingle } from '../common/DatePickerSingle';
+import { todayISO } from '../common/DatePickerRange';
 
 /* ------------------------------------------------------------------ */
 /*  Design system — Soft Structuralism                                 */
@@ -150,6 +152,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   );
   const [deliveryDate, setDeliveryDate] = useState(
     initialCase?.delivery_date || computeSlaDueDate(initialCase?.priority || appliedTemplate?.default_priority || 'normal')
+  );
+  /* Day the lab received the job — what the slip prints. Optional and
+     pre-filled with today: a job normally arrives today, and an operator
+     registering a backlog case can back-date it. Never blocks the save. */
+  const [receivedDate, setReceivedDate] = useState(
+    initialCase?.received_date || todayISO()
   );
   const [priorityFeedback, setPriorityFeedback] = useState<string | null>(null);
   const [previewModalAttachment, setPreviewModalAttachment] = useState<{
@@ -481,6 +489,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           material: material.trim(),
           department: department || null,
           delivery_date: deliveryDate,
+          received_date: receivedDate || null,
           priority,
           price,
           discount,
@@ -505,6 +514,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         material: material.trim(),
         department: department || null,
         delivery_date: deliveryDate,
+        received_date: receivedDate || null,
         priority,
         price,
         discount,
@@ -918,6 +928,18 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="mt-5">
+              <FieldLabel>Received Date</FieldLabel>
+              <DatePickerSingle
+                label="Received Date"
+                value={receivedDate}
+                onChange={setReceivedDate}
+              />
+              <p className="mt-1 text-[11px] font-medium text-slate-400">
+                The day this job reached the lab. Printed on the case slip.
+              </p>
             </div>
 
             <div className="mt-5">

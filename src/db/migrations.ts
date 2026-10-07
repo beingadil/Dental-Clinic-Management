@@ -1039,6 +1039,21 @@ export const MIGRATION_018_DOC_SEQUENCES: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 019 — case received date
+// A job slip has to record the day the case came INTO the lab, which is not
+// `delivery_date`: that column is the FUTURE promised date, is NOT NULL, and
+// drives overdue flags, SLA reminders, queue buckets and sorting. So the day
+// the lab actually received the job gets its own nullable column — NULL for
+// every pre-019 row, so no migration has to guess a date that was never stored.
+export const MIGRATION_019_CASE_RECEIVED_DATE: Migration = {
+  version: 19,
+  name: 'case_received_date',
+  statements: [
+    `ALTER TABLE cases ADD COLUMN received_date TEXT`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '19')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1058,6 +1073,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_016_PAYMENT_ATTACHMENT_OWNER,
   MIGRATION_017_DROP_UNUSED_INDEXES,
   MIGRATION_018_DOC_SEQUENCES,
+  MIGRATION_019_CASE_RECEIVED_DATE,
 ];
 
 /**

@@ -25,7 +25,7 @@ describe('migration 014 — user_preferences', () => {
     expect(fk[0].table).toBe('users');
     expect(fk[0].on_delete).toBe('CASCADE');
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('18');
+    expect(row?.value).toBe('19');
   });
 
   const seedUser = (id: string) =>

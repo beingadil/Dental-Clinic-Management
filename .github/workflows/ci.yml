@@ -91,7 +91,13 @@ jobs:
         run: |
           $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
           $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $($exe.Name)" | Out-File -Encoding ascii SHA256SUMS.txt
+          # NSIS names the file after productName ("Dental Solutions_...exe"),
+          # but GitHub normalises spaces to dots when it stores a release
+          # asset, so the download really exists as "Dental.Solutions_...exe".
+          # Record the name as it will actually exist in the release, otherwise
+          # SHA256SUMS.txt names a file that cannot be downloaded.
+          $assetName = $exe.Name -replace ' ', '.'
+          "$hash  $assetName" | Out-File -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
 
       # Uses the official preinstalled gh CLI (softprops/action-gh-release has
