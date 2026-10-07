@@ -74,7 +74,13 @@ describe('Tauri window permission contract', () => {
   it('finds the window call sites the app actually makes', () => {
     // Guards the scanner itself: if this ever finds nothing, the regex or the
     // source layout changed and the assertions below would pass vacuously.
-    expect(calls.length).toBeGreaterThanOrEqual(5);
+    //
+    // Four call sites: minimize / toggleMaximize / close in WindowControls,
+    // plus the flush-then-destroy in persistence.ts. This used to be five —
+    // the old UpdateStatusPill had its own destroy() for "restart now", which
+    // the v2.17 updater replaced with the native `update_apply` command (it
+    // must exit via Rust so the detached installer waiter gets our PID).
+    expect(calls.length).toBeGreaterThanOrEqual(4);
     const methods = new Set(calls.map((c) => c.method));
     // The close path has two halves: the button and the flush-then-destroy.
     expect(methods).toContain('close');

@@ -6,6 +6,41 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.17.0]
+
+### Changed
+- **The installer banner is gone and the app updates itself.** The old
+  "a newer installer is available" banner only opened a download in the system
+  browser, and the native `update_install` command did the opposite of what it
+  looked like: it launched the NSIS installer *and* called `app.exit(0)` in the
+  same invocation, so the app closed mid-session with no prompt and no chance to
+  decline. `update_install` now **only stages** — stream, verify SHA-256 while
+  streaming, back up the database, write a stage receipt — and never executes
+  or exits.
+- **After an update the app asks before it restarts.** A new `update_apply`
+  command is the only path that closes the app, and only the **Restart & Apply
+  Updates** button calls it. It flushes SQLite first (awaited, not
+  fire-and-forget), re-hashes the staged installer against the receipt checksum
+  and fails closed, then hands off to a detached waiter that runs the silent
+  install and relaunches from the registered install location. *Not now* calls
+  the new `update_discard`, which deletes both the staged file and the receipt.
+- **New auto-installer panel** (`AutoUpdatePanel`) — the app's only update
+  surface, in two layouts sharing one phase machine: a floating
+  bottom-centre card during download, and the full view in Settings →
+  Software Updates with a five-step checklist (check / download / verify /
+  backup / ready), the last-check state, the stage receipt and the history log.
+  Progress events carry a `stage` field, so verification and backup are visible
+  instead of an opaque spinner. The panel is silent when there is nothing to say.
+- **The stage receipt is now reconciled three ways at boot.** Settled → record
+  "Updated to vX" once per version; pending with the installer still on disk →
+  offer the restart without re-downloading; pending with the file gone →
+  report the update as *interrupted* rather than asking the user to close the
+  app for an installer that no longer exists.
+
+### Removed
+- `UpdateBanner` and `UpdateStatusPill` — the browser hand-off and the
+  duplicate update surface.
+
 ### Fixed
 - **The desktop window can be closed again.** Every window mutation the UI
   makes was denied at runtime: `core:window:default` grants read-only access

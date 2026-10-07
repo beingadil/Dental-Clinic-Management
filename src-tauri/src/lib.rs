@@ -424,18 +424,60 @@ struct UpdateProgress {
     version: String,
     received: u64,
     total: u64,
+    /// Coarse lifecycle step: `downloading` | `verifying` | `backup` | `ready`.
+    /// The webview installer UI renders this as a step list, so the user can see
+    /// what the updater is doing instead of an opaque spinner.
+    stage: String,
 }
 
-/// Downloads and installs an update entirely on the native side:
+/// Emits one `update://progress` event. Failures are non-fatal by design — the
+/// event is cosmetic UI, the update itself must not fail because of it.
+fn emit_progress(app: &AppHandle, version: &str, received: u64, total: u64, stage: &str) {
+    let _ = app.emit(
+        "update://progress",
+        UpdateProgress {
+            version: version.to_string(),
+            received,
+            total,
+            stage: stage.to_string(),
+        },
+    );
+}
+
+/// Reads and validates the stage receipt written by `update_install`.
+fn read_stage_receipt() -> serde_json::Value {
+    let dir = std::env::temp_dir().join("dental-solutions-update");
+    fs::read_to_string(dir.join("stage-receipt.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .filter(|r: &serde_json::Value| {
+            r.get("magic").and_then(|m| m.as_str()) == Some(STAGE_RECEIPT_MAGIC)
+        })
+        .unwrap_or(serde_json::Value::Null)
+}
+
+/// SHA-256 of an already-staged installer file, hex-encoded.
+fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// Stages an update on the native side — it does NOT install and does NOT exit:
 ///
 /// 1. streams the installer from a trusted GitHub release host to a temp file,
 ///    emitting `update://progress` events (the release-asset CDN sends no CORS
 ///    headers, so this must NOT run in the webview; it also keeps multi-MB
 ///    payloads out of it),
-/// 2. verifies SHA-256 while streaming — fail closed, nothing executes on a
+/// 2. verifies SHA-256 while streaming — fail closed, nothing is kept on a
 ///    missing or mismatched checksum,
 /// 3. takes a safety backup of the live database,
-/// 4. launches the NSIS installer silently and exits so it can replace files.
+/// 4. writes the stage receipt and returns the staged installer details.
+///
+/// Applying the update is a separate, explicit step (`update_apply`) so the app
+/// only closes when the user asked for it — the updater must never decide to
+/// quit a clinic's running application on its own.
 #[tauri::command]
 async fn update_install(
     app: AppHandle,
@@ -443,7 +485,7 @@ async fn update_install(
     version: String,
     download_url: Option<String>,
     expected_checksum: Option<String>,
-) -> Result<bool, String> {
+) -> Result<serde_json::Value, String> {
     // The version lands in the staged filename — never allow path characters.
     let version_ok = version.len() <= 32
         && version
@@ -483,7 +525,7 @@ async fn update_install(
     let mut hasher = Sha256::new();
     let mut received: u64 = 0;
     let mut last_emit = std::time::Instant::now();
-    let _ = app.emit("update://progress", UpdateProgress { version: version.clone(), received, total });
+    emit_progress(&app, &version, received, total, "downloading");
     while let Some(chunk) = res
         .chunk()
         .await
@@ -496,16 +538,15 @@ async fn update_install(
         // Throttle IPC traffic — the pill only needs a few updates per second.
         if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
             last_emit = std::time::Instant::now();
-            let _ = app.emit(
-                "update://progress",
-                UpdateProgress { version: version.clone(), received, total },
-            );
+            emit_progress(&app, &version, received, total, "downloading");
         }
     }
     file.sync_all().map_err(|e| e.to_string())?;
     drop(file);
 
-    // Verify BEFORE executing anything.
+    emit_progress(&app, &version, received, total, "verifying");
+
+    // Verify BEFORE keeping anything on disk.
     if received == 0 {
         let _ = fs::remove_file(&staged);
         return Err("Downloaded installer is empty — update aborted.".into());
@@ -525,8 +566,9 @@ async fn update_install(
         return Err("Database not loaded — refusing to update now; try again after the app has saved its data.".into());
     }
 
-    // Take a safety backup of the live database before the installer runs,
+// Take a safety backup of the live database before the installer runs,
     // so a failed NSIS run can never take clinic data with it.
+    emit_progress(&app, &version, received, total, "backup");
     let db_path = state.path.lock().unwrap().clone().unwrap();
     let backup = db_path.with_extension(format!(
         "sqlite.pre-update-{}-{}.bak",
@@ -540,27 +582,46 @@ async fn update_install(
     let _ = fs::write(
         dir.join("last-update.log"),
         format!(
-            "{}: verified {} ({} bytes) — installing\n",
+            "{}: verified {} ({} bytes) — staged, waiting for restart approval\n",
             version,
             &actual[..12],
             received
         ),
     );
 
-    // Launch the silent NSIS install via a detached waiter script. NSIS
-    // cannot replace the files of a running app, so the ordering matters:
-    // the waiter waits for THIS process to exit, then runs the installer
-    // (no file locks), waits for it to finish, and relaunches the app from
-    // its install location on the new version. CREATE_NEW_PROCESS_GROUP
-    // detaches the waiter from our console/job so it outlives our exit;
-    // CREATE_NO_WINDOW keeps it invisible.
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("cannot resolve app executable for relaunch: {e}"))?;
-    // Relaunch the INSTALLED exe, not necessarily the one that is running:
-    // when the updater is triggered from a dev build or a portable copy,
-    // current_exe points outside the install dir and the freshly installed
-    // files would never be launched. The NSIS uninstall registry
-    // (HKCU, per-user install) holds the authoritative InstallLocation.
+    let relaunch_target = installed_relaunch_target(&current_exe);
+
+    // Machine-readable stage receipt — it is the boot-time source of truth for
+    // "did the staged install land?" and the input `update_apply` reads to find
+    // the staged installer. A silent write failure here is what produced the
+    // false 'Install awaiting completion' banner (verified on this machine:
+    // last-update.log exists, the receipt does not). Surface failures.
+    let receipt = build_stage_receipt(
+        &version,
+        &format!("sha256:{actual}"),
+        received,
+        &staged.display().to_string(),
+        &relaunch_target.display().to_string(),
+        env!("CARGO_PKG_VERSION"),
+    );
+    let receipt_path = dir.join("stage-receipt.json");
+    if let Err(e) = fs::write(&receipt_path, serde_json::to_string_pretty(&receipt).unwrap_or_default()) {
+        eprintln!("[updater] FAILED to write stage receipt {:?}: {}", receipt_path, e);
+    }
+
+    emit_progress(&app, &version, received, total, "ready");
+    Ok(receipt)
+}
+
+/// Relaunch the INSTALLED exe, not necessarily the one that is running: when
+/// the updater is triggered from a dev build or a portable copy, `current_exe`
+/// points outside the install dir and the freshly installed files would never
+/// be launched. The NSIS uninstall registry (HKCU, per-user install) holds the
+/// authoritative InstallLocation.
+#[cfg(windows)]
+fn installed_relaunch_target(current_exe: &std::path::Path) -> PathBuf {
     let reg = RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Dental Solutions")
         .ok()
@@ -569,10 +630,26 @@ async fn update_install(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "dental-solutions.exe".into());
-    let relaunch_target = reg
-        .map(|dir| PathBuf::from(dir).join(&exe_name))
+    reg.map(|dir| PathBuf::from(dir).join(&exe_name))
         .filter(|p| p.exists())
-        .unwrap_or(current_exe);
+        .unwrap_or_else(|| current_exe.to_path_buf())
+}
+
+#[cfg(not(windows))]
+fn installed_relaunch_target(current_exe: &std::path::Path) -> PathBuf {
+    current_exe.to_path_buf()
+}
+
+/// Spawns a detached waiter that runs the silent NSIS installer AFTER this
+/// process exits, then relaunches the app on the new version.
+///
+/// NSIS cannot replace the files of a running app, so the ordering matters:
+/// the waiter waits for THIS process to exit, then runs the installer (no file
+/// locks), waits for it to finish, and starts the app again.
+/// CREATE_NEW_PROCESS_GROUP detaches the waiter from our console/job so it
+/// outlives our exit; CREATE_NO_WINDOW keeps it invisible.
+#[cfg(windows)]
+fn spawn_install_waiter(staged: &std::path::Path, relaunch_target: &std::path::Path) -> Result<(), String> {
     let script = format!(
         "Wait-Process -Id {} -ErrorAction SilentlyContinue; $p = Start-Process -FilePath '{}' -ArgumentList '/S' -PassThru -WindowStyle Hidden; Wait-Process -Id $p.Id; Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}'",
         std::process::id(),
@@ -586,37 +663,81 @@ async fn update_install(
         .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
         .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
-        .map_err(|e| format!("Could not start the installer: {e}"))?;
+        .map(|_| ())
+        .map_err(|e| format!("Could not start the installer: {e}"))
+}
 
-    // Machine-readable stage receipt — the frontend reads this on next boot
-    // to record "Updated to vX" in history even when app.exit(0) races the
-    // IPC reply (the reply is not guaranteed to reach the webview).
-    let receipt = build_stage_receipt(
-        &version,
-        &format!("sha256:{actual}"),
-        received,
-        &staged.display().to_string(),
-        &relaunch_target.display().to_string(),
-        env!("CARGO_PKG_VERSION"),
-    );
-    // The receipt is the boot-time source of truth for "did the staged
-    // install land?" — a silent write failure here is what produced the
-    // false 'Install awaiting completion' banner (verified on this machine:
-    // last-update.log exists, the receipt does not). Surface failures.
-    let receipt_path = dir.join("stage-receipt.json");
-    if let Err(e) = fs::write(&receipt_path, serde_json::to_string_pretty(&receipt).unwrap_or_default()) {
-        eprintln!("[updater] FAILED to write stage receipt {:?}: {}", receipt_path, e);
+#[cfg(not(windows))]
+fn spawn_install_waiter(
+    _staged: &std::path::Path,
+    _relaunch_target: &std::path::Path,
+) -> Result<(), String> {
+    Err("Silent auto-install is only implemented on Windows.".into())
+}
+
+/// Applies a staged update and closes the app — the ONLY path that exits.
+///
+/// Called exclusively from the user's "Restart & Apply Updates" action: the
+/// updater must never decide by itself to close a clinic's running app. The
+/// staged file is re-hashed first — it was verified at download time, but it
+/// has been sitting on disk unattended ever since and must be proven intact
+/// immediately before an installer is executed with it.
+#[tauri::command]
+fn update_apply(app: AppHandle) -> Result<bool, String> {
+    let receipt = read_stage_receipt();
+    let staged_path = receipt
+        .get("staged_path")
+        .and_then(|p| p.as_str())
+        .ok_or_else(|| "No staged update found — check for updates again.".to_string())?;
+    let staged = PathBuf::from(staged_path);
+    if !staged.is_file() {
+        return Err("The staged installer is no longer on disk — check for updates again.".into());
     }
+    let expected = receipt
+        .get("checksum")
+        .and_then(|c| c.as_str())
+        .unwrap_or_default()
+        .trim_start_matches("sha256:")
+        .to_ascii_lowercase();
+    let actual =
+        hash_file(&staged).map_err(|e| format!("Could not re-verify the staged update: {e}"))?;
+    if expected.is_empty() || actual != expected {
+        return Err(
+            "The staged installer no longer matches its verified checksum — update aborted, nothing was installed."
+                .into(),
+        );
+    }
+    let relaunch_target = receipt
+        .get("relaunch_target")
+        .and_then(|p| p.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_exe().unwrap_or_else(|_| PathBuf::from("dental-solutions.exe"))
+        });
+    spawn_install_waiter(&staged, &relaunch_target)?;
 
-    // Let the invoke response (Ok) reach the webview first so it can record
-    // the install, then exit. A hard app.exit(0) here raced the IPC reply and
-    // left the pill stuck on "installing" with the app never closing.
-    // 1.5 s comfortably covers a local reply + the debounced DB flush; the
-    // waiter script tolerates any delay anyway (it waits for our PID).
+    // Let the invoke response (Ok) reach the webview first, then exit. A hard
+    // app.exit(0) raced the IPC reply on the download path and left the UI
+    // stuck mid-update. 1.5 s covers a local reply + the debounced DB flush;
+    // the waiter script tolerates any delay anyway (it waits for our PID).
     std::thread::sleep(std::time::Duration::from_millis(1500));
     app.exit(0);
     // Unreachable in practice — exit(0) tears down the runtime before the
     // response resolves.
+    Ok(true)
+}
+
+/// Deletes a staged (downloaded, verified, not yet applied) update. Backs the
+/// "Not now" action on the installer panel — declining an update must not leave
+/// a multi-MB installer on disk or a receipt that nags on every boot.
+#[tauri::command]
+fn update_discard() -> Result<bool, String> {
+    let dir = std::env::temp_dir().join("dental-solutions-update");
+    let receipt = read_stage_receipt();
+    if let Some(staged) = receipt.get("staged_path").and_then(|p| p.as_str()) {
+        let _ = fs::remove_file(staged);
+    }
+    let _ = fs::remove_file(dir.join("stage-receipt.json"));
     Ok(true)
 }
 
@@ -656,13 +777,7 @@ fn build_stage_receipt(
 /// staged receipt.
 #[tauri::command]
 fn update_diagnostics() -> Result<serde_json::Value, String> {
-    let dir = std::env::temp_dir().join("dental-solutions-update");
-    let receipt_path = dir.join("stage-receipt.json");
-    let receipt: serde_json::Value = fs::read_to_string(&receipt_path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .filter(|r: &serde_json::Value| r.get("magic").and_then(|m| m.as_str()) == Some(STAGE_RECEIPT_MAGIC))
-        .unwrap_or(serde_json::Value::Null);
+    let receipt: serde_json::Value = read_stage_receipt();
 
     let running_version = env!("CARGO_PKG_VERSION").to_string();
 
@@ -712,6 +827,8 @@ pub fn run() {
             file_sha256,
             open_external,
             update_install,
+            update_apply,
+            update_discard,
             update_diagnostics,
             pdf_save::save_webview_as_pdf,
             file_export::save_file_bytes

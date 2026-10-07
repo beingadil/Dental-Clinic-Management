@@ -18,7 +18,7 @@ Local application API (typed repositories, src/db/repos.ts)
         │       advances · adjustments · journal · ledger · audit
         │
         └── Services
-                backupService (.dentalbackup) · updateService (online/offline)
+                backupService (.dentalbackup) · updateService + updateInstaller
                 attachmentService · prioritySla · financeDomain
 ```
 
@@ -80,11 +80,33 @@ App icon: `public/icon.svg` → PNG set + `icon.ico`/`icon.icns` via
 
 ## Updates
 
-- **Online:** Settings → *Check for Updates* reads a version manifest
-  (`update-manifest.json`, GitHub Releases compatible) and reports newer versions.
-- **Offline:** *Import Offline Update (.dentalupdate)* validates the package
-  checksum before any install step — a fully offline machine can always be
-  updated from a trusted file.
+The desktop app updates itself. There is no installer banner and nothing is
+handed to the browser.
+
+**Automatic, every session (desktop build):**
+
+1. **Check** — reads the published manifest
+   (`update-manifest.json`, GitHub Releases compatible) once per launch.
+2. **Download** — the installer is streamed natively to a temp file with live
+   progress. (It cannot run in the webview: the release CDN sends no CORS
+   headers, which is why the old download silently died.)
+3. **Verify** — SHA-256 is computed *while streaming*; a missing or mismatched
+   checksum aborts with nothing kept.
+4. **Back up** — a `.pre-update-<timestamp>.bak` copy of the live database is
+   taken before anything is installed.
+5. **Ask** — the installer panel shows progress live, then stops and asks for
+   **Restart & Apply Updates** (or *Not now*, which deletes the staged file).
+
+Only the click closes the app. The staged installer is re-hashed at that
+moment — it has been on disk unattended — then a detached process runs the
+silent NSIS install and reopens the app on the new version.
+
+**Settings → Software Updates** shows the same panel inline with the
+five-step checklist, the last-check state, the stage receipt, and the update
+history log.
+
+The **web build cannot install anything** — it says so and opens the download
+page instead. Per-user install; no administrator rights required.
 
 ## Offline operation
 

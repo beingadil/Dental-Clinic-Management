@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
-import { UpdateBanner } from './components/common/UpdateBanner';
+import { AutoUpdatePanel } from './components/common/AutoUpdatePanel';
 import { SyncStatusBanner } from './components/common/SyncStatusBanner';
 import { SaveFailureBanner } from './components/common/SaveFailureBanner';
 import { Sidebar } from './components/common/Sidebar';
@@ -64,9 +64,6 @@ const MainAppContent: React.FC = () => {
 
       {/* Main Column: Top Header + View Content */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* In-app auto-update banner (checks GitHub releases, silent offline) */}
-        <UpdateBanner />
-
         {/* Shown whenever the last SQLite collection sync failed — never silent */}
         <SyncStatusBanner />
 
@@ -122,6 +119,11 @@ const MainAppContent: React.FC = () => {
           />
         </ErrorBoundary>
       )}
+
+      {/* Auto-installer: downloads and verifies updates on its own, then asks
+          for a restart before the app is ever closed. The old "a newer
+          installer is available" banner is gone — it could never update. */}
+      <AutoUpdatePanel />
 
       {/* Global In-App Toast & Confirmation Modal */}
       <GlobalToast />

@@ -315,15 +315,84 @@ Importing it reported `Imported 4 rows from the SQL dump (schema v18). Reloading
 
 ---
 
+## 4c. Follow-up round: the auto-updater (v2.17)
+
+The complaint was *"only the latest-installer banner shows, it does not update
+itself."* Both halves were true, and the cause was in the Rust command, not the
+UI.
+
+### What was actually broken
+
+`update_install` spawned the NSIS installer **and** called `app.exit(0)` in the
+same invocation. The app therefore closed mid-session with no prompt, no
+progress and no chance to decline; and the frontend banner could not ask
+anything, because the process it was supposed to talk to was already exiting.
+The visible banner ("Download Installer") was a *browser* hand-off — it was
+never connected to the native installer path at all.
+
+### The split that replaces it
+
+`update_install` now **only stages**: stream → verify SHA-256 while streaming →
+back up the database → write the stage receipt → return. It never executes and
+never exits. A second command, `update_apply`, is the only path that closes the
+app, and only the "Restart & Apply Updates" button calls it.
+
+| Phase | Owner | What the user sees |
+|---|---|---|
+| `checking` | webview | nothing (silent) |
+| `available` | webview | nothing — the download starts by itself |
+| `downloading` | Rust → `update://progress` | progress bar + byte counts |
+| `verifying` / `backing_up` | Rust → `update://progress` (`stage` field) | checklist steps ticking over |
+| `ready_to_apply` | webview | **Restart &amp; Apply Updates** / *Not now* |
+| `applying` | Rust (`app.exit(0)`) | "the installer finishes in the background" |
+
+The `stage` field on the progress event is what turned an opaque spinner into a
+readable five-step pipeline — the Settings variant renders it as a checklist
+([AutoUpdatePanel.tsx](src/components/common/AutoUpdatePanel.tsx)).
+
+### Why the exit is the last step, not the first
+
+`app.exit(0)` races the debounced SQLite flush (400 ms). Exiting inside the
+download path is what previously lost the newest clinic data and raced the IPC
+reply. `update_apply` therefore flushes first (`flushNow()` is awaited, not
+fire-and-forget), re-hashes the staged file against the receipt checksum —
+fail-closed, because the file has been sitting on disk unattended — spawns a
+detached waiter, and only then exits after 1.5 s. The waiter waits for *our PID*,
+runs `/S`, waits, and relaunches from the **installed** location (resolved from
+the NSIS `HKCU\...\Uninstall\Dental Solutions\InstallLocation` key, not
+`current_exe`, so a dev or portable build relaunches the real installed app).
+
+### The receipt now has three meanings
+
+Because staging no longer implies applying, the boot-time reconciliation of
+[updateInstaller.ts](src/services/updateInstaller.ts) reads the receipt three
+ways, and this is where the old behaviour was actively wrong:
+
+- `settled` → record "Updated to vX" **once per version** (a naive re-record
+  duplicated the history entry on every boot).
+- `pending` + the staged file present → offer the restart, without
+  re-downloading. `pending` + the file gone → report it as *interrupted*, not as
+  ready; asking a clinic to close the app for an installer that no longer exists
+  is worse than saying nothing.
+- Declining ("Not now") calls `update_discard`, which deletes both the staged
+  file and the receipt so the prompt does not return on every launch.
+
+### Proof
+
+- [tests/services/updateInstaller.test.ts](tests/services/updateInstaller.test.ts) — 11 tests: `isAutoUpdateBusy` across every phase (notably `ready_to_apply` is **not** busy — it is waiting on a person), listener fan-out, and the three-way receipt reconciliation including the once-per-version install record.
+- [tests/components/autoUpdatePanel.test.tsx](tests/components/autoUpdatePanel.test.tsx) — 8 tests: the floating panel renders nothing when there is no update, never shows a "download installer" banner, shows the restart prompt once staged, and `Restart & Apply Updates` really invokes `update_apply`; *Not now* invokes `update_discard`.
+- `cd src-tauri && cargo test --lib` — 7 passed, including the stage-receipt shape and the magic filter.
+- [tests/lib/tauriWindowPermissions.test.ts](tests/lib/tauriWindowPermissions.test.ts) — the ACL scanner's self-guard dropped from 5 window call sites to 4, because the deleted `UpdateStatusPill` owned a `destroy()` that the native `update_apply` now replaces.
+
+---
+
 ## 5. Gate status (all green, re-run on the final tree)
 
 | Gate | Result |
 |---|---|
 | `npx tsc --noEmit` | ✅ 0 errors |
-| `npx vitest run` | ✅ **58 files / 510 tests passed** |
+| `npx vitest run` | ✅ **60 files / 529 tests passed** |
 | `npm run build` | ✅ built |
 | `node scripts/verify-binaries.mjs` | ✅ 10 binaries match |
-| `node scripts/version-guard.mjs` | ✅ live 2.15.2 |
+| `node scripts/version-guard.mjs` | ✅ live 2.16.0 |
 | `cd src-tauri && cargo test --lib` | ✅ 7 passed |
-
-**Not done:** nothing is committed or pushed — the working tree holds these changes for review. The tagged `v2.15.2` CI release remains held by your earlier decision.

@@ -1,25 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { currentVersion } from '../../services/updateService';
 import {
-  runAutoUpdate,
-  onAutoUpdatePhase,
-  getAutoUpdatePhase,
   getLastUpdateCheck,
-  reconcileInstallReceipt,
-  UpdateDiagnostics,
+  onAutoUpdatePhase,
   AutoUpdatePhase,
+  readUpdateDiagnostics,
+  UpdateDiagnostics,
 } from '../../services/updateInstaller';
 import { getUpdateHistory, UpdateHistoryEntry } from '../../services/updateHistory';
-import { ArrowUpCircle, Loader2, RefreshCw, TriangleAlert, CheckCircle2 } from 'lucide-react';
+import { AutoUpdatePanel } from '../common/AutoUpdatePanel';
+import { ArrowUpCircle, CheckCircle2, TriangleAlert } from 'lucide-react';
 
+/**
+ * Settings → Software Updates.
+ *
+ * The tab renders the SAME installer UI as the floating panel (one phase
+ * machine, two layouts) plus the audit trail: what the updater did, when, and
+ * whether an earlier staged install ever landed.
+ */
 export const UpdatesTab: React.FC = () => {
-  const [autoPhase, setAutoPhase] = useState<AutoUpdatePhase>(() => getAutoUpdatePhase());
-  useEffect(() => onAutoUpdatePhase(setAutoPhase), []);
+  const [phase, setPhase] = useState<AutoUpdatePhase>({ state: 'idle' });
+  useEffect(() => onAutoUpdatePhase(setPhase), []);
   const [updateHistory, setUpdateHistory] = useState<UpdateHistoryEntry[]>(() => getUpdateHistory());
-  useEffect(() => { setUpdateHistory(getUpdateHistory()); }, [autoPhase]);
-  // Boot-time update-chain diagnosis: receipt of the last staged install.
+  useEffect(() => { setUpdateHistory(getUpdateHistory()); }, [phase]);
   const [diag, setDiag] = useState<UpdateDiagnostics | null>(null);
-  useEffect(() => { void reconcileInstallReceipt().then(setDiag); }, []);
+  useEffect(() => { void readUpdateDiagnostics().then(setDiag); }, [phase]);
+  const lastCheck = getLastUpdateCheck();
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
@@ -30,7 +36,11 @@ export const UpdatesTab: React.FC = () => {
           </div>
           <div>
             <h2 className="text-base font-bold text-slate-900">Software Updates</h2>
-            <p className="text-xs text-slate-500">The app checks automatically on start. Updates are checksum-verified before anything is installed; offline machines use the Import Offline Update package below.</p>
+            <p className="text-xs text-slate-500">
+              Dental Solutions downloads and verifies updates on its own, then asks before
+              restarting. Nothing is installed until the SHA-256 matches the published
+              checksum, and your database is backed up first.
+            </p>
           </div>
         </div>
         <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
@@ -38,97 +48,61 @@ export const UpdatesTab: React.FC = () => {
         </span>
       </div>
 
-      {autoPhase.state === 'available' && (
-        <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between gap-3">
-          <span className="font-bold">Dental Solutions v{autoPhase.version} is available</span>
-          <button
-            onClick={() => runAutoUpdate()}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1.5 shrink-0"
-          >
-            <ArrowUpCircle className="w-3.5 h-3.5" /> Update Now
-            </button>
-        </div>
-      )}
-      {(autoPhase.state === 'downloading' || autoPhase.state === 'verifying' || autoPhase.state === 'installing') && (
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-          <span className="font-bold">
-            {autoPhase.state === 'downloading'
-              ? `Downloading v${autoPhase.version}${autoPhase.total > 0 ? ` — ${Math.round((autoPhase.received / autoPhase.total) * 100)}%` : '…'}`
-              : autoPhase.state === 'verifying'
-              ? `Verifying v${autoPhase.version}…`
-              : `Installing v${autoPhase.version} — the app will restart automatically`}
-          </span>
-        </div>
-      )}
-      {autoPhase.state === 'failed' && (
-        <p className="text-xs text-slate-500">{autoPhase.message}</p>
-      )}
+      {/* The installer itself — identical to the floating panel, no second copy
+          of the update logic to drift out of sync. */}
+      <AutoUpdatePanel variant="inline" />
 
-      {/* Stuck-install diagnosis — the receipt tells the truth about what the
-          updater staged vs what is actually running. */}
-      {diag && diag.receipt_status === 'pending' && diag.receipt && diag.staged_installer_present && (
-        <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2">
-          <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-          <div>
-            <p className="font-bold">Install awaiting completion</p>
-            <p className="text-[11px] text-amber-800 mt-0.5">
-              An installer for v{diag.receipt.version} was staged
-              {diag.receipt.staged_at ? ` at ${diag.receipt.staged_at}` : ''} and verified
-              ({diag.receipt.checksum?.slice(0, 19)}…), but this app is still running
-              v{diag.running_version}. Close the app — the staged installer finishes on exit and relaunches the new version automatically. If the banner persists after relaunch, run the installer manually from the Releases page.
-            </p>
-          </div>
+      {/* What the last staged install actually did — the receipt is the truth. */}
+      {diag && diag.receipt_status === 'settled' && diag.receipt && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+          <p className="text-[11px] text-emerald-800">
+            Last update verified: v{diag.receipt.version} staged {diag.receipt.staged_at || ''} and now
+            running (checksum matched).
+          </p>
         </div>
       )}
       {diag && diag.receipt_status === 'pending' && diag.receipt && !diag.staged_installer_present && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2">
           <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
           <div>
-            <p className="font-bold">Update was interrupted</p>
+            <p className="font-bold">An earlier update was interrupted</p>
             <p className="text-[11px] text-rose-800 mt-0.5">
-              v{diag.receipt.version} was downloaded and verified, but its installer is no longer on disk —
-              closing this app will NOT complete the update. Download it again from the Releases page
-              (or press Check &amp; Install Now) and run the installer manually if needed.
+              v{diag.receipt.version} was downloaded and verified, but its installer is no longer on
+              disk — restarting will NOT complete it. Use “Check for updates” above to download it again.
             </p>
           </div>
         </div>
       )}
-      {diag && diag.receipt_status === 'settled' && diag.receipt && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
-          <p className="text-[11px] text-emerald-800">
-            Last update verified: v{diag.receipt.version} staged {diag.receipt.staged_at || ''} and now running (checksum matched).
-          </p>
-        </div>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
           <p className="text-xs font-bold text-slate-800">Automatic checking</p>
-          <p className="text-[11px] text-slate-600">Runs when the dashboard loads and hourly afterwards. Silent when up to date; nothing is installed without verification against the published SHA-256.</p>
+          <p className="text-[11px] text-slate-600">
+            Runs once when the app starts, then hourly. Silent when you are up to date.
+          </p>
         </div>
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-          <p className="text-xs font-bold text-slate-800">Silent install</p>
-          <p className="text-[11px] text-slate-600">Installs per-user — no administrator rights needed. The installer is checksum-verified, the database is backed up first, and the app restarts itself on the new version.</p>
+          <p className="text-xs font-bold text-slate-800">Verified before it touches disk</p>
+          <p className="text-[11px] text-slate-600">
+            The installer is SHA-256 checked while it streams and re-checked at the moment it runs.
+            A mismatch aborts with nothing installed.
+          </p>
+        </div>
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+          <p className="text-xs font-bold text-slate-800">You decide when to restart</p>
+          <p className="text-[11px] text-slate-600">
+            The update is staged in the background; the app only closes when you press
+            “Restart &amp; Apply Updates”. Installs per-user — no administrator rights.
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-2">
-        <button
-          onClick={() => runAutoUpdate()}
-          disabled={autoPhase.state === 'checking' || autoPhase.state === 'downloading' || autoPhase.state === 'verifying' || autoPhase.state === 'installing'}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${autoPhase.state === 'checking' ? 'animate-spin' : ''}`} />
-          Check &amp; Install Now
-        </button>
-        {getLastUpdateCheck() && (
-          <span className="text-[11px] text-slate-500 self-center">
-            Last check: {new Date(getLastUpdateCheck()!.at).toLocaleString()} — {getLastUpdateCheck()!.state}
-          </span>
-        )}
-      </div>
+      {lastCheck && (
+        <p className="text-[11px] text-slate-500">
+          Last check: {new Date(lastCheck.at).toLocaleString()} — {lastCheck.state}
+        </p>
+      )}
 
       {updateHistory.length > 0 ? (
         <div className="pt-3 border-t border-slate-100">
@@ -141,15 +115,15 @@ export const UpdatesTab: React.FC = () => {
                     h.state === 'installed'
                       ? 'bg-emerald-500'
                       : h.state === 'available'
-                      ? 'bg-indigo-500'
-                      : h.state === 'up_to_date'
-                      ? 'bg-slate-300'
-                      : 'bg-rose-500'
+                        ? 'bg-indigo-500'
+                        : h.state === 'up_to_date'
+                          ? 'bg-slate-300'
+                          : 'bg-rose-500'
                   }`}
                 />
                 <div className="min-w-0">
                   <p className="font-bold text-slate-700">
-                    {h.state === 'available' && `v${h.version} available`}
+                    {h.state === 'available' && `v${h.version} detected`}
                     {h.state === 'installed' && `Updated to v${h.version}`}
                     {h.state === 'failed' && `Update failed${h.version !== currentVersion() ? ` (v${h.version})` : ''}`}
                     {h.state === 'up_to_date' && 'Checked — up to date'}
@@ -168,4 +142,4 @@ export const UpdatesTab: React.FC = () => {
       )}
     </div>
   );
-};
+};
