@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatTeeth,
+  formatReceivedDate,
+  formatDeliveryDate,
   caseDetailLines,
   caseDetailText,
   findCaseForEntry,
@@ -55,42 +57,83 @@ describe('ledgerCaseDetail', () => {
     });
   });
 
+  describe('formatReceivedDate', () => {
+    it("formats the operator's received date", () => {
+      expect(formatReceivedDate(baseCase)).toBe('Sep 30, 2026');
+    });
+
+    it('falls back to the registration day when no received date was entered', () => {
+      expect(formatReceivedDate({ ...baseCase, received_date: null })).toBe(
+        'Sep 28, 2026',
+      );
+    });
+
+    it('is empty when the case carries no date at all, so the row drops', () => {
+      expect(
+        formatReceivedDate({ ...baseCase, received_date: null, created_at: '' }),
+      ).toBe('');
+    });
+  });
+
+  describe('formatDeliveryDate', () => {
+    it("formats the operator's promised day", () => {
+      expect(formatDeliveryDate(baseCase)).toBe('Oct 20, 2026');
+    });
+
+    it('is empty when the case was never promised a day', () => {
+      // An unpromised case stores '' (what CaseTemplateModal writes), and
+      // imported rows can carry padding — both must drop the row.
+      expect(formatDeliveryDate({ ...baseCase, delivery_date: '' })).toBe('');
+      expect(formatDeliveryDate({ ...baseCase, delivery_date: '   ' })).toBe('');
+    });
+
+    it('never falls back to the received date, which would relabel the promise', () => {
+      expect(
+        formatDeliveryDate({ ...baseCase, delivery_date: '', received_date: '2026-09-30' }),
+      ).toBe('');
+    });
+  });
+
   describe('caseDetailLines', () => {
-    it('includes every populated detail row in reading order', () => {
+    it('includes only the case identity rows, in reading order', () => {
       expect(caseDetailLines(baseCase).map((l) => l.label)).toEqual([
-        'Procedure',
-        'Doctor',
         'Patient',
+        'Procedure',
         'Teeth',
         'Shade',
-        'Material',
-        'Units',
-        'Received',
-        'Delivery',
+        'Received Date',
+        'Delivery Date',
       ]);
+    });
+
+    it('shows the received and promised days as separate rows', () => {
+      const lines = caseDetailLines(baseCase);
+      expect(lines.find((l) => l.label === 'Received Date')?.value).toBe('Sep 30, 2026');
+      expect(lines.find((l) => l.label === 'Delivery Date')?.value).toBe('Oct 20, 2026');
+    });
+
+    it('leaves doctor, material and units to the case record', () => {
+      const labels = caseDetailLines(baseCase).map((l) => l.label);
+      expect(labels).not.toContain('Doctor');
+      expect(labels).not.toContain('Material');
+      expect(labels).not.toContain('Units');
+      expect(labels).not.toContain('Status');
     });
 
     it('omits rows whose value is missing instead of printing a blank', () => {
       const lines = caseDetailLines({
         ...baseCase,
+        patient_name: '',
         case_type_name: '',
         case_type: '',
         shade: '',
-        material: '',
-        units_count: 0,
+        received_date: null,
+        delivery_date: '',
+        created_at: '',
       });
-      expect(lines.map((l) => l.label)).not.toContain('Procedure');
-      expect(lines.map((l) => l.label)).not.toContain('Shade');
-      expect(lines.map((l) => l.label)).not.toContain('Material');
-      expect(lines.map((l) => l.label)).not.toContain('Units');
-      // Doctor/patient/teeth/dates survive.
-      expect(lines.map((l) => l.label)).toEqual([
-        'Doctor',
-        'Patient',
-        'Teeth',
-        'Received',
-        'Delivery',
-      ]);
+      // Teeth always render (a dash when the case has none); the rest drop out.
+      expect(lines.map((l) => l.label)).toEqual(['Teeth']);
+      expect(lines.every((l) => !!l.value)).toBe(true);
     });
 
     it('falls back to case_type when case_type_name is empty', () => {
@@ -100,29 +143,24 @@ describe('ledgerCaseDetail', () => {
       expect(line?.value).toBe('Zirconia Crown');
     });
 
-    it('uses the stored received date rather than the delivery date', () => {
+    it('carries the patient name and shade straight off the case', () => {
       const lines = caseDetailLines(baseCase);
-      expect(lines.find((l) => l.label === 'Received')?.value).not.toBe(
-        lines.find((l) => l.label === 'Delivery')?.value,
-      );
-    });
-
-    it('falls back to the case creation day when received_date is empty', () => {
-      const line = caseDetailLines({ ...baseCase, received_date: null }).find(
-        (l) => l.label === 'Received',
-      );
-      // created_at is 2026-09-28 — the received row must reflect that day.
-      expect(line?.value).toBe('Sep 28, 2026');
+      expect(lines.find((l) => l.label === 'Patient')?.value).toBe('Ayesha Khan');
+      expect(lines.find((l) => l.label === 'Shade')?.value).toBe('A2');
     });
   });
 
   describe('caseDetailText', () => {
     it('renders one pipe-separated narration string', () => {
       const text = caseDetailText(baseCase);
+      expect(text).toContain('Patient: Ayesha Khan');
       expect(text).toContain('Procedure: Zirconia Crown');
-      expect(text).toContain('Doctor: Dr. Tariq Mahmood');
       expect(text).toContain('Teeth: #11, #12, #21');
-      expect(text).toContain('Units: 3');
+      expect(text).toContain('Shade: A2');
+      expect(text).toContain('Received Date: Sep 30, 2026');
+      expect(text).toContain('Delivery Date: Oct 20, 2026');
+      expect(text).not.toContain('Doctor:');
+      expect(text).not.toContain('Units:');
       expect(text.split(' • ').length).toBe(caseDetailLines(baseCase).length);
     });
   });

@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatPKR } from '../../services/financeDomain';
+import { formatPKR, roundMoney } from '../../services/financeDomain';
 import { downloadCSV } from '../../services/csvExport';
 import { X, Printer, Download, Calendar, Building2, FileText, CheckCircle2 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { Modal } from '../common/ui';
 import { getTodayStr } from '../../utils/dateUtils';
 import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
+import { isAdvanceAppliedPayment } from '../../services/monthlyStatement';
 
 interface ClinicStatementModalProps {
   isOpen: boolean;
@@ -19,7 +20,15 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   onClose,
   clinicId
 }) => {
-  const { labs, getLabFinancialSummary, getLedgerEntries, brandingSettings, cases } = useApp();
+  const {
+    labs,
+    getLabFinancialSummary,
+    getLedgerEntries,
+    brandingSettings,
+    cases,
+    invoices,
+    advancePayments,
+  } = useApp();
 
   const [dateRange, setDateRange] = useState<'all' | 'this_month' | 'last_month' | 'custom'>('all');
   const [startDate, setStartDate] = useState<string>('');
@@ -39,30 +48,43 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
     return getLedgerEntries(clinic.id);
   }, [clinic, getLedgerEntries]);
 
-  // Filter ledger by date range
-  const filteredLedger = useMemo(() => {
-    if (dateRange === 'all') return rawLedger;
+  /* The selected Period as an inclusive [start, end] window, or null for
+     "All Time". The end is pushed to 23:59 so a payment booked earlier today
+     is never dropped by a filter whose end is `new Date()`. */
+  const period = useMemo<{ start: Date; end: Date } | null>(() => {
+    if (dateRange === 'all') return null;
 
     const today = new Date();
-    let start: Date;
-    let end: Date = new Date();
+    const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 
     if (dateRange === 'this_month') {
-      start = new Date(today.getFullYear(), today.getMonth(), 1);
-    } else if (dateRange === 'last_month') {
-      start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      end = new Date(today.getFullYear(), today.getMonth(), 0);
-    } else {
-      if (!startDate) return rawLedger;
-      start = new Date(startDate);
-      if (endDate) end = new Date(endDate);
+      return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: endOfDay(today) };
     }
+    if (dateRange === 'last_month') {
+      return {
+        start: new Date(today.getFullYear(), today.getMonth() - 1, 1),
+        end: endOfDay(new Date(today.getFullYear(), today.getMonth(), 0)),
+      };
+    }
+    // A custom range without a start date shows everything rather than a
+    // blank statement.
+    if (!startDate) return null;
+    return {
+      start: new Date(startDate),
+      end: endDate ? endOfDay(new Date(endDate)) : endOfDay(today),
+    };
+  }, [dateRange, startDate, endDate]);
 
+  // Filter ledger by the selected period
+  const filteredLedger = useMemo(() => {
+    if (!period) return rawLedger;
+    const from = period.start.getTime();
+    const to = period.end.getTime();
     return rawLedger.filter((entry) => {
-      const entryDate = new Date(entry.date);
-      return entryDate >= start && entryDate <= end;
+      const t = new Date(entry.date).getTime();
+      return !isNaN(t) && t >= from && t <= to;
     });
-  }, [rawLedger, dateRange, startDate, endDate]);
+  }, [rawLedger, period]);
 
   const totalDebits = useMemo(() => {
     return filteredLedger.reduce((sum, e) => sum + (e.debit || 0), 0);
@@ -71,6 +93,75 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   const totalCredits = useMemo(() => {
     return filteredLedger.reduce((sum, e) => sum + (e.credit || 0), 0);
   }, [filteredLedger]);
+
+  /* ── Statement figures ────────────────────────────────────────────────────
+     The card has to agree with the rows under it. `running_balance` on a
+     ledger row is a true all-time running total (it already nets advances,
+     credit notes and debit adjustments), so the period's own balance is read
+     off the ledger: the balance carried into the period is the running
+     balance of the newest row dated BEFORE it, and the closing balance is the
+     running balance of the newest row inside it. Without that, a "This Month"
+     statement printed this month's debits next to the all-time closing
+     balance and the two figures could not be reconciled by hand. */
+  const openingBalance = useMemo(() => {
+    if (!period) return 0;
+    const from = period.start.getTime();
+    // rawLedger is newest-first, so the first row older than the window wins.
+    for (const entry of rawLedger) {
+      const t = new Date(entry.date).getTime();
+      if (!isNaN(t) && t < from) return roundMoney(entry.running_balance || 0);
+    }
+    return 0;
+  }, [rawLedger, period]);
+
+  const closingBalance = useMemo(() => {
+    const fromLedger = (() => {
+      if (!rawLedger.length) return null;
+      // `running_balance` grows with posting order, so the NEWEST row in scope
+      // carries where the account stands at the end of the period.
+      const newest = filteredLedger[0];
+      if (!newest) return openingBalance;
+      return roundMoney(newest.running_balance || 0);
+    })();
+    if (fromLedger !== null) return fromLedger;
+    /* No ledger at all to read a balance from: fall back to the clinic's
+       financial summary. `buildLabFinancialSummary` publishes snake_case
+       fields; the camelCase aliases are legacy optional fields on the type,
+       so they stay as a fallback. Reading only the alias is what made this
+       card print PKR 0 on a PKR 25,000 balance. */
+    return roundMoney(financialSummary?.net_balance ?? financialSummary?.netOutstanding ?? 0);
+  }, [rawLedger, filteredLedger, openingBalance, financialSummary]);
+
+  /* Unallocated advance wallet as at the end of the period: deposits banked
+     up to then, less the credit already spent against invoices. */
+  const advanceCredit = useMemo(() => {
+    if (!clinic || !Array.isArray(advancePayments)) {
+      return roundMoney(
+        financialSummary?.advance_balance ?? financialSummary?.advanceCreditBalance ?? 0
+      );
+    }
+    const to = period ? period.end.getTime() : Infinity;
+    let deposited = 0;
+    advancePayments
+      .filter((a) => a.lab_id === clinic.id)
+      .forEach((a) => {
+        const t = new Date(a.payment_date || a.created_at || '').getTime();
+        if (!isNaN(t) && t <= to) deposited += a.amount || 0;
+      });
+    let spent = 0;
+    (Array.isArray(invoices) ? invoices : [])
+      .filter((inv) => inv.lab_id === clinic.id)
+      .forEach((inv) =>
+        (inv.payments || []).forEach((p) => {
+          if (!isAdvanceAppliedPayment(p)) return;
+          const t = new Date(p.payment_date || inv.created_at || '').getTime();
+          if (!isNaN(t) && t <= to) spent += p.amount || 0;
+        })
+      );
+    return roundMoney(Math.max(0, deposited - spent));
+  }, [clinic, advancePayments, invoices, period, financialSummary]);
+
+  const remainingDue = Math.max(0, closingBalance);
 
   if (!isOpen || !clinic) return null;
 
@@ -84,7 +175,10 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
       const c = findCaseForEntry(e, cases);
       return [
         e.date,
-        e.type,
+        // The ledger engine publishes `entry_type`; `type` is a legacy
+        // optional alias that is never populated, so reading it alone left
+        // the Type column of every statement and CSV blank.
+        e.entry_type || e.type || '',
         e.reference_number,
         c ? c.case_number : '',
         [e.description, c ? caseDetailText(c) : ''].filter(Boolean).join(' • '),
@@ -215,6 +309,10 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
 
             <div className="p-4 rounded-lg bg-indigo-50/50 border border-indigo-200 text-right space-y-1.5 flex flex-col justify-center">
               <div className="flex justify-between text-slate-600">
+                <span>Opening Balance (B/F):</span>
+                <span className="font-mono font-semibold text-slate-900">{formatPKR(openingBalance)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
                 <span>Period Debits (Invoiced):</span>
                 <span className="font-mono font-semibold text-slate-900">{formatPKR(totalDebits)}</span>
               </div>
@@ -222,18 +320,24 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
                 <span>Period Credits (Settled):</span>
                 <span className="font-mono font-semibold text-emerald-700">{formatPKR(totalCredits)}</span>
               </div>
-              <div className="border-t border-indigo-200 pt-1.5 flex justify-between font-bold text-slate-900 text-sm">
-                <span>Net Outstanding Balance:</span>
-                <span className="font-mono text-indigo-700">
-                  {formatPKR(financialSummary?.netOutstanding || 0)}
+              <div className="border-t border-indigo-200 pt-1.5 flex justify-between text-slate-700 font-semibold text-[11px]">
+                <span>Closing Balance (C/F):</span>
+                <span className={`font-mono font-bold ${closingBalance < 0 ? 'text-emerald-700' : 'text-indigo-700'}`}>
+                  {formatPKR(closingBalance)}
                 </span>
               </div>
-              {financialSummary && (financialSummary.advanceCreditBalance ?? 0) > 0 && (
-                <div className="flex justify-between text-emerald-700 font-medium text-[11px]">
-                  <span>Prepaid Advance Credit in Wallet:</span>
-                  <span className="font-mono font-bold">+{formatPKR(financialSummary.advanceCreditBalance ?? 0)}</span>
+              {advanceCredit > 0 && (
+                <div className="flex justify-between text-sky-700 font-medium text-[11px]">
+                  <span>Advance Credit in Wallet:</span>
+                  <span className="font-mono font-bold">{formatPKR(advanceCredit)}</span>
                 </div>
               )}
+              <div className="border-t border-indigo-200 pt-1.5 flex justify-between font-bold text-slate-900 text-sm">
+                <span>Remaining Due:</span>
+                <span className={`font-mono ${remainingDue > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {formatPKR(remainingDue)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -266,12 +370,12 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
                     return (
                     <tr key={entry.id}>
                       <td className="px-3.5 py-2 text-slate-600 font-sans">{entry.date}</td>
-                      <td className="px-3.5 py-2 font-sans capitalize">{entry.type}</td>
+                      <td className="px-3.5 py-2 font-sans capitalize">{entry.entry_type || entry.type || '—'}</td>
                       <td className="px-3.5 py-2 font-bold text-slate-800">{entry.reference_number}</td>
                       <td className="px-3.5 py-2 font-sans text-indigo-800 font-bold">{c ? c.case_number : '—'}</td>
                       <td className="px-3.5 py-2 font-sans text-slate-700">
                         {entry.description}
-                        {/* The full case the money is booked against, so the
+                        {/* The case the money is booked against, so the
                             printed statement identifies the job, not just
                             the invoice number. */}
                         {detail.length > 0 && (
@@ -306,7 +410,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               <tfoot>
                 <tr className="bg-slate-50 border-t-2 border-slate-300 font-bold font-mono">
                   <td colSpan={5} className="px-3.5 py-2.5 text-right font-sans text-slate-700">
-                    Statement Totals:
+                    Statement Totals — Closing {formatPKR(closingBalance).replace('PKR ', '')}
                   </td>
                   <td className="px-3.5 py-2.5 text-right text-slate-900">
                     {formatPKR(totalDebits).replace('PKR ', '')}
@@ -314,8 +418,8 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
                   <td className="px-3.5 py-2.5 text-right text-emerald-700">
                     {formatPKR(totalCredits).replace('PKR ', '')}
                   </td>
-                  <td className="px-3.5 py-2.5 text-right text-indigo-700">
-                    {formatPKR(financialSummary?.netOutstanding || 0).replace('PKR ', '')}
+                  <td className="px-3.5 py-2.5 text-right text-amber-700">
+                    {formatPKR(remainingDue).replace('PKR ', '')}
                   </td>
                 </tr>
               </tfoot>

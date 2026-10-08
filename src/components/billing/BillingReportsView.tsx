@@ -4,6 +4,13 @@ import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { EmptyState } from '../common/ui';
+import { formatPKR } from '../../services/financeDomain';
+import { downloadCSV } from '../../services/csvExport';
+import {
+  buildMonthlyStatements,
+  formatMonthLabel,
+  monthlyStatementCsvRows,
+} from '../../services/monthlyStatement';
 import { 
   BarChart3, 
   BookmarkCheck, 
@@ -26,7 +33,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
   onPrintInvoice,
   onViewCaseSlip,
 }) => {
-  const { invoices, cases, savedVouchers, deleteSavedVoucher } = useApp();
+  const { invoices, cases, savedVouchers, deleteSavedVoucher, advancePayments, accountAdjustments } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers'>('monthly');
   const [voucherSearch, setVoucherSearch] = useState<string>('');
@@ -35,44 +42,24 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
   const [vFromDate, setVFromDate] = useState<string>(() => todayISO());
   const [vToDate, setVToDate] = useState<string>(() => todayISO());
 
-  // Group invoices by Month (YYYY-MM) and then Dental Clinic
-  const monthlyLabGroups = useMemo(() => {
-    const groups: { [month: string]: { [labName: string]: { count: number; total: number; paid: number } } } = {};
+  /* Month-by-month statement of account. Every figure is dated to the month
+     the money moved (see services/monthlyStatement), so "Collected" is what
+     actually landed this month — not a lifetime per-invoice total filed under
+     the invoice's creation month — and each month carries its opening balance
+     forward into a closing balance, with advance credit and the amount still
+     remaining shown separately. */
+  const monthlyBlocks = useMemo(
+    () => buildMonthlyStatements({ invoices, advancePayments, accountAdjustments }),
+    [invoices, advancePayments, accountAdjustments]
+  );
 
-    invoices.forEach((inv) => {
-      const month = inv.created_at ? inv.created_at.substring(0, 7) : getTodayStr().substring(0, 7);
-      if (!groups[month]) {
-        groups[month] = {};
-      }
-      const clinicName = inv.lab_name || 'Dental Clinic';
-      if (!groups[month][clinicName]) {
-        groups[month][clinicName] = { count: 0, total: 0, paid: 0 };
-      }
-      groups[month][clinicName].count += 1;
-      groups[month][clinicName].total += inv.final_amount;
-      groups[month][clinicName].paid += (inv.amount_paid || 0);
-    });
-
-    return groups;
-  }, [invoices]);
-
-  // Export CSV of Monthly Statement
+  // Export CSV of the Monthly Statement (app exporter: correct RFC-4180
+  // quoting, and it actually writes a file inside the Tauri shell).
   const handleExportMonthlyCSV = () => {
-    const csvRows = ['Month,Dental Clinic,Cases Billed,Total Amount (PKR),Collected (PKR),Remaining Unpaid (PKR)'];
-    Object.entries(monthlyLabGroups).forEach(([month, labMap]) => {
-      Object.entries(labMap).forEach(([labName, data]) => {
-        csvRows.push(`"${month}","${labName}",${data.count},${data.total},${data.paid},${data.total - data.paid}`);
-      });
-    });
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Dental_Solutions_Monthly_Billing_${getTodayStr()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadCSV(
+      `Dental_Solutions_Monthly_Statement_${getTodayStr()}`,
+      monthlyStatementCsvRows(monthlyBlocks)
+    );
   };
 
   // Filter saved vouchers
@@ -112,9 +99,9 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Monthly Billing Breakdown</span>
+            <span>Monthly Statement</span>
             <span className="px-1.5 py-0.2 rounded text-[11px] bg-slate-200 text-slate-700">
-              {Object.keys(monthlyLabGroups).length} Months
+              {monthlyBlocks.length} Months
             </span>
           </button>
 
@@ -140,7 +127,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
             className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export Monthly CSV</span>
+            <span>Export Monthly Statement CSV</span>
           </button>
         )}
 
@@ -171,34 +158,40 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       {/* Sub-Tab 1: Monthly Breakdown */}
       {activeSubTab === 'monthly' && (
         <div className="space-y-4">
-          {Object.keys(monthlyLabGroups).length === 0 ? (
+          {monthlyBlocks.length === 0 ? (
             <EmptyState
               icon={BarChart3}
               title="No Billing Records Yet"
-              description="Once invoices are raised for this period, the monthly breakdown by clinic appears here."
+              description="Once invoices, payments or advances are recorded for this period, the monthly statement by clinic appears here."
             />
           ) : (
-            Object.entries(monthlyLabGroups).map(([month, labMap]) => {
-              const monthTotal = Object.values(labMap).reduce((s, d) => s + d.total, 0);
-              const monthPaid = Object.values(labMap).reduce((s, d) => s + d.paid, 0);
-              const monthDue = monthTotal - monthPaid;
-
+            monthlyBlocks.map((block) => {
+              const t = block.totals;
               return (
-                <div key={month} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                <div key={block.month} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
                   {/* Month header */}
                   <div className="bg-slate-900 text-white px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-indigo-400" />
-                      <span className="font-bold text-sm">Billing Month: {month}</span>
+                      <span className="font-bold text-sm">{formatMonthLabel(block.month)}</span>
                       <span className="text-xs text-slate-400 font-normal">
-                        ({Object.keys(labMap).length} Active Clinics)
+                        ({t.clinics} Active Clinics)
                       </span>
                     </div>
-                    <div className="flex items-center gap-4 text-xs">
-                      <span>Billed: <strong>PKR {monthTotal.toLocaleString()}</strong></span>
-                      <span className="text-emerald-400">Paid: <strong>PKR {monthPaid.toLocaleString()}</strong></span>
-                      <span className={monthDue > 0 ? 'text-amber-400 font-bold' : 'text-slate-400'}>
-                        Due: PKR {monthDue.toLocaleString()}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                      <span>Billed: <strong>{formatPKR(t.billed)}</strong></span>
+                      <span className="text-emerald-400">Collected: <strong>{formatPKR(t.collected)}</strong></span>
+                      {t.advance_received > 0 && (
+                        <span className="text-sky-400">Advance In: <strong>{formatPKR(t.advance_received)}</strong></span>
+                      )}
+                      {t.advance_credit > 0 && (
+                        <span className="text-sky-300">Advance Held: <strong>{formatPKR(t.advance_credit)}</strong></span>
+                      )}
+                      <span className={t.closing_balance < 0 ? 'text-emerald-400' : 'text-white'}>
+                        Closing: <strong>{formatPKR(t.closing_balance)}</strong>
+                      </span>
+                      <span className={t.remaining > 0 ? 'text-amber-400 font-bold' : 'text-slate-400'}>
+                        Remaining: <strong>{formatPKR(t.remaining)}</strong>
                       </span>
                     </div>
                   </div>
@@ -210,36 +203,79 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                         <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase text-[11px] tracking-wider">
                           <th scope="col" className="py-2.5 px-4">Dental Clinic</th>
                           <th scope="col" className="py-2.5 px-4 text-center">Cases Billed</th>
-                          <th scope="col" className="py-2.5 px-4 text-right">Total Billed</th>
-                          <th scope="col" className="py-2.5 px-4 text-right">Collected (Paid)</th>
-                          <th scope="col" className="py-2.5 px-4 text-right">Remaining Due</th>
+                          <th scope="col" className="py-2.5 px-4 text-right">Billed (Dr)</th>
+                          <th scope="col" className="py-2.5 px-4 text-right">Collected (Cr)</th>
+                          <th scope="col" className="py-2.5 px-4 text-right" title="Advance deposits banked this month">Advance In</th>
+                          <th scope="col" className="py-2.5 px-4 text-right" title="Advance credit spent against invoices this month">Advance Used</th>
+                          <th scope="col" className="py-2.5 px-4 text-right">Credit Notes</th>
+                          <th scope="col" className="py-2.5 px-4 text-right">Debit Adj.</th>
+                          <th scope="col" className="py-2.5 px-4 text-right" title="Balance brought forward from the previous month">Opening (B/F)</th>
+                          <th scope="col" className="py-2.5 px-4 text-right" title="Closing balance carried into the next month">Closing (C/F)</th>
+                          <th scope="col" className="py-2.5 px-4 text-right" title="Unallocated advance wallet at month end">Advance Credit</th>
+                          <th scope="col" className="py-2.5 px-4 text-right" title="Still owed by the clinic at month end">Remaining Due</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium">
-                        {Object.entries(labMap).map(([labName, data]) => {
-                          const rem = data.total - data.paid;
-                          return (
-                            <tr key={labName} className="hover:bg-slate-50/80 transition-colors">
-                              <td className="py-2.5 px-4 font-bold text-slate-800 flex items-center gap-1.5">
-                                <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                                <span>{labName}</span>
-                              </td>
-                              <td className="py-2.5 px-4 text-center font-semibold text-slate-600">
-                                {data.count}
-                              </td>
-                              <td className="py-2.5 px-4 text-right font-bold text-slate-900 whitespace-nowrap">
-                                PKR {data.total.toLocaleString()}
-                              </td>
-                              <td className="py-2.5 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
-                                PKR {data.paid.toLocaleString()}
-                              </td>
-                              <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${rem > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                                PKR {rem.toLocaleString()}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {block.rows.map((r) => (
+                          <tr key={r.lab_id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-2.5 px-4 font-bold text-slate-800">
+                              <span className="flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{r.lab_name}</span>
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-center font-semibold text-slate-600">
+                              {r.cases_billed}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-bold text-slate-900 whitespace-nowrap">
+                              {formatPKR(r.billed)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
+                              {formatPKR(r.collected)}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_received > 0 ? 'text-sky-600' : 'text-slate-400'}`}>
+                              {formatPKR(r.advance_received)}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_applied > 0 ? 'text-sky-700' : 'text-slate-400'}`}>
+                              {formatPKR(r.advance_applied)}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.credit_notes > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                              {formatPKR(r.credit_notes)}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.debit_adjustments > 0 ? 'text-amber-700' : 'text-slate-400'}`}>
+                              {formatPKR(r.debit_adjustments)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right text-slate-500 whitespace-nowrap">
+                              {formatPKR(r.opening_balance)}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${r.closing_balance < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                              {formatPKR(r.closing_balance)}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_credit > 0 ? 'text-sky-700' : 'text-slate-400'}`}>
+                              {formatPKR(r.advance_credit)}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${r.remaining > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                              {formatPKR(r.remaining)}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-900/95 text-white font-bold text-[11px] uppercase tracking-wider">
+                          <td className="py-2.5 px-4">Month Total</td>
+                          <td className="py-2.5 px-4 text-center">{t.cases_billed}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap">{formatPKR(t.billed)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-emerald-300">{formatPKR(t.collected)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_received)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_applied)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-rose-300">{formatPKR(t.credit_notes)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-amber-300">{formatPKR(t.debit_adjustments)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-slate-300">{formatPKR(t.opening_balance)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap">{formatPKR(t.closing_balance)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_credit)}</td>
+                          <td className="py-2.5 px-4 text-right whitespace-nowrap text-amber-300">{formatPKR(t.remaining)}</td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>

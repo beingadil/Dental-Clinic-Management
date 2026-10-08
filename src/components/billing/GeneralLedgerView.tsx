@@ -885,9 +885,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                                 </p>
                               )}
                               {details.caseDetail.length > 0 && (
-                                /* The full case the money is booked against —
-                                   procedure, doctor, patient, teeth, shade,
-                                   material, received and delivery days. */
+                                /* The case the money is booked against —
+                                   patient, procedure, teeth, shade. */
                                 <dl className="mt-1 grid grid-cols-1 gap-x-4 gap-y-0.5 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2 sm:grid-cols-2">
                                   {details.caseDetail.map((d) => (
                                     <div key={d.label} className="flex items-baseline gap-1.5 min-w-0">

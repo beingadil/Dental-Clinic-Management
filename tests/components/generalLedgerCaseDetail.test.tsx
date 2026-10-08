@@ -102,35 +102,44 @@ const renderLedger = () => {
   fireEvent.click(screen.getByRole('button', { name: /preview/i }));
 };
 
-describe('GeneralLedgerView full case detail', () => {
-  it('spells out the whole case on the invoice row', () => {
+describe('GeneralLedgerView case detail', () => {
+  it('shows the case identity and both dates on the invoice row', () => {
     renderLedger();
 
-    expect(screen.getByText('Procedure')).toBeTruthy();
-    expect(screen.getByText('Zirconia Crown')).toBeTruthy();
-    expect(screen.getByText('Dr. Tariq Mahmood')).toBeTruthy();
     expect(screen.getByText('Patient')).toBeTruthy();
     expect(screen.getByText('Ali Raza')).toBeTruthy();
+    expect(screen.getByText('Procedure')).toBeTruthy();
+    expect(screen.getByText('Zirconia Crown')).toBeTruthy();
     expect(screen.getByText('Teeth')).toBeTruthy();
     expect(screen.getByText('#11, #21')).toBeTruthy();
     expect(screen.getByText('Shade')).toBeTruthy();
-    expect(screen.getByText('Material')).toBeTruthy();
-    expect(screen.getByText('Units')).toBeTruthy();
-    expect(screen.getByText('Received')).toBeTruthy();
+    expect(screen.getByText('A2')).toBeTruthy();
+    expect(screen.getByText('Received Date')).toBeTruthy();
     expect(screen.getByText('Oct 3, 2026')).toBeTruthy();
-    expect(screen.getByText('Delivery')).toBeTruthy();
+    // The promised day is its own row, so it can never be read as the
+    // day the job already reached the bench.
+    expect(screen.getByText('Delivery Date')).toBeTruthy();
     expect(screen.getByText('Dec 20, 2026')).toBeTruthy();
   });
 
-  it('does not duplicate the doctor line once the detail block is present', () => {
+  it('leaves doctor, material and units to the case record', () => {
     renderLedger();
-    // The detail block already carries the doctor, so the old sub-line is gone.
+
+    expect(screen.queryByText('Doctor')).toBeNull();
+    expect(screen.queryByText('Material')).toBeNull();
+    expect(screen.queryByText('Units')).toBeNull();
+    expect(screen.queryByText('Dr. Tariq Mahmood')).toBeNull();
+  });
+
+  it('renders the detail block once, on the invoice row only', () => {
+    renderLedger();
+    // The doctor sub-line the block used to replace stays gone.
     expect(screen.queryByText(/^Doctor: /)).toBeNull();
     // Only the invoice row has a detail block.
     expect(screen.getAllByText('Procedure')).toHaveLength(1);
   });
 
-  it('puts the full case in the printed PDF narration', () => {
+  it('puts the case identity in the printed PDF narration', () => {
     renderLedger();
     fireEvent.click(screen.getByText('Export PDF'));
 
@@ -142,15 +151,15 @@ describe('GeneralLedgerView full case detail', () => {
 
     const invoice = entries.find((e) => e.caseNumber === 'DS-2001');
     expect(invoice?.narration).toContain('INV-0042');
-    expect(invoice?.narration).toContain('Procedure: Zirconia Crown');
-    expect(invoice?.narration).toContain('Doctor: Dr. Tariq Mahmood');
     expect(invoice?.narration).toContain('Patient: Ali Raza');
+    expect(invoice?.narration).toContain('Procedure: Zirconia Crown');
     expect(invoice?.narration).toContain('Teeth: #11, #21');
     expect(invoice?.narration).toContain('Shade: A2');
-    expect(invoice?.narration).toContain('Material: Zirconia');
-    expect(invoice?.narration).toContain('Units: 3');
-    expect(invoice?.narration).toContain('Received: Oct 3, 2026');
-    expect(invoice?.narration).toContain('Delivery: Dec 20, 2026');
+    expect(invoice?.narration).toContain('Received Date: Oct 3, 2026');
+    expect(invoice?.narration).toContain('Delivery Date: Dec 20, 2026');
+    expect(invoice?.narration).not.toContain('Doctor:');
+    expect(invoice?.narration).not.toContain('Material:');
+    expect(invoice?.narration).not.toContain('Units:');
 
     // The payment row carries no case detail.
     const payment = entries.find((e) => !e.caseNumber);
@@ -158,6 +167,4 @@ describe('GeneralLedgerView full case detail', () => {
 
     expect(downloadPdf).toHaveBeenCalledTimes(1);
   });
-
-  
 });

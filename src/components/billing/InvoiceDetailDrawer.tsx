@@ -3,6 +3,7 @@ import { Drawer, InvoiceStatusBadge } from '../common/ui';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
+import { caseDetailLines } from '../../services/ledgerCaseDetail';
 import { availableAdvanceCredit } from '../../services/transactionDomain';
 import { 
   X, 
@@ -255,31 +256,24 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <span className="text-slate-500 block">Patient Name</span>
-                  <span className="font-semibold text-slate-900">{linkedCase.patient_name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Doctor / Surgeon</span>
-                  <span className="font-semibold text-slate-900">Dr. {linkedCase.doctor_name || '—'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Case Type</span>
-                  <span className="font-semibold text-slate-900">{linkedCase.case_type}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Shade Guide</span>
-                  <span className="font-semibold text-slate-900">{linkedCase.shade || 'A2'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Units / Teeth</span>
-                  <span className="font-semibold text-slate-900">{linkedCase.units_count || 1} Unit(s)</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Status</span>
-                  <span className="font-semibold capitalize text-slate-900">{linkedCase.status.replace('_', ' ')}</span>
-                </div>
+              {/* Same rows as the ledger's case block, from the same formatter,
+                  so the invoice and the statement cannot drift apart. Empty
+                  values drop out rather than printing a placeholder. */}
+              <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+                {caseDetailLines(linkedCase).map((d) => (
+                  <div key={d.label} className="min-w-0">
+                    <span className="text-slate-500 block">{d.label}</span>
+                    <span
+                      className={
+                        d.label === 'Teeth'
+                          ? 'font-semibold text-slate-900 font-mono truncate block'
+                          : 'font-semibold text-slate-900 truncate block'
+                      }
+                    >
+                      {d.value}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

@@ -12,7 +12,9 @@ import {
   FolderOpen, 
   ArrowUpDown, 
   X, 
-  ChevronRight
+  ChevronRight,
+  LayoutGrid,
+  Table as TableIcon
 } from 'lucide-react';
 
 export const LabListView: React.FC = () => {
@@ -23,6 +25,28 @@ export const LabListView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'cases'>('cases');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  /* Grid (cards) or table (dense directory) — same toggle contract as the
+     workstation view: persisted per operator, defaulting to the card grid this
+     module has always shown. */
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      const saved = localStorage.getItem('dentlab_clinics_view_mode');
+      if (saved === 'grid' || saved === 'list') return saved;
+    } catch {
+      // ignore (private mode / storage disabled)
+    }
+    return 'grid';
+  });
+
+  const handleViewModeChange = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('dentlab_clinics_view_mode', mode);
+    } catch {
+      // ignore
+    }
+  };
 
   // Create Form State
   const [name, setName] = useState('');
@@ -157,6 +181,35 @@ export const LabListView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* View Toggle */}
+          <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => handleViewModeChange('grid')}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Card grid — one card per clinic with its latest case"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Cards</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleViewModeChange('list')}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Table view — every clinic on one row with contacts and case counts"
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>List</span>
+            </button>
+          </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
@@ -176,6 +229,7 @@ export const LabListView: React.FC = () => {
       </div>
 
       {/* Lab Card Grid */}
+      {viewMode === 'grid' && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredLabs.length === 0 ? (
           <div className="col-span-full py-12 text-center text-slate-400 text-xs bg-white rounded-2xl border border-dashed border-slate-200">
@@ -264,6 +318,83 @@ export const LabListView: React.FC = () => {
           })
         )}
       </div>
+      )}
+
+      {/* Dense clinic directory: one row per clinic, all contact fields at a
+          glance. Shares the search, sort and render cap with the card grid. */}
+      {viewMode === 'list' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          {filteredLabs.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs">
+              No dental clinics found matching search.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase text-[11px] tracking-wider">
+                    <th scope="col" className="py-2.5 px-4">Dental Clinic</th>
+                    <th scope="col" className="py-2.5 px-4">Doctor</th>
+                    <th scope="col" className="py-2.5 px-4">Phone</th>
+                    <th scope="col" className="py-2.5 px-4">Email</th>
+                    <th scope="col" className="py-2.5 px-4">Address</th>
+                    <th scope="col" className="py-2.5 px-4 text-center">Cases</th>
+                    <th scope="col" className="py-2.5 px-4">Latest Case</th>
+                    <th scope="col" className="py-2.5 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {visibleLabs.map((lab) => {
+                    const labCases = casesByLab.get(lab.id) || [];
+                    const recentCase = labCases[0];
+                    return (
+                      <tr
+                        key={lab.id}
+                        onClick={() => setSelectedLab(lab)}
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      >
+                        <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
+                          <span className="flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>{lab.name}</span>
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-700 whitespace-nowrap">
+                          {lab.contact_person || '—'}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap font-mono text-[11px]">
+                          {lab.phone || '—'}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600 truncate max-w-[220px]" title={lab.email || ''}>
+                          {lab.email || '—'}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-500 truncate max-w-[280px]" title={lab.address || ''}>
+                          {lab.address || '—'}
+                        </td>
+                        <td className="py-2.5 px-4 text-center font-bold text-indigo-700">
+                          {labCases.length}
+                        </td>
+                        <td className="py-2.5 px-4 whitespace-nowrap">
+                          {recentCase ? (
+                            <span className="font-mono font-bold text-indigo-700">{recentCase.case_number}</span>
+                          ) : (
+                            <span className="text-slate-300 italic font-normal">No cases</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                          <span className="text-slate-900 font-semibold inline-flex items-center gap-0.5">
+                            View <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {filteredLabs.length > visibleLabs.length && (
         <div className="flex items-center justify-center gap-3 py-4">

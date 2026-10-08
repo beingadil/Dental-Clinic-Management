@@ -41,7 +41,7 @@ const { CASE, LEDGER } = vi.hoisted(() => {
     {
       id: 'l1',
       date: '2026-10-05',
-      type: 'invoice',
+      entry_type: 'invoice',
       reference_number: 'INV-0042',
       description: 'Case DS-2001',
       debit: 30000,
@@ -53,7 +53,7 @@ const { CASE, LEDGER } = vi.hoisted(() => {
     {
       id: 'l2',
       date: '2026-10-06',
-      type: 'payment',
+      entry_type: 'payment',
       reference_number: 'PAY-0007',
       description: 'Bank transfer',
       debit: 0,
@@ -92,28 +92,36 @@ const renderModal = () =>
     <ClinicStatementModal isOpen onClose={() => {}} clinicId="lab-1" />,
   );
 
-describe('ClinicStatementModal full case detail', () => {
-  it('spells out the whole case on the invoice row', () => {
+describe('ClinicStatementModal case detail', () => {
+  it('shows the case identity and both dates on the invoice row', () => {
     renderModal();
 
     // Case/Job column
     expect(screen.getAllByText('DS-2001').length).toBeGreaterThan(0);
 
     // Detail block: label + value pairs, not just the invoice number.
-    expect(screen.getByText('Procedure')).toBeTruthy();
-    expect(screen.getByText('Zirconia Crown')).toBeTruthy();
-    expect(screen.getByText('Dr. Tariq Mahmood')).toBeTruthy();
     expect(screen.getByText('Patient')).toBeTruthy();
     expect(screen.getByText('Ali Raza')).toBeTruthy();
+    expect(screen.getByText('Procedure')).toBeTruthy();
+    expect(screen.getByText('Zirconia Crown')).toBeTruthy();
     expect(screen.getByText('Teeth')).toBeTruthy();
     expect(screen.getByText('#11, #21')).toBeTruthy();
     expect(screen.getByText('Shade')).toBeTruthy();
-    expect(screen.getByText('Material')).toBeTruthy();
-    expect(screen.getByText('Units')).toBeTruthy();
-    expect(screen.getByText('Received')).toBeTruthy();
+    expect(screen.getByText('A2')).toBeTruthy();
+    expect(screen.getByText('Received Date')).toBeTruthy();
     expect(screen.getByText('Oct 3, 2026')).toBeTruthy();
-    expect(screen.getByText('Delivery')).toBeTruthy();
+    // The promised day is its own row, not folded into the received one.
+    expect(screen.getByText('Delivery Date')).toBeTruthy();
     expect(screen.getByText('Dec 20, 2026')).toBeTruthy();
+  });
+
+  it('leaves doctor, material and units to the case record', () => {
+    renderModal();
+
+    expect(screen.queryByText('Doctor')).toBeNull();
+    expect(screen.queryByText('Material')).toBeNull();
+    expect(screen.queryByText('Units')).toBeNull();
+    expect(screen.queryByText('Dr. Tariq Mahmood')).toBeNull();
   });
 
   it('leaves a payment row with no case detail', () => {
@@ -122,7 +130,7 @@ describe('ClinicStatementModal full case detail', () => {
     expect(screen.getAllByText('Procedure')).toHaveLength(1);
   });
 
-  it('exports the full case in the CSV', () => {
+  it('exports the case identity in the CSV', () => {
     renderModal();
     fireEvent.click(screen.getByText('Export CSV'));
 
@@ -133,15 +141,24 @@ describe('ClinicStatementModal full case detail', () => {
 
     const invoice = rows[1];
     expect(invoice[header.indexOf('Case/Job')]).toBe('DS-2001');
+    // The ledger publishes `entry_type`; exporting the never-populated legacy
+    // `type` alias is what left the Type column blank.
+    expect(invoice[header.indexOf('Type')]).toBe('invoice');
     const description = invoice[header.indexOf('Description')];
+    expect(description).toContain('Patient: Ali Raza');
     expect(description).toContain('Procedure: Zirconia Crown');
-    expect(description).toContain('Doctor: Dr. Tariq Mahmood');
     expect(description).toContain('Teeth: #11, #21');
-    expect(description).toContain('Received: Oct 3, 2026');
+    expect(description).toContain('Shade: A2');
+    expect(description).toContain('Received Date: Oct 3, 2026');
+    expect(description).toContain('Delivery Date: Dec 20, 2026');
+    expect(description).not.toContain('Doctor:');
+    expect(description).not.toContain('Material:');
+    expect(description).not.toContain('Units:');
 
     // The payment row gets an empty case, not the invoice's.
     const payment = rows[2];
     expect(payment[header.indexOf('Case/Job')]).toBe('');
     expect(payment[header.indexOf('Description')]).toBe('Bank transfer');
+    expect(payment[header.indexOf('Type')]).toBe('payment');
   });
 });

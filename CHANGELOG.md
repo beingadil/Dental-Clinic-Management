@@ -6,6 +6,58 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.19.0] — 2026-10-09
+
+### Added
+- **Dental Clinics has a List view.** A Cards / List toggle next to the search
+  bar — the same contract as the workstation case list, persisted per operator.
+  List mode is a dense directory: Dental Clinic, Doctor, Phone, Email, Address,
+  Cases, Latest Case and View, with the existing sort selector and search
+  applying to both modes and a shared empty state.
+- **A real Monthly Statement in Reports & Statements.** The old "Monthly
+  Billing Breakdown" grouped invoices by the month the invoice was *created* and
+  called `Σ invoice.amount_paid` "Collected", which misstated a clinic
+  statement three ways: a payment landing in month M against an invoice raised
+  in M−3 never appeared in M, `amount_paid` is a lifetime figure so it was
+  filed in the wrong month, and advance deposits and credit notes were invisible.
+  `services/monthlyStatement` now dates every figure to the month the money
+  actually moved and carries the balance forward:
+  `closing = opening + billed − collected − advance_received + advance_applied
+  − credit_notes + debit_adjustments`. Each month shows per-clinic Opening (B/F),
+  Closing (C/F), advance wallet and Remaining Due, plus a reconciling MONTH
+  TOTAL footer, and the CSV export now goes through the app's own exporter (the
+  old inline `<a download>` wrote nothing inside the Tauri shell).
+
+### Fixed
+- **Clinic statements printed PKR 0.** The statement card read
+  `netOutstanding` / `advanceCreditBalance`, but `buildLabFinancialSummary`
+  publishes `net_balance` / `advance_balance` / `outstanding_balance`; the
+  camelCase names are optional legacy aliases and were always `undefined`. It
+  now reads the authoritative fields, with the aliases kept as a fallback.
+- **A statement you could not add up by hand.** The card printed the *selected
+  period's* debits and credits beside the *all-time* closing balance. It now
+  derives the period's own figures from the ledger's `running_balance` (a true
+  all-time running total that already nets advances, credit notes and
+  adjustments): Opening Balance (B/F) is the balance of the newest row dated
+  before the window, Closing Balance (C/F) the balance of the newest row inside
+  it, Advance Credit in Wallet is deposits banked minus advance already spent as
+  at period end, and Remaining Due is `max(0, closing)`. The Period filter's end
+  is now end-of-day, so a payment booked earlier today is no longer dropped.
+
+### Changed
+- **The Type column of every statement — and its CSV — was blank.** The modal
+  rendered `entry.type`, a legacy alias the ledger engine never populates (it
+  emits `entry_type`), so `LedgerEntry.type` was `undefined` on every real row.
+- **Case detail on money lines is now identity, not inventory.** `Patient`,
+  `Procedure`, `Teeth`, `Shade`, `Received Date`, `Delivery Date` — doctor,
+  material and units belong to the case record, not the ledger line, and a
+  missing value drops its row instead of printing a placeholder. Received and
+  delivery are formatted separately so a promised future day is never read as
+  the day the job came in.
+- **The invoice drawer's case card uses the same formatter** as the general
+  ledger, the clinic statement, their CSV and PDF, so the invoice and the
+  statement can no longer disagree about the job an invoice is booked against.
+
 ## [2.17.0]
 
 ### Changed
