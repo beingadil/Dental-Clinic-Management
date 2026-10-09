@@ -23,15 +23,15 @@ describe('migration 019 — cases.received_date', () => {
     setDatabase(engine);
   });
 
-  it('adds a nullable received_date column and stamps schema_version 19', () => {
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+  it('adds a nullable received_date column and stamps the current schema_version', () => {
+    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
     const cols = engine.all<{ name: string; notnull: number }>('PRAGMA table_info(cases)');
     const received = cols.find((c) => c.name === 'received_date');
     expect(received).toBeDefined();
     // NOT NULL would fail the migration on every pre-019 case row.
     expect(received?.notnull).toBe(0);
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('19');
+    expect(row?.value).toBe('20');
   });
 
   beforeEach(() => {

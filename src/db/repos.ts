@@ -1,6 +1,7 @@
 import { getDatabase } from './index';
 import { SqliteEngine, TransactionApi, DbError } from './engine';
 import { QcInspection } from '../types';
+import { stripDoctorHonorific } from '../utils/doctorName';
 
 /**
  * Typed repository layer. Each repository maps an app domain type to SQLite
@@ -26,6 +27,29 @@ const genId = (prefix: string): string => {
 function requireEngine(): Db {
   return getDatabase();
 }
+
+/**
+ * Doctor names are stored BARE — `Tariq Mahmood`, never `Dr. Tariq Mahmood`.
+ * The honorific belongs to the display edge (`formatDoctorName`).
+ *
+ * Normalising HERE rather than in each caller is the point of the change: this
+ * repo layer is the only path every insert, update and lookup takes, so a form,
+ * a ledger projection and a legacy import cannot each reintroduce the prefix,
+ * and no renderer has to defend against it. It is also why migration 020 only
+ * had to run once — every write since has normalised on the way in.
+ *
+ * Empty-in/empty-out: a name that is nothing but an honorific (`Dr`) reduces
+ * to empty, which is the honest representation — there is nobody to print. The
+ * read path renders empty as the em-dash fallback.
+ */
+const bareDoctor = (value?: string | null): string => stripDoctorHonorific(value);
+
+/**
+ * Nullable variant for the six columns where "no doctor" is a legitimate value
+ * (a draft invoice, a NULL ledger column). Empty becomes NULL so the column
+ * keeps meaning "not recorded" rather than "recorded as blank".
+ */
+const bareDoctorOrNull = (value?: string | null): string | null => bareDoctor(value) || null;
 
 // ─────────────────────────────────────────────────────────── users & sessions
 
@@ -184,7 +208,7 @@ export const labsRepo = {
         `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, lab.name, lab.code ?? null, lab.contact_person ?? null, lab.phone ?? null, lab.email ?? null,
-         lab.address ?? null, lab.city ?? null, lab.doctor_name ?? null, lab.notes ?? null,
+         lab.address ?? null, lab.city ?? null, bareDoctorOrNull(lab.doctor_name), lab.notes ?? null,
          lab.rating ?? 5.0, lab.reviews_count ?? 0, lab.created_at ?? now(), now()]
       );
     } catch (err: any) {
@@ -202,7 +226,9 @@ export const labsRepo = {
     for (const key of allowed) {
       if (key in updates) {
         sets.push(`${key} = ?`);
-        params.push(updates[key] ?? null);
+        // Normalised on the way in, so a clinic edited from a form that still
+        // invites "Dr. …" lands bare like every other write.
+        params.push(key === 'doctor_name' ? bareDoctorOrNull(updates[key]) : updates[key] ?? null);
       }
     }
     if (!sets.length) return this.byId(id);
@@ -308,17 +334,20 @@ export const doctorPreferredLabsRepo = {
     return requireEngine().all<DoctorPreferredLabRow>('SELECT * FROM doctor_preferred_labs ORDER BY doctor_name');
   },
   byDoctor(name: string): DoctorPreferredLabRow | undefined {
-    return requireEngine().get<DoctorPreferredLabRow>('SELECT * FROM doctor_preferred_labs WHERE doctor_name = ? COLLATE NOCASE', [name]);
+    // Looked up through the same normaliser as the write, so a caller holding
+    // "Dr. Tariq" still finds the row stored as "Tariq".
+    return requireEngine().get<DoctorPreferredLabRow>('SELECT * FROM doctor_preferred_labs WHERE doctor_name = ? COLLATE NOCASE', [bareDoctor(name)]);
   },
   set(doctorName: string, labId: string, labName: string): void {
     const engine = requireEngine();
-    const existing = this.byDoctor(doctorName);
+    const bare = bareDoctor(doctorName);
+    const existing = this.byDoctor(bare);
     if (existing) {
       engine.run('UPDATE doctor_preferred_labs SET lab_id = ?, lab_name = ? WHERE id = ?', [labId, labName, existing.id]);
     } else {
       engine.run(
         'INSERT INTO doctor_preferred_labs (id, doctor_name, lab_id, lab_name, created_at) VALUES (?, ?, ?, ?, ?)',
-        [genId('dpl'), doctorName, labId, labName, now()]
+        [genId('dpl'), bare, labId, labName, now()]
       );
     }
   },
@@ -500,7 +529,7 @@ export const casesRepo = {
                             instructions, photo_url, status, archived_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, c.case_number, c.patient_name ?? null, c.lab_id, c.lab_name, c.case_type_id ?? null, c.case_type_name ?? null,
-         c.units_count ?? null, c.doctor_name, JSON.stringify(c.selected_teeth ?? []), c.tooth_details ? JSON.stringify(c.tooth_details) : null,
+         c.units_count ?? null, bareDoctor(c.doctor_name), JSON.stringify(c.selected_teeth ?? []), c.tooth_details ? JSON.stringify(c.tooth_details) : null,
          c.shade ?? null, c.material ?? null, c.department ?? null, c.delivery_date, c.received_date ?? null, c.priority ?? 'normal', c.price ?? 0, c.discount ?? 0, c.final_price ?? 0,
          c.instructions ?? null, c.photo_url ?? null, c.status ?? 'received', c.archived_at ?? null, c.created_at ?? now(), now()]
       );
@@ -533,7 +562,7 @@ export const casesRepo = {
       for (const key of allowed) {
         if (key in updates) {
           sets.push(`${key} = ?`);
-          params.push(updates[key] ?? null);
+          params.push(key === 'doctor_name' ? bareDoctor(updates[key]) : updates[key] ?? null);
         }
       }
       if (sets.length) {
@@ -778,7 +807,7 @@ export const invoicesRepo = {
                                amount, discount, final_amount, amount_paid, payment_status, status_v2, issue_date, due_date, journal_id, credit_notes_total, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, inv.invoice_number, inv.case_id ?? null, inv.case_number ?? null, inv.lab_id, inv.lab_name,
-         inv.case_type_id ?? null, inv.case_type_name ?? null, inv.doctor_name ?? null, inv.patient_name ?? null,
+         inv.case_type_id ?? null, inv.case_type_name ?? null, bareDoctorOrNull(inv.doctor_name), inv.patient_name ?? null,
          inv.amount ?? 0, inv.discount ?? 0, inv.final_amount ?? 0, inv.amount_paid ?? 0,
          inv.payment_status ?? 'unpaid', inv.status_v2 ?? 'open', inv.issue_date ?? null, inv.due_date ?? null,
          inv.journal_id ?? null, inv.credit_notes_total ?? 0, inv.created_at ?? now(), now()]
@@ -804,7 +833,7 @@ export const invoicesRepo = {
       for (const key of allowed) {
         if (key in updates) {
           sets.push(`${key} = ?`);
-          params.push(updates[key] ?? null);
+          params.push(key === 'doctor_name' ? bareDoctorOrNull(updates[key]) : updates[key] ?? null);
         }
       }
       if (sets.length) {
@@ -1320,7 +1349,7 @@ export const ledgerRepo = {
                                    description, debit, credit, payment_method, notes, recorded_by, journal_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, entry.date, entry.lab_id ?? null, entry.lab_name ?? null, entry.entry_type, entry.reference_id,
-       entry.reference_number ?? null, entry.case_number ?? null, entry.doctor_name ?? null,
+       entry.reference_number ?? null, entry.case_number ?? null, bareDoctorOrNull(entry.doctor_name),
        entry.description, entry.debit ?? 0, entry.credit ?? 0, entry.payment_method ?? null,
        entry.notes ?? null, entry.recorded_by ?? null, entry.journal_id ?? null, entry.created_at ?? now()]
     );
@@ -1585,7 +1614,7 @@ export const vouchersRepo = {
       `INSERT INTO saved_vouchers (id, voucher_number, voucher_type, case_id, case_number, lab_name, doctor_name, patient_name, case_type_name, amount, saved_by, notes, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [v.id, v.voucher_number, v.voucher_type, v.case_id, v.case_number ?? null, v.lab_name ?? null,
-       v.doctor_name ?? null, v.patient_name ?? null, v.case_type_name ?? null, v.amount ?? null,
+       bareDoctorOrNull(v.doctor_name), v.patient_name ?? null, v.case_type_name ?? null, v.amount ?? null,
        v.saved_by, v.notes ?? null, v.created_at ?? now()]
     );
     return requireEngine().get<VoucherRow>('SELECT * FROM saved_vouchers WHERE id = ?', [v.id])!;

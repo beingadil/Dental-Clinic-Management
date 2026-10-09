@@ -1054,6 +1054,66 @@ export const MIGRATION_019_CASE_RECEIVED_DATE: Migration = {
   ],
 };
 
+/**
+ * Strip ONE leading `Dr`/`Dr.` (any case) from a doctor-name column.
+ *
+ * SQLite's LIKE is case-insensitive for ASCII, so this matches `DR ` as well
+ * as `Dr ` — which is what we want, since the old form was typed by hand.
+ *
+ * Two guards earn their keep:
+ *
+ *  - The pattern requires whitespace or a literal `.` after `Dr`, so `Drake`
+ *    and `Professor` are never touched. Matching on the bare prefix would
+ *    corrupt ordinary names.
+ *  - `NULLIF(..., '')` then `COALESCE(..., col)` means a value that was
+ *    nothing but an honorific keeps its original text instead of being blanked.
+ *    Those rows are already unusable, but erasing them destroys evidence, and
+ *    the read path renders an empty name as "—" either way.
+ */
+const stripOneDoctorPrefix = (table: string, column: string): string =>
+  `UPDATE ${table} SET ${column} = COALESCE(NULLIF(TRIM(SUBSTR(${column}, 4)), ''), ${column}) WHERE ${column} LIKE 'Dr %' OR ${column} LIKE 'Dr.%'`;
+
+/**
+ * Migration 020: normalise stored doctor names to the BARE form.
+ *
+ * `doctor_name` was free text typed against a placeholder reading
+ * `"Dr. Tariq Mahmood"`, while five renderers prepended their own `"Dr. "`.
+ * The single source of truth is now `src/utils/doctorName.ts`: store bare,
+ * format at the edge. This rewrites history so the bare form is a fact about
+ * the data rather than a convention each call site has to remember.
+ *
+ * All SIX tables carrying the column are covered. Fixing only `cases` would
+ * leave an invoice or a ledger line printing "Dr. Dr." forever, because each
+ * of them renders independently.
+ *
+ * The strip runs three times per table because the defect could stack — a
+ * name re-saved through an already-prefixed form can carry two honorifics, and
+ * a single pass would leave the second behind, making the migration
+ * non-idempotent in the sense that matters: re-running the app on such a row
+ * would put the doubled prefix right back.
+ */
+export const MIGRATION_020_BARE_DOCTOR_NAME: Migration = {
+  version: 20,
+  name: 'bare_doctor_name',
+  statements: [
+    ...(
+      [
+        'labs',
+        'doctor_preferred_labs',
+        'cases',
+        'invoices',
+        'saved_vouchers',
+        'ledger_entries',
+      ] as const
+    ).flatMap((table) => [
+      stripOneDoctorPrefix(table, 'doctor_name'),
+      stripOneDoctorPrefix(table, 'doctor_name'),
+      stripOneDoctorPrefix(table, 'doctor_name'),
+    ]),
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '20')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1074,6 +1134,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_017_DROP_UNUSED_INDEXES,
   MIGRATION_018_DOC_SEQUENCES,
   MIGRATION_019_CASE_RECEIVED_DATE,
+  MIGRATION_020_BARE_DOCTOR_NAME,
 ];
 
 /**
