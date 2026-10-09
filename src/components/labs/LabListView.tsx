@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, DentalLab } from '../../types';
 import { LabDetailModal } from './LabDetailModal';
+import { formatDoctorName } from '../../utils/doctorName';
+import { usePagination } from '../common/ui/Pagination';
 import { 
   Building2, 
   PlusCircle, 
@@ -141,12 +143,16 @@ export const LabListView: React.FC = () => {
     });
   }, [labs, searchTerm, sortBy, sortOrder, casesByLab]);
 
-  /* Render cap: each card renders case previews, so 1000 cards meant ~45k DOM
-     nodes (audit §9). Mount 120, expand on demand — same pattern as the
-     workstation and billing tables. */
-  const CARD_CAP_STEP = 120;
-  const [cardLimit, setCardLimit] = useState(CARD_CAP_STEP);
-  const visibleLabs = useMemo(() => filteredLabs.slice(0, cardLimit), [filteredLabs, cardLimit]);
+  /* Paged, not incrementally grown. Each card renders case previews, so 1000
+     cards meant ~45k DOM nodes (audit §9); the old "Show more" window kept every
+     already-mounted card alive while growing. Paging swaps them instead. */
+  const {
+    pageItems: visibleLabs,
+    pagination: labsPagination,
+  } = usePagination(filteredLabs, {
+    initialPageSize: 24,
+    resetKey: `${searchTerm}|${sortBy}|${sortOrder}`,
+  });
 
   return (
     <div className="space-y-6">
@@ -170,7 +176,7 @@ export const LabListView: React.FC = () => {
       {/* Toolbar */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:max-w-md">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
           <input
             type="text"
             value={searchTerm}
@@ -232,7 +238,7 @@ export const LabListView: React.FC = () => {
       {viewMode === 'grid' && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredLabs.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-slate-400 text-xs bg-white rounded-2xl border border-dashed border-slate-200">
+          <div className="col-span-full py-12 text-center text-ink-muted text-xs bg-white rounded-2xl border border-dashed border-slate-200">
             No dental clinics found matching search.
           </div>
         ) : (
@@ -267,15 +273,15 @@ export const LabListView: React.FC = () => {
                   {/* Contact Info List */}
                   <div className="mt-3.5 text-xs space-y-1.5 text-slate-600 border-t border-slate-100 pt-3">
                     <div className="flex items-center gap-2">
-                      <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <Phone className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                       <span>{lab.phone || '—'}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <Mail className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                       <span className="truncate">{lab.email || '—'}</span>
                     </div>
                     <div className="flex items-start gap-2 pt-0.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                      <MapPin className="w-3.5 h-3.5 text-ink-muted shrink-0 mt-0.5" />
                       <span className="text-slate-500 line-clamp-1">{lab.address || 'No address on file'}</span>
                     </div>
                   </div>
@@ -288,15 +294,15 @@ export const LabListView: React.FC = () => {
                         <span className="font-mono font-bold text-indigo-700">{recentCase.case_number}</span>
                       </div>
                       <div className="text-slate-700 font-medium truncate">
-                        {recentCase.case_type_name} • Dr. {recentCase.doctor_name}
+                        {recentCase.case_type_name} • {formatDoctorName(recentCase.doctor_name)}
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                      <div className="flex items-center justify-between text-[10px] text-ink-muted pt-0.5">
                         <span className="capitalize font-semibold text-slate-600">Status: {recentCase.status.replace('_', ' ')}</span>
                         <span>Delivery: {recentCase.delivery_date}</span>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-3 p-2.5 bg-slate-50/50 border border-dashed border-slate-200 rounded-xl text-[11px] text-slate-400 italic text-center">
+                    <div className="mt-3 p-2.5 bg-slate-50/50 border border-dashed border-slate-200 rounded-xl text-[11px] text-ink-muted italic text-center">
                       No active cases logged
                     </div>
                   )}
@@ -325,7 +331,7 @@ export const LabListView: React.FC = () => {
       {viewMode === 'list' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           {filteredLabs.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 text-xs">
+            <div className="py-12 text-center text-ink-muted text-xs">
               No dental clinics found matching search.
             </div>
           ) : (
@@ -355,7 +361,7 @@ export const LabListView: React.FC = () => {
                       >
                         <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
                           <span className="flex items-center gap-1.5">
-                            <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                             <span>{lab.name}</span>
                           </span>
                         </td>
@@ -396,20 +402,7 @@ export const LabListView: React.FC = () => {
         </div>
       )}
 
-      {filteredLabs.length > visibleLabs.length && (
-        <div className="flex items-center justify-center gap-3 py-4">
-          <span className="text-xs text-slate-500">
-            Showing {visibleLabs.length} of {filteredLabs.length} clinics
-          </span>
-          <button
-            type="button"
-            onClick={() => setCardLimit((n) => n + CARD_CAP_STEP)}
-            className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-          >
-            Show {Math.min(CARD_CAP_STEP, filteredLabs.length - visibleLabs.length)} More
-          </button>
-        </div>
-      )}
+      {labsPagination}
 
       {/* Selected Lab Detail Modal */}
       {selectedLab && (
@@ -427,7 +420,7 @@ export const LabListView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                className="text-ink-muted hover:text-slate-700 p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -469,7 +462,7 @@ export const LabListView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Phone Number <span className="text-slate-400">(optional)</span>
+                  Phone Number <span className="text-ink-muted">(optional)</span>
                 </label>
                   <input
                     type="text"
@@ -484,7 +477,7 @@ export const LabListView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Address <span className="text-slate-400">(optional)</span>
+                  Email Address <span className="text-ink-muted">(optional)</span>
                 </label>
                 <input
                   type="email"
@@ -498,7 +491,7 @@ export const LabListView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Facility Address <span className="text-slate-400">(optional)</span>
+                  Facility Address <span className="text-ink-muted">(optional)</span>
                 </label>
                 <textarea
                   value={address}

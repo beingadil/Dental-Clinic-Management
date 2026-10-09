@@ -62,8 +62,17 @@ const MainAppContent: React.FC = () => {
       {/* Responsive Left Sidebar */}
       <Sidebar />
 
-      {/* Main Column: Top Header + View Content */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      {/* Main Column: Top Header + View Content
+
+          `relative` is load-bearing: it is the containing block for the
+          full-page case viewer, which is `absolute inset-0`. Without a
+          positioned ancestor that layer resolved against the viewport and
+          covered the nav rail — which reads to the user as "the sidebar
+          minimised when I opened a case job". Because this column is a plain
+          flex sibling of <Sidebar />, confining the viewer here keeps the rail
+          fully interactive and tracks its width whether expanded or collapsed,
+          with no breakpoint arithmetic. */}
+      <div className="relative flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Shown whenever the last SQLite collection sync failed — never silent */}
         <SyncStatusBanner />
 
@@ -76,7 +85,12 @@ const MainAppContent: React.FC = () => {
         <Header onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
 
         {/* View Main Content Area wrapped in Error Boundary */}
-        <main className="flex-1 p-3 sm:p-4 lg:p-5 overflow-y-auto dental-grid-bg">
+        {/* pb-24 below lg: the mobile bottom bar is a fixed ~60px strip and the
+            last card's own bottom padding is not enough to clear it, so the
+            final row of every view sat underneath the navigation and could not
+            be read or tapped. Axis utilities only (px/pt/pb, never p-*) so no
+            shorthand can fight the bottom value at a breakpoint. */}
+        <main className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 lg:pb-5 overflow-y-auto dental-grid-bg">
           <div className="w-full max-w-[1880px] 2xl:max-w-[2100px] mx-auto space-y-6">
             <ErrorBoundary>
               <Suspense fallback={null}>

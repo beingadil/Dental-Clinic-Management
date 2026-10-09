@@ -101,8 +101,15 @@ export const Sidebar: React.FC = () => {
         />
       )}
 
+      {/* `lg:z-auto` is load-bearing, not cosmetic. At lg the rail is a plain
+          flex sibling of <main>, but `z-50` still resolves for flex items even
+          when `position: static` — so without this the rail painted OVER every
+          full-page overlay mounted inside <main> (the case viewer is
+          `fixed inset-0 z-40`), hiding its left column behind the nav. The
+          drawer genuinely needs z-50 on mobile, where it is `fixed` over the
+          backdrop; on desktop it is in flow and must not outrank modals. */}
       <aside
-        className={`fixed lg:static top-0 left-0 z-50 h-screen bg-ds-surface border-r border-ds-line text-ds-ink-soft flex flex-col shrink-0 transition-all duration-300 ease-in-out ${
+        className={`fixed lg:static top-0 left-0 z-50 lg:z-auto h-screen bg-ds-surface border-r border-ds-line text-ds-ink-soft flex flex-col shrink-0 transition-all duration-300 ease-in-out ${
           isCollapsed ? 'w-20' : 'w-64'
         } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
@@ -118,13 +125,13 @@ export const Sidebar: React.FC = () => {
               setCurrentView('dashboard');
               setSidebarOpen(false);
             }}
-            className="flex items-center gap-3 cursor-pointer group min-w-0 text-left"
+            className="ds-hit flex items-center gap-3 cursor-pointer group min-w-0 text-left"
           >
             {brandingSettings.logoUrl ? (
               <img
                 src={brandingSettings.logoUrl}
                 alt={brandingSettings.appName}
-                className="w-10 h-10 rounded-xl object-contain bg-ds-surface-sunken border border-ds-line p-1 shrink-0 group-hover:scale-105 transition-transform"
+                className="w-10 h-10 rounded-xl object-contain bg-ds-sunken border border-ds-line p-1 shrink-0 group-hover:scale-105 transition-transform"
               />
             ) : (
               <div className="w-10 h-10 bg-ds-accent rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
@@ -146,7 +153,7 @@ export const Sidebar: React.FC = () => {
           <div className={`flex items-center ${isCollapsed ? 'flex-col gap-1' : 'gap-1'}`}>
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className={`hidden lg:flex text-ds-muted hover:text-ds-ink hover:bg-ds-surface-sunken rounded-lg transition-colors active:scale-95 cursor-pointer ${
+              className={`hidden lg:flex text-ds-muted hover:text-ds-ink hover:bg-ds-sunken rounded-lg transition-colors active:scale-95 cursor-pointer ds-hit ${
                 isCollapsed ? 'p-1' : 'p-1.5'
               }`}
               title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
@@ -156,7 +163,7 @@ export const Sidebar: React.FC = () => {
             </button>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-ds-muted hover:text-ds-ink p-1.5 rounded-lg cursor-pointer"
+              className="lg:hidden text-ds-muted hover:text-ds-ink p-1.5 rounded-lg cursor-pointer ds-hit"
               aria-label="Close Sidebar"
             >
               <X className="w-5 h-5" />
@@ -187,12 +194,12 @@ export const Sidebar: React.FC = () => {
                     }}
                     title={isCollapsed ? item.label : undefined}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`group relative w-full flex items-center ${
+                    className={`ds-row-target group relative w-full flex items-center ${
                       isCollapsed ? 'justify-center py-3' : 'justify-between px-3 py-2.5'
                     } rounded-xl font-medium text-xs md:text-sm transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-accent/30 active:scale-[0.98] ${
                       isActive
                         ? 'bg-ds-accent-soft text-ds-accent-strong font-semibold'
-                        : 'text-ds-ink-soft hover:bg-ds-surface-sunken hover:text-ds-ink'
+                        : 'text-ds-ink-soft hover:bg-ds-sunken hover:text-ds-ink'
                     }`}
                   >
                     {isActive && (
@@ -210,7 +217,7 @@ export const Sidebar: React.FC = () => {
                       {!isCollapsed && <span className="truncate ml-3">{item.label}</span>}
                     </span>
                     {!isCollapsed && item.badge && (
-                      <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 tabular-nums bg-ds-surface-sunken text-ds-ink-soft border border-ds-line">
+                      <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 tabular-nums bg-ds-sunken text-ds-ink-soft border border-ds-line">
                         {item.badge}
                       </span>
                     )}
@@ -262,7 +269,7 @@ export const Sidebar: React.FC = () => {
               key={item.id}
               onClick={() => setCurrentView(item.id)}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg relative transition-colors active:scale-95 ${
+              className={`ds-row-target flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg relative transition-colors active:scale-95 ${
                 isActive ? 'text-ds-accent font-bold' : 'text-ds-muted'
               }`}
             >

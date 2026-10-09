@@ -2,17 +2,19 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
+import { formatDoctorName } from '../../utils/doctorName';
 import { CaseDetailView } from './CaseDetailView';
 import { CaseTemplateModal } from './CaseTemplateModal';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
-import { PageHeader, EmptyState, Badge, CaseStatusBadge, PriorityBadge } from '../common/ui';
+import { PageHeader, EmptyState, Badge, CaseStatusBadge, PriorityBadge, usePagination } from '../common/ui';
 import { 
   PlusCircle, 
   Search, 
   Filter, 
-  ArrowUpDown, 
+  ArrowDownAZ,
+  ArrowUpZA,
   Bookmark, 
   AlertTriangle, 
   CheckCircle2, 
@@ -41,8 +43,118 @@ const KANBAN_STAGES: { id: CaseStatus; title: string; color: string; badgeBg: st
   { id: 'in_progress', title: 'In Progress', color: 'bg-indigo-600', badgeBg: 'bg-indigo-100 text-indigo-700', headerBg: 'border-indigo-100 bg-indigo-50/50' },
   { id: 'qc', title: 'QC Quality', color: 'bg-purple-600', badgeBg: 'bg-purple-100 text-purple-700', headerBg: 'border-purple-100 bg-purple-50/50' },
   { id: 'ready', title: 'Ready', color: 'bg-cyan-600', badgeBg: 'bg-cyan-100 text-cyan-800', headerBg: 'border-cyan-100 bg-cyan-50/50' },
-  { id: 'delivered', title: 'Delivered', color: 'bg-emerald-600', badgeBg: 'bg-emerald-100 text-emerald-800', headerBg: 'border-emerald-100 bg-emerald-50/50' },
+  { id: 'delivered', title: 'Delivered', color: 'bg-fill-success', badgeBg: 'bg-emerald-100 text-emerald-800', headerBg: 'border-emerald-100 bg-emerald-50/50' },
   { id: 'revision', title: 'Revision', color: 'bg-amber-600', badgeBg: 'bg-amber-100 text-amber-800', headerBg: 'border-amber-100 bg-amber-50/50' },
+];
+
+/** Columns the workstation list can be ordered by. */
+type CaseSortKey =
+  | 'created_at'
+  | 'updated_at'
+  | 'delivery_date'
+  | 'received_date'
+  | 'priority'
+  | 'case_number'
+  | 'patient_name'
+  | 'lab_name'
+  | 'case_type_name'
+  | 'doctor_name'
+  | 'final_price';
+
+type SortOrder = 'asc' | 'desc';
+
+/** Urgent ranks above high so `asc` reads "most urgent first". */
+const PRIORITY_RANK: Record<PriorityLevel, number> = { urgent: 4, high: 3, normal: 2, low: 1 };
+
+/**
+ * Case-number comparison that is numeric, not lexicographic: DS-9 must sort
+ * before DS-10. Both sides are normalised to the trailing digits, so
+ * DS-0009 / DS-9 / DS-00009 land in the same place.
+ */
+const compareCaseNumbers = (a: string, b: string): number => {
+  const na = parseInt(a.replace(/\D+/g, ''), 10);
+  const nb = parseInt(b.replace(/\D+/g, ''), 10);
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  return a.localeCompare(b);
+};
+
+/** Optional date columns are blank on legacy rows; blanks sort last in either direction. */
+const compareOptionalDate = (a?: string | null, b?: string | null): number => {
+  const av = a || '';
+  const bv = b || '';
+  if (!av && !bv) return 0;
+  if (!av) return 1;
+  if (!bv) return -1;
+  return av.localeCompare(bv);
+};
+
+/**
+ * One comparison for every sort key, so a new key is one line here rather than
+ * another branch in the memo. Always returns ascending order; the caller
+ * applies the direction.
+ */
+const compareCases = (a: DentalCase, b: DentalCase, key: CaseSortKey): number => {
+  switch (key) {
+    case 'created_at':
+      return compareOptionalDate(a.created_at, b.created_at);
+    case 'updated_at':
+      return compareOptionalDate(a.updated_at, b.updated_at);
+    case 'delivery_date':
+      return compareOptionalDate(a.delivery_date, b.delivery_date);
+    case 'received_date':
+      return compareOptionalDate(a.received_date, b.received_date);
+    case 'priority':
+      return PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority];
+    case 'case_number':
+      return compareCaseNumbers(a.case_number, b.case_number);
+    case 'patient_name':
+      return (a.patient_name || '').localeCompare(b.patient_name || '');
+    case 'lab_name':
+      return a.lab_name.localeCompare(b.lab_name);
+    case 'case_type_name':
+      return a.case_type_name.localeCompare(b.case_type_name);
+    case 'doctor_name':
+      return formatDoctorName(a.doctor_name, '').localeCompare(formatDoctorName(b.doctor_name, ''));
+    case 'final_price':
+      return (a.final_price || 0) - (b.final_price || 0);
+    default:
+      return 0;
+  }
+};
+
+/** Dropdown labels. Grouped so the operator reads as a list, not an enum. */
+const SORT_OPTIONS: { group: string; options: { value: CaseSortKey; label: string }[] }[] = [
+  {
+    group: 'Recently added',
+    options: [
+      { value: 'created_at', label: 'Newest first' },
+      { value: 'updated_at', label: 'Last updated' },
+    ],
+  },
+  {
+    group: 'Delivery',
+    options: [
+      { value: 'delivery_date', label: 'Delivery date' },
+      { value: 'received_date', label: 'Received date' },
+      { value: 'priority', label: 'Priority' },
+    ],
+  },
+  {
+    group: 'Case',
+    options: [
+      { value: 'case_number', label: 'Case number' },
+      { value: 'patient_name', label: 'Patient name' },
+      { value: 'doctor_name', label: 'Doctor name' },
+    ],
+  },
+  {
+    group: 'Work',
+    options: [
+      { value: 'lab_name', label: 'Dental clinic' },
+      { value: 'case_type_name', label: 'Material / type' },
+      { value: 'final_price', label: 'Case value' },
+    ],
+  },
 ];
 
 export const CaseListView: React.FC = () => {
@@ -60,10 +172,10 @@ export const CaseListView: React.FC = () => {
   const activeCases = useMemo(() => cases.filter((c) => !c.archived_at), [cases]);
   const archivedCases = useMemo(() => cases.filter((c) => !!c.archived_at), [cases]);
 
-  /* Cap how many rows mount at once: past ~300 rows the table render itself
-     becomes the bottleneck (1000 rows ≈ 41k DOM nodes). typing more shows more. */
-  const RENDER_CAP_STEP = 300;
-  const [renderLimit, setRenderLimit] = useState(RENDER_CAP_STEP);
+  /* Rows mount one page at a time. This list used to grow an ever-larger
+     "Show more" window instead: past ~300 rows the table render itself is the
+     bottleneck (1000 rows ≈ 41k DOM nodes), and clicking through it kept every
+     previously-mounted row alive instead of swapping them. */
 
   // State (Default to Table View)
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>(() => {
@@ -106,8 +218,12 @@ export const CaseListView: React.FC = () => {
   const [labFilter, setLabFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [dueSoonOnly, setDueSoonOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<'delivery_date' | 'priority' | 'created_at'>('delivery_date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  /* Default order is newest-registered first. The workstation is an intake
+     queue: the row you want is the row you just typed, and with delivery_date
+     ascending an operator had to scroll to the bottom of a long case list to
+     confirm the case they had just created actually landed. */
+  const [sortBy, setSortBy] = useState<CaseSortKey>('created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   // Helper for 24-Hour Visual Warning System
   const checkCaseWarning = (c: DentalCase) => {
@@ -174,7 +290,8 @@ export const CaseListView: React.FC = () => {
       const matchNum = (c.case_number || '').toLowerCase().includes(term);
       const matchPatient = (c.patient_name || '').toLowerCase().includes(term);
       const matchLab = (c.lab_name || '').toLowerCase().includes(term);
-      const matchDoc = (c.doctor_name || '').toLowerCase().includes(term);
+      // Matched on the DISPLAY name so "Dr Ahmad" still finds the bare-stored row.
+      const matchDoc = formatDoctorName(c.doctor_name, '').toLowerCase().includes(term);
       const matchType = (c.case_type_name || '').toLowerCase().includes(term);
       if (!matchNum && !matchPatient && !matchLab && !matchDoc && !matchType) return false;
     }
@@ -196,16 +313,7 @@ export const CaseListView: React.FC = () => {
 
     return true;
   }).sort((a, b) => {
-    let comparison = 0;
-    if (sortBy === 'delivery_date') {
-      comparison = a.delivery_date.localeCompare(b.delivery_date);
-    } else if (sortBy === 'created_at') {
-      comparison = a.created_at.localeCompare(b.created_at);
-    } else if (sortBy === 'priority') {
-      const pMap: Record<PriorityLevel, number> = { urgent: 4, high: 3, normal: 2, low: 1 };
-      comparison = pMap[b.priority] - pMap[a.priority];
-    }
-    return sortOrder === 'asc' ? comparison : -comparison;
+    return compareCases(a, b, sortBy) * (sortOrder === 'asc' ? 1 : -1);
   }), [activeCases, searchTerm, statusFilter, labFilter, priorityFilter, dueSoonOnly, sortBy, sortOrder, todayStr]);
 
   /* Archive tab list: date range on delivery date, clinic dropdown, search —
@@ -221,14 +329,22 @@ export const CaseListView: React.FC = () => {
         (c.case_number || '').toLowerCase().includes(q) ||
         (c.patient_name || '').toLowerCase().includes(q) ||
         (c.lab_name || '').toLowerCase().includes(q) ||
-        (c.doctor_name || '').toLowerCase().includes(q) ||
+        formatDoctorName(c.doctor_name, '').toLowerCase().includes(q) ||
         (c.case_type_name || '').toLowerCase().includes(q);
       if (!hit) return false;
     }
     return true;
   }).sort((a, b) => (b.archived_at || '').localeCompare(a.archived_at || '')), [archivedCases, archiveFrom, archiveTo, archiveClinic, archiveSearch]);
 
-  const visibleFilteredCases = filteredCases.slice(0, renderLimit);
+  /* The resetKey mirrors exactly what used to reset the render cap: a narrower
+     filter, or a re-sort, starts the reader from the top of the new order. */
+  const {
+    pageItems: visibleFilteredCases,
+    pagination: casesPagination,
+  } = usePagination(filteredCases, {
+    initialPageSize: 50,
+    resetKey: `${searchTerm}|${statusFilter}|${labFilter}|${priorityFilter}|${dueSoonOnly}|${sortBy}|${sortOrder}|${showArchive}`,
+  });
 
   // Bulk selection helper functions
   const toggleSelectCase = (id: string) => {
@@ -364,7 +480,7 @@ export const CaseListView: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Search Field */}
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <input
               type="text"
               value={searchTerm}
@@ -427,19 +543,30 @@ export const CaseListView: React.FC = () => {
           <div className="flex items-center gap-2">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) => setSortBy(e.target.value as CaseSortKey)}
+              aria-label="Sort cases by"
               className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-medium"
             >
-              <option value="delivery_date">Sort: Delivery Date</option>
-              <option value="priority">Sort: Priority</option>
-              <option value="created_at">Sort: Registered Date</option>
+              {SORT_OPTIONS.map((group) => (
+                <optgroup key={group.group} label={group.group}>
+                  {group.options.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
             <button
+              type="button"
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 transition-colors"
-              title="Toggle sort direction"
+              className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 transition-colors cursor-pointer"
+              aria-label={sortOrder === 'asc' ? 'Sorted ascending — switch to descending' : 'Sorted descending — switch to ascending'}
+              title={sortOrder === 'asc'
+                ? 'Ascending — oldest / smallest first. Click for descending.'
+                : 'Descending — newest / largest first. Click for ascending.'}
             >
-              <ArrowUpDown className="w-4 h-4" />
+              {sortOrder === 'asc'
+                ? <ArrowDownAZ className="w-4 h-4" />
+                : <ArrowUpZA className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -477,7 +604,7 @@ export const CaseListView: React.FC = () => {
                 setBulkPrintType('invoices');
                 setBulkPrintModalOpen(true);
               }}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
+              className="px-4 py-2 bg-fill-success hover:bg-fill-success text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
             >
               <Receipt className="w-4 h-4" />
               <span>Print Invoices ({selectedCaseIds.length})</span>
@@ -501,7 +628,7 @@ export const CaseListView: React.FC = () => {
           <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-center gap-3">
               <div className="relative flex-1 min-w-[180px]">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
                 <input
                   type="text"
                   value={archiveSearch}
@@ -535,7 +662,7 @@ export const CaseListView: React.FC = () => {
                 </button>
               )}
             </div>
-            <p className="mt-2 text-[11px] text-slate-400">
+            <p className="mt-2 text-[11px] text-ink-muted">
               {filteredArchivedCases.length} archived case{filteredArchivedCases.length === 1 ? '' : 's'} — filter by delivery date range, clinic, or search by ID / patient / doctor.
             </p>
           </div>
@@ -591,7 +718,7 @@ export const CaseListView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setConfirmPermanentId(c.id)}
-                              className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 hover:bg-rose-50 text-ink-danger rounded-lg transition-colors cursor-pointer"
                               title="Permanently delete this case and its history"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -607,10 +734,18 @@ export const CaseListView: React.FC = () => {
           </div>
         </div>
       ) : viewMode === 'kanban' ? (
-        /* DRAG AND DROP KANBAN BOARD */
+        /* DRAG AND DROP KANBAN BOARD.
+           The board paginates exactly like the table: cards come from
+           `visibleFilteredCases` (the current page), not `filteredCases`.
+           It used to render every filtered case in every column, so a large
+           library built thousands of card DOM nodes in one pass and the
+           desktop window stopped responding. Column counts stay whole-board
+           totals — they describe the workflow, not the page. */
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4 items-start overflow-x-auto no-scrollbar flex-1 min-h-0">
           {KANBAN_STAGES.map((stage) => {
-            const stageCases = filteredCases.filter((c) => c.status === stage.id);
+            const stageTotal = filteredCases.filter((c) => c.status === stage.id).length;
+            const stageCases = visibleFilteredCases.filter((c) => c.status === stage.id);
             const isDragTarget = dragOverColumn === stage.id;
 
             return (
@@ -632,17 +767,28 @@ export const CaseListView: React.FC = () => {
                     <h3 className="font-bold text-xs text-slate-800 tracking-tight">{stage.title}</h3>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stage.badgeBg}`}>
-                    {stageCases.length}
+                    {stageTotal}
                   </span>
                 </div>
 
                 {/* Cards Container */}
                 <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-0.5">
                   {stageCases.length === 0 ? (
-                    <div className="h-28 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center p-3 text-center text-slate-400 text-xs">
-                      <Move className="w-4 h-4 opacity-40 mb-1" />
-                      <span className="text-[11px] font-medium">Drop cases here</span>
-                    </div>
+                    stageTotal > 0 ? (
+                      /* Not an empty column — this page simply has none of its
+                         cases here. Saying "Drop cases here" would be a lie. */
+                      <div className="h-28 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center p-3 text-center text-ink-muted text-xs">
+                        <span className="text-[11px] font-medium">
+                          None on this page
+                        </span>
+                        <span className="text-[10px]">{stageTotal} in this stage</span>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center p-3 text-center text-ink-muted text-xs">
+                        <Move className="w-4 h-4 opacity-40 mb-1" />
+                        <span className="text-[11px] font-medium">Drop cases here</span>
+                      </div>
+                    )
                   ) : (
                     stageCases.map((c) => {
                       const { isWarning, isOverdue, isDueSoon, hoursLeft } = checkCaseWarning(c);
@@ -717,7 +863,7 @@ export const CaseListView: React.FC = () => {
                                 className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                 title="Select case for bulk printing"
                               />
-                              <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400" />
+                              <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-ink-muted" />
                               <span className="font-extrabold text-xs text-slate-900 tracking-tight">{c.case_number}</span>
                               
                               {isWarning && (
@@ -738,10 +884,10 @@ export const CaseListView: React.FC = () => {
                               {c.lab_name}
                             </div>
                             <div className="text-[11px] text-indigo-600 font-semibold truncate">
-                              {c.case_type_name} {c.shade && <span className="text-slate-400 font-normal">({c.shade})</span>}
+                              {c.case_type_name} {c.shade && <span className="text-ink-muted font-normal">({c.shade})</span>}
                             </div>
                             <div className="text-[11px] text-slate-500 font-medium">
-                              Dr. {c.doctor_name}
+                              {formatDoctorName(c.doctor_name)}
                             </div>
                           </div>
 
@@ -767,7 +913,7 @@ export const CaseListView: React.FC = () => {
                           {/* Bottom Info & Quick Action */}
                           <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1 text-[11px]">
                             <div className="flex items-center gap-1 text-slate-500">
-                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <Calendar className="w-3 h-3 text-ink-muted" />
                               <span className={isOverdue ? 'text-amber-700 font-bold' : ''}>{c.delivery_date}</span>
                             </div>
 
@@ -826,6 +972,10 @@ export const CaseListView: React.FC = () => {
             );
           })}
         </div>
+        {/* The board's page bar, outside the `flex-1 min-h-0` grid so the
+            columns keep their height instead of being squeezed by it. */}
+        {casesPagination}
+        </>
       ) : (
         /* TABLE VIEW */
         <div className="glass-panel border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
@@ -914,10 +1064,10 @@ export const CaseListView: React.FC = () => {
 
                         <td className="py-2 px-4 text-slate-700">
                           <span className="font-semibold text-indigo-600">{c.case_type_name}</span>
-                          {c.shade && <span className="ml-1 text-[11px] text-slate-400 font-normal">({c.shade})</span>}
+                          {c.shade && <span className="ml-1 text-[11px] text-ink-muted font-normal">({c.shade})</span>}
                         </td>
 
-                        <td className="py-2 px-4 text-slate-700 font-medium">Dr. {c.doctor_name}</td>
+                        <td className="py-2 px-4 text-slate-700 font-medium">{formatDoctorName(c.doctor_name)}</td>
 
                         <td className="py-2 px-4 text-slate-600">
                           <span className="font-mono font-bold text-slate-800">#{c.selected_teeth.join(', ')}</span>
@@ -995,20 +1145,7 @@ export const CaseListView: React.FC = () => {
                   })}
                 </tbody>
               </table>
-              {filteredCases.length > visibleFilteredCases.length && (
-                <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
-                  <span className="text-xs text-slate-500">
-                    Showing {visibleFilteredCases.length} of {filteredCases.length} cases
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setRenderLimit((n) => n + RENDER_CAP_STEP)}
-                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                  >
-                    Show {Math.min(RENDER_CAP_STEP, filteredCases.length - visibleFilteredCases.length)} More
-                  </button>
-                </div>
-              )}
+              {casesPagination}
             </div>
           )}
         </div>
@@ -1019,9 +1156,9 @@ export const CaseListView: React.FC = () => {
         const victim = cases.find((c) => c.id === confirmPermanentId);
         if (!victim) return null;
         return (
-          <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4">
-              <div className="flex items-center gap-3 text-rose-600">
+              <div className="flex items-center gap-3 text-ink-danger">
                 <Trash2 className="w-6 h-6 shrink-0" />
                 <h3 className="font-bold text-base text-slate-900">Permanently delete {victim.case_number}?</h3>
               </div>
@@ -1090,7 +1227,7 @@ export const CaseListView: React.FC = () => {
           <div className="bg-white rounded-3xl max-w-3xl w-full p-6 border border-slate-200 shadow-2xl relative">
             <button
               onClick={() => setTemplateLibraryOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1"
+              className="absolute top-4 right-4 text-ink-muted hover:text-slate-700 p-1"
             >
               <X className="w-5 h-5" />
             </button>
