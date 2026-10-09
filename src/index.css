@@ -1,6 +1,13 @@
 @import "./fonts.css";
 @import "tailwindcss";
 @import "./components/dashboard/dashboard-tokens.css";
+/* Dark semantics for the dashboard token layer + the palette remap for every
+   module. Both are additive overrides under `.dark`, so light mode is
+   untouched and the print path (which never gets the class painted) is
+   unaffected. Order matters: these must come AFTER tailwindcss so the
+   remaps win over the generated utilities at equal specificity. */
+@import "./components/dashboard/dashboard-dark.css";
+@import "./theme/dark.css";
 
 /*
  * D7 — brand accent. These five tokens are the only things `applyBrandColor()`
@@ -26,6 +33,172 @@
   --color-brand-200: var(--brand-200);
   --color-brand-600: var(--brand-600);
   --color-brand-700: var(--brand-700);
+}
+
+/*
+ * ROLE PRIMITIVES — ink and fill, deliberately NOT one ramp.
+ *
+ * A palette step like `emerald-600` was doing two incompatible jobs:
+ * `text-emerald-600` is INK on a card, while `bg-emerald-600` is a saturated
+ * FILL carrying white ink. They share a token, so the light theme could not
+ * satisfy both: `bg-emerald-600` under white is 3.67:1 and `text-rose-600` on
+ * `bg-rose-50` is 4.10:1, while lightening the same token to fix one breaks
+ * the other. Fixing one role at a time by pinning utilities is what kept
+ * producing the next failure. Each role gets its own token instead:
+ *
+ *   --color-ink-*   text on a surface.  graded against every surface it is
+ *                   ever painted on, in BOTH themes.
+ *   --color-fill-*  a saturated slab under white ink. graded against white.
+ *
+ * Values are solved by scripts/role-picker.mjs from the compiled palette and
+ * re-verified end-to-end by scripts/contrast-audit.mjs. A fill is a brand
+ * surface, so it holds one tone across the theme switch; only the ink on it
+ * changes. The dark counterparts live in src/theme/dark.css.
+ */
+:root {
+  --color-ink-muted: #68707b;
+  --color-ink-body: #464e58;
+  --color-ink-danger: #d50033;
+  --color-ink-success: #007e51;
+  --color-ink-warning: #ba4d00;
+  --color-ink-info: #165af2;
+  /* The accent wears two hats exactly like `--color-ink-info` does: it is ink
+     on a brand-50/100 chip AND the fill under 36 white-on-brand buttons.
+     Those two roles cannot share a token — lightening the accent to clear the
+     chips would wash out the buttons — so the ink half gets its own pair,
+     and only the ink half is theme-scoped. Values are the unmodified brand
+     swatches, so light-theme rendering is byte-identical to the utilities
+     these rules replace. Dark counterparts in src/theme/dark.css. */
+  --color-ink-brand: #4b47cf;
+  --color-ink-brand-strong: #4444b5;
+  --color-fill-danger: #e3104a;
+  --color-fill-danger-hover: #d9003a;
+  --color-fill-danger-active: #c60035;
+  --color-fill-success: #008454;
+  --color-fill-success-hover: #00764b;
+  --color-fill-success-active: #006a44;
+  --color-fill-warning: #b65a00;
+  --color-fill-warning-hover: #a74f00;
+  --color-fill-warning-active: #984700;
+}
+
+/*
+ * ── Wiring the primitives to the utilities that were wearing two hats ────
+ *
+ * These rules are the POINT of the split. Unlayered, so they outrank the
+ * generated Tailwind utilities at equal specificity — the same precedence
+ * trick src/theme/dark.css uses, pointed at the light theme instead.
+ *
+ * Every call site keeps working: `text-slate-400` in a card, a table row, a
+ * modal header and a chip all now read one role-named token, so a fix can no
+ * longer be applied to one of those contexts and missed in the others.
+ *
+ * The FILLS are deliberately NOT theme-scoped. A saturated slab is a brand
+ * surface; it holds one tone across the switch and only the ink riding on it
+ * changes. `--color-fill-*` carries the same value in `.dark`.
+ *
+ * `.bg-brand-600` is deliberately NOT aliased, for the same reason: it is the
+ * fill under white ink at 36 call sites, and aliasing it to the brand ink would
+ * invert the roles and put dark ink on a saturated slab. Only the accent's two
+ * INK utilities move.
+ *
+ * Every rule below this comment is generated from the ALIASES table in
+ * scripts/role-picker.mjs. Nothing hand-written goes between the first and the
+ * last one: the writer replaces that span wholesale and refuses to run if it
+ * finds anything else there.
+ */
+.text-slate-400 {
+  color: var(--color-ink-muted);
+}
+.text-slate-500 {
+  color: var(--color-ink-body);
+}
+.text-rose-600 {
+  color: var(--color-ink-danger);
+}
+.text-emerald-600 {
+  color: var(--color-ink-success);
+}
+.text-blue-600 {
+  color: var(--color-ink-info);
+}
+.text-amber-600 {
+  color: var(--color-ink-warning);
+}
+.text-brand-600 {
+  color: var(--color-ink-brand);
+}
+.text-brand-700 {
+  color: var(--color-ink-brand-strong);
+}
+.bg-rose-500 {
+  background-color: var(--color-fill-danger);
+}
+.bg-rose-600 {
+  background-color: var(--color-fill-danger);
+}
+.bg-emerald-500 {
+  background-color: var(--color-fill-success);
+}
+.bg-emerald-600 {
+  background-color: var(--color-fill-success);
+}
+.bg-amber-500 {
+  background-color: var(--color-fill-warning);
+}
+.hover\:bg-rose-600:hover {
+    background-color: var(--color-fill-danger-hover);
+  }
+.hover\:bg-rose-500:hover {
+    background-color: var(--color-fill-danger-hover);
+  }
+.hover\:bg-emerald-600:hover {
+    background-color: var(--color-fill-success-hover);
+  }
+.hover\:bg-emerald-500:hover {
+    background-color: var(--color-fill-success-hover);
+  }
+.hover\:bg-amber-500:hover {
+    background-color: var(--color-fill-warning-hover);
+  }
+.active\:bg-rose-600:active {
+    background-color: var(--color-fill-danger-active);
+  }
+.active\:bg-rose-500:active {
+    background-color: var(--color-fill-danger-active);
+  }
+.active\:bg-emerald-600:active {
+    background-color: var(--color-fill-success-active);
+  }
+.active\:bg-emerald-500:active {
+    background-color: var(--color-fill-success-active);
+  }
+.active\:bg-amber-500:active {
+    background-color: var(--color-fill-warning-active);
+  }
+
+/*
+ * Chart tokens. Recharts series colours are SVG fills set as JS props, so no
+ * utility or var-remap can reach them — they have to be tokens the component
+ * reads. Chart marks are the one place where a saturated 500/600 that clears
+ * contrast on white still reads as a mark on near-black, so the dark values
+ * are held rather than inverted: a series colour carries its own legend swatch
+ * and must stay identifiable across the theme switch.
+ */
+:root {
+  --chart-grid: #f1f5f9;
+  --chart-axis-ink: #64748b;
+  --chart-1: #3b82f6;
+  --chart-2: #8b5cf6;
+  --chart-3: #ec4899;
+  --chart-4: #10b981;
+  --chart-5: #f59e0b;
+  --chart-pos: #10b981;
+  --chart-info: #3b82f6;
+  --chart-warn: #f59e0b;
+  --chart-tooltip-bg: rgb(255 255 255 / 0.96);
+  --chart-tooltip-ink: #0f172a;
+  --chart-tooltip-line: #e2e8f0;
 }
 
 @layer base {
@@ -230,10 +403,28 @@
   animation: fade-in-soft 0.35s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
+/* Reduced motion — global neutraliser.
+   The rule above only ever covered two of this app's own keyframes, so every
+   Tailwind utility loop kept running under `prefers-reduced-motion`: 11
+   `animate-pulse`, 1 infinite `animate-ping` and 2 `animate-bounce`. Those are
+   decorative and infinite, so they stop outright. `animate-spin` is different —
+   it is the only signal that work is in flight — so it keeps turning, slowly
+   enough to stop reading as a flicker. */
 @media (prefers-reduced-motion: reduce) {
   .animate-step-in,
-  .animate-fadeIn {
-    animation: none;
+  .animate-fadeIn,
+  .animate-ping,
+  .animate-ping-slow,
+  .animate-pulse,
+  .animate-pulse-slow,
+  .animate-bounce,
+  .animate-bounce-slow {
+    animation: none !important;
+  }
+
+  .animate-spin,
+  .animate-spin-slow {
+    animation-duration: 2.4s !important;
   }
 }
 

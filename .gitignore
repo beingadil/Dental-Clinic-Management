@@ -52,5 +52,9 @@ bun.lock
 tmp/
 *.tmp
 
+# Local contrast-audit report (scripts/contrast-audit.mjs). CI writes its own
+# copy as an artifact; a local run should not leave one in the tree.
+contrast-audit.txt
+
 # Quarantined files kept for security analysis (never commit)
 .quarantine/

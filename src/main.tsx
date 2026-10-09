@@ -6,6 +6,13 @@ import './index.css';
 import './components/print/printStyles.css';
 import { initializeDatabase } from './db';
 import { flushNow } from './db/persistence';
+import { applyStoredTheme } from './theme/theme';
+
+// Re-apply from the mirror at module scope, before createRoot paints. The
+// inline script in index.html already did this for the first frame; running it
+// again keeps a single code path authoritative once the bundle is live, and
+// covers the case where the document was restored from bfcache.
+applyStoredTheme();
 
 // sql.js WASM is vendored into public/vendor/ and served as a static asset.
 // (The bundler `?url` import rewrote inconsistently between dev/preview, which
@@ -57,7 +64,7 @@ const Boot: React.FC = () => {
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
         <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
         <div className="text-slate-600 font-medium">Initializing local database…</div>
-        <div className="text-slate-400 text-sm">All data stays on this computer</div>
+        <div className="text-ink-muted text-sm">All data stays on this computer</div>
       </div>
     );
   }
@@ -65,7 +72,7 @@ const Boot: React.FC = () => {
   if (status === 'failed') {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 gap-3 px-6 text-center">
-        <div className="text-rose-600 font-semibold text-lg">Database failed to initialize</div>
+        <div className="text-ink-danger font-semibold text-lg">Database failed to initialize</div>
         <div className="text-slate-600 text-sm max-w-md font-mono break-words">{error}</div>
         <button
           className="mt-3 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"

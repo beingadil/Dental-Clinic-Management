@@ -1,0 +1,587 @@
+/*
+ * Dark theme — a role-aware remap, not a colour inversion.
+ *
+ * WHY NOT A PLAIN INVERSION
+ * The palette utilities in this app are role-ambiguous: `bg-slate-900` is an
+ * inverse surface (a dark header, a code block) while `text-slate-900` is ink,
+ * and they resolve to the SAME `--color-slate-900`. Inverting the ramp
+ * therefore breaks one of the two no matter which way it goes — which is why
+ * a global flip is not an option here.
+ *
+ * SO: two mechanisms, in this order.
+ *
+ * 1. TOKEN REMAP (`.dark` block below). Tailwind v4 emits its theme variables
+ *    inside `@layer theme`, and an UNLAYERED `.dark` declaration outranks any
+ *    layered one. So one block re-points ~2,969 `slate-*` call sites and the
+ *    chromatic ramps at once, with no component touched. Every neutral step is
+ *    remapped to the role it actually plays on screen, not to its mirror.
+ *
+ * 2. ROLE OVERRIDES (bottom half). A handful of utilities wear two hats and
+ *    cannot be expressed as a single token: `bg-white` (a card surface, 309
+ *    uses) shares `--color-white` with `text-white` (ink on a saturated fill,
+ *    223 uses). Those are re-pinned by hand, utility by utility.
+ *
+ * SCOPE
+ * Everything is inside `@media screen`. Print resets its own background and
+ * ink in index.css, and a printed statement on a dark card is unreadable —
+ * so the dark palette must never reach paper. This scoping is the whole
+ * print-safety story, not an afterthought.
+ */
+
+@media screen {
+  /*
+   * ── Neutral ramp ──────────────────────────────────────────────────────
+   * 50–300 are SURFACES and LINES on a light UI, so they become the dark
+   * canvas and its separators. 400–700 are INK, so they lighten and keep
+   * their ordering. 800–950 are inverse fills; they are re-pinned to explicit
+   * dark values below rather than flipped, so an inverse surface stays an
+   * inverse surface.
+   */
+  .dark {
+    /* Surfaces */
+    --color-slate-50: #0b1220;
+    --color-slate-100: #111a2b;
+    --color-slate-200: #1b2637;
+    --color-slate-300: #26344a;
+    /* Lines / hairlines that sit above a surface */
+    --color-slate-400: #35455f;
+    /* Ink. Ordered to preserve the light-theme ladder exactly. */
+    --color-slate-500: #7f8ea6;
+    --color-slate-600: #9aa9bf;
+    --color-slate-700: #b6c3d6;
+    --color-slate-800: #d2dbe8;
+    --color-slate-900: #e9eff7;
+    --color-slate-950: #ffffff;
+    /* white is a SURFACE here, not ink — ink is re-pinned below. */
+    --color-white: #0f1826;
+
+    /*
+     * Chromatic ramps. Each hue keeps its identity and its 500/600 anchor
+     * (those are saturated fills that carry white text and must stay dark),
+     * while the pale end becomes a dark tint and the dark end becomes a
+     * light ink. `bg-rose-50 text-rose-800` — the app's most common chip —
+     * therefore stays a legible dark chip instead of becoming a black-on-black
+     * hole.
+     */
+    --color-indigo-50: #161e3f;
+    --color-indigo-100: #1b2549;
+    --color-indigo-200: #2a3768;
+    --color-indigo-300: #3d4d92;
+    --color-indigo-800: #c7d2fe;
+    --color-indigo-900: #e0e7ff;
+    --color-indigo-950: #eef2ff;
+
+    --color-rose-50: #2b1418;
+    --color-rose-100: #3a1a20;
+    --color-rose-200: #5c2630;
+    --color-rose-300: #8b3140;
+    --color-rose-800: #fecdd3;
+    --color-rose-900: #ffe4e6;
+    --color-rose-950: #fff1f2;
+
+    --color-emerald-50: #0b2418;
+    --color-emerald-100: #0f3220;
+    --color-emerald-200: #14532d;
+    --color-emerald-300: #166534;
+    --color-emerald-800: #a7f3d0;
+    --color-emerald-900: #d1fae5;
+    --color-emerald-950: #ecfdf5;
+
+    --color-amber-50: #2a1d05;
+    --color-amber-100: #3a2a08;
+    --color-amber-200: #5c4210;
+    --color-amber-300: #92400e;
+    --color-amber-800: #fde68a;
+    --color-amber-900: #fef3c7;
+    --color-amber-950: #fffbeb;
+
+    --color-blue-50: #0b1d33;
+    --color-blue-100: #0f2745;
+    --color-blue-200: #1c3f66;
+    --color-blue-300: #1d4f7a;
+    --color-blue-800: #bfdbfe;
+    --color-blue-900: #dbeafe;
+    --color-blue-950: #eff6ff;
+
+    --color-purple-50: #201636;
+    --color-purple-100: #281d43;
+    --color-purple-200: #3d2a63;
+    --color-purple-300: #4c357a;
+    --color-purple-800: #ddd6fe;
+    --color-purple-900: #ede9fe;
+    --color-purple-950: #f5f3ff;
+
+    --color-cyan-50: #08222a;
+    --color-cyan-100: #0b2f3a;
+    --color-cyan-200: #0e4a5a;
+    --color-cyan-300: #155e75;
+    --color-cyan-800: #a5f3fc;
+    --color-cyan-900: #cffafe;
+    --color-cyan-950: #ecfeff;
+
+    --color-violet-50: #211a3d;
+    --color-violet-100: #2a2150;
+    --color-violet-200: #3f3272;
+    --color-violet-300: #524094;
+    --color-violet-800: #ddd6fe;
+    --color-violet-900: #ede9fe;
+    --color-violet-950: #f5f3ff;
+
+    --color-sky-50: #0a1e30;
+    --color-sky-100: #0e2a42;
+    --color-sky-200: #17455f;
+    --color-sky-300: #0c5a7a;
+    --color-sky-800: #bae6fd;
+    --color-sky-900: #e0f2fe;
+    --color-sky-950: #f0f9ff;
+
+    --color-teal-50: #07211e;
+    --color-teal-100: #0a2f2a;
+    --color-teal-200: #0d4a42;
+    --color-teal-300: #115e59;
+    --color-teal-800: #99f6e4;
+    --color-teal-900: #ccfbf1;
+    --color-teal-950: #f0fdfa;
+
+    --color-orange-50: #2a1608;
+    --color-orange-100: #3a2009;
+    --color-orange-200: #5c3510;
+    --color-orange-300: #7c3f12;
+    --color-orange-800: #fed7aa;
+    --color-orange-900: #ffedd5;
+    --color-orange-950: #fff7ed;
+
+    --color-red-50: #2c1113;
+    --color-red-100: #3b1518;
+    --color-red-200: #5f1f22;
+    --color-red-300: #8a2626;
+    --color-red-800: #fecaca;
+    --color-red-900: #fee2e2;
+    --color-red-950: #fef2f2;
+
+    /*
+     * ROLE PRIMITIVES — the dark readings of the ink/fill split declared in
+     * index.css. Same nine tokens, different solves: an ink that must be dark
+     * in light mode has to LIGHTEN here, while a fill holds its tone.
+     * Generated by scripts/role-picker.mjs.
+     */
+    --color-ink-muted: #7f8792;
+    --color-ink-body: #afb8c4;
+    --color-ink-danger: #f65c6c;
+    --color-ink-success: #50ad85;
+    --color-ink-warning: #d4823a;
+    --color-ink-info: #5a93ff;
+    --color-fill-danger: #e3104a;
+    --color-fill-danger-hover: #d9003a;
+    --color-fill-danger-active: #c60035;
+    --color-fill-success: #008454;
+    --color-fill-success-hover: #00764b;
+    --color-fill-success-active: #006a44;
+    --color-fill-warning: #b65a00;
+    --color-fill-warning-hover: #a74f00;
+    --color-fill-warning-active: #984700;
+
+    /* Brand swatches are user-chosen at runtime; these are the dark-safe
+       readings of the indigo default so a fresh install is correct. */
+    --brand-50: #1b2549;
+    --brand-100: #233060;
+    --brand-200: #2a3768;
+
+    /*
+     * Brand INK, the counterpart of the two `--color-ink-brand*` tokens in
+     * index.css. Without this the accent's ink half stayed #4338ca/#4f46e5
+     * and landed on the very surfaces remapped three lines above: `text-brand-
+     * 700` on `bg-brand-50` measured 1.60:1. `--brand-600`/`--brand-700` are
+     * NOT remapped, because those are the FILL under white ink and holding
+     * them is what keeps the 36 brand buttons readable; only the ink moves.
+     */
+    --color-ink-brand: #a5b4fc;
+    --color-ink-brand-strong: #c7d2fe;
+
+    /* Chart marks are HELD, not inverted — see the chart-token comment in
+       index.css. A series colour identifies itself against its own legend
+       swatch, so flipping it to a dark value would change what the data means
+       at a glance. Only the scaffold around the marks is remapped. */
+    --chart-grid: #1e2b40;
+    --chart-axis-ink: #8b9ab0;
+    --chart-1: #60a5fa;
+    --chart-2: #a78bfa;
+    --chart-3: #f472b6;
+    --chart-4: #34d399;
+    --chart-5: #fbbf24;
+    --chart-pos: #34d399;
+    --chart-info: #60a5fa;
+    --chart-warn: #fbbf24;
+    --chart-tooltip-bg: rgb(15 24 38 / 0.96);
+    --chart-tooltip-ink: #e9eff7;
+    --chart-tooltip-line: #26344a;
+  }
+
+  /*
+   * ── Role overrides ────────────────────────────────────────────────────
+   * Utilities whose light-theme value is a token shared with the opposite
+   * role. Each is a real collision found by census, not a guess.
+   */
+
+  /* `bg-white` is a card/popover surface (309 uses) but `text-white` is ink
+     on a saturated fill (223 uses). The token flip covers the former; ink has
+     to be restored here, or every indigo button loses its label. */
+  .dark .text-white {
+    color: #f8fafc;
+  }
+  .dark .text-white\/90 {
+    color: rgb(248 250 252 / 0.9);
+  }
+  .dark .text-white\/80 {
+    color: rgb(248 250 252 / 0.8);
+  }
+  .dark .text-white\/70 {
+    color: rgb(248 250 252 / 0.7);
+  }
+  .dark .text-white\/60 {
+    color: rgb(248 250 252 / 0.6);
+  }
+  .dark .text-white\/50 {
+    color: rgb(248 250 252 / 0.5);
+  }
+  .dark .text-white\/40 {
+    color: rgb(248 250 252 / 0.4);
+  }
+  .dark .text-white\/30 {
+    color: rgb(248 250 252 / 0.3);
+  }
+
+  /* `border-white` and `ring-white` are used as light hairlines over
+     gradients and imagery, not as surfaces. */
+  .dark .border-white {
+    border-color: rgb(255 255 255 / 0.16);
+  }
+  .dark .border-white\/80 {
+    border-color: rgb(255 255 255 / 0.14);
+  }
+  .dark .border-white\/60 {
+    border-color: rgb(255 255 255 / 0.12);
+  }
+  .dark .border-white\/40 {
+    border-color: rgb(255 255 255 / 0.1);
+  }
+  .dark .ring-white {
+    --tw-ring-color: rgb(255 255 255 / 0.5);
+  }
+  .dark .ring-white\/15 {
+    --tw-ring-color: rgb(255 255 255 / 0.15);
+  }
+  /* White fade-outs at the bottom of scrollable regions stay white-ish. */
+  .dark .to-white\/50 {
+    --tw-gradient-to: rgb(248 250 252 / 0.5) var(--tw-gradient-to-position);
+  }
+  .dark .to-white\/40 {
+    --tw-gradient-to: rgb(248 250 252 / 0.4) var(--tw-gradient-to-position);
+  }
+  .dark .to-white\/20 {
+    --tw-gradient-to: rgb(248 250 252 / 0.2) var(--tw-gradient-to-position);
+  }
+
+  /* Inverse surfaces. These are deliberately dark in BOTH themes — a sticky
+     toolbar or an audit-log code block must not invert to a light slab in a
+     dark UI. They read as elevated dark, not as ink. */
+  .dark .bg-slate-900 {
+    background-color: #0d1523;
+  }
+  .dark .bg-slate-950 {
+    background-color: #070d16;
+  }
+  .dark .bg-slate-800 {
+    background-color: #16202f;
+  }
+  .dark .hover\:bg-slate-800:hover {
+    background-color: #1b2637;
+  }
+  .dark .hover\:bg-slate-900:hover {
+    background-color: #26344a;
+  }
+  .dark .group-hover\:bg-slate-900:hover {
+    background-color: #26344a;
+  }
+  .dark .bg-slate-900\/95 {
+    background-color: rgb(13 21 35 / 0.95);
+  }
+  .dark .bg-slate-900\/90 {
+    background-color: rgb(13 21 35 / 0.9);
+  }
+  .dark .bg-slate-900\/80 {
+    background-color: rgb(13 21 35 / 0.8);
+  }
+  .dark .bg-slate-900\/70 {
+    background-color: rgb(13 21 35 / 0.7);
+  }
+  .dark .bg-slate-900\/60 {
+    background-color: rgb(13 21 35 / 0.6);
+  }
+  .dark .bg-slate-900\/50 {
+    background-color: rgb(13 21 35 / 0.5);
+  }
+  .dark .bg-slate-900\/40 {
+    background-color: rgb(13 21 35 / 0.4);
+  }
+  .dark .bg-slate-900\/30 {
+    background-color: rgb(13 21 35 / 0.3);
+  }
+  .dark .bg-slate-950\/95 {
+    background-color: rgb(7 13 22 / 0.95);
+  }
+  .dark .bg-slate-950\/90 {
+    background-color: rgb(7 13 22 / 0.9);
+  }
+  .dark .bg-slate-950\/80 {
+    background-color: rgb(7 13 22 / 0.8);
+  }
+  .dark .bg-slate-950\/70 {
+    background-color: rgb(7 13 22 / 0.7);
+  }
+  .dark .bg-slate-950\/60 {
+    background-color: rgb(7 13 22 / 0.6);
+  }
+  .dark .bg-slate-950\/50 {
+    background-color: rgb(7 13 22 / 0.5);
+  }
+
+  /*
+   * The one genuinely inverted control: `bg-slate-700` is a chip that pairs
+   * with `text-slate-200`/`text-slate-300` on it (TransactionRegister tabs,
+   * CaseListView bulk actions, NotificationsView tabs). Those are inverses.
+   */
+  .dark .bg-slate-700 {
+    background-color: #2b3648;
+  }
+  .dark .text-slate-200 {
+    color: #dbe3ee;
+  }
+  .dark .text-slate-300 {
+    color: #c6d0de;
+  }
+  /* `text-slate-400` / `text-slate-500` are deliberately NOT remapped here.
+     index.css aliases both onto the `ink-muted` / `ink-body` role primitives,
+     whose dark readings were solved against every dark surface this app paints
+     (see scripts/role-picker.mjs). A hand-picked `.dark` value for them would
+     out-specify the alias and quietly reintroduce the dual-role bug. */
+
+  /* `border-slate-900` is a strong divider in light mode; on dark it would be
+     near-invisible against a dark card, so it becomes a visible light rule. */
+  .dark .border-slate-900 {
+    border-color: #33415580;
+  }
+  .dark .border-slate-800 {
+    border-color: #26344a;
+  }
+  .dark .ring-slate-900\/20 {
+    --tw-ring-color: rgb(233 239 247 / 0.2);
+  }
+  .dark .ring-slate-900\/10 {
+    --tw-ring-color: rgb(233 239 247 / 0.1);
+  }
+  .dark .ring-slate-900 {
+    --tw-ring-color: rgb(233 239 247 / 0.1);
+  }
+
+  /*
+   * ── Dual-role hues ────────────────────────────────────────────────────
+   *
+   * Indigo/rose/emerald/amber/blue/purple carry two jobs from the same
+   * token: `-500..-700` is ink on a neutral card, but the same shades are
+   * also fills behind `text-white`. The dark remap cannot satisfy both by
+   * lightening, because lightening the ink darkens nothing and lightening
+   * the fill pushes white ink under 4.5:1. So each shade is split by ROLE:
+   *
+   *   - `text-*-500..700`  → lightened. These land on `bg-slate-800` /
+   *     `bg-slate-900` cards, so they need headroom against a near-black
+   *     surface, not Tailwind's light-theme value tuned for white.
+   *   - `bg-*-800..950`    → RESTORED to their compiled light values.
+   *     These were never meant to be remapped at all: `rose-800/900/950`,
+   *     `indigo-800` and `amber-800` are deep fills that already cleared
+   *     4.5:1 under white in light mode. The ink remap above lightened
+   *     them and broke them. Restoring is correct; repainting darker
+   *     would only flatten the ladder.
+   *   - `bg-*-500/600`     → nudged darker by ~1 step, only where white ink
+   *     rides on them (rose-600, indigo-500). These two sat at 4.31 and
+   *     4.37:1 under white in dark mode.
+   *
+   * Generated and verified by scripts/ink-picker.mjs; every pair above is
+   * re-checked by scripts/contrast-audit.mjs.
+   */
+  /* INK_ON_CARD */
+  .dark .text-indigo-500 {
+    color: #72a1ff;
+  }
+  .dark .text-indigo-600 {
+    color: #8bb5ff;
+  }
+  .dark .text-indigo-700 {
+    color: #a5caff;
+  }
+  .dark .text-rose-500 {
+    color: #f67785;
+  }
+  
+  .dark .text-rose-700 {
+    color: #ffabb3;
+  }
+  .dark .text-emerald-500 {
+    color: #01c288;
+  }
+  
+  .dark .text-emerald-700 {
+    color: #7fe2b5;
+  }
+  .dark .text-amber-500 {
+    color: #db9400;
+  }
+  
+  .dark .text-amber-700 {
+    color: #f5c072;
+  }
+  .dark .text-blue-500 {
+    color: #59a7ff;
+  }
+  
+  .dark .text-blue-700 {
+    color: #96ceff;
+  }
+  .dark .text-purple-500 {
+    color: #b98af4;
+  }
+  .dark .text-purple-600 {
+    color: #c9a1fe;
+  }
+  .dark .text-purple-700 {
+    color: #d9b8ff;
+  }
+  /* INK_ON_DARK_SURFACE */
+  .dark .text-sky-300 {
+    color: #00c0c9;
+  }
+  .dark .text-indigo-300 {
+    color: #72a1ff;
+  }
+  .dark .text-emerald-300 {
+    color: #01c288;
+  }
+  .dark .text-amber-300 {
+    color: #db9400;
+  }
+  .dark .text-rose-300 {
+    color: #f67785;
+  }
+  .dark .text-violet-300 {
+    color: #ab8ffb;
+  }
+  /* FILL_RESTORED */
+  .dark .bg-rose-950 {
+    background-color: #4d0218;
+  }
+  .dark .bg-rose-900 {
+    background-color: #8b0836;
+  }
+  .dark .bg-rose-800 {
+    background-color: #a50036;
+  }
+  .dark .bg-indigo-800 {
+    background-color: #372aac;
+  }
+  .dark .bg-amber-800 {
+    background-color: #973c00;
+  }
+  /* FILL_NUDGED */
+  .dark .bg-rose-600 {
+    background-color: #e40043;
+  }
+  .dark .bg-indigo-500 {
+    background-color: #5f5ff0;
+  }
+
+  /*
+   * ── Hand-written surfaces ─────────────────────────────────────────────
+   * index.css declares these outside the token system, so they have no
+   * remap. Each is a raw rgba() or gradient whose light value is a white
+   * plane or a near-white line — invisible, or worse, glaring, on a dark UI.
+   */
+
+  /* Frosted panels: light mode is a white plane behind blur. On dark the
+     plane must darken AND gain opacity, or the content behind it shows
+     through as a pale smear. */
+  .dark .glass-panel {
+    background: rgb(15 24 38 / 0.78);
+    border-color: rgb(148 163 184 / 0.22);
+  }
+
+  /* The micro-dot canvas grid. Slate-400 at 18% on white is a whisper; the
+     same value on near-black disappears entirely, so the dot lightens and
+     gains weight — a grid you cannot see is not a grid. */
+  .dark .dental-grid-bg {
+    background-image: radial-gradient(circle, rgb(148 163 184 / 0.28) 1px, transparent 1px);
+  }
+
+  /* Scrollbars are pure rgba() here. The light thumb is slate-300 at 80%;
+     on dark it must lift, not just tint. */
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgb(71 85 105 / 0.9);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgb(100 116 139 / 0.95);
+  }
+
+  /* The conic donut is a hardcoded gradient. Its stops are mid-chroma marks
+     (they need to, they ARE the data) and they read fine on dark; only the
+     ramp's overall weight is nudged lighter so the ring doesn't sink. */
+  .dark .donut-chart {
+    background: conic-gradient(
+      #3b82f6 0% 42%,
+      #0ea5e9 42% 70%,
+      #10b981 70% 88%,
+      #fbbf24 88% 100%
+    );
+  }
+
+  /* Native form controls — <select> popups and the date picker's calendar
+     glyph are OS-drawn and ignore the class. `color-scheme` (set in
+     theme.ts) handles the popup itself; these catch the in-page glyphs. */
+  .dark input[type='date']::-webkit-calendar-picker-indicator,
+  .dark input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  .dark input[type='time']::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.6);
+  }
+  .dark input[type='checkbox'],
+  .dark input[type='radio'] {
+    accent-color: #818cf8;
+  }
+
+  /* Recharts paints its own axis text and legend into SVG, outside the
+     utility cascade. These are the class hooks it ships. */
+  .dark .recharts-cartesian-axis-tick-value {
+    fill: var(--chart-axis-ink);
+  }
+  .dark .recharts-legend-item-text {
+    fill: #a8b5c7;
+    color: #a8b5c7;
+  }
+  .dark .recharts-default-tooltip {
+    background: var(--chart-tooltip-bg);
+    border-color: var(--chart-tooltip-line);
+    color: var(--chart-tooltip-ink);
+  }
+  .dark .recharts-tooltip-label,
+  .dark .recharts-tooltip-item {
+    color: var(--chart-tooltip-ink);
+  }
+  .dark .recharts-surface {
+    overflow: visible;
+  }
+
+  /* Recharts' focus/active outline is an SVG stroke; without this a keyboard
+     user cannot see which slice is focused on a dark canvas. */
+  .dark .recharts-sector:focus,
+  .dark .recharts-rectangle:focus {
+    outline: 2px solid #818cf8;
+    outline-offset: 2px;
+  }
+}

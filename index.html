@@ -9,6 +9,31 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
     <meta name="theme-color" content="#4f46e5" />
+    <!-- Theme boot. The app loads a WASM database before it can read SQLite, so
+         the persisted theme has to be applied from the localStorage mirror
+         BEFORE first paint or every launch flashes light→dark. This inline
+         script is intentionally tiny and dependency-free; src/theme/theme.ts
+         owns the same key and stays the single source of truth for behaviour. -->
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('dental.theme.mode');
+          if (m !== 'light' && m !== 'dark' && m !== 'system') m = 'system';
+          var dark =
+            m === 'dark' ||
+            (m === 'system' &&
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.toggle('dark', dark);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', dark ? '#0b1220' : '#4f46e5');
+        } catch (e) {
+          /* storage blocked — fall through to light, which always paints */
+        }
+      })();
+    </script>
     <meta name="referrer" content="no-referrer" />
     <!-- Offline-first SPA: no remote scripts, no frames, no form posts. The
          same policy is enforced for the desktop build in tauri.conf.json
