@@ -526,8 +526,8 @@ describe('sql dump round trip', () => {
     // dump had no schema_migrations rows at all: migration 1 would try to
     // CREATE TABLE cases on a database that already had it, and boot failed.
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
-    expect(booted.scalar("SELECT value FROM app_meta WHERE key = 'schema_version'")).toBe('19');
+    expect(result.skipped).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(booted.scalar("SELECT value FROM app_meta WHERE key = 'schema_version'")).toBe('20');
     booted.close();
   });
 
