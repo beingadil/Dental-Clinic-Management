@@ -520,6 +520,8 @@ export interface UserPreferences {
   auto_archive_completed_cases?: boolean;
   /** Global interface zoom (screen only; print output is never scaled). */
   ui_zoom?: number;
+  /** Interface theme. 'system' follows the OS/browser preference. */
+  theme_mode?: 'light' | 'dark' | 'system';
 
   /** Active dashboard layout: 'default' or the name of a saved arrangement
    *  (registry lives beside this key in the per-user preferences blob, written

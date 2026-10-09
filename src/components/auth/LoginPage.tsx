@@ -188,7 +188,7 @@ export const LoginPage: React.FC = () => {
                   )}
                 </button>
 
-                <p className="text-[11px] text-slate-400 leading-relaxed">
+                <p className="text-[11px] text-ink-muted leading-relaxed">
                   Additional staff accounts are provisioned later in Settings &rarr; User
                   Management.
                 </p>
@@ -209,7 +209,7 @@ export const LoginPage: React.FC = () => {
                   role="alert"
                   className="mt-6 p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs font-medium flex items-start gap-2.5 animate-fadeIn"
                 >
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" strokeWidth={1.75} />
+                  <AlertCircle className="w-4 h-4 text-ink-danger shrink-0 mt-0.5" strokeWidth={1.75} />
                   <div className="flex-1">{error}</div>
                 </div>
               )}
@@ -220,7 +220,7 @@ export const LoginPage: React.FC = () => {
                     Username or email
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-muted">
                       <User className="w-4 h-4" strokeWidth={1.5} />
                     </div>
                     <input
@@ -243,7 +243,7 @@ export const LoginPage: React.FC = () => {
                     Password
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-muted">
                       <Lock className="w-4 h-4" strokeWidth={1.5} />
                     </div>
                     <input
@@ -260,7 +260,7 @@ export const LoginPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-ink-muted hover:text-slate-600 transition-colors"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? (
@@ -298,7 +298,7 @@ export const LoginPage: React.FC = () => {
                 </button>
               </form>
 
-              <p className="mt-8 text-[11px] text-slate-400 leading-relaxed">
+              <p className="mt-8 text-[11px] text-ink-muted leading-relaxed">
                 Access is managed by your laboratory administrator. New staff accounts are
                 provisioned in Settings &rarr; User Management.
               </p>
@@ -307,7 +307,7 @@ export const LoginPage: React.FC = () => {
         </section>
       </main>
 
-      <footer className="px-6 py-4 text-center text-[11px] text-slate-400 border-t border-slate-100">
+      <footer className="px-6 py-4 text-center text-[11px] text-ink-muted border-t border-slate-100">
         &copy; {new Date().getFullYear()} {appName}
       </footer>
     </div>

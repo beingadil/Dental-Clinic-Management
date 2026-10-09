@@ -33,9 +33,9 @@ export const StatCard: React.FC<StatCardProps> = ({
   const iconVariants = {
     default: 'bg-slate-100 text-slate-700 border-slate-200/80',
     indigo: 'bg-indigo-50 text-indigo-600 border-indigo-100',
-    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    emerald: 'bg-emerald-50 text-ink-success border-emerald-100',
     amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    rose: 'bg-rose-50 text-rose-600 border-rose-100',
+    rose: 'bg-rose-50 text-ink-danger border-rose-100',
     cyan: 'bg-cyan-50 text-cyan-700 border-cyan-100',
   };
 
@@ -87,8 +87,8 @@ export const StatCard: React.FC<StatCardProps> = ({
                 trend.isNeutral
                   ? 'text-slate-600'
                   : trend.isPositive
-                  ? 'text-emerald-600'
-                  : 'text-rose-600'
+                  ? 'text-ink-success'
+                  : 'text-ink-danger'
               }`}
             >
               {trend.value}

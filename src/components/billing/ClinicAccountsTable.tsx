@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Search, ChevronRight } from 'lucide-react';
 import { DentalCase, DentalLab, Invoice } from '../../types';
 import { EmptyState, PageHeader, Badge } from '../common/ui';
+import { formatDoctorName } from '../../utils/doctorName';
 
 interface ClinicAccountsTableProps {
   labs: DentalLab[];
@@ -67,7 +68,11 @@ export const ClinicAccountsTable: React.FC<ClinicAccountsTableProps> = ({
         return {
           lab,
           name: lab.name,
-          doctor: lab.doctor_name || lab.contact_person || 'Lead Doctor',
+          // Only the doctor_name branch is a doctor, so only it takes the honorific —
+// a clinic's contact person is a person, not a title we get to invent.
+          doctor: lab.doctor_name
+            ? formatDoctorName(lab.doctor_name)
+            : lab.contact_person || 'Lead Doctor',
           phone: lab.phone || '—',
           activeCaseCount: labCases.length,
           billed,
@@ -129,7 +134,7 @@ export const ClinicAccountsTable: React.FC<ClinicAccountsTableProps> = ({
               <span className="whitespace-nowrap">Include settled</span>
             </label>
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-3.5 h-3.5 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -143,19 +148,19 @@ export const ClinicAccountsTable: React.FC<ClinicAccountsTableProps> = ({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white rounded-2xl border border-slate-200/80 px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Outstanding</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Outstanding</div>
           <div className="text-xl font-extrabold text-slate-900 tabular-nums whitespace-nowrap">
             PKR {Math.round(totals.outstanding).toLocaleString()}
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200/80 px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Clinics overdue</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Clinics overdue</div>
           <div className="text-xl font-extrabold text-slate-900 tabular-nums">
             {totals.overdue}
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200/80 px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Settled clinics</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Settled clinics</div>
           <div className="text-xl font-extrabold text-slate-900 tabular-nums">
             {totals.settled}
           </div>
@@ -181,7 +186,7 @@ export const ClinicAccountsTable: React.FC<ClinicAccountsTableProps> = ({
                 <tr key={a.lab.id} className="hover:bg-slate-50/60 transition">
                   <td className="py-3 px-4 font-semibold text-slate-900">
                     <span className="block max-w-[220px] truncate" title={a.name}>{a.name}</span>
-                    <span className="block text-[11px] font-normal text-slate-400 max-w-[220px] truncate">
+                    <span className="block text-[11px] font-normal text-ink-muted max-w-[220px] truncate">
                       {a.doctor} • {a.phone}
                     </span>
                   </td>
@@ -207,13 +212,13 @@ export const ClinicAccountsTable: React.FC<ClinicAccountsTableProps> = ({
                     <div className="flex items-center justify-end gap-3">
                       <button
                         onClick={() => onCollect(a.lab.id)}
-                        className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 cursor-pointer whitespace-nowrap"
+                        className="text-xs font-semibold text-ink-success hover:text-emerald-800 cursor-pointer whitespace-nowrap"
                       >
                         Collect
                       </button>
                       <button
                         onClick={() => onStatement(a.lab.id)}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer whitespace-nowrap"
+                        className="text-xs font-semibold text-ink-info hover:text-blue-800 cursor-pointer whitespace-nowrap"
                       >
                         Statement
                       </button>
@@ -226,7 +231,7 @@ export const ClinicAccountsTable: React.FC<ClinicAccountsTableProps> = ({
         </div>
 
         {filtered.length === 0 && (
-          <p className="px-4 py-8 text-center text-xs text-slate-400">
+          <p className="px-4 py-8 text-center text-xs text-ink-muted">
             No clinic matches “{search}”.
           </p>
         )}

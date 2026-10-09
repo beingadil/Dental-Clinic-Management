@@ -81,7 +81,7 @@ export const ShadeGuideModal: React.FC<ShadeGuideModalProps> = ({ onClose, onSel
           </div>
           <button 
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+            className="p-2 text-ink-muted hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -146,7 +146,7 @@ export const ShadeGuideModal: React.FC<ShadeGuideModalProps> = ({ onClose, onSel
                     <span className={`text-xs font-extrabold ${isSelected ? 'text-purple-700' : 'text-slate-800'}`}>
                       {s.code}
                     </span>
-                    <span className="text-[9px] text-slate-400 font-semibold">{s.group === 'BL' ? 'Bleach' : `Gr. ${s.group}`}</span>
+                    <span className="text-[9px] text-ink-muted font-semibold">{s.group === 'BL' ? 'Bleach' : `Gr. ${s.group}`}</span>
                   </button>
                 );
               })}
@@ -164,7 +164,7 @@ export const ShadeGuideModal: React.FC<ShadeGuideModalProps> = ({ onClose, onSel
                   onClick={() => handleCopy(activeShade.code)}
                   className="text-xs text-purple-600 hover:text-purple-700 font-semibold flex items-center gap-1 cursor-pointer"
                 >
-                  {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-ink-success" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copied ? 'Copied' : 'Copy Code'}</span>
                 </button>
               </div>
@@ -180,7 +180,7 @@ export const ShadeGuideModal: React.FC<ShadeGuideModalProps> = ({ onClose, onSel
                 <div>
                   <h4 className="text-2xl font-black text-slate-900">{activeShade.code}</h4>
                   <p className="text-xs font-semibold text-slate-700">{activeShade.name}</p>
-                  <span className="text-[11px] text-slate-400 block mt-0.5">{activeShade.hue}</span>
+                  <span className="text-[11px] text-ink-muted block mt-0.5">{activeShade.hue}</span>
                 </div>
               </div>
 
@@ -199,7 +199,7 @@ export const ShadeGuideModal: React.FC<ShadeGuideModalProps> = ({ onClose, onSel
                   <span className="font-mono font-bold text-purple-700">{activeShade.hex}</span>
                 </div>
                 <div className="p-2.5 bg-white rounded-xl border border-slate-200/60">
-                  <span className="text-slate-400 font-medium block text-[10px] uppercase mb-0.5">Clinical Recommendation</span>
+                  <span className="text-ink-muted font-medium block text-[10px] uppercase mb-0.5">Clinical Recommendation</span>
                   <span className="font-semibold text-slate-800 leading-snug">{activeShade.recommendedFor}</span>
                 </div>
               </div>

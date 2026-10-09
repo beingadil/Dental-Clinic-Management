@@ -55,7 +55,7 @@ export const UpdatesTab: React.FC = () => {
       {/* What the last staged install actually did — the receipt is the truth. */}
       {diag && diag.receipt_status === 'settled' && diag.receipt && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-ink-success" />
           <p className="text-[11px] text-emerald-800">
             Last update verified: v{diag.receipt.version} staged {diag.receipt.staged_at || ''} and now
             running (checksum matched).
@@ -64,7 +64,7 @@ export const UpdatesTab: React.FC = () => {
       )}
       {diag && diag.receipt_status === 'pending' && diag.receipt && !diag.staged_installer_present && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2">
-          <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+          <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-ink-danger" />
           <div>
             <p className="font-bold">An earlier update was interrupted</p>
             <p className="text-[11px] text-rose-800 mt-0.5">
@@ -113,12 +113,12 @@ export const UpdatesTab: React.FC = () => {
                 <span
                   className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${
                     h.state === 'installed'
-                      ? 'bg-emerald-500'
+                      ? 'bg-fill-success'
                       : h.state === 'available'
                         ? 'bg-indigo-500'
                         : h.state === 'up_to_date'
                           ? 'bg-slate-300'
-                          : 'bg-rose-500'
+                          : 'bg-fill-danger'
                   }`}
                 />
                 <div className="min-w-0">
@@ -127,7 +127,7 @@ export const UpdatesTab: React.FC = () => {
                     {h.state === 'installed' && `Updated to v${h.version}`}
                     {h.state === 'failed' && `Update failed${h.version !== currentVersion() ? ` (v${h.version})` : ''}`}
                     {h.state === 'up_to_date' && 'Checked — up to date'}
-                    <span className="font-normal text-slate-400"> · {new Date(h.at).toLocaleString()}</span>
+                    <span className="font-normal text-ink-muted"> · {new Date(h.at).toLocaleString()}</span>
                   </p>
                   {h.message && (
                     <p className="text-slate-500 truncate" title={h.message}>{h.message}</p>

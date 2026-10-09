@@ -80,7 +80,7 @@ export const BrandingTab: React.FC = () => {
 
         {saveSuccess && (
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200 animate-in fade-in">
-            <Check className="w-3.5 h-3.5 text-emerald-600" /> Saved to Database!
+            <Check className="w-3.5 h-3.5 text-ink-success" /> Saved to Database!
           </div>
         )}
       </div>
@@ -110,7 +110,7 @@ export const BrandingTab: React.FC = () => {
           <div>
             <span className="text-sm font-bold text-slate-900 block">{brandingForm.appName || 'Dental Solutions'}</span>
             {brandingForm.tagline && (
-              <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">{brandingForm.tagline}</span>
+              <span className="text-[10px] font-semibold text-ink-muted block uppercase tracking-wider">{brandingForm.tagline}</span>
             )}
           </div>
         </div>
@@ -118,7 +118,7 @@ export const BrandingTab: React.FC = () => {
         {(brandingForm.phone || brandingForm.email) && (
           <div className="text-right text-xs text-slate-500 hidden md:block border-l border-slate-200 pl-4">
             {brandingForm.phone && <p>{brandingForm.phone}</p>}
-            {brandingForm.email && <p className="text-[11px] text-slate-400">{brandingForm.email}</p>}
+            {brandingForm.email && <p className="text-[11px] text-ink-muted">{brandingForm.email}</p>}
           </div>
         )}
       </div>
@@ -181,14 +181,14 @@ export const BrandingTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setBrandingForm((prev) => ({ ...prev, logoUrl: '' }))}
-                className="absolute -top-2 -right-2 w-5 h-5 bg-rose-500 text-white rounded-full text-xs font-bold flex items-center justify-center shadow-md hover:bg-rose-600 cursor-pointer"
+                className="absolute -top-2 -right-2 w-5 h-5 bg-fill-danger text-white rounded-full text-xs font-bold flex items-center justify-center shadow-md hover:bg-rose-600 cursor-pointer"
                 title="Remove Logo"
               >
                 ×
               </button>
             </div>
           ) : (
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 shrink-0">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-ink-muted shrink-0">
               <ImageIcon className="w-6 h-6" />
               <span className="text-[9px] font-bold mt-1">No Logo</span>
             </div>
@@ -196,7 +196,7 @@ export const BrandingTab: React.FC = () => {
 
           <div className="space-y-2 flex-1 w-full">
             {logoError && (
-              <p role="alert" className="text-xs text-rose-600 font-medium">{logoError}</p>
+              <p role="alert" className="text-xs text-ink-danger font-medium">{logoError}</p>
             )}
             <div className="flex items-center gap-2 flex-wrap">
               <input
@@ -233,7 +233,7 @@ export const BrandingTab: React.FC = () => {
           invoices, receipts and statements (e.g. partner / B2B mark). */}
       <div className="space-y-3">
         <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
-          Second Logo <span className="font-medium normal-case tracking-normal text-slate-400">(optional — printed on invoices)</span>
+          Second Logo <span className="font-medium normal-case tracking-normal text-ink-muted">(optional — printed on invoices)</span>
         </label>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           {brandingForm.logoUrl2 ? (
@@ -246,14 +246,14 @@ export const BrandingTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setBrandingForm((prev) => ({ ...prev, logoUrl2: '' }))}
-                className="absolute -top-2 -right-2 w-5 h-5 bg-rose-500 text-white rounded-full text-xs font-bold flex items-center justify-center shadow-md hover:bg-rose-600 cursor-pointer"
+                className="absolute -top-2 -right-2 w-5 h-5 bg-fill-danger text-white rounded-full text-xs font-bold flex items-center justify-center shadow-md hover:bg-rose-600 cursor-pointer"
                 title="Remove second logo"
               >
                 ×
               </button>
             </div>
           ) : (
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 shrink-0">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-ink-muted shrink-0">
               <ImageIcon className="w-6 h-6" />
               <span className="text-[9px] font-bold mt-1">Empty</span>
             </div>
@@ -406,7 +406,7 @@ export const BrandingTab: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              <AlertTriangle className="w-4 h-4 text-ink-danger" />
               Workstation 24-Hour Due Date Warning & Div Highlighting System
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -454,10 +454,10 @@ export const BrandingTab: React.FC = () => {
               {[
                 { id: 'rose', name: 'Rose Red', bg: 'bg-rose-600' },
                 { id: 'red', name: 'Crimson', bg: 'bg-red-600' },
-                { id: 'amber', name: 'Amber', bg: 'bg-amber-500' },
+                { id: 'amber', name: 'Amber', bg: 'bg-fill-warning' },
                 { id: 'purple', name: 'Purple', bg: 'bg-purple-600' },
                 { id: 'indigo', name: 'Indigo', bg: 'bg-indigo-600' },
-                { id: 'emerald', name: 'Emerald', bg: 'bg-emerald-600' },
+                { id: 'emerald', name: 'Emerald', bg: 'bg-fill-success' },
               ].map((clr) => (
                 <button
                   type="button"
@@ -555,7 +555,7 @@ export const BrandingTab: React.FC = () => {
                 <span className="px-1.5 py-0.5 rounded text-[9px] bg-slate-100 text-slate-600 uppercase font-semibold">Normal</span>
               </div>
               <p className="text-[11px] text-slate-600">Zirconia Crown (A2) • Dr. Tariq</p>
-              <p className="text-[10px] text-slate-400 font-mono">Due: 2026-08-10 (Standard Lead Time)</p>
+              <p className="text-[10px] text-ink-muted font-mono">Due: 2026-08-10 (Standard Lead Time)</p>
             </div>
 
             {/* Warning Highlighted Card Preview */}
@@ -589,7 +589,7 @@ export const BrandingTab: React.FC = () => {
               <div className="flex items-center justify-between text-xs font-bold text-slate-900">
                 <div className="flex items-center gap-1.5">
                   <span>DS-0018 • High Priority</span>
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 animate-bounce" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-ink-danger animate-bounce" />
                 </div>
                 <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold bg-rose-600 text-white uppercase shadow-xs">
                   DUE IN 8H

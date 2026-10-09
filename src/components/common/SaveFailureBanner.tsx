@@ -27,7 +27,7 @@ export function SaveFailureBanner() {
   if (!error) return null;
 
   return (
-    <div className="flex items-start gap-3 bg-amber-500 text-white px-4 py-2.5 text-xs font-bold shadow-lg">
+    <div className="flex items-start gap-3 bg-fill-warning text-white px-4 py-2.5 text-xs font-bold shadow-lg">
       <HardDriveDownload className="w-4 h-4 shrink-0 mt-0.5" />
       <div className="min-w-0">
         <p>

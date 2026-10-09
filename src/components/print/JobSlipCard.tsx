@@ -3,6 +3,7 @@ import { DentalCase } from '../../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { slipBandFor, guessCategory } from '../../lib/slipBanding';
 import { receivedDateFor } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
 
 /**
  * Compact physical laboratory job tag — the ONE true job slip.
@@ -82,7 +83,7 @@ export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName, 
         {c.doctor_name && (
           <div className="js-row">
             <span className="js-k">Doctor</span>
-            <span className="js-v">Dr. {c.doctor_name}</span>
+            <span className="js-v">{formatDoctorName(c.doctor_name)}</span>
           </div>
         )}
         {c.lab_name && (

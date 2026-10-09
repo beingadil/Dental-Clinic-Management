@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getDaysOffsetStr } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
 import { DentalLab, DentalCase, PaymentRecord, Invoice } from '../../types';
 import { LabContactsManager } from './LabContactsManager';
 import { LabPricingManager } from './LabPricingManager';
@@ -47,6 +48,25 @@ interface LabDetailModalProps {
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
   const { cases, invoices, updateLab, deleteLab, reassignLabRecords, labs, getLabFinancialSummary, getLedgerEntries, allPayments } = useApp();
+
+  /* Payment lookup as an index. The ledger table used to `.find()` over every
+     payment for every ledger row, so opening a lab with a few hundred entries
+     did rows x payments comparisons per render. First match wins per key, as
+     `.find` did. */
+  const paymentIndex = useMemo(() => {
+    type PaymentRow = (typeof allPayments)[number];
+    const byId = new Map<string, PaymentRow>();
+    const byNumber = new Map<string, PaymentRow>();
+    const byBaseNumber = new Map<string, PaymentRow>();
+    for (const p of allPayments) {
+      if (p.id && !byId.has(p.id)) byId.set(p.id, p);
+      if (p.payment_number && !byNumber.has(p.payment_number)) byNumber.set(p.payment_number, p);
+      // "-D2"/"-D3" suffixes come from the duplicate-number healer in syncCore.
+      const base = (p.payment_number || '').replace(/-D?\d+$/, '');
+      if (base && !byBaseNumber.has(base)) byBaseNumber.set(base, p);
+    }
+    return { byId, byNumber, byBaseNumber };
+  }, [allPayments]);
 
   const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing'>(initialTab);
   const [isFullScreen, setIsFullScreen] = useState(true);
@@ -200,16 +220,14 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsFullScreen(!isFullScreen)}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-              title={isFullScreen ? "Restore Window Size" : "Full Screen Mode"}
+              onClick={() => setIsFullScreen(!isFullScreen)}className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                title={isFullScreen ? "Restore Window Size" : "Full Screen Mode"}
             >
               {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </button>
             <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-              title="Close"
+              onClick={onClose}className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                title="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -333,11 +351,11 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 pt-0.5">
                               <span><strong>Material:</strong> {c.case_type_name}</span>
-                              <span><strong>Doctor:</strong> {c.doctor_name}</span>
+                              <span><strong>Doctor:</strong> {formatDoctorName(c.doctor_name)}</span>
                               <span><strong>Teeth:</strong> <span className="font-mono">{teethStr}</span></span>
                               {c.shade && <span><strong>Shade:</strong> <span className="font-mono font-semibold text-slate-900">{c.shade}</span></span>}
                               <span className="flex items-center gap-1 text-slate-500">
-                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                <Calendar className="w-3.5 h-3.5 text-ink-muted" />
                                 Delivery: {c.delivery_date}
                               </span>
                             </div>
@@ -346,7 +364,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                           {/* Price & Actions */}
                           <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                             <div className="text-left sm:text-right">
-                              <div className="text-[10px] text-slate-400 font-bold uppercase">Case Fee</div>
+                              <div className="text-[10px] text-ink-muted font-bold uppercase">Case Fee</div>
                               <div className="text-sm font-bold text-slate-900 font-mono">
                                 PKR {(c.final_price || 0).toLocaleString()}
                               </div>
@@ -387,7 +405,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               {/* Financial KPI Summary Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Billed (Debits)</span>
+                  <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wider block">Total Billed (Debits)</span>
                   <div className="text-lg font-bold font-mono text-slate-900 mt-0.5">
                     PKR {(labFinancials?.total_invoiced || 0).toLocaleString()}
                   </div>
@@ -399,7 +417,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   <div className="text-lg font-bold font-mono text-emerald-700 mt-0.5">
                     PKR {(labFinancials?.total_paid || 0).toLocaleString()}
                   </div>
-                  <span className="text-[10px] text-emerald-600">Credits settled</span>
+                  <span className="text-[10px] text-ink-success">Credits settled</span>
                 </div>
 
                 <div className={`p-3.5 rounded-xl border ${(labFinancials?.outstanding_balance || 0) > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
@@ -428,7 +446,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <Receipt className="w-4 h-4 text-amber-600" />
+                      <Receipt className="w-4 h-4 text-ink-warning" />
                       <span>Pending Unpaid Invoices ({labInvoices.filter(i => i.payment_status !== 'paid').length})</span>
                     </h4>
                   </div>
@@ -442,12 +460,12 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                               <span className="font-mono font-bold text-xs text-slate-900">{inv.invoice_number}</span>
                               <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-bold uppercase">{inv.payment_status}</span>
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">Case {inv.case_number} • Dr. {inv.doctor_name}</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">Case {inv.case_number} • {formatDoctorName(inv.doctor_name)}</p>
                             <p className="text-xs font-bold text-amber-700 mt-0.5">Due: PKR {(rem || 0).toLocaleString()}</p>
                           </div>
                           <button
                             onClick={() => setPaymentModalInvoice(inv)}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-3 py-1.5 bg-fill-success hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
                           >
                             <DollarSign className="w-3.5 h-3.5" />
                             <span>Record Pay</span>
@@ -471,7 +489,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 </div>
 
                 {labLedger.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-slate-400">
+                  <div className="p-8 text-center text-xs text-ink-muted">
                     No ledger transactions recorded for this clinic yet.
                   </div>
                 ) : (
@@ -495,7 +513,11 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                         {labLedger.map((entry) => {
                           const isDebit = entry.entry_type === 'invoice';
                           const isCredit = entry.entry_type === 'payment';
-                          const matchedPayment = isCredit ? allPayments.find(p => p.id === entry.reference_id || p.payment_number === entry.reference_number || (p.payment_number || '').replace(/-D?\d+$/, '') === entry.reference_number) : undefined;
+                          const matchedPayment = isCredit
+                            ? paymentIndex.byId.get(entry.reference_id) ??
+                              paymentIndex.byNumber.get(entry.reference_number) ??
+                              paymentIndex.byBaseNumber.get(entry.reference_number)
+                            : undefined;
                           const matchedInvoice = isDebit ? invoices.find(i => i.id === entry.reference_id || i.invoice_number === entry.reference_number) : undefined;
 
                           return (
@@ -516,8 +538,8 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                               <td className="py-2.5 px-2.5 font-mono text-indigo-600 whitespace-nowrap">{entry.case_number || '—'}</td>
                               <td className="py-2.5 px-2.5 text-slate-700 max-w-[200px] truncate">{entry.description}</td>
                               <td className="py-2.5 px-2.5 text-right font-bold text-indigo-600 whitespace-nowrap">{entry.debit > 0 ? `PKR ${(entry.debit || 0).toLocaleString()}` : '—'}</td>
-                              <td className="py-2.5 px-2.5 text-right font-bold text-emerald-600 whitespace-nowrap">{entry.credit > 0 ? `PKR ${(entry.credit || 0).toLocaleString()}` : '—'}</td>
-                              <td className={`py-2.5 px-3 text-right font-bold font-mono whitespace-nowrap ${entry.running_balance > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>
+                              <td className="py-2.5 px-2.5 text-right font-bold text-ink-success whitespace-nowrap">{entry.credit > 0 ? `PKR ${(entry.credit || 0).toLocaleString()}` : '—'}</td>
+                              <td className={`py-2.5 px-3 text-right font-bold font-mono whitespace-nowrap ${entry.running_balance > 0 ? 'text-slate-900' : 'text-ink-success'}`}>
                                 PKR {(entry.running_balance || 0).toLocaleString()}
                               </td>
                               <td className="py-2.5 px-2 text-center whitespace-nowrap">
@@ -550,7 +572,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                                 {isDebit && matchedInvoice && (
                                   <button
                                     onClick={() => setSelectedInvoiceModal(matchedInvoice)}
-                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded"
+                                    className="p-1 text-ink-muted hover:text-indigo-600 rounded"
                                     title="View Invoice"
                                   >
                                     <FileText className="w-3.5 h-3.5" />
@@ -575,7 +597,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                                       };
                                       setSelectedReceiptPayment({ payment: payObj, invoice: matchedInvoice });
                                     }}
-                                    className="p-1 text-slate-400 hover:text-emerald-600 rounded"
+                                    className="p-1 text-ink-muted hover:text-ink-success rounded"
                                     title="View Receipt Slip"
                                   >
                                     <Receipt className="w-3.5 h-3.5" />
@@ -641,7 +663,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Phone <span className="font-normal text-slate-400">(optional)</span></label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Phone <span className="font-normal text-ink-muted">(optional)</span></label>
                       <input
                         type="text"
                         value={phone}
@@ -652,7 +674,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email <span className="font-normal text-slate-400">(optional)</span></label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email <span className="font-normal text-ink-muted">(optional)</span></label>
                       <input
                         type="email"
                         value={email}
@@ -664,7 +686,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Address <span className="font-normal text-slate-400">(optional)</span></label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Address <span className="font-normal text-ink-muted">(optional)</span></label>
                     <textarea
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
@@ -724,7 +746,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
                     <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1">
                       <div className="flex items-center gap-2 text-slate-600 font-semibold">
-                        <MapPin className="w-4 h-4 text-emerald-600" /> Facility Address:
+                        <MapPin className="w-4 h-4 text-ink-success" /> Facility Address:
                       </div>
                       <p className="text-slate-700 pl-6">{lab.address}</p>
                     </div>
@@ -741,7 +763,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
               {/* Delete Zone */}
               <div className="border-t border-slate-200 pt-4 flex justify-between items-center">
-                <span className="text-xs text-rose-600 font-semibold">Danger Zone</span>
+                <span className="text-xs text-ink-danger font-semibold">Danger Zone</span>
                 <button
                   onClick={() => setDeleteModalOpen(true)}
                   disabled={labCases.length > 0}
@@ -750,7 +772,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                       ? `This clinic has ${labCases.length} case${labCases.length === 1 ? '' : 's'} — resolve or reassign them before deleting`
                       : 'Delete this clinic record'
                   }
-                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 bg-rose-50 text-ink-danger hover:bg-rose-100 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" /> Delete Clinic Record
                 </button>
@@ -855,9 +877,9 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
       {/* Typed Confirmation DELETE Modal */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 text-rose-600">
+            <div className="flex items-center gap-3 text-ink-danger">
               <ShieldAlert className="w-6 h-6 shrink-0" />
               <h3 className="font-bold text-base text-slate-900">Type DELETE to Confirm</h3>
             </div>
@@ -871,7 +893,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             )}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Type <span className="text-rose-600 font-mono">DELETE</span> below:
+                Type <span className="text-ink-danger font-mono">DELETE</span> below:
               </label>
               <input
                 type="text"

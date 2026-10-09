@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DentalCase, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, Landmark, Download, CheckCircle2 } from 'lucide-react';
@@ -18,6 +18,7 @@ import '../print/jobSlipPrint.css';
 import { loadPrintSettings, PrintSettings } from '../../services/printSettings';
 import { LabCardSlip } from './LabCardSlip';
 import { getTodayStr } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
 
 /**
  * Screen-fit for A4 sheet previews: scale each 210mm-wide sheet to the
@@ -184,11 +185,24 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
     downloadStandaloneHtml(html, `Job-Slip-Sheets_${getTodayStr()}.html`);
   };
 
+  /* Invoice lookup as an index. The old `.find()` ran once per selected case
+     over the whole invoice list, so a 500-case batch print did 500 x N
+     comparisons on every render. First match wins, exactly as `.find` did. */
+  const invoiceIndex = useMemo(() => {
+    const byId = new Map<string, Invoice>();
+    const byNumber = new Map<string, Invoice>();
+    for (const inv of invoices) {
+      if (inv.case_id && !byId.has(inv.case_id)) byId.set(inv.case_id, inv);
+      if (inv.case_number && !byNumber.has(inv.case_number)) byNumber.set(inv.case_number, inv);
+    }
+    return { byId, byNumber };
+  }, [invoices]);
+
   // Map selected cases to corresponding invoices if available
-  const matchedInvoices: { caseData: DentalCase; invoice: Invoice | undefined }[] = selectedCases.map((c) => {
-    const inv = invoices.find((i) => i.case_id === c.id || i.case_number === c.case_number);
-    return { caseData: c, invoice: inv };
-  });
+  const matchedInvoices: { caseData: DentalCase; invoice: Invoice | undefined }[] = selectedCases.map((c) => ({
+    caseData: c,
+    invoice: invoiceIndex.byId.get(c.id) ?? invoiceIndex.byNumber.get(c.case_number),
+  }));
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print-backdrop">
@@ -228,7 +242,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                 onClick={() => setPrintType('invoices')}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                   printType === 'invoices'
-                    ? 'bg-white text-emerald-600 shadow-xs'
+                    ? 'bg-white text-ink-success shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -256,7 +270,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-2 text-ink-muted hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -372,15 +386,15 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                   {/* Bill To & Case Meta Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">BILLED TO</span>
+                      <span className="text-[10px] font-black uppercase text-ink-muted tracking-wider block">BILLED TO</span>
                       <div className="font-extrabold text-slate-900 text-sm">{invoice.lab_name}</div>
-                      <div className="text-slate-700 font-semibold">Attn: {invoice.doctor_name}</div>
+                      <div className="text-slate-700 font-semibold">Attn: {formatDoctorName(invoice.doctor_name)}</div>
                     </div>
 
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1 sm:text-right">
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">WORKSTATION CASE REFERENCE</span>
+                      <span className="text-[10px] font-black uppercase text-ink-muted tracking-wider block">WORKSTATION CASE REFERENCE</span>
                       <div className="font-extrabold text-indigo-700 text-sm print:text-slate-900">Case #: {invoice.case_number}</div>
-                      <div className="text-slate-800 font-semibold">Doctor: {caseData.doctor_name}</div>
+                      <div className="text-slate-800 font-semibold">Doctor: {formatDoctorName(caseData.doctor_name)}</div>
                     </div>
                   </div>
 
@@ -405,7 +419,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                             {caseData.selected_teeth.map((t) => `#${t}`).join(', ')}
                           </td>
                           <td className="p-3.5 text-right font-mono">PKR {(invoice.amount || 0).toLocaleString()}</td>
-                          <td className="p-3.5 text-right font-mono text-rose-600">- PKR {(invoice.discount || 0).toLocaleString()}</td>
+                          <td className="p-3.5 text-right font-mono text-ink-danger">- PKR {(invoice.discount || 0).toLocaleString()}</td>
                           <td className="p-3.5 text-right font-mono font-black text-slate-900">PKR {(invoice.final_amount || 0).toLocaleString()}</td>
                         </tr>
                       </tbody>

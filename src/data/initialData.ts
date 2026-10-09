@@ -201,6 +201,7 @@ export const INITIAL_USER_PREFERENCES: UserPreferences = {
   enabled_types: ['overdue_case', 'pending_payment', 'escalation', 'status_change'],
   unsubscribed_all: false,
   auto_archive_completed_cases: true,
+  theme_mode: 'system',
 };
 
 /**

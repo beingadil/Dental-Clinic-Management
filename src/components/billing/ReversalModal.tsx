@@ -84,7 +84,7 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
       headerClassName="px-6 py-4"
       header={
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
+          <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-ink-danger">
             <AlertTriangle className="w-5 h-5" />
           </div>
           <div>
@@ -115,7 +115,7 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500 font-medium">Amount:</span>
-              <span className="font-bold text-rose-600 font-mono text-sm">{formatPKR(target.amount)}</span>
+              <span className="font-bold text-ink-danger font-mono text-sm">{formatPKR(target.amount)}</span>
             </div>
             {target.details && (
               <div className="pt-2 border-t border-slate-200 text-slate-600">
@@ -126,7 +126,7 @@ export const ReversalModal: React.FC<ReversalModalProps> = ({
 
           {/* Audit Notice */}
           <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <ShieldAlert className="w-4 h-4 text-ink-warning shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold">Audit Trail Notice</p>
               <p className="text-[11px] text-amber-700 mt-0.5">

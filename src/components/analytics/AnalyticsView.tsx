@@ -107,9 +107,9 @@ export const AnalyticsView: React.FC = () => {
   const paidCount = periodInvoices.filter((i) => i.payment_status === 'paid').length;
 
   const paymentStatusPieData = [
-    { name: 'Paid', value: paidCount, color: '#10b981' },
-    { name: 'Partial', value: partialCount, color: '#3b82f6' },
-    { name: 'Unpaid', value: unpaidCount, color: '#f59e0b' },
+    { name: 'Paid', value: paidCount, color: 'var(--chart-pos)' },
+    { name: 'Partial', value: partialCount, color: 'var(--chart-info)' },
+    { name: 'Unpaid', value: unpaidCount, color: 'var(--chart-warn)' },
   ].filter((d) => d.value > 0);
 
   // Revenue By Lab Breakdown (period-scoped)
@@ -119,7 +119,13 @@ export const AnalyticsView: React.FC = () => {
     return { name: (l?.name || 'Lab').replace(' Dental Clinic', '').replace(' Dental Center', ''), revenue: sum };
   }).filter((d) => d.revenue > 0);
 
-  const MATERIAL_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'];
+  const MATERIAL_COLORS = [
+    'var(--chart-1)',
+    'var(--chart-2)',
+    'var(--chart-3)',
+    'var(--chart-4)',
+    'var(--chart-5)',
+  ];
 
   // Material revenue straight from the SQL analytics bundle (case teeth × invoices).
   const revenueByMaterialData = useMemo(
@@ -230,7 +236,7 @@ export const AnalyticsView: React.FC = () => {
         <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
             <span>Total Revenue</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <DollarSign className="w-4 h-4 text-ink-success" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900">PKR {(totalRevenue || 0).toLocaleString()}</div>
           <div className="text-[11px] text-slate-500 font-medium">Across {periodInvoices.length} invoices</div>
@@ -241,14 +247,14 @@ export const AnalyticsView: React.FC = () => {
             <span>Outstanding Unpaid</span>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-extrabold text-amber-600">PKR {(totalUnpaid || 0).toLocaleString()}</div>
+          <div className="text-2xl font-extrabold text-ink-warning">PKR {(totalUnpaid || 0).toLocaleString()}</div>
           <div className="text-[11px] text-slate-500 font-medium">From {unpaidCount + partialCount} pending invoices</div>
         </div>
 
         <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
             <span>Delivered Cases</span>
-            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+            <CheckCircle2 className="w-4 h-4 text-ink-info" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900">{deliveredCasesCount}</div>
           <div className="text-[11px] text-slate-500 font-medium">Delivered in the selected period</div>
@@ -279,17 +285,29 @@ export const AnalyticsView: React.FC = () => {
               <div className="h-full flex flex-col items-center justify-center text-center">
                 <BarChart3 className="w-8 h-8 text-slate-200 mb-2" />
                 <p className="text-xs font-bold text-slate-600">No invoices in this period</p>
-                <p className="text-[11px] text-slate-400">Pick a wider reporting period to see the trend.</p>
+                <p className="text-[11px] text-ink-muted">Pick a wider reporting period to see the trend.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyRevenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Amount']} />
-                  <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Gross Revenue" />
-                  <Bar dataKey="collected" fill="#10b981" radius={[4, 4, 0, 0]} name="Cash Collected" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="var(--chart-grid)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--chart-grid)" />
+                  <Tooltip
+                    cursor={{ fill: 'var(--chart-grid)', fillOpacity: 0.5 }}
+                    contentStyle={{
+                      background: 'var(--chart-tooltip-bg)',
+                      border: '1px solid var(--chart-tooltip-line)',
+                      borderRadius: '12px',
+                      color: 'var(--chart-tooltip-ink)',
+                      fontSize: '11px',
+                    }}
+                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Amount']}
+                  />
+                  <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} name="Gross Revenue" />
+                  <Bar dataKey="collected" fill="var(--chart-4)" radius={[4, 4, 0, 0]} name="Cash Collected" />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -311,11 +329,23 @@ export const AnalyticsView: React.FC = () => {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueByLabData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
-                  <Tooltip formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Revenue']} />
-                  <Bar dataKey="revenue" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--chart-grid)" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--chart-grid)" />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} stroke="var(--chart-grid)" />
+                  <Tooltip
+                    cursor={{ fill: 'var(--chart-grid)', fillOpacity: 0.5 }}
+                    contentStyle={{
+                      background: 'var(--chart-tooltip-bg)',
+                      border: '1px solid var(--chart-tooltip-line)',
+                      borderRadius: '12px',
+                      color: 'var(--chart-tooltip-ink)',
+                      fontSize: '11px',
+                    }}
+                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Revenue']}
+                  />
+                  <Bar dataKey="revenue" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -330,7 +360,7 @@ export const AnalyticsView: React.FC = () => {
           </div>
           <div className="h-48 flex items-center justify-center">
             {revenueByMaterialData.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center">No charted case materials yet.</p>
+              <p className="text-xs text-ink-muted text-center">No charted case materials yet.</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -347,7 +377,18 @@ export const AnalyticsView: React.FC = () => {
                       <Cell key={`cell-${index}`} fill={MATERIAL_COLORS[index % MATERIAL_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Revenue']} />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--chart-tooltip-bg)',
+                      border: '1px solid var(--chart-tooltip-line)',
+                      borderRadius: '12px',
+                      color: 'var(--chart-tooltip-ink)',
+                      fontSize: '11px',
+                    }}
+                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Revenue']}
+                  />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -363,7 +404,7 @@ export const AnalyticsView: React.FC = () => {
           </div>
           <div className="h-48 flex items-center justify-center">
             {paymentStatusPieData.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center">No invoices in this period.</p>
+              <p className="text-xs text-ink-muted text-center">No invoices in this period.</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -379,7 +420,18 @@ export const AnalyticsView: React.FC = () => {
                       <Cell key={`cell-pay-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(val: any) => [`${val} Invoices`, 'Count']} />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--chart-tooltip-bg)',
+                      border: '1px solid var(--chart-tooltip-line)',
+                      borderRadius: '12px',
+                      color: 'var(--chart-tooltip-ink)',
+                      fontSize: '11px',
+                    }}
+                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
+                    formatter={(val: any) => [`${val} Invoices`, 'Count']}
+                  />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -406,13 +458,13 @@ export const AnalyticsView: React.FC = () => {
             </thead>
             <tbody>
               {analytics.turnaround.every((r) => r.sample === 0) && (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">No deliveries in this period yet.</td></tr>
+                <tr><td colSpan={4} className="px-4 py-6 text-center text-ink-muted">No deliveries in this period yet.</td></tr>
               )}
               {analytics.turnaround.map((r) => (
                 <tr key={r.priority} className="border-t border-slate-100">
                   <td className="px-4 py-2.5 font-bold text-slate-800">{prioritySlaLabel(r.priority)}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{r.avgDays === null ? '—' : `${r.avgDays} days`}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${r.onTimePct === null ? 'text-slate-400' : r.onTimePct >= 90 ? 'text-emerald-600' : r.onTimePct >= 70 ? 'text-amber-600' : 'text-rose-600'}`}>
+                  <td className={`px-4 py-2.5 text-right font-semibold ${r.onTimePct === null ? 'text-ink-muted' : r.onTimePct >= 90 ? 'text-ink-success' : r.onTimePct >= 70 ? 'text-ink-warning' : 'text-ink-danger'}`}>
                     {r.onTimePct === null ? '—' : `${r.onTimePct}%`}
                   </td>
                   <td className="px-4 py-2.5 text-right text-slate-500">{r.sample}</td>
@@ -442,15 +494,15 @@ export const AnalyticsView: React.FC = () => {
             </thead>
             <tbody>
               {analytics.paymentBehavior.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">No invoices in this period — behavior appears as billing begins.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-ink-muted">No invoices in this period — behavior appears as billing begins.</td></tr>
               )}
               {analytics.paymentBehavior.map((r) => (
                 <tr key={r.labId} className="border-t border-slate-100">
                   <td className="px-4 py-2.5 font-bold text-slate-800">{r.labName}</td>
                   <td className="px-4 py-2.5 text-right text-slate-600">{r.invoices}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{r.billed.toLocaleString()}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-emerald-600">{r.collected.toLocaleString()}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${r.outstanding > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{r.outstanding.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-ink-success">{r.collected.toLocaleString()}</td>
+                  <td className={`px-4 py-2.5 text-right font-semibold ${r.outstanding > 0 ? 'text-ink-warning' : 'text-ink-muted'}`}>{r.outstanding.toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-right text-slate-600">{r.avgDaysToPay === null ? '—' : `${r.avgDaysToPay} days`}</td>
                   <td className="px-4 py-2.5 text-right text-indigo-600 font-semibold">{r.advances.toLocaleString()}</td>
                 </tr>

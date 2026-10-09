@@ -117,7 +117,7 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-1.5 bg-white/60 text-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-white/80 self-start md:self-auto">
-          <ShieldCheck className={`w-4 h-4 ${isAdmin ? 'text-indigo-600' : 'text-slate-400'}`} />
+          <ShieldCheck className={`w-4 h-4 ${isAdmin ? 'text-indigo-600' : 'text-ink-muted'}`} />
           <span>Role: <strong className="text-slate-900">{user?.role || '—'}</strong></span>
         </div>
       </div>
@@ -149,7 +149,7 @@ export const SettingsView: React.FC = () => {
                             : 'text-slate-600 border-transparent hover:bg-slate-50'
                         }`}
                       >
-                        <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-brand-600' : 'text-slate-400'}`} />
+                        <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-brand-600' : 'text-ink-muted'}`} />
                         <span className="truncate">{tab.label}</span>
                       </button>
                     </li>
@@ -177,7 +177,7 @@ export const SettingsView: React.FC = () => {
             ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
             : 'bg-rose-50 text-rose-800 border border-rose-200'
         }`}>
-          {backupMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+          {backupMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-ink-success shrink-0" /> : <AlertCircle className="w-4 h-4 text-ink-danger shrink-0" />}
           <span>{backupMessage.text}</span>
         </div>
       )}

@@ -60,9 +60,9 @@ export const CaseNotesPanel: React.FC<CaseNotesPanelProps> = ({ caseId }) => {
             maxLength={500}
             rows={3}
             placeholder="e.g. Doctor approved wax-up adjustment over phone; incisal translucency boosted to shade A2..."
-            className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 resize-none"
+            className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-ink-muted resize-none"
           />
-          <div className="absolute right-3 bottom-3 text-[10px] text-slate-400">
+          <div className="absolute right-3 bottom-3 text-[10px] text-ink-muted">
             {newNoteText.length}/500 chars
           </div>
         </div>
@@ -88,7 +88,7 @@ export const CaseNotesPanel: React.FC<CaseNotesPanelProps> = ({ caseId }) => {
         </h4>
 
         {notes.length === 0 ? (
-          <div className="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+          <div className="text-center py-6 text-xs text-ink-muted bg-slate-50 rounded-xl border border-dashed border-slate-200">
             No notes logged for this case yet.
           </div>
         ) : (
@@ -105,12 +105,12 @@ export const CaseNotesPanel: React.FC<CaseNotesPanelProps> = ({ caseId }) => {
                     </div>
                     <span>{n.author}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                  <div className="flex items-center gap-2 text-[10px] text-ink-muted">
                     <span>{n.created_at}</span>
                     <button
                       type="button"
                       onClick={() => startEdit(n.id, n.note_text)}
-                      className="p-1 hover:text-blue-600 rounded"
+                      className="p-1 hover:text-ink-info rounded"
                       title="Edit Note"
                     >
                       <Edit2 className="w-3 h-3" />
@@ -120,7 +120,7 @@ export const CaseNotesPanel: React.FC<CaseNotesPanelProps> = ({ caseId }) => {
                       onClick={() => {
                         if (confirm('Delete this case note?')) deleteCaseNote(caseId, n.id);
                       }}
-                      className="p-1 hover:text-rose-600 rounded"
+                      className="p-1 hover:text-ink-danger rounded"
                       title="Delete Note"
                     >
                       <Trash2 className="w-3 h-3" />

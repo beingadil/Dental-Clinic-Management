@@ -57,7 +57,7 @@ export function SavePdfButton({ suggestedName, disabled = false, className = '' 
       {busy ? (
         <Loader2 className="w-4 h-4 animate-spin" />
       ) : done ? (
-        <Check className="w-4 h-4 text-emerald-600" />
+        <Check className="w-4 h-4 text-ink-success" />
       ) : (
         <Download className="w-4 h-4" />
       )}

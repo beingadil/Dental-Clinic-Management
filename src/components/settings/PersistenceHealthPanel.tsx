@@ -139,7 +139,7 @@ export function PersistenceHealthPanel() {
           {failingNow ? (
             <AlertTriangle className="w-4 h-4" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <CheckCircle2 className="w-4 h-4 text-ink-success" />
           )}
           Save &amp; sync health —{' '}
           {failingNow
@@ -254,7 +254,7 @@ export function PersistenceHealthPanel() {
                     </td>
                     <td className="px-2 py-1.5 text-slate-600 break-words" title={`${f.message}${f.detail ? ` | ${f.detail}` : ''}`}>
                       {f.message}
-                      {f.detail && <span className="block text-slate-400">{f.detail}</span>}
+                      {f.detail && <span className="block text-ink-muted">{f.detail}</span>}
                     </td>
                   </tr>
                 ))}

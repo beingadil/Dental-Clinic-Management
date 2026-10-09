@@ -8,9 +8,9 @@ export const GlobalToast: React.FC = () => {
   if (!toast) return null;
 
   const icons = {
-    success: <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />,
-    error: <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />,
-    warning: <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />,
+    success: <CheckCircle2 className="w-5 h-5 text-ink-success flex-shrink-0" />,
+    error: <AlertCircle className="w-5 h-5 text-ink-danger flex-shrink-0" />,
+    warning: <AlertTriangle className="w-5 h-5 text-ink-warning flex-shrink-0" />,
     info: <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
   };
 
@@ -34,7 +34,7 @@ export const GlobalToast: React.FC = () => {
         <button
           id="global-toast-close-btn"
           onClick={hideToast}
-          className="p-1 -mr-1 -mt-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 transition-colors"
+          className="p-1 -mr-1 -mt-1 rounded-lg text-ink-muted hover:text-slate-600 hover:bg-slate-200/50 transition-colors"
           title="Dismiss"
         >
           <X className="w-4 h-4" />

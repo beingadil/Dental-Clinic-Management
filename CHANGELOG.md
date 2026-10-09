@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.20.0] — 2026-10-10
+
+### Performance
+- **A 10,000-case sync no longer stalls the window.** The full sync of cases
+  and invoices dropped from ~3110 ms to ~1190 ms. `SqliteEngine` now keeps a
+  bounded cache of prepared statements keyed by SQL text, so the per-row upsert
+  loop stops re-parsing the same statement tens of thousands of times. Only
+  parameterised statements without a trailing `;` are cached; a statement that
+  throws is dropped and freed rather than reused, and the cache is released on
+  `dispose()`.
+- **The autosave benchmark now measures the real encoder.** The scale test
+  carried its own stale copy of the base64 routine, so it was timing code the
+  app never ran. It imports the shipped implementation instead, covered by
+  `tests/db/base64.test.ts`.
+
+### Testing
+- **Wall-clock budgets get an uncontended run.** `syncScale` and `autosaveScale`
+  assert main-thread budgets, so running them beside the other 84 test files
+  (86 Vitest workers) made a correct 1190 ms sync read as ~2600 ms and failed
+  them for contention they cannot control. They now run through
+  `vitest.scale.config.ts` on a single worker via `npm run test:scale`, which
+  `npm test` chains after the main suite. The budgets and assertions are
+  unchanged — only the contention is gone.
+- **Merged from `vite.config.ts`** rather than standalone, so tests keep the
+  React plugin, the `@` alias and the `__APP_VERSION__` define, plus a
+  persistent transform cache.
+
 ## [2.19.0] — 2026-10-09
 
 ### Added

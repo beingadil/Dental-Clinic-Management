@@ -469,7 +469,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                 Amount (PKR) *
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-semibold">PKR</span>
+                <span className="absolute left-3 top-2.5 text-xs text-ink-muted font-semibold">PKR</span>
                 <input
                   type="number"
                   min="1"
@@ -638,7 +638,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
           {mode === 'credit_note' && (
             <div className="p-4 rounded-lg bg-amber-50/60 border border-amber-200 space-y-3">
               <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-                <Percent className="w-4 h-4 text-amber-600" />
+                <Percent className="w-4 h-4 text-ink-warning" />
                 <span>Credit Note & Write-off Details</span>
               </div>
 
@@ -750,7 +750,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                 />
               </label>
               {proofName && (
-                <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                <span className="text-xs text-ink-success font-medium flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   {proofName}
                 </span>
@@ -787,7 +787,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                   : `Debit Sales Returns / Write-offs (${formatPKR(amount)}) • Credit A/R (${formatPKR(amount)})`}
               </strong>
             </div>
-            <span className="text-emerald-600 font-semibold flex items-center gap-1">
+            <span className="text-ink-success font-semibold flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" /> Balanced
             </span>
           </div>

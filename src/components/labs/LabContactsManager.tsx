@@ -119,7 +119,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-            <UserCheck className="w-4 h-4 text-blue-600" /> Key Lab Contacts ({contacts.length})
+            <UserCheck className="w-4 h-4 text-ink-info" /> Key Lab Contacts ({contacts.length})
           </h3>
           <button
             onClick={() => setShowAddContact(!showAddContact)}
@@ -186,7 +186,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
                 type="checkbox"
                 checked={cPrimary}
                 onChange={(e) => setCPrimary(e.target.checked)}
-                className="rounded text-blue-600"
+                className="rounded text-ink-info"
               />
               <span>Set as Primary Contact for this Lab</span>
             </label>
@@ -219,7 +219,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
               </div>
               <button
                 onClick={() => deleteLabContact(c.id)}
-                className="p-1.5 text-slate-400 hover:text-rose-600 rounded"
+                className="p-1.5 text-ink-muted hover:text-ink-danger rounded"
                 title="Delete Contact"
               >
                 <Trash2 className="w-4 h-4" />
@@ -233,11 +233,11 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
       <div className="space-y-3 pt-2">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-emerald-600" /> Lab Location Addresses ({addresses.length})
+            <MapPin className="w-4 h-4 text-ink-success" /> Lab Location Addresses ({addresses.length})
           </h3>
           <button
             onClick={() => setShowAddAddress(!showAddAddress)}
-            className="px-3 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 flex items-center gap-1"
+            className="px-3 py-1 bg-fill-success text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5" /> Add Address
           </button>
@@ -302,7 +302,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
                 type="checkbox"
                 checked={aDefault}
                 onChange={(e) => setADefault(e.target.checked)}
-                className="rounded text-emerald-600"
+                className="rounded text-ink-success"
               />
               <span>Set as Default Dispatch Address</span>
             </label>
@@ -310,7 +310,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="px-4 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg"
+                className="px-4 py-1.5 bg-fill-success text-white text-xs font-semibold rounded-lg"
               >
                 Save Address
               </button>
@@ -336,7 +336,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
               </div>
               <button
                 onClick={() => deleteLabAddress(a.id)}
-                className="p-1.5 text-slate-400 hover:text-rose-600 rounded"
+                className="p-1.5 text-ink-muted hover:text-ink-danger rounded"
                 title="Delete Address"
               >
                 <Trash2 className="w-4 h-4" />

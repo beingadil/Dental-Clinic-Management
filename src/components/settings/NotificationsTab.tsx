@@ -159,7 +159,7 @@ export const NotificationsTab: React.FC = () => {
             <span
               role="status"
               className={`text-[11px] font-bold flex items-center gap-1 shrink-0 ${
-                savedNote.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                savedNote.type === 'success' ? 'text-ink-success' : 'text-ink-danger'
               }`}
             >
               <Check className="w-3.5 h-3.5" /> {savedNote.text}

@@ -65,7 +65,7 @@ export function FilterBar({
       <div className="flex flex-col md:flex-row md:items-center gap-3">
         {search && (
           <div className="relative flex-1 min-w-[180px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <input
               type="text"
               value={search.value}
@@ -91,7 +91,7 @@ export function FilterBar({
 
         {clinics && (
           <div className="relative w-full md:w-64 shrink-0">
-            <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <select
               value={clinics.value}
               onChange={(e) => clinics.onChange(e.target.value)}
@@ -131,7 +131,7 @@ export function FilterBar({
                 }`}
               >
                 {tone === 'danger' && (pill.count ?? 0) > 0 && (
-                  <AlertTriangle className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-rose-600'}`} />
+                  <AlertTriangle className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-ink-danger'}`} />
                 )}
                 <span>{pill.label}</span>
                 <span

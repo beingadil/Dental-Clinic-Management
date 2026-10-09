@@ -70,9 +70,9 @@ export const CaseProgressIndicator: React.FC<CaseProgressIndicatorProps> = ({
           {MAIN_STAGES.map((stage, idx) => {
             const stepState = getStepState(idx);
             let barColor = 'bg-slate-200';
-            if (stepState === 'completed') barColor = 'bg-emerald-500';
+            if (stepState === 'completed') barColor = 'bg-fill-success';
             else if (stepState === 'current') barColor = 'bg-indigo-600 animate-pulse';
-            else if (stepState === 'revision') barColor = 'bg-amber-500';
+            else if (stepState === 'revision') barColor = 'bg-fill-warning';
             else if (stepState === 'cancelled') barColor = 'bg-rose-300';
 
             return (
@@ -99,17 +99,17 @@ export const CaseProgressIndicator: React.FC<CaseProgressIndicatorProps> = ({
             <span className="font-extrabold text-indigo-700 capitalize flex items-center gap-1">
               {isRevision ? (
                 <span className="text-amber-700 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 text-amber-600" /> Revision Required
+                  <AlertCircle className="w-3 h-3 text-ink-warning" /> Revision Required
                 </span>
               ) : isCancelled ? (
-                <span className="text-rose-600 flex items-center gap-1">
+                <span className="text-ink-danger flex items-center gap-1">
                   <XCircle className="w-3 h-3" /> Cancelled
                 </span>
               ) : (
                 <span>Stage: {MAIN_STAGES[currentIndex]?.label || status}</span>
               )}
             </span>
-            <span className="font-mono text-[9px] text-slate-400 font-bold">{progressPercent}%</span>
+            <span className="font-mono text-[9px] text-ink-muted font-bold">{progressPercent}%</span>
           </div>
         )}
       </div>
@@ -145,15 +145,15 @@ export const CaseProgressIndicator: React.FC<CaseProgressIndicatorProps> = ({
           const stepState = getStepState(idx);
           const Icon = stage.icon;
 
-          let circleStyle = 'bg-white border-2 border-slate-300 text-slate-400';
+          let circleStyle = 'bg-white border-2 border-slate-300 text-ink-muted';
           if (stepState === 'completed') {
-            circleStyle = 'bg-emerald-600 border-emerald-600 text-white shadow-xs';
+            circleStyle = 'bg-fill-success border-emerald-600 text-white shadow-xs';
           } else if (stepState === 'current') {
             circleStyle = 'bg-indigo-600 border-indigo-600 text-white shadow-md ring-4 ring-indigo-100 animate-pulse';
           } else if (stepState === 'revision') {
-            circleStyle = 'bg-amber-500 border-amber-500 text-white ring-4 ring-amber-100';
+            circleStyle = 'bg-fill-warning border-amber-500 text-white ring-4 ring-amber-100';
           } else if (stepState === 'cancelled') {
-            circleStyle = 'bg-rose-500 border-rose-500 text-white';
+            circleStyle = 'bg-fill-danger border-rose-500 text-white';
           }
 
           return (
@@ -187,7 +187,7 @@ export const CaseProgressIndicator: React.FC<CaseProgressIndicatorProps> = ({
                       ? 'text-indigo-900 font-black'
                       : stepState === 'completed'
                       ? 'text-emerald-700'
-                      : 'text-slate-400'
+                      : 'text-ink-muted'
                   }`}
                 >
                   {stage.shortLabel}
@@ -201,14 +201,14 @@ export const CaseProgressIndicator: React.FC<CaseProgressIndicatorProps> = ({
       {/* Status Alert Badge if special */}
       {isRevision && (
         <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-xs text-amber-800 font-semibold">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+          <AlertCircle className="w-4 h-4 text-ink-warning shrink-0" />
           <span>Case returned for clinical revision / rework.</span>
         </div>
       )}
 
       {isCancelled && (
         <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-800 font-semibold">
-          <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <XCircle className="w-4 h-4 text-ink-danger shrink-0" />
           <span>Case cancelled by lab or clinic.</span>
         </div>
       )}

@@ -22,7 +22,7 @@ export const ConfirmationModal: React.FC = () => {
           <div className="flex items-start gap-4">
             <div
               className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                confirmModal.isDanger ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'
+                confirmModal.isDanger ? 'bg-rose-50 text-ink-danger' : 'bg-indigo-50 text-indigo-600'
               }`}
             >
               <AlertTriangle className="w-6 h-6" />
@@ -38,7 +38,7 @@ export const ConfirmationModal: React.FC = () => {
             <button
               id="confirm-modal-close-btn"
               onClick={closeConfirmModal}
-              className="text-slate-400 hover:text-slate-600 p-1 -mr-2 -mt-2 rounded-lg transition-colors"
+              className="text-ink-muted hover:text-slate-600 p-1 -mr-2 -mt-2 rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />
             </button>

@@ -139,7 +139,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              className="p-1.5 text-ink-muted hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
               aria-label="Close"
             >
               <X className="w-5 h-5" />

@@ -40,7 +40,7 @@ export const AccountTab: React.FC = () => {
         <div className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
           accountMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
         }`}>
-          {accountMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+          {accountMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-ink-success shrink-0" /> : <AlertCircle className="w-4 h-4 text-ink-danger shrink-0" />}
           <span>{accountMsg.text}</span>
         </div>
       )}

@@ -49,7 +49,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       initialFocusRef={cancelRef}
       header={
         <div className="flex items-center gap-2.5">
-          <AlertTriangle className={`w-5 h-5 ${tone === 'rose' ? 'text-rose-600' : 'text-brand-600'}`} />
+          <AlertTriangle className={`w-5 h-5 ${tone === 'rose' ? 'text-ink-danger' : 'text-brand-600'}`} />
           <h3 className="text-sm font-bold text-slate-900">{title}</h3>
         </div>
       }

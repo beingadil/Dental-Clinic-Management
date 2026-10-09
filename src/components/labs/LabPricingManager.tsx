@@ -143,7 +143,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
         {labOverrides.length === 0 ? (
-          <div className="p-6 text-center text-xs text-slate-400">
+          <div className="p-6 text-center text-xs text-ink-muted">
             No custom pricing overrides configured. Default case type prices will apply.
           </div>
         ) : (
@@ -163,13 +163,13 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
                 <tr key={po.id} className="hover:bg-slate-50">
                   <td className="py-2.5 px-3 font-bold text-slate-900">{po.case_type_name}</td>
                   <td className="py-2.5 px-3 text-slate-500 line-through">PKR {po.standard_price.toLocaleString()}</td>
-                  <td className="py-2.5 px-3 font-bold text-emerald-600">PKR {po.custom_price.toLocaleString()}</td>
+                  <td className="py-2.5 px-3 font-bold text-ink-success">PKR {po.custom_price.toLocaleString()}</td>
                   <td className="py-2.5 px-3 text-purple-700 font-semibold">{po.discount_percentage || 0}% OFF</td>
                   <td className="py-2.5 px-3 text-slate-500">{po.effective_date}</td>
                   <td className="py-2.5 px-3 text-right">
                     <button
                       onClick={() => deletePricingOverride(po.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                      className="p-1 text-ink-muted hover:text-ink-danger rounded"
                       title="Remove Override"
                     >
                       <Trash2 className="w-4 h-4" />

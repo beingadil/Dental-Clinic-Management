@@ -23,7 +23,14 @@
   --p-slate-300: #d3d8e0;
   --p-slate-400: #9aa3b2;
   --p-slate-500: #6b7687;
+  /* Two steps were added so the semantic type ladder below has four rungs that
+     all clear WCAG AA (4.5:1) on every surface the dashboard actually puts text
+     on. 550 is the lightest step that still clears 4.5:1 on the tinted tile
+     (#eef0f4, 4.80:1) — 500 reads 4.20:1 there and fails. 750 splits ink-soft
+     from body so neither rung collapses into the other. */
+  --p-slate-550: #5f6a7b;
   --p-slate-600: #4d5766;
+  --p-slate-750: #333e52;
   --p-slate-800: #263141;
   --p-slate-900: #141c2b;
   --p-slate-950: #0b1220;
@@ -77,9 +84,9 @@
 
   /* Type */
   --ds-ink: var(--p-slate-950);
-  --ds-ink-soft: var(--p-slate-600);
-  --ds-body: var(--p-slate-500);
-  --ds-muted: var(--p-slate-400);
+  --ds-ink-soft: var(--p-slate-750);
+  --ds-body: var(--p-slate-600);
+  --ds-muted: var(--p-slate-550);
 
   /* Brand + status. Exactly one accent; everything else is reserved meaning. */
   --ds-accent: var(--p-blue-600);
@@ -273,7 +280,12 @@
     font-weight: 700;
   }
 
+  /* Every .ds-link in the app is a <button>, so they all get the expanded hit
+     area here rather than at 4 call sites — a "View all" stays as easy to hit
+     as it is to see. The ::after rules below are repeated, not @applied, because
+     @apply cannot reference a plain class in Tailwind v4. */
   .ds-link {
+    position: relative;
     font-size: 11px;
     font-weight: 700;
     color: var(--ds-accent);
@@ -281,7 +293,42 @@
     white-space: nowrap;
     transition: color 150ms ease;
   }
+  .ds-link::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+  }
   .ds-link:hover { color: var(--ds-accent-strong); }
+
+  /* WCAG 2.5.8 / 44px minimum pointer target.
+     The dashboard is deliberately dense, so the visible control is often far
+     smaller than 44px. Rather than inflating every glyph (which would undo the
+     density the whole layout is built on), .ds-hit keeps the visual size and
+     paints an invisible, centred 44x44 hit area over it via a pseudo-element.
+     The button's own box still receives the click — the pseudo-element is part
+     of it, not a sibling — so no listener changes and nothing reflows. */
+  .ds-hit {
+    position: relative;
+  }
+  .ds-hit::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+  }
+
+  /* Full-width list rows have room to simply grow, so they get a real minimum
+     height instead of an expanded hit area. */
+  .ds-row-target {
+    min-height: 44px;
+  }
 
   /* Square icon tile — 36px, rounded, tone-tinted. */
   .ds-icon-tile {

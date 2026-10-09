@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { LedgerEntry, DentalLab } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getDateStr, getTodayStr } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
 import { 
   Search, 
   Eye, 
@@ -92,7 +93,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     return labs.filter(
       (lab) =>
         lab.name.toLowerCase().includes(q) ||
-        (lab.doctor_name && lab.doctor_name.toLowerCase().includes(q)) ||
+        (lab.doctor_name && formatDoctorName(lab.doctor_name).toLowerCase().includes(q)) ||
         (lab.phone && lab.phone.toLowerCase().includes(q)) ||
         (lab.city && lab.city.toLowerCase().includes(q)) ||
         (lab.code && lab.code.toLowerCase().includes(q))
@@ -266,7 +267,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     return ledgerItems.filter((e) =>
       (e.case_number || '').toLowerCase().includes(q) ||
       (e.reference_number || '').toLowerCase().includes(q) ||
-      (e.doctor_name || '').toLowerCase().includes(q)
+      formatDoctorName(e.doctor_name, '').toLowerCase().includes(q)
     );
   }, [ledgerItems, caseFilter]);
 
@@ -317,7 +318,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         typeBadgeBg: 'bg-blue-50 text-blue-700 border-blue-200',
         icon: FileText,
         narration: `${entry.reference_number || ''} • ${entry.description || 'Restoration'}`,
-        subText: detail.length ? undefined : (entry.doctor_name ? `Doctor: ${entry.doctor_name}` : undefined),
+        subText: detail.length ? undefined : (entry.doctor_name ? `Doctor: ${formatDoctorName(entry.doctor_name)}` : undefined),
         caseDetail: detail
       };
     }
@@ -348,7 +349,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
         typeBadgeBg,
         icon,
         narration: `${typeLabel} #${entry.reference_number || ''}${entry.notes ? ` • ${entry.notes}` : ''}`,
-        subText: entry.doctor_name ? `Doctor: ${entry.doctor_name}` : undefined,
+        subText: entry.doctor_name ? `Doctor: ${formatDoctorName(entry.doctor_name)}` : undefined,
         caseDetail: []
       };
     }
@@ -533,11 +534,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                     <div className="truncate">
                       <span className="text-xs font-bold text-slate-900">{selectedClinic.name}</span>
                       {selectedClinic.doctor_name && (
-                        <span className="text-[11px] text-slate-500 ml-1.5">({selectedClinic.doctor_name})</span>
+                        <span className="text-[11px] text-slate-500 ml-1.5">({formatDoctorName(selectedClinic.doctor_name)})</span>
                       )}
                     </div>
                   ) : (
-                    <span className="text-xs font-bold text-slate-400">
+                    <span className="text-xs font-bold text-ink-muted">
                       Select clinic…
                     </span>
                   )}
@@ -592,13 +593,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                           <div className="min-w-0 pr-2">
                             <div className="font-bold text-slate-900 truncate">{clinic.name}</div>
                             <div className="text-[11px] text-slate-500 font-normal flex items-center gap-2 mt-0.5 truncate">
-                              {clinic.doctor_name && <span>Dr. {clinic.doctor_name}</span>}
+                              {clinic.doctor_name && <span>{formatDoctorName(clinic.doctor_name)}</span>}
                               {clinic.city && <span>• {clinic.city}</span>}
                               {clinic.phone && <span>• {clinic.phone}</span>}
                             </div>
                           </div>
                           {isSelected && (
-                            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                            <CheckCircle2 className="w-4 h-4 text-ink-info shrink-0" />
                           )}
                         </button>
                       );
@@ -611,7 +612,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
 
           {/* Case/Job search — case number, invoice number, or clinic-side name */}
           <div className="relative shrink-0">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <input
               type="text"
               value={caseFilter}
@@ -623,7 +624,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
               <button
                 type="button"
                 onClick={() => { setCaseFilter(''); setLedgerLimit(LEDGER_CAP_STEP); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-ink-muted hover:text-slate-700"
                 title="Clear case filter" aria-label="Clear case filter"
               >
                 <X className="w-3.5 h-3.5" />
@@ -707,7 +708,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 setEndDate('');
                 setActiveDatePreset('all');
               }}
-              className="ml-auto text-[11px] text-rose-600 hover:underline flex items-center gap-1 font-semibold"
+              className="ml-auto text-[11px] text-ink-danger hover:underline flex items-center gap-1 font-semibold"
             >
               <X className="w-3 h-3" /> Clear Dates
             </button>
@@ -723,7 +724,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
             <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
               <Building2 className="mx-auto mb-2 w-8 h-8 text-slate-300" />
               <p className="text-sm font-bold text-slate-600">Select a clinic to view its ledger</p>
-              <p className="text-xs text-slate-400 mt-1">Pick a clinic above to load its transactions.</p>
+              <p className="text-xs text-ink-muted mt-1">Pick a clinic above to load its transactions.</p>
             </div>
           ) : (
         <>
@@ -738,7 +739,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                 <div>
                   <span className="font-bold text-slate-900 text-sm">{selectedClinic.name}</span>
                   <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                    {selectedClinic.doctor_name && <span>Doctor: {selectedClinic.doctor_name}</span>}
+                    {selectedClinic.doctor_name && <span>Doctor: {formatDoctorName(selectedClinic.doctor_name)}</span>}
                     {selectedClinic.phone && <span>• Tel: {selectedClinic.phone}</span>}
                     {selectedClinic.address && <span>• {selectedClinic.address}</span>}
                   </div>
@@ -792,7 +793,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                       <td className="py-2.5 px-4 font-bold text-slate-800">
                         {selectedClinic ? selectedClinic.name : 'Consolidated Clinics'}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-400">—</td>
+                      <td className="py-2.5 px-3 text-ink-muted">—</td>
                       <td className="py-2.5 px-4">
                         <span className="inline-block text-[11px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
                           Opening Balance
@@ -810,7 +811,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                   {ledgerItems.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-12 text-center text-slate-500">
-                        <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mb-3">
+                        <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-ink-body flex items-center justify-center mb-3">
                           <FileSpreadsheet className="w-6 h-6" />
                         </div>
                         <p className="text-sm font-bold text-slate-800">No ledger entries found</p>
@@ -890,7 +891,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                                 <dl className="mt-1 grid grid-cols-1 gap-x-4 gap-y-0.5 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2 sm:grid-cols-2">
                                   {details.caseDetail.map((d) => (
                                     <div key={d.label} className="flex items-baseline gap-1.5 min-w-0">
-                                      <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                      <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-ink-muted">
                                         {d.label}
                                       </dt>
                                       <dd className="truncate text-[11px] text-slate-700" title={d.value}>
@@ -910,7 +911,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                                 PKR {entry.debit.toLocaleString()}
                               </span>
                             ) : (
-                              <span className="text-slate-400 font-mono">-</span>
+                              <span className="text-ink-muted font-mono">-</span>
                             )}
                           </td>
 
@@ -921,7 +922,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                                 PKR {entry.credit.toLocaleString()}
                               </span>
                             ) : (
-                              <span className="text-slate-400 font-mono">-</span>
+                              <span className="text-ink-muted font-mono">-</span>
                             )}
                           </td>
 
@@ -951,7 +952,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
                       <td className="py-3.5 px-3 text-right font-bold font-mono text-emerald-700 whitespace-nowrap">
                         PKR {caseScope.creditsSum.toLocaleString()}
                       </td>
-                      <td className="py-3.5 px-4 text-right text-slate-400 whitespace-nowrap">—</td>
+                      <td className="py-3.5 px-4 text-right text-ink-muted whitespace-nowrap">—</td>
                     </tr>
                   </tfoot>
                 )}

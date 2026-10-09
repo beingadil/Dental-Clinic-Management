@@ -155,7 +155,7 @@ export const PrintTab: React.FC = () => {
                       {brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Solutions'}
                     </p>
                     {brandingSettings?.tagline && (
-                      <p className="text-[6px] text-slate-400 uppercase tracking-wide truncate">
+                      <p className="text-[6px] text-ink-muted uppercase tracking-wide truncate">
                         {brandingSettings.tagline}
                       </p>
                     )}
@@ -182,13 +182,13 @@ export const PrintTab: React.FC = () => {
                       </li>
                     ))}
                   {(docSections[sectionKind] || []).length === 0 && (
-                    <li className="text-[6px] text-rose-600 font-semibold">
+                    <li className="text-[6px] text-ink-danger font-semibold">
                       Nothing selected — this document would print blank.
                     </li>
                   )}
                 </ul>
 
-                <p className="text-[5px] text-slate-400 border-t border-slate-100 pt-0.5 truncate">
+                <p className="text-[5px] text-ink-muted border-t border-slate-100 pt-0.5 truncate">
                   {brandingSettings?.phone || brandingSettings?.email || brandingSettings?.address || ''}
                 </p>
               </div>
@@ -261,7 +261,7 @@ export const PrintTab: React.FC = () => {
                 }`}
               >
                 {k === 'job_slip' ? 'Job Slip' : k.charAt(0).toUpperCase() + k.slice(1)}
-                <span className={sectionKind === k ? 'text-white/60' : 'text-slate-400'}>
+                <span className={sectionKind === k ? 'text-white/60' : 'text-ink-muted'}>
                   {' '}· {docSections[k]?.length ?? 0}/{PRINT_SECTIONS[k].length}
                 </span>
               </button>
@@ -293,7 +293,7 @@ export const PrintTab: React.FC = () => {
             Save Print Settings
           </button>
           {printSaved && (
-            <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+            <span className="text-xs font-bold text-ink-success flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" /> Saved — applies to all documents
             </span>
           )}

@@ -73,14 +73,14 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
             {label}
           </span>
           {artefact && (
-            <span className={`text-[11px] font-medium ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <span className={`text-[11px] font-medium ${dark ? 'text-slate-500' : 'text-ink-muted'}`}>
               {ARTEFACT_NAME[artefact]}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2 min-w-0">
           {hint && (
-            <span className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}>{hint}</span>
+            <span className={`text-[11px] ${dark ? 'text-ink-muted' : 'text-slate-500'}`}>{hint}</span>
           )}
           {actions}
         </div>

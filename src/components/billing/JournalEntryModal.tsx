@@ -62,19 +62,19 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
         {/* Metadata Strip */}
         <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-0.5">
+            <span className="text-ink-muted flex items-center gap-1 mb-0.5">
               <Calendar className="w-3.5 h-3.5" /> Date
             </span>
             <span className="font-medium text-slate-700">{journal.date}</span>
           </div>
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-0.5">
+            <span className="text-ink-muted flex items-center gap-1 mb-0.5">
               <FileText className="w-3.5 h-3.5" /> Reference
             </span>
             <span className="font-mono font-medium text-slate-800">{journal.reference_number}</span>
           </div>
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-0.5">
+            <span className="text-ink-muted flex items-center gap-1 mb-0.5">
               <Building2 className="w-3.5 h-3.5" /> Account
             </span>
             <span className="font-medium text-slate-700 truncate block" title={journal.lab_name}>
@@ -82,7 +82,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             </span>
           </div>
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-0.5">
+            <span className="text-ink-muted flex items-center gap-1 mb-0.5">
               <User className="w-3.5 h-3.5" /> Recorded By
             </span>
             <span className="font-medium text-slate-700">{journal.created_by}</span>
@@ -158,7 +158,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           {/* Balance status banner */}
           <div className="mt-4 flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
             <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <ShieldCheck className="w-4 h-4 text-ink-success" />
               <span>Double-entry mathematical verification: <strong>Debits equal Credits</strong></span>
             </div>
             <span className="font-mono font-semibold">Variance: PKR 0.00</span>

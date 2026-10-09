@@ -34,9 +34,9 @@ export const Badge: React.FC<BadgeProps> = ({
     default: 'bg-slate-400',
     neutral: 'bg-slate-400',
     primary: 'bg-indigo-500',
-    success: 'bg-emerald-500',
-    warning: 'bg-amber-500',
-    danger: 'bg-rose-500',
+    success: 'bg-fill-success',
+    warning: 'bg-fill-warning',
+    danger: 'bg-fill-danger',
     info: 'bg-sky-500',
     purple: 'bg-purple-500',
     cyan: 'bg-cyan-500',
@@ -95,14 +95,14 @@ export const PriorityBadge: React.FC<{ priority: PriorityLevel; size?: 'xs' | 's
     case 'urgent':
       return (
         <span className={`inline-flex items-center gap-1 font-bold text-[11px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider ${className}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-fill-danger animate-pulse" />
           Urgent
         </span>
       );
     case 'high':
       return (
         <span className={`inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 ${className}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <span className="w-1.5 h-1.5 rounded-full bg-fill-warning" />
           High
         </span>
       );

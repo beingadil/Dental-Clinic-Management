@@ -111,12 +111,12 @@ export function UpdatePill() {
 
     case 'ready_to_apply':
       tone = 'border-emerald-200 bg-emerald-50 text-emerald-900';
-      icon = <ArrowUpCircle className="w-4 h-4 text-emerald-600 shrink-0" />;
+      icon = <ArrowUpCircle className="w-4 h-4 text-ink-success shrink-0" />;
       label = `v${phase.version} is downloaded and verified — restart to install it`;
       actions = (
         <button
           onClick={() => void applyStagedUpdate()}
-          className="ml-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
+          className="ml-2 px-3 py-1.5 bg-fill-success hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
         >
           <Power className="w-3.5 h-3.5" />
           Restart &amp; Apply
@@ -132,7 +132,7 @@ export function UpdatePill() {
 
     case 'failed':
       tone = 'border-rose-200 bg-rose-50 text-rose-900';
-      icon = <TriangleAlert className="w-4 h-4 text-rose-600 shrink-0" />;
+      icon = <TriangleAlert className="w-4 h-4 text-ink-danger shrink-0" />;
       label = phase.message;
       actions = (
         <button

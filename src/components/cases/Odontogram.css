@@ -256,3 +256,159 @@
     min-height: 320px;
   }
 }
+
+/* =========================================================================
+   Dark theme
+   =========================================================================
+   This file predates the token layer, so every value above is a literal hex
+   and cannot be remapped by the global token flip. It is a chart, which means
+   most of its colours are MARKS — a caries fill, a crown stroke, a pontic
+   wash. Those are held unchanged: they encode dental work type, and a legend
+   that changes colour between themes teaches the wrong thing. What gets
+   remapped is the substrate: the tooth surfaces, the rules between them, and
+   the ink.
+
+   Scoped to @media screen for the same reason as src/theme/dark.css — a
+   charted odontogram printed for a lab must keep its clinical print colours.
+   ========================================================================= */
+
+@media screen {
+  /* Chips */
+  .dark .dsp-chip {
+    border-color: #1b2637;
+    background: #0f1826;
+    color: #9aa9bf;
+  }
+
+  .dark .dsp-chip:hover {
+    background: #16202f;
+    border-color: #26344a;
+  }
+
+  .dark .dsp-chip-accent {
+    background: #161e3f;
+    border-color: rgba(129, 140, 248, 0.32);
+    color: #c7d2fe;
+  }
+
+  .dark .dsp-chip-accent:hover {
+    background: #1b2549;
+  }
+
+  .dark .dsp-chip-danger {
+    background: #2b1418;
+    border-color: #5c2630;
+    color: #fecdd3;
+  }
+
+  .dark .dsp-chip-danger:hover {
+    background: #3a1a20;
+  }
+
+  /* Chart substrate */
+  .dark .dsp-arch-guide {
+    stroke: #26344a;
+  }
+
+  /* Lighter than the arch guide, not lighter than the surface: the midline is
+     the subtlest line in the chart and would otherwise vanish. */
+  .dark .dsp-midline {
+    stroke: #1e2b40;
+  }
+
+  .dark .dsp-jaw-label {
+    fill: #7f8ea6;
+  }
+
+  /* Teeth are surfaces. A white tooth on a dark card reads as a hole punched
+     through the panel, so it becomes the card surface with a visible rim. */
+  .dark .dsp-tooth-shape {
+    fill: #16202f;
+    stroke: #475569;
+  }
+
+  .dark .dsp-tooth:hover .dsp-tooth-shape {
+    fill: #1b2549;
+    stroke: #818cf8;
+  }
+
+  .dark .dsp-tooth:focus-visible .dsp-tooth-shape {
+    stroke: #a5b4fc;
+  }
+
+  .dark .dsp-tooth-selected {
+    fill: #1b2549;
+    stroke: #818cf8;
+  }
+
+  .dark .dsp-selection-halo {
+    fill: rgba(129, 140, 248, 0.1);
+    stroke: rgba(129, 140, 248, 0.55);
+  }
+
+  .dark .dsp-fdi-number {
+    fill: #8b9ab0;
+  }
+
+  .dark .dsp-fdi-active {
+    fill: #c7d2fe;
+  }
+
+  /* Anatomy hairlines sit ON the tooth surface, so they invert toward the
+     surface, not away from it. */
+  .dark .dsp-tooth-detail {
+    stroke: rgba(51, 65, 85, 0.5);
+  }
+
+  /* Clinical overlays are marks — held. Only the caries outline changes: its
+     white stroke was a knockout against a white tooth, and on a dark tooth it
+     would glow instead of cut out. */
+  .dark .dsp-caries {
+    fill: #ef4444;
+    stroke: #16202f;
+  }
+
+  .dark .dsp-filling {
+    fill: #64748b;
+    stroke: #94a3b8;
+  }
+
+  .dark .dsp-coping {
+    stroke: #94a3b8;
+  }
+
+  /* Washed fills (pontic/abutment/implant) were translucent over a white
+     tooth; over a dark tooth the same alpha reads as almost nothing, so the
+     wash strengthens rather than the hue changing. */
+  .dark .dsp-pontic {
+    fill: rgba(245, 158, 11, 0.34);
+    stroke: #fbbf24;
+  }
+
+  .dark .dsp-abutment {
+    fill: rgba(34, 211, 238, 0.32);
+    stroke: #22d3ee;
+  }
+
+  .dark .dsp-implant {
+    fill: rgba(167, 139, 250, 0.28);
+    stroke: #a78bfa;
+  }
+
+  .dark .dsp-implant-lines {
+    stroke: #a78bfa;
+  }
+
+  .dark .dsp-post-core {
+    stroke: #c4b5fd;
+  }
+
+  .dark .dsp-veneer {
+    stroke: #a78bfa;
+  }
+
+  /* Scrollbars */
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #26344a;
+  }
+}

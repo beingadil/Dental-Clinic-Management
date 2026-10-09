@@ -159,7 +159,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
             {ready || applying ? (
               <ArrowUpCircle className="w-4 h-4" />
             ) : failed ? (
-              <TriangleAlert className="w-4 h-4 text-rose-600" />
+              <TriangleAlert className="w-4 h-4 text-ink-danger" />
             ) : (
               <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
             )}
@@ -221,7 +221,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
                   ) : (
                     <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-200 shrink-0" />
                   )}
-                  <span className={s.done ? 'text-slate-400' : s.active ? 'text-slate-800 font-bold' : 'text-slate-400'}>
+                  <span className={s.done ? 'text-ink-muted' : s.active ? 'text-slate-800 font-bold' : 'text-ink-muted'}>
                     {s.label}
                   </span>
                 </li>
@@ -232,7 +232,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
           {/* Staged / applied confirmation */}
           {phase.state === 'ready_to_apply' && (
             <div className="flex items-start gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <ShieldCheck className="w-4 h-4 text-ink-success shrink-0 mt-0.5" />
               <p className="text-[11px] text-emerald-900">
                 The installer{phase.bytes > 0 ? ` (${formatBytes(phase.bytes)})` : ''} is
                 downloaded, checksum-verified, and your database was backed up. Restart to

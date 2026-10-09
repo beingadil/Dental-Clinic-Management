@@ -1,30 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, ToothDetail, CaseAttachment } from '../../types';
-import Odontogram, { SHADE_COLORS } from './Odontogram';
-import { CaseAttachmentsPanel } from './CaseAttachmentsPanel';
+import Odontogram, { SHADE_COLORS, type OdontogramData } from './Odontogram';
 import { CaseNotesPanel } from './CaseNotesPanel';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
 import { openFileInBrowser } from '../../utils/fileUtils';
+import { useDialogBehavior } from '../common/ui/useDialogBehavior';
 import { LAB_DEPARTMENTS } from '../../utils/labDepartments';
-import { getClinicalSpecs, ClinicalMaterial } from '../../services/clinicalSpecsService';
+import { stripDoctorHonorific } from '../../utils/doctorName';
+import { getClinicalSpecs } from '../../services/clinicalSpecsService';
 import {
   X,
   Check,
   Trash2,
   Bookmark,
-  Clock,
   FileText,
   Paperclip,
-  MessageSquare,
-  DollarSign,
   AlertCircle,
   Printer,
   Maximize2,
   Minimize2,
-  User,
-  Eye,
   Download,
   File,
   Upload,
@@ -33,11 +29,9 @@ import {
   Layers,
   ExternalLink,
   Save,
-  Palette,
   ArrowRight,
   ArrowLeft,
-  CalendarDays,
-  Sparkles
+  CalendarDays
 } from 'lucide-react';
 import { PRIORITY_SLA_DAYS, prioritySlaLabel, computeSlaDueDate } from '../../services/prioritySla';
 import { DatePickerSingle } from '../common/DatePickerSingle';
@@ -52,25 +46,72 @@ const EASE = 'ease-[cubic-bezier(0.32,0.72,0,1)]';
 
 /* Module-level field primitives (no hooks — safe to define here) */
 
+/* Eyebrows deliberately carry no ordinal. The wizard stepper already owns
+   01/02/03, so the cards used to carry a second, never-completed numbering
+   that duplicated `02` and skipped the financial card. Names only. */
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 ${className}`}>
+  <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-muted ${className}`}>
     {children}
   </span>
 );
 
-const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean }> = ({ children, required }) => (
-  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-    {children}
-    {required && <span className="ml-1 text-indigo-600">*</span>}
-  </span>
-);
+/**
+ * `htmlFor` is what makes this a real label. As a bare <span> the visual
+ * caption was invisible to assistive tech and to clicking, so every control
+ * below announced only its placeholder. Pass the control's id.
+ */
+const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean; htmlFor?: string }> = ({
+  children,
+  required,
+  htmlFor,
+}) => {
+  const className = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600';
+  const content = (
+    <>
+      {children}
+      {required && <span className="ml-1 text-indigo-600" aria-hidden="true">*</span>}
+    </>
+  );
+  return htmlFor ? (
+    <label htmlFor={htmlFor} className={className}>{content}</label>
+  ) : (
+    <span className={className}>{content}</span>
+  );
+};
 
 const inputCls = `w-full rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 ring-1 ring-slate-200
-  placeholder:text-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${EASE}
+  placeholder:text-ink-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${EASE}
   hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/40`;
 
 const bezelCard = `rounded-[1.5rem] bg-slate-900/[0.035] p-1.5 ring-1 ring-slate-900/10 shadow-[0_1px_2px_rgba(15,23,42,0.06)]`;
 const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-white p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)]`;
+
+/**
+ * A nested overlay (attachment preview, preset template) opened from inside the
+ * wizard. It registers with the same dialog stack `useDialogBehavior` uses, so
+ * while it is on top the wizard's own Escape handler stands down and Tab stays
+ * trapped in the overlay. Without this a nested Escape would close the whole
+ * wizard out from under the overlay.
+ */
+const NestedDialog: React.FC<{ onClose: () => void; label: string; children: React.ReactNode }> = ({
+  onClose,
+  label,
+  children,
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogBehavior(ref, true, onClose);
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4"
+    >
+      {children}
+    </div>
+  );
+};
 
 interface CaseDetailModalProps {
   initialCase?: DentalCase | null; // null if creating new case
@@ -192,6 +233,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const STEP_SETTLE_MS = 350;
   const stepEnteredAtRef = React.useRef(0);
   const committingRef = useRef(false);
+  /* V-19 dialog behaviour: focus moves in, Tab stays inside, Escape closes,
+     focus returns to the row that opened the wizard. */
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogBehavior(dialogRef, true, onClose);
   const [step, setStep] = useState(0);
   /* Editing jumps straight to any step — the record already exists, so nothing
      is being bypassed. Creating starts locked to step 1. */
@@ -482,7 +527,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           lab_name: selectedLab ? selectedLab.name : initialCase.lab_name,
           case_type_id: caseTypeId,
           case_type_name: selectedCT ? selectedCT.name : initialCase.case_type_name,
-          doctor_name: doctorName.trim(),
+          doctor_name: stripDoctorHonorific(doctorName),
           selected_teeth: selectedTeeth,
           tooth_details: toothDetails,
           shade: shade.trim(),
@@ -507,7 +552,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         lab_name: selectedLab ? selectedLab.name : 'Unknown Lab',
         case_type_id: caseTypeId,
         case_type_name: selectedCT ? selectedCT.name : 'Zirconia Crown',
-        doctor_name: doctorName.trim(),
+        doctor_name: stripDoctorHonorific(doctorName),
         selected_teeth: selectedTeeth,
         tooth_details: toothDetails,
         shade: shade.trim(),
@@ -555,7 +600,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         lab_name: '',
         case_type_id: caseTypeId,
         case_type_name: selectedCT ? selectedCT.name : 'Zirconia Crown',
-        doctor_name: doctorName,
+        doctor_name: stripDoctorHonorific(doctorName),
         selected_teeth: selectedTeeth,
         shade,
         delivery_date: deliveryDate,
@@ -596,8 +641,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const priorityDot: Record<PriorityLevel, string> = {
     low: 'bg-sky-500',
     normal: 'bg-indigo-500',
-    high: 'bg-amber-500',
-    urgent: 'bg-rose-500',
+    high: 'bg-fill-warning',
+    urgent: 'bg-fill-danger',
   };
   const priorityHeaderBadge: Record<PriorityLevel, string> = {
     low: 'bg-sky-400/10 text-sky-300 ring-1 ring-sky-400/30',
@@ -629,13 +674,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     <div className={bezelCard}>
       <div className={bezelCardInner}>
         <div className="mb-5 flex items-center justify-between">
-          <Eyebrow>01 · Referral</Eyebrow>
-            <span className="font-mono text-[10px] tracking-widest text-slate-400">WHO & WHAT</span>
+          <Eyebrow>Referral</Eyebrow>
+            <span className="font-mono text-[10px] tracking-widest text-ink-muted">WHO & WHAT</span>
           </div>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
-              <FieldLabel>Patient Name / ID</FieldLabel>
+              <FieldLabel htmlFor="case-patient-name">Patient Name / ID</FieldLabel>
               <input
+                id="case-patient-name"
                 type="text"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
@@ -644,22 +690,29 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               />
             </div>
             <div>
-              <FieldLabel required>Doctor Name</FieldLabel>
+              <FieldLabel required htmlFor="case-doctor-name">Doctor Name</FieldLabel>
               <input
+                id="case-doctor-name"
                 type="text"
                 value={doctorName}
                 onChange={(e) => {
                   setDoctorName(e.target.value);
                   if (errors.doctorName) setErrors((prev) => ({ ...prev, doctorName: '' }));
                 }}
-                placeholder="e.g. Dr. Tariq Mahmood"
+                placeholder="e.g. Tariq Mahmood"
+                aria-invalid={!!errors.doctorName}
+                aria-describedby={errors.doctorName ? 'case-doctor-name-error' : undefined}
                 className={inputCls}
               />
-              {errors.doctorName && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.doctorName}</p>}
+              {errors.doctorName && (
+                <p id="case-doctor-name-error" className="mt-1 text-[11px] font-medium text-ink-danger">
+                  {errors.doctorName}
+                </p>
+              )}
             </div>
             <div>
               <div className="flex items-end justify-between">
-                <FieldLabel required>Dental Clinic</FieldLabel>
+                <FieldLabel required htmlFor="case-lab-id">Dental Clinic</FieldLabel>
                 {doctorName && labId && (
                   <button
                     type="button"
@@ -671,11 +724,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 )}
               </div>
               <select
+                id="case-lab-id"
                 value={labId}
                 onChange={(e) => {
                   setLabId(e.target.value);
                   if (errors.labId) setErrors((prev) => ({ ...prev, labId: '' }));
                 }}
+                aria-invalid={!!errors.labId}
+                aria-describedby={errors.labId ? 'case-lab-id-error' : undefined}
                 className={inputCls}
               >
                 {labs.map((l) => (
@@ -684,7 +740,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   </option>
                 ))}
               </select>
-              {errors.labId && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.labId}</p>}
+              {errors.labId && (
+                <p id="case-lab-id-error" className="mt-1 text-[11px] font-medium text-ink-danger">{errors.labId}</p>
+              )}
               {preferredLab && (
                 <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-indigo-50/70 px-3 py-2 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
                   <span className="truncate">
@@ -703,8 +761,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               )}
             </div>
             <div>
-              <FieldLabel required>Case Procedure / Type</FieldLabel>
+              <FieldLabel required htmlFor="case-type-id">Case Procedure / Type</FieldLabel>
               <select
+                id="case-type-id"
                 value={caseTypeId}
                 onChange={(e) => setCaseTypeId(e.target.value)}
                 className={inputCls}
@@ -716,7 +775,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 ))}
               </select>
               {selectedCT && (
-                <p className="mt-1.5 font-mono text-[11px] tracking-wide text-slate-400">
+                <p className="mt-1.5 font-mono text-[11px] tracking-wide text-ink-muted">
                   BASE PKR {selectedCT.base_price.toLocaleString()}
                 </p>
               )}
@@ -726,75 +785,95 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       </div>
   );
 
+  /* Odontogram is the single most expensive subtree on this surface — one
+     render of the 32-tooth chart measured at ~27ms in jsdom. These props used
+     to be rebuilt inline on every parent render, so a `memo` wrapper would have
+     been pure decoration. Derive them from `toothDetails` once per change and
+     keep the change handler stable; the chart then skips re-rendering when
+     unrelated modal state moves (file uploads, validation messages). */
+  const odontogramRestorations = useMemo(() => {
+    return Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
+      const detail = d as ToothDetail | undefined;
+      if (detail?.prep_type) acc[Number(t)] = detail.prep_type;
+      return acc;
+    }, {} as Record<number, string>);
+  }, [toothDetails]);
+
+  const odontogramShades = useMemo(() => {
+    return Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
+      const detail = d as ToothDetail | undefined;
+      if (detail?.shade) acc[Number(t)] = detail.shade;
+      return acc;
+    }, {} as Record<number, string>);
+  }, [toothDetails]);
+
+  const odontogramMaterials = useMemo(() => {
+    return Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
+      const detail = d as ToothDetail | undefined;
+      if (detail?.material) acc[Number(t)] = detail.material;
+      return acc;
+    }, {} as Record<number, string>);
+  }, [toothDetails]);
+
+  const handleOdontogramChange = useCallback(({
+    selected,
+    restorationByTooth,
+    shadeByTooth,
+    materialByTooth,
+    toothDetails: generatedDetails,
+  }: OdontogramData) => {
+    setSelectedTeeth(selected);
+    if (errors.selectedTeeth && selected.length > 0) {
+      setErrors((prev) => ({ ...prev, selectedTeeth: '' }));
+    }
+    const updatedDetails: Record<number, ToothDetail> = {};
+    selected.forEach((t) => {
+      updatedDetails[t] = {
+        tooth_number: t,
+        prep_type: (restorationByTooth[t] as any) || 'crown',
+        shade: shadeByTooth[t] || shade || 'A2',
+        material: materialByTooth?.[t] || material || 'Zirconia (Multi-layer 3D Pro)',
+        notes: generatedDetails?.[t]?.notes || '',
+        implant_brand: generatedDetails?.[t]?.implant_brand,
+        implant_size: generatedDetails?.[t]?.implant_size,
+      };
+    });
+    setToothDetails(updatedDetails);
+    if (selected.length > 0) {
+      const latestTooth = selected[selected.length - 1];
+      if (shadeByTooth[latestTooth]) {
+        setShade(shadeByTooth[latestTooth]);
+      }
+      if (materialByTooth?.[latestTooth]) {
+        setMaterial(materialByTooth[latestTooth]);
+      }
+    }
+  }, [errors.selectedTeeth, shade, material]);
+
   const renderChartSection = () => (
     <div className="space-y-6">
       <div className={bezelCard}>
         <div className={bezelCardInner}>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-            <Eyebrow>02 · FDI Charting</Eyebrow>
+            <Eyebrow>FDI Charting</Eyebrow>
             <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3.5 py-1.5 font-mono text-[11px] font-bold tracking-wider text-white">
               {selectedTeeth.length} UNIT{selectedTeeth.length === 1 ? '' : 'S'} ACTIVE
             </span>
           </div>
           <Odontogram
             initialSelected={selectedTeeth}
-            initialRestorations={
-              Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
-                const detail = d as ToothDetail | undefined;
-                if (detail?.prep_type) acc[Number(t)] = detail.prep_type;
-                return acc;
-              }, {} as Record<number, string>)
-            }
-            initialShades={
-              Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
-                const detail = d as ToothDetail | undefined;
-                if (detail?.shade) acc[Number(t)] = detail.shade;
-                return acc;
-              }, {} as Record<number, string>)
-            }
-            initialMaterials={
-              Object.entries(toothDetails || {}).reduce((acc, [t, d]) => {
-                const detail = d as ToothDetail | undefined;
-                if (detail?.material) acc[Number(t)] = detail.material;
-                return acc;
-              }, {} as Record<number, string>)
-            }
-            onChange={({ selected, restorationByTooth, shadeByTooth, materialByTooth, toothDetails: generatedDetails }) => {
-              setSelectedTeeth(selected);
-              if (errors.selectedTeeth && selected.length > 0) {
-                setErrors((prev) => ({ ...prev, selectedTeeth: '' }));
-              }
-              const updatedDetails: Record<number, ToothDetail> = {};
-              selected.forEach((t) => {
-                updatedDetails[t] = {
-                  tooth_number: t,
-                  prep_type: (restorationByTooth[t] as any) || 'crown',
-                  shade: shadeByTooth[t] || shade || 'A2',
-                  material: materialByTooth?.[t] || material || 'Zirconia (Multi-layer 3D Pro)',
-                  notes: generatedDetails?.[t]?.notes || '',
-                  implant_brand: generatedDetails?.[t]?.implant_brand,
-                  implant_size: generatedDetails?.[t]?.implant_size,
-                };
-              });
-              setToothDetails(updatedDetails);
-              if (selected.length > 0) {
-                const latestTooth = selected[selected.length - 1];
-                if (shadeByTooth[latestTooth]) {
-                  setShade(shadeByTooth[latestTooth]);
-                }
-                if (materialByTooth?.[latestTooth]) {
-                  setMaterial(materialByTooth[latestTooth]);
-                }
-              }
-            }}
+            initialRestorations={odontogramRestorations}
+            initialShades={odontogramShades}
+            initialMaterials={odontogramMaterials}
+            onChange={handleOdontogramChange}
           />
           {errors.selectedTeeth && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-600">
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink-danger">
               <AlertCircle className="h-3.5 w-3.5" /> {errors.selectedTeeth}
             </p>
           )}
           {attempted && stepError.chart && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-600">
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink-danger">
               <AlertCircle className="h-3.5 w-3.5" /> {stepError.chart}
             </p>
           )}
@@ -804,7 +883,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       {!isEdit && (
         <div className={bezelCard}>
           <div className={bezelCardInner}>
-            <Eyebrow>02 · Scans &amp; photos</Eyebrow>
+            <Eyebrow>Scans &amp; photos</Eyebrow>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
                 <Upload className="h-3.5 w-3.5" />
@@ -833,15 +912,16 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 {pendingAttachments.map((att, i) => (
                   <li key={`${att.filename}-${i}`} className="flex items-center justify-between gap-3 py-2 text-xs">
                     <span className="flex min-w-0 items-center gap-2">
-                      <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <Paperclip className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
                       <span className="truncate font-semibold text-slate-800" title={att.filename}>{att.filename}</span>
-                      <span className="shrink-0 text-slate-400">{att.file_size}</span>
+                      <span className="shrink-0 text-ink-muted">{att.file_size}</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => setPendingAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="rounded-full p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                      className="rounded-full p-1 text-ink-muted transition-colors hover:bg-rose-50 hover:text-ink-danger"
                       title="Remove file"
+                      aria-label={`Remove ${att.filename} from this case`}
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -860,14 +940,19 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       <div className="space-y-6 lg:col-span-7">
         <div className={bezelCard}>
           <div className={bezelCardInner}>
-            <Eyebrow>03 · Priority & SLA</Eyebrow>
-            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <Eyebrow>Priority &amp; SLA</Eyebrow>
+            <div
+              className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4"
+              role="group"
+              aria-label="Priority and SLA"
+            >
               {(['low', 'normal', 'high', 'urgent'] as PriorityLevel[]).map((p) => {
                 const isActive = priority === p;
                 return (
                   <button
                     key={p}
                     type="button"
+                    aria-pressed={isActive}
                     onClick={() => handlePriorityToggle(p)}
                     className={`group flex flex-col items-start gap-2 rounded-2xl p-3.5 text-left transition-all duration-500 ${EASE} active:scale-[0.97] ${
                       isActive
@@ -882,7 +967,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                         {p === 'normal' ? 'Medium' : p.charAt(0).toUpperCase() + p.slice(1)}
                       </span>
                     </span>
-                    <span className={`font-mono text-[10px] tracking-wider ${isActive ? 'text-slate-400' : 'text-slate-400'}`}>
+                    <span className={`font-mono text-[10px] tracking-wider ${isActive ? 'text-slate-300' : 'text-ink-muted'}`}>
                       {PRIORITY_SLA_DAYS[p]}D TURNAROUND
                     </span>
                   </button>
@@ -900,10 +985,20 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 registered before anyone routes it, and the dashboard reports
                 un-routed cases as "Unassigned" instead of inventing a bench. */}
             <div className="mt-5">
-              <FieldLabel>Bench Department</FieldLabel>
-              <div className="flex flex-wrap gap-2">
+              {/* A toggle group, not a single control: labelling the wrapper
+                  (not the first button) is what lets a screen reader announce
+                  "Bench Department, 1 of 6" before entering the set. */}
+              <span
+                id="bench-department-label"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600"
+              >
+                Bench Department
+              </span>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="bench-department-label">
                 <button
+                  id="bench-dept-not-routed"
                   type="button"
+                  aria-pressed={department === ''}
                   onClick={() => setDepartment('')}
                   className={`rounded-xl px-3 py-2 text-xs font-semibold transition-all duration-300 ${EASE} active:scale-[0.97] ${
                     department === ''
@@ -914,10 +1009,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Not routed
                 </button>
                 {LAB_DEPARTMENTS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setDepartment(d)}
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={department === d}
+                  onClick={() => setDepartment(d)}
                     className={`rounded-xl px-3 py-2 text-xs font-semibold transition-all duration-300 ${EASE} active:scale-[0.97] ${
                       department === d
                         ? 'bg-slate-900 text-white'
@@ -937,24 +1033,32 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 value={receivedDate}
                 onChange={setReceivedDate}
               />
-              <p className="mt-1 text-[11px] font-medium text-slate-400">
+              <p className="mt-1 text-[11px] font-medium text-ink-muted">
                 The day this job reached the lab. Printed on the case slip.
               </p>
             </div>
 
             <div className="mt-5">
-              <FieldLabel required>Target Delivery Date</FieldLabel>
+              <FieldLabel required htmlFor="case-delivery-date">Target Delivery Date</FieldLabel>
               <div className="relative">
-                <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
                 <input
+                  id="case-delivery-date"
                   type="date"
                   value={deliveryDate}
                   onChange={(e) => setDeliveryDate(e.target.value)}
+                  aria-invalid={!!errors.deliveryDate}
+                  aria-describedby={errors.deliveryDate ? 'case-delivery-date-error' : undefined}
                   className={`${inputCls} pl-10`}
                 />
               </div>
               {(errors.deliveryDate || (attempted && stepError.schedule && stepError.schedule.includes('date'))) && (
-                <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.deliveryDate || stepError.schedule}</p>
+                <p
+                  id="case-delivery-date-error"
+                  className="mt-1 text-[11px] font-medium text-ink-danger"
+                >
+                  {errors.deliveryDate || stepError.schedule}
+                </p>
               )}
             </div>
           </div>
@@ -962,18 +1066,28 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
         <div className={bezelCard}>
           <div className={bezelCardInner}>
-            <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+            <label
+              htmlFor="case-instructions"
+              className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600"
+            >
               <FileText className="h-4 w-4 text-indigo-700" />
               Technician Special Instructions
-            </span>
+            </label>
             <textarea
+              id="case-instructions"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               rows={3}
               placeholder="Incisal translucency, pontic design, margin bevel specifications..."
+              aria-invalid={!!errors.instructions}
+              aria-describedby={errors.instructions ? 'case-instructions-error' : undefined}
               className={`${inputCls} mt-3 resize-none`}
             />
-            {errors.instructions && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.instructions}</p>}
+            {errors.instructions && (
+              <p id="case-instructions-error" className="mt-1 text-[11px] font-medium text-ink-danger">
+                {errors.instructions}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -984,27 +1098,39 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             <Eyebrow>Financial · PKR</Eyebrow>
             <div className="mt-4 space-y-4">
               <div>
-                <FieldLabel>Base Price</FieldLabel>
+                <FieldLabel htmlFor="case-price">Base Price</FieldLabel>
                 <input
+                  id="case-price"
                   type="number"
                   value={price}
                   onChange={(e) => setPrice(Number(e.target.value))}
+                  aria-invalid={!!errors.price}
+                  aria-describedby={errors.price ? 'case-price-error' : undefined}
                   className={`${inputCls} font-mono font-bold`}
                 />
-                {errors.price && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.price}</p>}
+                {errors.price && (
+                  <p id="case-price-error" className="mt-1 text-[11px] font-medium text-ink-danger">{errors.price}</p>
+                )}
               </div>
               <div>
-                <FieldLabel>Discount</FieldLabel>
+                <FieldLabel htmlFor="case-discount">Discount</FieldLabel>
                 <input
+                  id="case-discount"
                   type="number"
                   value={discount}
                   onChange={(e) => setDiscount(Number(e.target.value))}
+                  aria-invalid={!!errors.discount}
+                  aria-describedby={errors.discount ? 'case-discount-error' : undefined}
                   className={`${inputCls} font-mono font-semibold text-rose-700`}
                 />
-                {errors.discount && <p className="mt-1 text-[11px] font-medium text-rose-600">{errors.discount}</p>}
+                {errors.discount && (
+                  <p id="case-discount-error" className="mt-1 text-[11px] font-medium text-ink-danger">
+                    {errors.discount}
+                  </p>
+                )}
               </div>
               <div className="rounded-2xl bg-slate-900 p-5">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Final price — auto-computed</div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">Final price — auto-computed</div>
                 <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-white">
                   PKR {finalComputedPrice.toLocaleString()}
                 </div>
@@ -1038,9 +1164,23 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     renderScheduleSection,
   ][step];
 
+  /* `absolute`, not `fixed inset-0`. The shell in App.tsx is `flex` with the
+     nav rail as one sibling and the content column as the other; that column
+     is `relative`. A `fixed` backdrop resolves against the viewport and so
+     paints over the rail, which reads to the user as "the sidebar minimised
+     itself when I opened a case job" — the rail was never collapsed, it was
+     just under an opaque scrim and stopped taking clicks. Confining the layer
+     to the content column keeps navigation visible and usable, exactly like the
+     full-page viewer in CaseDetailView. Rendered from App.tsx (outside the
+     column) it falls back to the initial containing block, i.e. the viewport,
+     so those entry points look identical to before. */
   return (
-    <div className={`no-print-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm ${isFullScreen ? 'p-0' : 'p-2 sm:p-4 md:p-6'}`}>
+    <div className={`no-print-backdrop absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm ${isFullScreen ? 'p-0' : 'p-2 sm:p-4 md:p-6'}`}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="case-detail-title"
         className={`flex flex-col overflow-hidden bg-white ring-1 ring-slate-200 shadow-[0_48px_96px_-24px_rgba(15,23,42,0.45)] transition-all duration-500 ${EASE} my-auto ${shellSize}`}
         style={{ borderRadius: isFullScreen ? 0 : '2rem' }}
       >
@@ -1048,13 +1188,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         <div className="relative shrink-0 bg-slate-900 px-6 py-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <Eyebrow className="text-slate-400">
+              <Eyebrow className="text-slate-300">
                 {isEdit ? 'Case file' : 'New lab case'}
               </Eyebrow>
-              <h2 className="mt-1 truncate text-lg font-bold tracking-tight text-white">
+              <h2 id="case-detail-title" className="mt-1 truncate text-lg font-bold tracking-tight text-white">
                 {isEdit ? `Case ${initialCase?.case_number}` : 'Create Dental Case'}
               </h2>
-              <p className="mt-0.5 truncate text-xs text-slate-400">
+              <p className="mt-0.5 truncate text-xs text-slate-300">
                 {isEdit
                   ? 'Workflow, charting, attachments & history'
                   : 'Three focused steps — procedure, charting, schedule'}
@@ -1099,15 +1239,17 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsFullScreen(!isFullScreen)}
-                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+                className="rounded-full p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
                 title={isFullScreen ? 'Restore window size' : 'Expand to full page'}
+                aria-label={isFullScreen ? 'Restore window size' : 'Expand to full page'}
               >
                 {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+                className="rounded-full p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label="Close case details"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1144,16 +1286,16 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                               ? 'bg-slate-900 text-white shadow-[0_8px_20px_-6px_rgba(15,23,42,0.55)]'
                               : done
                               ? 'bg-indigo-600/10 text-indigo-800 ring-1 ring-indigo-600/30'
-                              : 'bg-white text-slate-400 ring-1 ring-slate-200'
+                              : 'bg-white text-ink-muted ring-1 ring-slate-200'
                           }`}
                         >
                           {done ? <Check className="h-4 w-4" /> : s.numeral}
                         </span>
                         <span className="text-left">
-                          <span className={`block text-xs font-bold leading-tight ${active ? 'text-slate-900' : done ? 'text-indigo-800' : 'text-slate-400'}`}>
+                          <span className={`block text-xs font-bold leading-tight ${active ? 'text-slate-900' : done ? 'text-indigo-800' : 'text-ink-muted'}`}>
                             {s.label}
                           </span>
-                          <span className="hidden text-[10px] leading-tight text-slate-400 lg:block">{s.caption}</span>
+                          <span className="hidden text-[10px] leading-tight text-ink-muted lg:block">{s.caption}</span>
                         </span>
                       </button>
                     </React.Fragment>
@@ -1191,7 +1333,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     <div className={bezelCardInner}>
                       <div className="mb-3 flex items-center justify-between">
                         <Eyebrow>Stage workflow</Eyebrow>
-                        <span className="text-[11px] text-slate-400">Click any stage to update case status</span>
+                        <span className="text-[11px] text-ink-muted">Click any stage to update case status</span>
                       </div>
                       <CaseProgressIndicator
                         status={status}
@@ -1237,7 +1379,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                 </span>
                                 <span className="truncate text-slate-600">{h.notes || 'Status updated'}</span>
                               </div>
-                              <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                              <span className="shrink-0 font-mono text-[10px] text-ink-muted">
                                 {h.timestamp} · {h.updated_by}
                               </span>
                             </div>
@@ -1301,7 +1443,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                       ) : cat.kind === 'dicom' ? (
                                         <Layers className="h-7 w-7 text-violet-700" />
                                       ) : (
-                                        <FileText className="h-7 w-7 text-slate-400" />
+                                        <FileText className="h-7 w-7 text-ink-muted" />
                                       )}
                                     </div>
 
@@ -1319,7 +1461,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                       <div className="mt-1 truncate text-xs font-bold text-slate-900" title={att.filename}>
                                         {att.filename}
                                       </div>
-                                      <div className="mt-1 grid grid-cols-2 gap-x-2 text-[10px] text-slate-400">
+                                      <div className="mt-1 grid grid-cols-2 gap-x-2 text-[10px] text-ink-muted">
                                         <div>Size: {att.file_size || 'N/A'}</div>
                                         <div>Type: {att.file_type || 'Unknown'}</div>
                                         <div>By: {att.uploaded_by || 'Lab Staff'}</div>
@@ -1364,7 +1506,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                       <a
                                         href={att.file_url}
                                         download={att.filename}
-                                        className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                                        className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                                         title="Download to local computer"
                                       >
                                         <Download className="h-3.5 w-3.5" />
@@ -1376,7 +1518,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                             deleteCaseAttachment(initialCase.id, att.id);
                                           }
                                         }}
-                                        className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                                        className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-rose-50 hover:text-ink-danger"
                                         title="Delete attachment"
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
@@ -1391,7 +1533,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                           <div className="mt-4 rounded-2xl border-2 border-dashed border-slate-200 bg-white py-6 text-center">
                             <Paperclip className="mx-auto mb-1.5 h-8 w-8 text-slate-300" />
                             <p className="text-xs font-bold text-slate-900">No scans or photos attached yet.</p>
-                            <p className="mt-0.5 text-[11px] text-slate-400">
+                            <p className="mt-0.5 text-[11px] text-ink-muted">
                               Upload STL scans, intraoral photos or clinical documents.
                             </p>
                             <label className={`mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
@@ -1434,7 +1576,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Delete Case
                 </button>
               ) : (
-                <span className="hidden text-[11px] font-medium text-slate-400 sm:block">
+                <span className="hidden text-[11px] font-medium text-ink-muted sm:block">
                   Step {step + 1} of {STEPS.length} · {STEPS[step].label}
                 </span>
               )}
@@ -1487,8 +1629,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       </div>
 
       {/* ---------------------------- Attachment preview modal ---------------------------- */}
+      {/* Nested overlay: no second backdrop-blur. The modal backdrop underneath is
+          already blurred and this scrim is `slate-950/70` over it, so a second
+          GPU filter pass would stack for no visible gain. */}
       {previewModalAttachment && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+        <NestedDialog
+          onClose={() => setPreviewModalAttachment(null)}
+          label={getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).category}
+        >
           <div className="w-full max-w-2xl rounded-[1.5rem] bg-slate-100 p-2 ring-1 ring-slate-900/10 shadow-[0_48px_96px_-24px_rgba(15,23,42,0.5)]">
             <div className="rounded-[calc(1.5rem-0.5rem)] bg-white p-5">
               <div className="mb-4 flex items-center justify-between">
@@ -1498,7 +1646,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setPreviewModalAttachment(null)}
-                  className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  className="rounded-full p-1.5 text-ink-muted transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  aria-label="Close attachment preview"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -1517,7 +1666,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                       <Box className="h-8 w-8" />
                     </div>
                     <h4 className="text-sm font-bold text-white">3D CAD / STL Surface Mesh</h4>
-                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-400">
+                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-ink-muted">
                       Dental CAD scan mesh. Ready for milling, 3D printing, or CAD/CAM fabrication.
                     </p>
                   </div>
@@ -1527,7 +1676,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                       <Layers className="h-8 w-8" />
                     </div>
                     <h4 className="text-sm font-bold text-white">CBCT / DICOM Volumetric Scan</h4>
-                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-400">
+                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-ink-muted">
                       High-resolution 3D radiographic tomography slice series.
                     </p>
                   </div>
@@ -1537,7 +1686,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                       <FileText className="h-8 w-8" />
                     </div>
                     <h4 className="text-sm font-bold text-white">Clinical Document / Prescription</h4>
-                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-400">
+                    <p className="mx-auto max-w-xs text-xs leading-relaxed text-ink-muted">
                       Doctor instructions, lab prescription, or patient clinical record.
                     </p>
                   </div>
@@ -1552,7 +1701,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   ['Uploaded by', previewModalAttachment.uploaded_by || 'Lab Staff'],
                 ].map(([k, v]) => (
                   <div key={k} className="rounded-xl bg-slate-50 px-3 py-2">
-                    <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{k}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">{k}</div>
                     <div className="mt-0.5 truncate font-semibold text-slate-900" title={v}>{v}</div>
                   </div>
                 ))}
@@ -1570,12 +1719,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </NestedDialog>
       )}
 
       {/* ---------------------------- Save as Template modal ---------------------------- */}
       {templateModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+        <NestedDialog onClose={() => setTemplateModalOpen(false)} label="Save as Preset Template">
           <div className="w-full max-w-md rounded-[1.5rem] bg-slate-100 p-2 ring-1 ring-slate-900/10 shadow-[0_48px_96px_-24px_rgba(15,23,42,0.5)]">
             <div className="space-y-4 rounded-[calc(1.5rem-0.5rem)] bg-white p-5">
               <div className="flex items-center justify-between">
@@ -1585,18 +1734,19 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setTemplateModalOpen(false)}
-                  className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  className="rounded-full p-1.5 text-ink-muted transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  aria-label="Close preset template dialog"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
               <p className="text-xs leading-relaxed text-slate-600">
                 Save teeth selection, shade, and instructions as a quick preset for future cases.
-              </p>
-              <div>
-                <FieldLabel>Preset Template Name</FieldLabel>
-                <input
-                  type="text"
+              </p><div>
+                  <FieldLabel htmlFor="template-name">Preset Template Name</FieldLabel>
+                  <input
+                    id="template-name"
+                    type="text"
                   value={templateNameInput}
                   onChange={(e) => setTemplateNameInput(e.target.value)}
                   placeholder="e.g. Anterior Zirconia Shade A2 Standard"
@@ -1622,7 +1772,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </NestedDialog>
       )}
 
       {/* ---------------------------- Job slip modal (edit mode) ---------------------------- */}

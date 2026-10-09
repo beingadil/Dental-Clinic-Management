@@ -269,7 +269,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <input
               type="text"
               value={searchTerm}
@@ -300,7 +300,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
 
           {/* Dental Clinic Filter */}
           <div className="relative w-full md:w-64 shrink-0">
-            <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <select
               value={selectedLabId}
               onChange={(e) => setSelectedLabId(e.target.value)}
@@ -315,7 +315,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
 
           {/* Method Filter */}
           <div className="relative w-full md:w-44 shrink-0">
-            <Filter className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Filter className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <select
               value={methodFilter}
               onChange={(e) => setMethodFilter(e.target.value)}
@@ -364,7 +364,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
       {/* Unified Transactions Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
         {filteredTransactions.length === 0 ? (
-          <div className="p-12 text-center text-xs text-slate-400">
+          <div className="p-12 text-center text-xs text-ink-muted">
             No transactions found for the selected date range and filters — rewind
             the date picker to view previous entries.
           </div>
@@ -477,12 +477,12 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                       <td className="py-2 px-3 text-right font-bold whitespace-nowrap">
                         <span className={
                           txn.direction === 'inflow'
-                            ? 'text-emerald-600'
+                            ? 'text-ink-success'
                             : txn.direction === 'credit'
                             ? 'text-purple-700'
                             : txn.direction === 'debit'
                             ? 'text-amber-700'
-                            : 'text-rose-600'
+                            : 'text-ink-danger'
                         }>
                           PKR <span className="tabular-nums">{(txn.amount || 0).toLocaleString()}</span>
                         </span>
@@ -559,7 +559,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                             <button
                               type="button"
                               onClick={() => onOpenJournalModal(txn.txnNumber || txn.referenceNumber || '')}
-                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                               title="Inspect Double-Entry Journal Records" aria-label="Inspect double-entry journal records"
                             >
                               <Scale className="w-3.5 h-3.5" />
@@ -581,7 +581,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                                   details: txn.detail
                                 });
                               }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="Reverse Transaction (Compensating Journal)" aria-label="Reverse transaction (compensating journal)"
                             >
                               <ArrowLeftRight className="w-3.5 h-3.5" />

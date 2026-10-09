@@ -81,7 +81,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Bookmark className="w-5 h-5 text-blue-600" />
+            <Bookmark className="w-5 h-5 text-ink-info" />
             Case Template Library
           </h2>
           <p className="text-xs text-slate-500">
@@ -99,7 +99,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
 
       {/* Search Bar */}
       <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
         <input
           type="text"
           value={searchTerm}
@@ -199,7 +199,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
       {/* Template Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {filteredTemplates.length === 0 ? (
-          <div className="col-span-2 text-center py-8 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+          <div className="col-span-2 text-center py-8 text-xs text-ink-muted bg-slate-50 rounded-xl border border-dashed border-slate-200">
             No templates match your search criteria.
           </div>
         ) : (
@@ -217,7 +217,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
                     onClick={() => {
                       if (confirm(`Delete template "${t.template_name}"?`)) deleteTemplate(t.id);
                     }}
-                    className="text-slate-400 hover:text-rose-600 p-1 rounded"
+                    className="text-ink-muted hover:text-ink-danger p-1 rounded"
                     title="Delete Template"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

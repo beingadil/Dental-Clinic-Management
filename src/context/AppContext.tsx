@@ -57,6 +57,7 @@ import {
   statusAfterQc,
 } from '../services/qcDomain';
 import { getTodayStr, getNowStamp } from '../utils/dateUtils';
+import { stripDoctorHonorific } from '../utils/doctorName';
 import { useSettingsDomain } from './hooks/useSettingsDomain';
 import { useCasesDomain } from './hooks/useCasesDomain';
 import { selectCasesToAutoArchive } from './hooks/autoArchive';
@@ -1495,7 +1496,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setDoctorPreferredLab = (doctorName: string, labId: string, labName: string) => {
     if (!doctorName || !doctorName.trim()) return;
     setDoctorPreferences((prev) => {
-      const cleanName = doctorName.trim();
+      // Normalised here rather than at each caller: this row is MATCHED back
+      // to a case by comparing lowercased doctor names, so a preference saved
+      // as "Dr. Tariq" would never match a case stored as "Tariq".
+      const cleanName = stripDoctorHonorific(doctorName);
       const filtered = (prev || []).filter((dp) => (dp?.doctor_name || '').toLowerCase() !== cleanName.toLowerCase());
       return [
         ...filtered,
@@ -1512,7 +1516,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getDoctorPreferredLab = (doctorName: string) => {
     if (!doctorName || !doctorName.trim()) return undefined;
-    const cleanName = doctorName.trim().toLowerCase();
+    // Stripped here for the same reason the setter strips: the row is stored
+    // bare, so a lookup carrying the honorific has to drop it too or the two
+    // halves of one feature disagree and the preference silently stops firing.
+    const cleanName = stripDoctorHonorific(doctorName).toLowerCase();
+    if (!cleanName) return undefined;
     return (doctorPreferences || []).find((dp) => (dp?.doctor_name || '').toLowerCase().trim() === cleanName);
   };
 

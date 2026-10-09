@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { DentalCase } from '../../types';
 import { WindowControls } from './WindowControls';
+import { ThemeToggle } from './ThemeToggle';
+import { formatDoctorName } from '../../utils/doctorName';
 
 interface HeaderProps {
   /** Reserved for future global actions; the header intentionally hosts no case-creation entry. */
@@ -72,10 +74,10 @@ export const Header: React.FC<HeaderProps> = () => {
   // Global Search Filtering - Priority on Patient Name, Case ID, and Doctor Name
   const cleanTerm = searchTerm.trim().toLowerCase();
   
-  const matchedCases = cleanTerm ? cases.filter(c => 
+  const matchedCases = cleanTerm ? cases.filter(c =>
     (c.patient_name || '').toLowerCase().includes(cleanTerm) ||
     (c.case_number || '').toLowerCase().includes(cleanTerm) ||
-    (c.doctor_name || '').toLowerCase().includes(cleanTerm) ||
+    formatDoctorName(c.doctor_name, '').toLowerCase().includes(cleanTerm) ||
     (c.lab_name || '').toLowerCase().includes(cleanTerm) ||
     (c.case_type_name || '').toLowerCase().includes(cleanTerm) ||
     (c.shade || '').toLowerCase().includes(cleanTerm)
@@ -83,7 +85,7 @@ export const Header: React.FC<HeaderProps> = () => {
 
   const matchedLabs = cleanTerm ? labs.filter(l =>
     (l.name || '').toLowerCase().includes(cleanTerm) ||
-    (l.doctor_name || '').toLowerCase().includes(cleanTerm) ||
+    formatDoctorName(l.doctor_name, '').toLowerCase().includes(cleanTerm) ||
     (l.contact_person || '').toLowerCase().includes(cleanTerm) ||
     (l.code || '').toLowerCase().includes(cleanTerm)
   ).slice(0, 3) : [];
@@ -92,7 +94,7 @@ export const Header: React.FC<HeaderProps> = () => {
     (i.invoice_number || '').toLowerCase().includes(cleanTerm) ||
     (i.case_number || '').toLowerCase().includes(cleanTerm) ||
     (i.lab_name || '').toLowerCase().includes(cleanTerm) ||
-    (i.doctor_name || '').toLowerCase().includes(cleanTerm)
+    formatDoctorName(i.doctor_name, '').toLowerCase().includes(cleanTerm)
   ).slice(0, 3) : [];
 
   const totalResultsCount = matchedCases.length + matchedLabs.length + matchedInvoices.length;
@@ -102,7 +104,7 @@ export const Header: React.FC<HeaderProps> = () => {
     const urgentCount = cases.filter((c) => c.priority === 'urgent').length;
     const sugg: string[] = [];
     if (urgentCount > 0) sugg.push('Urgent Priority');
-    const doctors = Array.from(new Set(cases.map((c) => c.doctor_name).filter(Boolean)))
+    const doctors = Array.from(new Set(cases.map((c) => formatDoctorName(c.doctor_name, '')).filter(Boolean)))
       .slice(0, 2);
     sugg.push(...doctors as string[]);
     const materials = Array.from(new Set(cases.map((c) => c.case_type_name).filter(Boolean)))
@@ -125,8 +127,8 @@ export const Header: React.FC<HeaderProps> = () => {
     if ((c.case_number || '').toLowerCase().includes(cleanTerm)) {
       return { label: 'Matched Case ID', value: c.case_number, icon: Hash, color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
     }
-    if ((c.doctor_name || '').toLowerCase().includes(cleanTerm)) {
-      return { label: 'Matched Doctor', value: c.doctor_name, icon: Stethoscope, color: 'bg-purple-50 text-purple-700 border-purple-200' };
+    if (formatDoctorName(c.doctor_name, '').toLowerCase().includes(cleanTerm)) {
+      return { label: 'Matched Doctor', value: formatDoctorName(c.doctor_name), icon: Stethoscope, color: 'bg-purple-50 text-purple-700 border-purple-200' };
     }
     if ((c.lab_name || '').toLowerCase().includes(cleanTerm)) {
       return { label: 'Matched Clinic', value: c.lab_name, icon: Building2, color: 'bg-amber-50 text-amber-700 border-amber-200' };
@@ -196,7 +198,7 @@ export const Header: React.FC<HeaderProps> = () => {
         <div className="flex items-center gap-3 lg:hidden">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 cursor-pointer"
+            className="ds-hit w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 cursor-pointer"
             title="Toggle Navigation"
             aria-label="Toggle Navigation"
           >
@@ -226,7 +228,7 @@ export const Header: React.FC<HeaderProps> = () => {
       {/* ZONE B: Flexible Center Search Area */}
       <div ref={searchContainerRef} className="flex-1 max-w-[760px] min-w-0 relative">
         <div className="relative w-full h-10 flex items-center group">
-          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none flex items-center">
+          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted group-focus-within:text-indigo-600 transition-colors pointer-events-none flex items-center">
             <Search className="w-4 h-4" />
           </div>
           <input
@@ -240,7 +242,7 @@ export const Header: React.FC<HeaderProps> = () => {
             }}
             onKeyDown={handleSearchKeyDown}
             placeholder="Search cases by Patient Name, Case ID (e.g. DS-0001), or Doctor Name..."
-            className="w-full h-10 pl-10 pr-14 text-xs md:text-sm bg-slate-50/80 hover:bg-slate-100/70 focus:bg-white border border-slate-200/90 focus:border-indigo-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/15 transition-all placeholder:text-slate-400 font-medium text-slate-900 shadow-2xs"
+            className="w-full h-10 pl-10 pr-14 text-xs md:text-sm bg-slate-50/80 hover:bg-slate-100/70 focus:bg-white border border-slate-200/90 focus:border-indigo-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/15 transition-all placeholder:text-ink-muted font-medium text-slate-900 shadow-2xs"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
             {searchTerm ? (
@@ -249,14 +251,14 @@ export const Header: React.FC<HeaderProps> = () => {
                   setSearchTerm('');
                   setShowGlobalResults(false);
                 }}
-                className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className="ds-hit text-ink-muted hover:text-slate-600 p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 title="Clear search"
                 aria-label="Clear search"
               >
                 <X className="w-4 h-4" />
               </button>
             ) : (
-              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-medium text-slate-400 bg-white border border-slate-200 rounded-md shadow-2xs pointer-events-none">
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-medium text-ink-muted bg-white border border-slate-200 rounded-md shadow-2xs pointer-events-none">
                 <span>⌘</span>
                 <span>K</span>
               </kbd>
@@ -273,7 +275,7 @@ export const Header: React.FC<HeaderProps> = () => {
                 <Search className="w-3.5 h-3.5 text-slate-500" />
                 {cleanTerm ? `Search Results (${totalResultsCount})` : 'Quick Case Lookup'}
               </span>
-              <span className="text-[10px] text-slate-400 font-medium">
+              <span className="text-[10px] text-ink-muted font-medium">
                 {cleanTerm ? 'Click case to open details directly' : 'Search by Patient, Case ID, or Doctor'}
               </span>
             </div>
@@ -290,14 +292,14 @@ export const Header: React.FC<HeaderProps> = () => {
                         setSearchTerm(tag);
                         setShowGlobalResults(true);
                       }}
-                      className="px-3 py-1 bg-slate-50 hover:bg-slate-100 hover:text-slate-900 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="ds-row-target px-3 py-1 bg-slate-50 hover:bg-slate-100 hover:text-slate-900 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
-                      <Search className="w-3 h-3 text-slate-400" />
+                      <Search className="w-3 h-3 text-ink-muted" />
                       <span>{tag}</span>
                     </button>
                   ))}
                 </div>
-                <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
+                <div className="pt-2 border-t border-slate-100 text-[11px] text-ink-muted flex items-center justify-between">
                   <span>Press Esc to dismiss or Enter to view results</span>
                   <button
                     onClick={() => {
@@ -315,13 +317,13 @@ export const Header: React.FC<HeaderProps> = () => {
             {/* When searching and zero matches found */}
             {cleanTerm && totalResultsCount === 0 && (
               <div className="p-8 text-center space-y-2">
-                <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-ink-muted">
                   <Search className="w-5 h-5" />
                 </div>
                 <div className="text-xs font-semibold text-slate-800">
                   No cases found matching "{searchTerm}"
                 </div>
-                <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                <p className="text-[11px] text-ink-muted max-w-sm mx-auto">
                   Try searching with a patient first name (e.g. Ali), case number (e.g. DS-0001), or doctor surname (e.g. Tariq).
                 </p>
                 <div className="pt-2">
@@ -344,7 +346,7 @@ export const Header: React.FC<HeaderProps> = () => {
                 {/* 1. DENTAL CASES (Primary focus) */}
                 {matchedCases.length > 0 && (
                   <div>
-                    <div className="px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                    <div className="px-2 text-[10px] font-bold text-ink-muted uppercase tracking-widest mb-1.5 flex items-center justify-between">
                       <span>Dental cases ({matchedCases.length})</span>
                       <span className="text-[10px] font-normal text-indigo-600">Enter to open • Click card</span>
                     </div>
@@ -387,8 +389,8 @@ export const Header: React.FC<HeaderProps> = () => {
 
                                 <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 truncate">
                                   <span className="flex items-center gap-1 text-slate-600">
-                                    <Stethoscope className="w-3 h-3 text-slate-400" />
-                                    <span>{c.doctor_name || 'Doctor'}</span>
+                                    <Stethoscope className="w-3 h-3 text-ink-muted" />
+                                    <span>{formatDoctorName(c.doctor_name, 'Doctor')}</span>
                                   </span>
                                   <span>•</span>
                                   <span className="truncate">{c.lab_name}</span>
@@ -425,7 +427,7 @@ export const Header: React.FC<HeaderProps> = () => {
                 {/* 2. DENTAL CLINICS */}
                 {matchedLabs.length > 0 && (
                   <div className="pt-2 border-t border-slate-100">
-                    <div className="px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    <div className="px-2 text-[10px] font-bold text-ink-muted uppercase tracking-widest mb-1.5">
                       Dental clinics ({matchedLabs.length})
                     </div>
                     <div className="space-y-1">
@@ -444,7 +446,7 @@ export const Header: React.FC<HeaderProps> = () => {
                             </div>
                             <div>
                               <div className="text-xs font-bold text-slate-900">{l.name} {l.code ? `(${l.code})` : ''}</div>
-                              <div className="text-[10px] text-slate-500">{l.doctor_name ? `Doctor: ${l.doctor_name} | ` : ''}{l.phone}</div>
+                              <div className="text-[10px] text-slate-500">{l.doctor_name ? `Doctor: ${formatDoctorName(l.doctor_name)} | ` : ''}{l.phone}</div>
                             </div>
                           </div>
                           <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-purple-600" />
@@ -457,7 +459,7 @@ export const Header: React.FC<HeaderProps> = () => {
                 {/* 3. INVOICES */}
                 {matchedInvoices.length > 0 && (
                   <div className="pt-2 border-t border-slate-100">
-                    <div className="px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    <div className="px-2 text-[10px] font-bold text-ink-muted uppercase tracking-widest mb-1.5">
                       Invoices &amp; billing ({matchedInvoices.length})
                     </div>
                     <div className="space-y-1">
@@ -471,7 +473,7 @@ export const Header: React.FC<HeaderProps> = () => {
                           className="p-2 hover:bg-emerald-50/60 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-3 group"
                         >
                           <div className="flex items-center gap-2.5">
-                            <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                            <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg group-hover:bg-fill-success group-hover:text-white transition-colors">
                               <Receipt className="w-3.5 h-3.5" />
                             </div>
                             <div>
@@ -485,7 +487,7 @@ export const Header: React.FC<HeaderProps> = () => {
                             }`}>
                               {(inv.payment_status || 'unpaid').toUpperCase()}
                             </span>
-                            <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-emerald-600" />
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-ink-success" />
                           </div>
                         </div>
                       ))}
@@ -495,7 +497,7 @@ export const Header: React.FC<HeaderProps> = () => {
 
                 {/* Bottom View All Link */}
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between px-2 text-xs">
-                  <span className="text-slate-400 text-[11px]">Looking for advanced filters?</span>
+                  <span className="text-ink-muted text-[11px]">Looking for advanced filters?</span>
                   <button
                     onClick={() => {
                       setCurrentView('cases');
@@ -516,6 +518,11 @@ export const Header: React.FC<HeaderProps> = () => {
       {/* ZONE C: Right Action Area - Unified Coherent Action Group */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
 
+        {/* Theme — sits with the other global, always-available switches */}
+        <div className="hidden sm:block">
+          <ThemeToggle />
+        </div>
+
         {/* Notification Bell Dropdown */}
         <div ref={notifContainerRef} className="relative shrink-0">
           <button
@@ -523,12 +530,12 @@ export const Header: React.FC<HeaderProps> = () => {
               setShowNotifMenu(!showNotifMenu);
               setShowUserMenu(false);
             }}
-            className="relative w-11 h-11 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 cursor-pointer shrink-0"
+            className="ds-hit relative w-11 h-11 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 cursor-pointer shrink-0"
             title="Notifications"
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-2 right-2 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full pointer-events-none">
+              <span className="absolute top-2 right-2 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-fill-danger text-white text-[10px] font-bold rounded-full pointer-events-none">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -540,7 +547,7 @@ export const Header: React.FC<HeaderProps> = () => {
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-sm text-slate-900">Notifications</h3>
                   {unreadCount > 0 && (
-                    <span className="px-2 py-0.5 text-[11px] font-medium bg-rose-50 text-rose-600 rounded-full">
+                    <span className="px-2 py-0.5 text-[11px] font-medium bg-rose-50 text-ink-danger rounded-full">
                       {unreadCount} new
                     </span>
                   )}
@@ -558,7 +565,7 @@ export const Header: React.FC<HeaderProps> = () => {
 
               <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
                 {unreadNotifications.length === 0 ? (
-                  <div className="p-6 text-center text-slate-400 text-sm">
+                  <div className="p-6 text-center text-ink-muted text-sm">
                     No unread notifications
                   </div>
                 ) : (
@@ -574,9 +581,9 @@ export const Header: React.FC<HeaderProps> = () => {
                     >
                       <div className="p-2 rounded-lg bg-slate-100 text-slate-600 shrink-0">
                         {n.type === 'overdue_case' ? (
-                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          <AlertTriangle className="w-4 h-4 text-ink-warning" />
                         ) : n.type === 'escalation' ? (
-                          <ShieldCheck className="w-4 h-4 text-rose-600" />
+                          <ShieldCheck className="w-4 h-4 text-ink-danger" />
                         ) : (
                           <FileText className="w-4 h-4 text-slate-500" />
                         )}
@@ -584,7 +591,7 @@ export const Header: React.FC<HeaderProps> = () => {
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-semibold text-slate-900 truncate">{n.title}</div>
                         <div className="text-xs text-slate-600 line-clamp-2 mt-0.5">{n.message}</div>
-                        <div className="text-[10px] text-slate-400 mt-1">{n.created_at}</div>
+                        <div className="text-[10px] text-ink-muted mt-1">{n.created_at}</div>
                       </div>
                     </div>
                   ))
@@ -613,7 +620,7 @@ export const Header: React.FC<HeaderProps> = () => {
               setShowUserMenu(!showUserMenu);
               setShowNotifMenu(false);
             }}
-            className="h-11 flex items-center gap-2.5 p-1 pr-2.5 hover:bg-slate-100 rounded-xl transition-colors active:scale-[0.98] text-left cursor-pointer shrink-0"
+            className="ds-row-target h-11 flex items-center gap-2.5 p-1 pr-2.5 hover:bg-slate-100 rounded-xl transition-colors active:scale-[0.98] text-left cursor-pointer shrink-0"
           >
             <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs shadow-inner border border-indigo-200/60 shrink-0">
               {getUserInitials(user?.name)}
@@ -644,13 +651,13 @@ export const Header: React.FC<HeaderProps> = () => {
                 }}
                 className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
               >
-                <User className="w-4 h-4 text-slate-400" />
+                <User className="w-4 h-4 text-ink-muted" />
                 Settings & Preferences
               </button>
               <div className="border-t border-slate-100 my-1" />
               <button
                 onClick={logout}
-                className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-medium"
+                className="w-full text-left px-4 py-2 text-xs text-ink-danger hover:bg-rose-50 flex items-center gap-2 font-medium"
               >
                 <LogOut className="w-4 h-4 text-rose-500" />
                 Sign Out

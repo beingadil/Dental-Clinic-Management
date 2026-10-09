@@ -125,7 +125,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
             : 'border-slate-200 bg-slate-50/50 hover:border-blue-400 hover:bg-slate-50'
         }`}
       >
-        <div className="w-10 h-10 mx-auto rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-2">
+        <div className="w-10 h-10 mx-auto rounded-full bg-blue-100 text-ink-info flex items-center justify-center mb-2">
           <Upload className="w-5 h-5" />
         </div>
         <h4 className="text-xs font-bold text-slate-800">
@@ -146,7 +146,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
 
       {uploadedMsg && (
         <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-lg flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <CheckCircle2 className="w-4 h-4 text-ink-success" />
           <span>{uploadedMsg}</span>
         </div>
       )}
@@ -158,7 +158,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
         </h4>
 
         {attachments.length === 0 ? (
-          <div className="text-center py-8 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+          <div className="text-center py-8 text-xs text-ink-muted bg-slate-50 rounded-xl border border-dashed border-slate-200">
             No files or dental scans attached to this case yet.
           </div>
         ) : (
@@ -197,7 +197,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
                           {cat.category}
                         </span>
                       </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
+                      <div className="text-[10px] text-ink-muted mt-0.5">
                         {att.uploaded_at} • {att.file_size || 'N/A'} • {att.uploaded_by}
                       </div>
                     </div>
@@ -207,7 +207,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
                     <button
                       type="button"
                       onClick={() => openFileInBrowser(att.file_url, att.filename, att.file_type)}
-                      className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-600 hover:text-ink-info hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
                       title="Open file in browser tab"
                     >
                       <ExternalLink className="w-4 h-4" />
@@ -215,7 +215,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
                     <button
                       type="button"
                       onClick={() => setPreviewItem(att)}
-                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                      className="p-1.5 text-ink-body hover:text-ink-info hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
                       title="Inspect Metadata & Preview"
                     >
                       <Eye className="w-4 h-4" />
@@ -223,7 +223,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
                     <a
                       href={att.file_url}
                       download={att.filename}
-                      className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                      className="p-1.5 text-ink-body hover:text-ink-success hover:bg-emerald-50 rounded-md transition-colors"
                       title="Download to computer"
                     >
                       <Download className="w-4 h-4" />
@@ -235,7 +235,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
                           deleteCaseAttachment(caseId, att.id);
                         }
                       }}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                      className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                       title="Delete"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -250,7 +250,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
 
       {/* Preview Modal with Metadata & Open in Browser button */}
       {previewItem && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-5 border border-slate-200 shadow-2xl relative">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
               <div>
@@ -262,7 +262,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
               <button
                 type="button"
                 onClick={() => setPreviewItem(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                className="p-1.5 text-ink-muted hover:text-slate-700 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -275,13 +275,13 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
                 <div className="text-center py-8 text-white space-y-2">
                   <Box className="w-12 h-12 text-indigo-400 mx-auto" />
                   <p className="text-sm font-bold">3D Dental CAD / STL Mesh</p>
-                  <p className="text-xs text-slate-400">Ready for 3D printing and milling workstations</p>
+                  <p className="text-xs text-ink-muted">Ready for 3D printing and milling workstations</p>
                 </div>
               ) : (
                 <div className="text-center py-8 text-white space-y-2">
-                  <FileText className="w-12 h-12 text-slate-400 mx-auto" />
+                  <FileText className="w-12 h-12 text-ink-muted mx-auto" />
                   <p className="text-sm font-bold">{previewItem.filename}</p>
-                  <p className="text-xs text-slate-400">Clinical document & prescription record</p>
+                  <p className="text-xs text-ink-muted">Clinical document & prescription record</p>
                 </div>
               )}
             </div>

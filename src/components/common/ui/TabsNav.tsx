@@ -50,12 +50,12 @@ export function TabsNav<T extends string = string>({
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
               }`}
             >
-              {Icon && <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />}
+              {Icon && <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-ink-muted'}`} />}
               <span>{tab.label}</span>
               {tab.badge !== undefined && (
                 <span
                   className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full shrink-0 tabular-nums ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                    isActive ? 'bg-black/20 text-white' : 'bg-slate-100 text-ink-body'
                   }`}
                 >
                   {tab.badge}
@@ -89,7 +89,7 @@ export function TabsNav<T extends string = string>({
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
-              {Icon && <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600' : 'text-slate-400'}`} />}
+              {Icon && <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600' : 'text-ink-muted'}`} />}
               <span>{tab.label}</span>
               {tab.badge !== undefined && (
                 <span
@@ -127,12 +127,12 @@ export function TabsNav<T extends string = string>({
                 : 'bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/80'
             }`}
           >
-            {Icon && <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />}
+            {Icon && <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-ink-muted'}`} />}
             <span>{tab.label}</span>
             {tab.badge !== undefined && (
               <span
                 className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  isActive ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 {tab.badge}

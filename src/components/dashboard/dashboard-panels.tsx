@@ -199,7 +199,7 @@ export const GreetingHeader: React.FC<{
         <button
           type="button"
           onClick={onNewCase}
-          className="ds-tap inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-ds-inverse text-white text-[12px] font-bold cursor-pointer hover:bg-ds-inverse-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
+          className="ds-hit ds-tap inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-ds-inverse text-white text-[12px] font-bold cursor-pointer hover:bg-ds-inverse-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
         >
           <Plus className="w-4 h-4" strokeWidth={2.4} />
           <span>New Case</span>

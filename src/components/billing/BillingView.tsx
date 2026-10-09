@@ -19,9 +19,10 @@ import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
 import { ClinicAccountsTable } from './ClinicAccountsTable';
-import { PageHeader, EmptyState, TabsNav, Badge, DataTable, FilterBar } from '../common/ui';
+import { PageHeader, EmptyState, TabsNav, Badge, DataTable, FilterBar, usePagination } from '../common/ui';
 import { todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
 import { 
   DollarSign, 
   Wallet, 
@@ -198,7 +199,8 @@ export const BillingView: React.FC = () => {
         const matchInv = (inv.invoice_number || '').toLowerCase().includes(q);
         const matchCase = (inv.case_number || '').toLowerCase().includes(q);
         const matchLab = (inv.lab_name || '').toLowerCase().includes(q);
-        const matchDoc = (inv.doctor_name || '').toLowerCase().includes(q);
+        // Formatted, so "Dr Ahmad" still matches the now-bare stored name.
+        const matchDoc = formatDoctorName(inv.doctor_name, '').toLowerCase().includes(q);
         const matchMat = (inv.case_type_name || '').toLowerCase().includes(q);
         if (!matchInv && !matchCase && !matchLab && !matchDoc && !matchMat) {
           return false;
@@ -209,11 +211,17 @@ export const BillingView: React.FC = () => {
     });
   }, [invoices, clinicFilter, invoiceStatusFilter, searchTerm, invFromDate, invToDate]);
 
-  /* Render cap (same pattern as CaseListView): mount 300 rows, expand on demand.
-     Mounting 1000+ heavy rows froze scroll and search on volume datasets. */
-  const RENDER_CAP_STEP = 300;
-  const [renderLimit, setRenderLimit] = useState(RENDER_CAP_STEP);
-  const visibleInvoices = useMemo(() => filteredInvoices.slice(0, renderLimit), [filteredInvoices, renderLimit]);
+  /* Paged, not incrementally grown. Mounting 1000+ heavy rows froze scroll and
+     search on volume datasets; the old render cap bounded the first paint but
+     then kept stacking already-mounted rows into the same DOM. Paging swaps a
+     page at a time, so the node count stays flat no matter the dataset size. */
+  const {
+    pageItems: visibleInvoices,
+    pagination: invoicesPagination,
+  } = usePagination(filteredInvoices, {
+    initialPageSize: 50,
+    resetKey: `${clinicFilter}|${invoiceStatusFilter}|${searchTerm}|${invFromDate}|${invToDate}`,
+  });
 
   const toggleSelectAll = () => {
     if (selectedIds.length === filteredInvoices.length) {
@@ -251,7 +259,7 @@ export const BillingView: React.FC = () => {
       inv.invoice_number,
       inv.case_number,
       inv.lab_name,
-      inv.doctor_name,
+      formatDoctorName(inv.doctor_name, ''),
       inv.case_type_name,
       inv.final_amount,
       inv.amount_paid || 0,
@@ -268,7 +276,7 @@ export const BillingView: React.FC = () => {
       return (
         <div className="inline-flex flex-col items-center">
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+            <CheckCircle2 className="w-3 h-3 text-ink-success" />
             <span>Paid</span>
           </span>
           <span className="text-[11px] text-slate-500 mt-0.5">Paid in Full</span>
@@ -281,10 +289,10 @@ export const BillingView: React.FC = () => {
       return (
         <div className="inline-flex flex-col items-center">
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-            <AlertTriangle className="w-3 h-3 text-rose-600" />
+            <AlertTriangle className="w-3 h-3 text-ink-danger" />
             <span>Overdue</span>
           </span>
-          <span className="text-[11px] font-bold text-rose-600 mt-0.5 whitespace-nowrap">
+          <span className="text-[11px] font-bold text-ink-danger mt-0.5 whitespace-nowrap">
             {diffDays === 1 ? '1 day late' : `${diffDays} days late`}
           </span>
         </div>
@@ -295,10 +303,10 @@ export const BillingView: React.FC = () => {
       return (
         <div className="inline-flex flex-col items-center">
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-            <Clock className="w-3 h-3 text-blue-600" />
+            <Clock className="w-3 h-3 text-ink-info" />
             <span>Partial</span>
           </span>
-          <span className="text-[11px] font-semibold text-blue-600 mt-0.5 whitespace-nowrap">
+          <span className="text-[11px] font-semibold text-ink-info mt-0.5 whitespace-nowrap">
             PKR {(inv.amount_paid || 0).toLocaleString()} paid
           </span>
         </div>
@@ -322,7 +330,7 @@ export const BillingView: React.FC = () => {
     return (
       <div className="inline-flex flex-col items-center">
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-          <Clock className="w-3 h-3 text-amber-600" />
+          <Clock className="w-3 h-3 text-ink-warning" />
           <span>Pending</span>
         </span>
         <span className="text-[11px] font-semibold text-amber-700 mt-0.5 whitespace-nowrap">
@@ -563,22 +571,7 @@ export const BillingView: React.FC = () => {
                 />
               </div>
             }
-            footer={
-              filteredInvoices.length > visibleInvoices.length ? (
-                <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
-                  <span className="text-xs text-slate-500">
-                    Showing {visibleInvoices.length} of {filteredInvoices.length} invoices
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setRenderLimit((n) => n + RENDER_CAP_STEP)}
-                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                  >
-                    Show {Math.min(RENDER_CAP_STEP, filteredInvoices.length - visibleInvoices.length)} More
-                  </button>
-                </div>
-              ) : undefined
-            }
+            footer={invoicesPagination ?? undefined}
             columns={[
               {
                 header: 'Invoice #',
@@ -637,7 +630,7 @@ export const BillingView: React.FC = () => {
               {
                 header: 'Doctor',
                 className: 'text-slate-600 whitespace-nowrap',
-                render: (inv: Invoice) => inv.doctor_name,
+                render: (inv: Invoice) => formatDoctorName(inv.doctor_name),
               },
               {
                 header: 'Final Amount',
@@ -648,7 +641,7 @@ export const BillingView: React.FC = () => {
               {
                 header: 'Paid',
                 align: 'right',
-                className: 'font-mono font-semibold text-emerald-600 whitespace-nowrap tabular-nums',
+                className: 'font-mono font-semibold text-ink-success whitespace-nowrap tabular-nums',
                 render: (inv: Invoice) => `PKR ${(inv.amount_paid || 0).toLocaleString()}`,
               },
               {
@@ -660,7 +653,7 @@ export const BillingView: React.FC = () => {
                   const { isOverdue } = isInvoiceOverdue(inv);
                   return (
                     <span className={`font-mono font-bold tabular-nums ${
-                      remaining > 0 ? (isOverdue ? 'text-rose-600 font-bold' : 'text-amber-600') : 'text-slate-400'
+                      remaining > 0 ? (isOverdue ? 'text-ink-danger font-bold' : 'text-ink-warning') : 'text-ink-muted'
                     }`}>
                       PKR {(remaining || 0).toLocaleString()}
                     </span>
@@ -679,15 +672,15 @@ export const BillingView: React.FC = () => {
                     return (
                       <div className="inline-flex flex-col items-center">
                         <span className="text-slate-500 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
-                        <span className="text-[11px] text-emerald-600 font-bold">Settled</span>
+                        <span className="text-[11px] text-ink-success font-bold">Settled</span>
                       </div>
                     );
                   }
                   if (isOverdue) {
                     return (
                       <div className="inline-flex flex-col items-center">
-                        <span className="text-rose-600 font-bold text-[11px] flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                        <span className="text-ink-danger font-bold text-[11px] flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-ink-danger shrink-0" />
                           <span>{inv.due_date}</span>
                         </span>
                         <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-bold text-[11px] rounded mt-0.5 whitespace-nowrap">
@@ -734,7 +727,7 @@ export const BillingView: React.FC = () => {
                           className={`px-2.5 py-1 text-white font-bold text-xs rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer ${
                             isOverdue
                               ? 'bg-rose-600 hover:bg-rose-700'
-                              : 'bg-emerald-600 hover:bg-emerald-700'
+                              : 'bg-fill-success hover:bg-emerald-700'
                           }`}
                           title={isOverdue ? 'Receive overdue payment' : 'Receive payment against this invoice'}
                         >
@@ -757,14 +750,14 @@ export const BillingView: React.FC = () => {
                         </button>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <CheckCircle2 className="w-3 h-3 text-ink-success" />
                           <span>Cleared</span>
                         </span>
                       )}
 
                       <button
                         onClick={() => setSelectedDrawerInvoice(inv)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                         title="Inspect Invoice Breakdown, Case Items & Settlement History" aria-label="Inspect invoice breakdown, case items and settlement history"
                       >
                         <Eye className="w-4 h-4" />
@@ -772,7 +765,7 @@ export const BillingView: React.FC = () => {
 
                       <button
                         onClick={() => setPrintModalInvoice(inv)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                         title="Print Invoice Statement" aria-label="Print invoice statement"
                       >
                         <Printer className="w-4 h-4" />
@@ -782,7 +775,7 @@ export const BillingView: React.FC = () => {
                         onClick={() => { if (canPost(user, 'invoice:void')) setVoidTarget(inv); }}
                         className={`p-1.5 rounded-lg transition-colors ${
                           canPost(user, 'invoice:void')
-                            ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
+                            ? 'text-ink-muted hover:text-ink-danger hover:bg-rose-50 cursor-pointer'
                             : 'text-slate-200 cursor-not-allowed'
                         }`}
                         title={canPost(user, 'invoice:void') ? 'Void Invoice' : 'Void Invoice (admin only)'}

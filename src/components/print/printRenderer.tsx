@@ -2,6 +2,8 @@ import React from 'react';
 import { DentalCase, Invoice, BrandingSettings, PaymentRecord } from '../../types';
 import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
 import { getTodayStr } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
+import { caseDetailLines, findCaseForInvoice } from '../../services/ledgerCaseDetail';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
 
@@ -52,7 +54,7 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'docTitle', label: 'Document title', hint: 'ACCOUNT STATEMENT' },
     { id: 'statementFor', label: 'Statement-for block', hint: 'Clinic identity' },
     { id: 'period', label: 'Statement period', hint: 'Date range' },
-    { id: 'invoiceTable', label: 'Invoice ledger table', hint: 'All invoices in period' },
+    { id: 'invoiceTable', label: 'Invoice ledger table', hint: 'Invoices + the case each bills' },
     { id: 'balanceSummary', label: 'Balance summary', hint: 'Totals & outstanding' },
     { id: 'footer', label: 'Page footer', hint: 'Contact line' },
   ],
@@ -83,6 +85,16 @@ interface PrintDocumentProps {
   invoice?: Invoice | null;
   /** Statement mode: the full invoice list to summarize on one sheet. */
   invoices?: Invoice[] | null;
+  /**
+   * Statement mode: the cases behind those invoices.
+   *
+   * A statement that prints only an invoice number cannot be reconciled —
+   * the clinic receiving it cannot tell WHICH job the money is for. The
+   * block per row is the same `caseDetailLines` the ledger screen, the
+   * clinic statement and the invoice drawer print, so the four cannot drift.
+   * Omitting it degrades to the bare case number rather than breaking.
+   */
+  cases?: DentalCase[] | null;
   labName?: string;
   payment?: PaymentRecord | null;
   period?: { from: string; to: string };
@@ -96,6 +108,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   caseData,
   invoice,
   invoices: invoicesProp,
+  cases: casesProp,
   labName,
   payment,
   period,
@@ -129,6 +142,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   const statementInvoices: Invoice[] = invoicesProp
     ? [...invoicesProp]
     : (invoice ? [invoice] : []);
+  const statementCases = casesProp ?? [];
 
   // Dynamic page setup — the chosen paper size + margin become the actual
   // @page rule for printing (overrides the 12mm stylesheet default).
@@ -176,7 +190,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           {on(sections, 'clinicDoctor') && (
             <div className="grid grid-cols-2 gap-4 mb-3">
               <Field label="Dental Clinic" value={caseData.lab_name} />
-              <Field label="Referring Doctor" value={`Dr. ${caseData.doctor_name}`} />
+              <Field label="Referring Doctor" value={formatDoctorName(caseData.doctor_name)} />
             </div>
           )}
           {on(sections, 'patient') && (
@@ -263,7 +277,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
             <div className="mb-4 flex items-start justify-between gap-4 border border-slate-300 p-3">
               <div className="grid flex-1 grid-cols-3 gap-3 text-[11px]">
                 <Field label="Bill To (Clinic)" value={invoice.lab_name} />
-                <Field label="Doctor" value={`Dr. ${invoice.doctor_name || '—'}`} />
+                <Field label="Doctor" value={formatDoctorName(invoice.doctor_name)} />
                 <Field label="Patient" value={invoice.patient_name || '—'} />
               </div>
               {invStatus && (
@@ -403,7 +417,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           {on(sections, 'receivedFrom') && (
             <div className="grid grid-cols-3 gap-4 mb-3 text-[11px]">
               <Field label="Received From" value={invoice.lab_name} />
-              <Field label="Doctor" value={`Dr. ${invoice.doctor_name || '—'}`} />
+              <Field label="Doctor" value={formatDoctorName(invoice.doctor_name)} />
               <Field label="Patient" value={invoice.patient_name || '—'} />
             </div>
           )}
@@ -458,17 +472,39 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {statementInvoices.map((inv) => (
+                {statementInvoices.map((inv) => {
+                  const linkedCase = findCaseForInvoice(inv, statementCases);
+                  const detail = linkedCase ? caseDetailLines(linkedCase) : [];
+                  return (
                   <tr key={inv.id}>
-                    <td className="border border-slate-400 px-2 py-1 font-bold">{inv.invoice_number}</td>
-                    <td className="border border-slate-400 px-2 py-1">{inv.issue_date || inv.created_at?.slice(0, 10) || '—'}</td>
-                    <td className="border border-slate-400 px-2 py-1">{inv.case_number || '—'}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right">{money(inv.final_amount)}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right">{money(inv.amount_paid || 0)}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right">{money(inv.final_amount - (inv.amount_paid || 0))}</td>
-                    <td className="border border-slate-400 px-2 py-1 capitalize">{inv.payment_status}</td>
+                    <td className="border border-slate-400 px-2 py-1 align-top font-bold">{inv.invoice_number}</td>
+                    <td className="border border-slate-400 px-2 py-1 align-top">{inv.issue_date || inv.created_at?.slice(0, 10) || '—'}</td>
+                    {/* The job the invoice is against — patient, procedure,
+                        teeth, shade and the two dates that bracket it — so a
+                        clinic can match the line to the work without opening
+                        the app. Same formatter as the on-screen statement. */}
+                    <td className="border border-slate-400 px-2 py-1 align-top">
+                      <span className="font-semibold">{inv.case_number || '—'}</span>
+                      {detail.length > 0 && (
+                        <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 border border-slate-300 bg-slate-50 px-1.5 py-1">
+                          {detail.map((d) => (
+                            <div key={d.label} className="flex items-baseline gap-1">
+                              <dt className="shrink-0 text-[8px] font-bold uppercase tracking-wider text-slate-600">
+                                {d.label}
+                              </dt>
+                              <dd className="text-[9px] text-slate-700">{d.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.final_amount)}</td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.amount_paid || 0)}</td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.final_amount - (inv.amount_paid || 0))}</td>
+                    <td className="border border-slate-400 px-2 py-1 align-top capitalize">{inv.payment_status}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 {statementInvoices.length === 0 && (
                   <tr><td colSpan={7} className="border border-slate-400 px-2 py-4 text-center italic text-slate-500">No invoices in this period.</td></tr>
                 )}

@@ -440,15 +440,15 @@ export const BackupTab: React.FC<{
         }`}>
           <div className="flex items-center gap-2.5">
             {backupMessage.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-ink-success shrink-0" />
             ) : (
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+              <AlertCircle className="w-5 h-5 text-ink-danger shrink-0" />
             )}
             <span>{backupMessage.text}</span>
           </div>
           <button
             onClick={() => setBackupMessage(null)}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+            className="text-ink-muted hover:text-slate-600 p-1 rounded-lg"
           >
             <X className="w-4 h-4" />
           </button>
@@ -496,7 +496,7 @@ export const BackupTab: React.FC<{
             <button
               onClick={handleExportDentalBackup}
               disabled={busy === 'backup'}
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              className="w-full py-2.5 bg-fill-success hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Download className="w-4 h-4 text-emerald-200" />
               <span>{busy === 'backup' ? 'Verifying…' : 'Export .dentalbackup'}</span>
@@ -515,7 +515,7 @@ export const BackupTab: React.FC<{
         <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 flex flex-col justify-between">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-ink-success font-bold text-xs uppercase tracking-wider">
                 <Upload className="w-4 h-4" /> Restore Database State
               </div>
               <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-100">
@@ -546,7 +546,7 @@ export const BackupTab: React.FC<{
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={busy === 'restore'}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
+            className="w-full py-3 bg-fill-success hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
           >
             <Upload className="w-4 h-4" />
             <span>{busy === 'restore' ? 'Processing…' : 'Select & Validate Backup File'}</span>
@@ -704,7 +704,7 @@ export const BackupTab: React.FC<{
       {undoMeta && (
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-start gap-2 min-w-0">
-            <RotateCcw className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            <RotateCcw className="w-4 h-4 text-ink-warning mt-0.5 shrink-0" />
             <div>
               <span className="font-bold text-amber-900">A pre-restore copy is available</span>
               <span className="block text-amber-800">
@@ -727,7 +727,7 @@ export const BackupTab: React.FC<{
       <div className="p-6 bg-white border border-slate-200 rounded-2xl space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2 text-slate-900 font-bold text-sm uppercase tracking-wider">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" /> Automatic Backups
+            <ShieldCheck className="w-4 h-4 text-ink-success" /> Automatic Backups
           </div>
           {backupSchedule.lastRun ? (
             <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
@@ -771,7 +771,7 @@ export const BackupTab: React.FC<{
           <button
             onClick={handleRunBackupNow}
             disabled={backupBusy}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+            className="w-full py-2.5 bg-fill-success hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Database className="w-4 h-4 text-emerald-200" />
             <span>{backupBusy ? 'Backing up…' : 'Back Up Now'}</span>
@@ -798,7 +798,7 @@ export const BackupTab: React.FC<{
               <span className="font-bold">{drillResult.ok ? 'Restore drill PASSED' : 'Restore drill FAILED'}</span>
               <span className="block font-normal">{drillResult.detail}</span>
             </div>
-            <button onClick={() => setDrillResult(null)} className="ml-auto text-slate-400 hover:text-slate-600 p-0.5">
+            <button onClick={() => setDrillResult(null)} className="ml-auto text-ink-muted hover:text-slate-600 p-0.5">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -860,7 +860,7 @@ function IntegrityPanel() {
         <span className={`font-bold flex items-center gap-2 ${
           integrityReport.ok ? 'text-emerald-800' : 'text-rose-800'
         }`}>
-          {integrityReport.ok ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
+          {integrityReport.ok ? <CheckCircle2 className="w-4 h-4 text-ink-success" /> : <AlertCircle className="w-4 h-4 text-ink-danger" />}
           Database integrity self-check — {integrityReport.ok ? 'ALL CHECKS PASSED' : 'ISSUES FOUND'}
         </span>
         <span className="text-[10px] font-mono text-slate-500">
@@ -870,7 +870,7 @@ function IntegrityPanel() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
         {integrityReport.findings.map((f) => (
           <div key={f.check} className="flex items-start gap-2 p-2 bg-white/70 rounded-lg border border-slate-100">
-            {f.ok ? <Check className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-rose-600 mt-0.5 shrink-0" />}
+            {f.ok ? <Check className="w-3.5 h-3.5 text-ink-success mt-0.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-ink-danger mt-0.5 shrink-0" />}
             <div className="min-w-0">
               <span className="font-bold text-slate-800 block">{f.check}</span>
               <span className="text-slate-600 break-words">{f.detail}</span>

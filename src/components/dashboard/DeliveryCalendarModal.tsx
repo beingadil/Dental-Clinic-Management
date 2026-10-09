@@ -77,7 +77,7 @@ export const DeliveryCalendarModal: React.FC<DeliveryCalendarModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close delivery calendar"
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg text-ink-muted hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>

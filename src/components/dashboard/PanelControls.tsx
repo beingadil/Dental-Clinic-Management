@@ -48,7 +48,7 @@ export const PanelControls: React.FC<{
   };
 
   const item =
-    'w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[11.5px] font-semibold text-ds-ink-soft hover:bg-ds-surface-sunken cursor-pointer transition-colors';
+    'ds-row-target w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[11.5px] font-semibold text-ds-ink-soft hover:bg-ds-sunken cursor-pointer transition-colors';
 
   return (
     <div ref={rootRef} className="absolute right-3 top-3 z-10">
@@ -57,7 +57,7 @@ export const PanelControls: React.FC<{
         onClick={() => setOpen((v) => !v)}
         aria-label={`${label} panel options`}
         aria-expanded={open}
-        className="ds-tap flex items-center gap-1 rounded-lg border border-ds-line bg-white/90 px-1.5 py-1 text-ds-muted opacity-0 transition-opacity hover:text-ds-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent cursor-pointer group-hover:opacity-100 focus:opacity-100"
+        className="ds-tap ds-hit flex items-center gap-1 rounded-lg border border-ds-line bg-white/90 px-1.5 py-1 text-ds-muted opacity-0 transition-opacity hover:text-ds-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent cursor-pointer group-hover:opacity-100 focus:opacity-100"
       >
         {pinned ? <Pin className="w-3.5 h-3.5 text-ds-accent" /> : null}
         <span className="text-[10px] font-bold tracking-wide">•••</span>

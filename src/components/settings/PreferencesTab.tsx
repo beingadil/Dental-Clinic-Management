@@ -3,7 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { auditRepo } from '../../db/repos';
 import { canManageSystem } from '../../services/permissions';
 import { ConfirmDialog } from '../common/ui';
-import { Sliders, ShieldCheck, LayoutGrid, Lock, LockOpen, Save, Trash2, Play, RotateCcw } from 'lucide-react';
+import { Sliders, ShieldCheck, LayoutGrid, Lock, LockOpen, Save, Trash2, Play, RotateCcw, Sun, Moon, Monitor } from 'lucide-react';
+import { isThemeMode, type ThemeMode } from '../../theme/theme';
 import { useDashboardLayout, type DashboardDensity } from '../../components/dashboard/useDashboardLayout';
 import { PANEL_KEYS } from '../../components/dashboard/panelRegistry';
 
@@ -28,6 +29,15 @@ const CURRENCY_SURFACES = [
  * The unlock switch writes `dashboard_layout_id`: 'default' = locked (drag
  * disabled), anything else = unlocked for arranging.
  */
+/** Theme choices shown as a three-way segmented control, not a select: the
+    point of the control is that 'System' is a peer of Light and Dark, and a
+    dropdown hides that it is the default. */
+const THEME_OPTIONS: { value: ThemeMode; label: string; hint: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: 'light', label: 'Light', hint: 'Always light, regardless of the device setting.', Icon: Sun },
+  { value: 'dark', label: 'Dark', hint: 'Always dark. Easier in a dim surgery or lab bay.', Icon: Moon },
+  { value: 'system', label: 'System', hint: 'Follows this device\u2019s appearance, and switches with it.', Icon: Monitor },
+];
+
 const DENSITY_OPTIONS: { value: DashboardDensity; label: string; hint: string }[] = [
   { value: 'compact', label: 'Compact', hint: 'Tighter padding, smaller type — more panels above the fold' },
   { value: 'default', label: 'Default', hint: 'The standard dashboard density' },
@@ -133,7 +143,7 @@ const DashboardLayoutCard: React.FC = () => {
         <button
           type="button"
           onClick={toggleLock}
-          className={`ds-tap shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white cursor-pointer ${activeCustom ? 'bg-slate-700 hover:bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+          className={`ds-tap shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white cursor-pointer ${activeCustom ? 'bg-slate-700 hover:bg-slate-800' : 'bg-fill-success hover:bg-emerald-700'}`}
         >
           {activeCustom ? <Lock className="w-3.5 h-3.5" /> : <LockOpen className="w-3.5 h-3.5" />}
           {activeCustom ? 'Freeze arrangement' : 'Unlock arranging'}
@@ -171,7 +181,7 @@ const DashboardLayoutCard: React.FC = () => {
                     type="button"
                     onClick={() => applyLayout(n)}
                     title={`Apply layout "${n}"`}
-                    className="text-slate-400 hover:text-indigo-600 cursor-pointer p-1 rounded-lg"
+                    className="text-ink-muted hover:text-indigo-600 cursor-pointer p-1 rounded-lg"
                   >
                     <Play className="w-3.5 h-3.5" />
                   </button>
@@ -179,7 +189,7 @@ const DashboardLayoutCard: React.FC = () => {
                     type="button"
                     onClick={() => { layout.deleteNamed(n); setError(null); }}
                     title={`Delete layout "${n}"`}
-                    className="text-slate-400 hover:text-rose-600 cursor-pointer p-1 rounded-lg"
+                    className="text-ink-muted hover:text-ink-danger cursor-pointer p-1 rounded-lg"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -209,6 +219,7 @@ export const PreferencesTab: React.FC = () => {
   const mayChangeCurrency = canManageSystem(user, 'currency:edit');
   const [pendingCurrency, setPendingCurrency] = useState<string | null>(null);
   const currentCurrency = userPreferences?.currency || 'PKR';
+  const themeMode: ThemeMode = isThemeMode(userPreferences?.theme_mode) ? userPreferences.theme_mode : 'system';
 
   const applyCurrency = () => {
     if (!pendingCurrency) return;
@@ -309,6 +320,36 @@ export const PreferencesTab: React.FC = () => {
             <option value="1.25">Largest (125%)</option>
           </select>
           <p className="text-[11px] text-slate-500 mt-1">Applies to the whole interface instantly; printed documents are never scaled.</p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">Theme</label>
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-50 border border-slate-200 rounded-xl">
+            {THEME_OPTIONS.map(({ value, label, Icon }) => {
+              const active = themeMode === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => updateUserPreferences({ theme_mode: value })}
+                  className={[
+                    'ds-tap inline-flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer',
+                    active
+                      ? 'bg-white text-indigo-700 shadow-2xs ring-1 ring-slate-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60',
+                  ].join(' ')}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {THEME_OPTIONS.find((t) => t.value === themeMode)?.hint}
+          </p>
         </div>
 
         <div>

@@ -227,7 +227,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+              className="p-1.5 rounded-lg text-ink-muted hover:text-slate-600 hover:bg-slate-200/60"
             >
               <X className="w-5 h-5" />
             </button>
@@ -382,7 +382,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
                           <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
                             {detail.map((d) => (
                               <div key={d.label} className="flex items-baseline gap-1 min-w-0">
-                                <dt className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                <dt className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-ink-muted">
                                   {d.label}
                                 </dt>
                                 <dd className="truncate text-[10px] text-slate-600" title={d.value}>
@@ -440,7 +440,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
               <span className="font-bold text-slate-800 block mb-1">Remittance Instructions:</span>
               <div>Please settle outstanding balance within 15 days of statement date.</div>
               <div>For discrepancies or inquiries, call (051) 289-4400.</div>
-              <div className="mt-4 text-slate-400 italic">This is an authorized computer-generated statement.</div>
+              <div className="mt-4 text-ink-muted italic">This is an authorized computer-generated statement.</div>
             </div>
           </div>
         </div>

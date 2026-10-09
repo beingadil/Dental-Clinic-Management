@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
 import { EmptyState } from '../common/ui';
 import { formatPKR } from '../../services/financeDomain';
 import { downloadCSV } from '../../services/csvExport';
@@ -78,7 +79,9 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         v.voucher_number.toLowerCase().includes(q) ||
         v.case_number.toLowerCase().includes(q) ||
         v.lab_name.toLowerCase().includes(q) ||
-        v.doctor_name.toLowerCase().includes(q) ||
+        // Matched on the DISPLAY name, so an operator who types "Dr Ahmad"
+        // still finds the row now that the column stores the bare name.
+        formatDoctorName(v.doctor_name).toLowerCase().includes(q) ||
         (v.saved_by || '').toLowerCase().includes(q)
       );
     });
@@ -113,7 +116,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <BookmarkCheck className="w-3.5 h-3.5 text-ink-success" />
             <span>Archived Slips & Vouchers</span>
             <span className="px-1.5 py-0.2 rounded text-[11px] bg-slate-200 text-slate-700">
               {savedVouchers.length}
@@ -134,7 +137,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         {activeSubTab === 'vouchers' && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
             <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
                 type="text"
                 value={voucherSearch}
@@ -174,7 +177,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-indigo-400" />
                       <span className="font-bold text-sm">{formatMonthLabel(block.month)}</span>
-                      <span className="text-xs text-slate-400 font-normal">
+                      <span className="text-xs text-slate-300 font-normal">
                         ({t.clinics} Active Clinics)
                       </span>
                     </div>
@@ -190,7 +193,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       <span className={t.closing_balance < 0 ? 'text-emerald-400' : 'text-white'}>
                         Closing: <strong>{formatPKR(t.closing_balance)}</strong>
                       </span>
-                      <span className={t.remaining > 0 ? 'text-amber-400 font-bold' : 'text-slate-400'}>
+                      <span className={t.remaining > 0 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
                         Remaining: <strong>{formatPKR(t.remaining)}</strong>
                       </span>
                     </div>
@@ -220,7 +223,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                           <tr key={r.lab_id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-2.5 px-4 font-bold text-slate-800">
                               <span className="flex items-center gap-1.5">
-                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                                 <span>{r.lab_name}</span>
                               </span>
                             </td>
@@ -230,31 +233,31 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                             <td className="py-2.5 px-4 text-right font-bold text-slate-900 whitespace-nowrap">
                               {formatPKR(r.billed)}
                             </td>
-                            <td className="py-2.5 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
+                            <td className="py-2.5 px-4 text-right font-bold text-ink-success whitespace-nowrap">
                               {formatPKR(r.collected)}
                             </td>
-                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_received > 0 ? 'text-sky-600' : 'text-slate-400'}`}>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_received > 0 ? 'text-sky-600' : 'text-ink-muted'}`}>
                               {formatPKR(r.advance_received)}
                             </td>
-                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_applied > 0 ? 'text-sky-700' : 'text-slate-400'}`}>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_applied > 0 ? 'text-sky-700' : 'text-ink-muted'}`}>
                               {formatPKR(r.advance_applied)}
                             </td>
-                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.credit_notes > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.credit_notes > 0 ? 'text-ink-danger' : 'text-ink-muted'}`}>
                               {formatPKR(r.credit_notes)}
                             </td>
-                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.debit_adjustments > 0 ? 'text-amber-700' : 'text-slate-400'}`}>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.debit_adjustments > 0 ? 'text-amber-700' : 'text-ink-muted'}`}>
                               {formatPKR(r.debit_adjustments)}
                             </td>
                             <td className="py-2.5 px-4 text-right text-slate-500 whitespace-nowrap">
                               {formatPKR(r.opening_balance)}
                             </td>
-                            <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${r.closing_balance < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                            <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${r.closing_balance < 0 ? 'text-ink-success' : 'text-slate-900'}`}>
                               {formatPKR(r.closing_balance)}
                             </td>
-                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_credit > 0 ? 'text-sky-700' : 'text-slate-400'}`}>
+                            <td className={`py-2.5 px-4 text-right font-semibold whitespace-nowrap ${r.advance_credit > 0 ? 'text-sky-700' : 'text-ink-muted'}`}>
                               {formatPKR(r.advance_credit)}
                             </td>
-                            <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${r.remaining > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                            <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${r.remaining > 0 ? 'text-ink-warning' : 'text-ink-muted'}`}>
                               {formatPKR(r.remaining)}
                             </td>
                           </tr>
@@ -332,7 +335,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                           {v.lab_name}
                         </td>
                         <td className="py-2 px-3 text-slate-600">
-                          {v.doctor_name}
+                          {formatDoctorName(v.doctor_name)}
                         </td>
                         <td className="py-2 px-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">
                           {v.created_at}
@@ -360,7 +363,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                             </button>
                             <button
                               onClick={() => deleteSavedVoucher(v.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="Delete Voucher Log" aria-label="Delete voucher log"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

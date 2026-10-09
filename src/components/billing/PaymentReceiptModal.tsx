@@ -36,7 +36,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
       header={
         <>
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            <CheckCircle2 className="w-5 h-5 text-ink-success" />
             <h3 className="text-sm font-bold text-slate-900">Official Payment Receipt</h3>
           </div>
 
@@ -51,7 +51,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+              className="p-1.5 text-ink-muted hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -110,9 +110,9 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Amount Received</p>
-                <p className="text-xs text-slate-400 mt-0.5">Pakistani Rupees (PKR)</p>
+                <p className="text-xs text-ink-muted mt-0.5">Pakistani Rupees (PKR)</p>
               </div>
-              <p className="text-2xl font-bold text-emerald-600 tracking-tight">
+              <p className="text-2xl font-bold text-ink-success tracking-tight">
                 PKR {payment.amount.toLocaleString()}
               </p>
             </div>
@@ -134,11 +134,11 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
                   <p className="font-bold text-slate-800 text-xs mt-0.5">PKR {invoice.final_amount.toLocaleString()}</p>
                 </div>
                 <div className="bg-emerald-50 p-2 rounded-lg">
-                  <p className="text-[11px] text-emerald-600 font-bold uppercase">Total Paid</p>
+                  <p className="text-[11px] text-ink-success font-bold uppercase">Total Paid</p>
                   <p className="font-bold text-emerald-700 text-xs mt-0.5">PKR {invoice.amount_paid.toLocaleString()}</p>
                 </div>
                 <div className="bg-rose-50 p-2 rounded-lg">
-                  <p className="text-[11px] text-rose-600 font-bold uppercase">Remaining</p>
+                  <p className="text-[11px] text-ink-danger font-bold uppercase">Remaining</p>
                   <p className="font-bold text-rose-700 text-xs mt-0.5">
                     PKR {Math.max(0, invoice.final_amount - invoice.amount_paid).toLocaleString()}
                   </p>

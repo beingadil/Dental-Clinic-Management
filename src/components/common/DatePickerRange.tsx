@@ -77,7 +77,7 @@ function CalendarGrid({
     <div>
       <div className="grid grid-cols-7 mb-1">
         {WEEKDAYS.map((w) => (
-          <span key={w} className="text-center text-[10px] font-bold text-slate-400 py-1">{w}</span>
+          <span key={w} className="text-center text-[10px] font-bold text-ink-muted py-1">{w}</span>
         ))}
       </div>
       <div className="grid grid-cols-7 gap-0.5">
@@ -97,7 +97,7 @@ function CalendarGrid({
                   ? 'bg-indigo-50 text-indigo-900'
                   : c.inMonth
                   ? 'text-slate-700 hover:bg-slate-100'
-                  : 'text-slate-300 hover:bg-slate-50'
+                  : 'text-ink-muted hover:bg-slate-50'
               } ${isToday && !isEdge ? 'ring-1 ring-indigo-300' : ''}`}
             >
               {c.day}
@@ -209,7 +209,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
         }`}
         title="Filter by date range"
       >
-        <CalendarDays className={`w-4 h-4 shrink-0 ${from || to ? 'text-indigo-600' : 'text-slate-400'}`} />
+        <CalendarDays className={`w-4 h-4 shrink-0 ${from || to ? 'text-indigo-600' : 'text-ink-muted'}`} />
         <span className="tabular-nums">{label}</span>
         {(from || to) && (
           <span
@@ -323,7 +323,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
               className="flex-1 min-w-0 px-2 py-1.5 text-[11px] bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-400 cursor-pointer"
               aria-label="From date"
             />
-            <span className="text-[10px] text-slate-400">to</span>
+            <span className="text-[10px] text-ink-muted">to</span>
             <input
               type="date"
               value={to}
@@ -334,7 +334,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-ink-muted">
               {picking === 'from' ? 'Pick start date' : 'Pick end date'}
             </span>
             <button

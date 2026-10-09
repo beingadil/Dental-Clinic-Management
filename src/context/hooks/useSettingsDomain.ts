@@ -7,6 +7,7 @@ import { isDatabaseReady } from '../../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
 import { INITIAL_USER_PREFERENCES } from '../../data/initialData';
 import type { UserProfile } from '../../types';
+import { isThemeMode, persistTheme, applyTheme } from '../../theme/theme';
 
 /**
  * Settings domain state (branding + global user preferences), hydrated from
@@ -129,6 +130,32 @@ export function useSettingsDomain(user?: UserProfile | null): {
     (document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom =
       z && z !== 1 ? String(z) : '';
   }, [userPreferences.ui_zoom]);
+
+  // Global theme. The database is the source of truth for the PREFERENCE; the
+  // localStorage mirror (theme.ts) only carries it across the WASM boot window,
+  // so it is written on every change rather than once. Paint happens here and
+  // not inside the setter so a raw setUserPreferences from a restore/wipe flow
+  // themes too. An absent or corrupt value means 'system', never a crash.
+  useEffect(() => {
+    const raw = userPreferences.theme_mode;
+    const mode = isThemeMode(raw) ? raw : 'system';
+    persistTheme(mode);
+
+    // 'system' is a live subscription, not a one-shot read: the OS flipping at
+    // dusk has to repaint an already-open app.
+    if (mode !== 'system') return;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => applyTheme(e.matches ? 'dark' : 'light');
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    }
+    // Safari < 14 / older WebView2 only has the deprecated API.
+    const legacy = mq as MediaQueryList & { addListener?: (cb: (e: MediaQueryListEvent) => void) => void; removeListener?: (cb: (e: MediaQueryListEvent) => void) => void };
+    legacy.addListener?.(onChange);
+    return () => legacy.removeListener?.(onChange);
+  }, [userPreferences.theme_mode]);
 
   // Settings persist ONLY into the namespaced settings store (SQLite) —
   // the legacy dsw_* keys are no longer written (single source of truth).

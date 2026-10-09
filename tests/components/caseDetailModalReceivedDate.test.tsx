@@ -36,7 +36,7 @@ afterEach(() => {
 /** Fill the wizard's required basics and land on the schedule step. */
 async function openScheduleStep() {
   render(<CaseDetailModal initialShade="A2" onClose={vi.fn()} />);
-  fireEvent.change(screen.getByPlaceholderText(/Dr\. Tariq Mahmood/i), { target: { value: 'Dr. Test' } });
+  fireEvent.change(screen.getByPlaceholderText(/Tariq Mahmood/i), { target: { value: 'Tariq Test' } });
   await waitFor(() => expect(screen.queryByRole('button', { name: /continue/i })).toBeTruthy());
   // The case type is required before the wizard leaves the basics step.
   const typeSelect = screen.getAllByRole('combobox')[1] ?? screen.getAllByRole('combobox')[0];

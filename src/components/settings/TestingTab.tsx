@@ -65,7 +65,7 @@ export const TestingTab: React.FC = () => {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-            <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
+            <div className="flex items-center justify-center gap-1 text-ink-muted mb-1">
               <FileText className="w-3.5 h-3.5" />
             </div>
             <span className="text-xl font-bold text-slate-900 block">{storageMetrics.casesCount}</span>
@@ -73,7 +73,7 @@ export const TestingTab: React.FC = () => {
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-            <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
+            <div className="flex items-center justify-center gap-1 text-ink-muted mb-1">
               <Building className="w-3.5 h-3.5" />
             </div>
             <span className="text-xl font-bold text-slate-900 block">{storageMetrics.labsCount}</span>
@@ -81,7 +81,7 @@ export const TestingTab: React.FC = () => {
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-            <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
+            <div className="flex items-center justify-center gap-1 text-ink-muted mb-1">
               <DollarSign className="w-3.5 h-3.5" />
             </div>
             <span className="text-xl font-bold text-slate-900 block">{storageMetrics.invoicesCount}</span>
@@ -89,7 +89,7 @@ export const TestingTab: React.FC = () => {
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-            <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
+            <div className="flex items-center justify-center gap-1 text-ink-muted mb-1">
               <BookmarkCheck className="w-3.5 h-3.5" />
             </div>
             <span className="text-xl font-bold text-slate-900 block">{storageMetrics.vouchersCount}</span>
@@ -97,7 +97,7 @@ export const TestingTab: React.FC = () => {
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-            <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
+            <div className="flex items-center justify-center gap-1 text-ink-muted mb-1">
               <CheckSquare className="w-3.5 h-3.5" />
             </div>
             <span className="text-xl font-bold text-slate-900 block">{storageMetrics.catalogCount}</span>
@@ -105,7 +105,7 @@ export const TestingTab: React.FC = () => {
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-            <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
+            <div className="flex items-center justify-center gap-1 text-ink-muted mb-1">
               <Paperclip className="w-3.5 h-3.5" />
             </div>
             <span className="text-xl font-bold text-slate-900 block">{storageMetrics.attachmentsCount}</span>
@@ -113,7 +113,7 @@ export const TestingTab: React.FC = () => {
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-            <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
+            <div className="flex items-center justify-center gap-1 text-ink-muted mb-1">
               <FileText className="w-3.5 h-3.5" />
             </div>
             <span className="text-xl font-bold text-slate-900 block">{storageMetrics.notesCount}</span>
@@ -126,7 +126,7 @@ export const TestingTab: React.FC = () => {
       <div className="bg-white rounded-3xl border border-rose-200 shadow-sm p-6 space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-rose-100">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl">
+            <div className="p-3 bg-rose-100 text-ink-danger rounded-2xl">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
@@ -140,7 +140,7 @@ export const TestingTab: React.FC = () => {
 
         {wipeSuccess && (
           <div className="p-3.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-2.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-ink-success shrink-0" />
             <span>ALL SYSTEM DATA WIPED CLEAN! System is now completely empty for fresh testing.</span>
           </div>
         )}
@@ -150,7 +150,7 @@ export const TestingTab: React.FC = () => {
           <div className="p-6 bg-rose-50/80 border border-rose-300 rounded-3xl space-y-4 flex flex-col justify-between">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-rose-700 font-extrabold text-xs uppercase tracking-wider">
-                <Trash2 className="w-4 h-4 text-rose-600" /> Complete System Purge
+                <Trash2 className="w-4 h-4 text-ink-danger" /> Complete System Purge
               </div>
               <h3 className="font-bold text-slate-900 text-base">DELETE EVERYTHING (Wipe All Data)</h3>
               <p className="text-xs text-slate-700 leading-relaxed">
@@ -197,12 +197,12 @@ export const TestingTab: React.FC = () => {
           <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-5 animate-in zoom-in-95">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl">
+                <div className="p-3 bg-rose-100 text-ink-danger rounded-2xl">
                   <AlertTriangle className="w-6 h-6" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-base">Confirm Total Data Wipe</h3>
-                  <p className="text-xs text-rose-600 font-bold uppercase tracking-wider">Software Testing Action</p>
+                  <p className="text-xs text-ink-danger font-bold uppercase tracking-wider">Software Testing Action</p>
                 </div>
               </div>
 
@@ -211,7 +211,7 @@ export const TestingTab: React.FC = () => {
                   setShowWipeModal(false);
                   setWipeConfirmText('');
                 }}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className="p-1 text-ink-muted hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -219,7 +219,7 @@ export const TestingTab: React.FC = () => {
 
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-2 text-xs text-rose-900">
               <p className="font-bold flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <AlertTriangle className="w-4 h-4 text-ink-danger shrink-0" />
                 <span>Warning: You are about to permanently delete everything!</span>
               </p>
               <ul className="list-disc list-inside space-y-1 text-rose-800 text-[11px] font-medium">
@@ -233,7 +233,7 @@ export const TestingTab: React.FC = () => {
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
-                Type <span className="font-mono text-rose-600 font-bold">DELETE</span> below to confirm:
+                Type <span className="font-mono text-ink-danger font-bold">DELETE</span> below to confirm:
               </label>
               <input
                 type="text"
@@ -262,7 +262,7 @@ export const TestingTab: React.FC = () => {
                 className={`px-5 py-2.5 font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all ${
                   wipeConfirmText.trim().toUpperCase() === 'DELETE'
                     ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-slate-200 text-ink-muted cursor-not-allowed'
                 }`}
               >
                 <Trash2 className="w-4 h-4" /> Permanently Delete All Data

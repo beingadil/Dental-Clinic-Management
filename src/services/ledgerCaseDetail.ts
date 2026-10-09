@@ -14,7 +14,7 @@
  */
 
 import { formatDate, receivedDateFor } from '../utils/dateUtils';
-import type { DentalCase, LedgerEntry } from '../types';
+import type { DentalCase, Invoice, LedgerEntry } from '../types';
 
 export interface CaseDetailLine {
   label: string;
@@ -78,17 +78,42 @@ export const caseDetailText = (c: DentalCase): string =>
   caseDetailLines(c).map((l) => `${l.label}: ${l.value}`).join(' • ');
 
 /**
+ * The matching rule, shared by both lookup helpers below.
+ *
+ * Id first, case number second. The id is the reliable join; the case number
+ * is the fallback for rows whose stored id went stale (an invoice written
+ * before the case row was re-imported), which is a real state here rather
+ * than a defensive nicety.
+ */
+const matchCase = (
+  ref: { case_id?: string | null; case_number?: string | null } | null | undefined,
+  cases: DentalCase[],
+): DentalCase | null => {
+  if (!ref?.case_id && !ref?.case_number) return null;
+  return (
+    cases.find((c) => c.id === ref.case_id) ||
+    cases.find((c) => c.case_number === ref.case_number) ||
+    null
+  );
+};
+
+/**
  * The case an entry belongs to, matched by id first and case number second.
  * Returns null for payments and other entries that belong to no case.
  */
 export const findCaseForEntry = (
   entry: LedgerEntry,
   cases: DentalCase[],
-): DentalCase | null => {
-  if (!entry?.case_id && !entry?.case_number) return null;
-  return (
-    cases.find((c) => c.id === entry.case_id) ||
-    cases.find((c) => c.case_number === entry.case_number) ||
-    null
-  );
-};
+): DentalCase | null => matchCase(entry, cases);
+
+/**
+ * The case an INVOICE bills, same rule as a ledger entry.
+ *
+ * The batch print sheet walks invoices rather than ledger entries, so it
+ * needs its own entry point — but the rule must not drift, or a printed
+ * invoice and the ledger line behind it would resolve to different jobs.
+ */
+export const findCaseForInvoice = (
+  invoice: Invoice,
+  cases: DentalCase[],
+): DentalCase | null => matchCase(invoice, cases);

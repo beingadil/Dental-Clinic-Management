@@ -61,7 +61,7 @@ export const UsersTab: React.FC = () => {
           <div className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
             userMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
           }`}>
-            {userMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+            {userMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-ink-success shrink-0" /> : <AlertCircle className="w-4 h-4 text-ink-danger shrink-0" />}
             <span>{userMsg.text}</span>
           </div>
         )}
@@ -81,7 +81,7 @@ export const UsersTab: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {visibleUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                  <td colSpan={6} className="p-8 text-center text-ink-muted">
                     No additional users registered. Click "Add New User" above to create one.
                   </td>
                 </tr>
@@ -160,7 +160,7 @@ export const UsersTab: React.FC = () => {
 
               <button
                 onClick={() => setShowAddUserModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className="p-1 text-ink-muted hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -280,7 +280,7 @@ export const UsersTab: React.FC = () => {
                 <Key className="w-5 h-5 text-indigo-600" />
                 <h3 className="font-extrabold text-slate-900 text-sm">Reset Password</h3>
               </div>
-              <button onClick={() => setResetPwdUserId(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer">
+              <button onClick={() => setResetPwdUserId(null)} className="p-1 text-ink-muted hover:text-slate-600 rounded-lg cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>

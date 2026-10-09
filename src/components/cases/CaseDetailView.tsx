@@ -13,6 +13,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import type { DentalCase, CaseStatus, PriorityLevel } from '../../types';
+import { formatDoctorName } from '../../utils/doctorName';
 import { CaseNotesPanel } from './CaseNotesPanel';
 import { CaseAttachmentsPanel } from './CaseAttachmentsPanel';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
@@ -42,7 +43,15 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
   const isOverdue = c.delivery_date < getTodayStr() && c.status !== 'delivered' && c.status !== 'cancelled';
 
   return (
-    <div className="fixed inset-0 z-40 bg-slate-100 overflow-y-auto">
+    /* `absolute`, not `fixed inset-0`. The shell is `flex` with the nav rail as
+       one sibling and this content column as the other, so an absolutely
+       positioned layer fills ONLY the content column. `fixed` resolved against
+       the viewport instead and covered the rail — opening a case job appeared to
+       minimise the navigation, and the case number, patient and history in its
+       left column were unreachable. Confining it here also means the rail keeps
+       working while a case is open, and it tracks the rail for free whether the
+       rail is expanded (w-64) or collapsed (w-20). */
+    <div className="absolute inset-0 z-40 bg-slate-100 overflow-y-auto">
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -105,7 +114,9 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             { icon: Building2, label: 'Clinic', value: c.lab_name, sub: c.lab_id },
-            { icon: User, label: 'Doctor', value: c.doctor_name, sub: c.patient_name ? `Patient: ${c.patient_name}` : undefined },
+            // Formatted, not raw: `doctor_name` is stored bare, so printing the
+            // column verbatim here is the one surface that would drop the honorific.
+            { icon: User, label: 'Doctor', value: formatDoctorName(c.doctor_name), sub: c.patient_name ? `Patient: ${c.patient_name}` : undefined },
             { icon: Palette, label: 'Teeth & Shade', value: c.selected_teeth.map((t) => `#${t}`).join(' ') || '—', sub: c.shade ? `Shade ${c.shade}` : undefined },
             { icon: CircleDollarSign, label: 'Price', value: `PKR ${c.final_price.toLocaleString()}`, sub: c.discount > 0 ? `PKR ${c.price.toLocaleString()} − PKR ${c.discount.toLocaleString()} discount` : `List PKR ${c.price.toLocaleString()}` },
             { icon: Calendar, label: 'Delivery Due', value: formatDate(c.delivery_date), sub: isOverdue ? 'Past due' : 'On schedule' },
@@ -142,7 +153,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
           </h3>
           <ol className="space-y-2">
             {(c.history || []).length === 0 && (
-              <li className="text-xs text-slate-400">No history recorded.</li>
+              <li className="text-xs text-ink-muted">No history recorded.</li>
             )}
             {(c.history || []).slice().reverse().map((h) => (
               <li key={h.id} className="flex items-start gap-2 text-xs">
@@ -150,7 +161,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
                 <div className="min-w-0">
                   <span className="font-bold text-slate-800 capitalize">{h.status.replace('_', ' ')}</span>
                   {h.notes && <span className="text-slate-500"> — {h.notes}</span>}
-                  <div className="text-[10px] text-slate-400">
+                  <div className="text-[10px] text-ink-muted">
                     {h.timestamp} {h.updated_by ? `• ${h.updated_by}` : ''}
                   </div>
                 </div>

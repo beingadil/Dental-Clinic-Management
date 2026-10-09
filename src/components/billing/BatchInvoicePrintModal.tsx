@@ -3,6 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getDateStr, getTodayStr } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
+import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
@@ -33,7 +35,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   initialLabId,
   onClose,
 }) => {
-  const { labs, invoices, brandingSettings, saveVoucherToSystem } = useApp();
+  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem } = useApp();
 
   const [labId, setLabId] = useState<string>(initialLabId || labs[0]?.id || '');
   // Default the period to today, matching every other billing tab; the quick
@@ -138,14 +140,14 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               type="button"
               onClick={handlePrint}
               disabled={selected.length === 0}
-              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-ink-muted"
             >
               <Printer className="h-4 w-4" /> Print {selected.length || ''} Invoice{selected.length === 1 ? '' : 's'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="cursor-pointer rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-slate-100 hover:text-slate-700"
               aria-label="Close"
             >
               <X className="h-5 w-5" />
@@ -173,7 +175,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               {labs.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
-                  {l.doctor_name ? ` — Dr. ${l.doctor_name}` : ''}
+                  {l.doctor_name ? ` — ${formatDoctorName(l.doctor_name)}` : ''}
                 </option>
               ))}
             </select>
@@ -231,9 +233,10 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                     inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0)
                   );
                   const isOn = !excluded.includes(inv.id);
+                  const linkedCase = findCaseForInvoice(inv, cases);
                   return (
                     <tr key={inv.id} className={isOn ? 'bg-indigo-50/40' : 'bg-white'}>
-                      <td className="py-2.5 pl-6">
+                      <td className="py-2.5 pl-6 align-top">
                         <input
                           type="checkbox"
                           checked={isOn}
@@ -241,15 +244,27 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                           className="h-4 w-4 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{inv.invoice_number}</td>
-                      <td className="py-2.5 px-3 text-slate-600">{inv.case_number || '—'}</td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        {inv.doctor_name ? `Dr. ${inv.doctor_name}` : '—'}
+                      <td className="py-2.5 px-3 align-top font-mono font-bold text-slate-900">{inv.invoice_number}</td>
+                      {/* The job behind the invoice, so the operator can see
+                          what they are about to print without opening each
+                          case. Falls back to the bare case number. */}
+                      <td className="py-2.5 px-3 align-top text-slate-600">
+                        <span className="font-semibold text-slate-800">{inv.case_number || '—'}</span>
+                        {linkedCase && (
+                          <span className="mt-0.5 block text-[11px] leading-tight">
+                            {[linkedCase.patient_name, linkedCase.case_type_name || linkedCase.case_type]
+                              .filter(Boolean)
+                              .join(' · ') || null}
+                          </span>
+                        )}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-500">
+                      <td className="py-2.5 px-3 align-top text-slate-600">
+                        {formatDoctorName(inv.doctor_name)}
+                      </td>
+                      <td className="py-2.5 px-3 align-top text-slate-500">
                         {String(inv.issue_date || inv.created_at || '').slice(0, 10) || '—'}
                       </td>
-                      <td className="py-2.5 px-6 text-right font-mono font-bold text-slate-900">
+                      <td className="py-2.5 px-6 text-right align-top font-mono font-bold text-slate-900">
                         PKR {due.toLocaleString()}
                       </td>
                     </tr>
@@ -276,7 +291,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
           <div className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter' : 'print-preview-page'}>
             <div>
               {selected.length === 0 ? (
-                <div className="py-16 text-center text-xs text-slate-400">
+                <div className="py-16 text-center text-xs text-ink-muted">
                   <CheckCircle2 className="mx-auto mb-2 h-6 w-6 text-slate-300" />
                   Nothing selected to print.
                 </div>
@@ -287,6 +302,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                   branding={brandingSettings}
                   printSettings={printSettings}
                   invoices={selected}
+                  cases={cases}
                   labName={selectedClinic?.name}
                   period={{ from, to }}
                 />

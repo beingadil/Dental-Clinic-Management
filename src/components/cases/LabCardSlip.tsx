@@ -2,6 +2,7 @@ import React from 'react';
 import { DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { receivedDateFor } from '../../utils/dateUtils';
+import { stripDoctorHonorific } from '../../utils/doctorName';
 import { QRCodeSVG } from 'qrcode.react';
 import { Phone, MapPin, Mail, Facebook, Calendar, Clock, Sparkles } from 'lucide-react';
 
@@ -114,9 +115,11 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
         {/* Doctor Name & Lab Name */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex items-baseline gap-2">
+            {/* The label already carries the honorific, so the value is printed
+                bare — otherwise a stored "Dr. Ahmad" reads "Dr. Name: Dr. Ahmad". */}
             <span className="font-extrabold text-slate-900 min-w-[75px]">Dr. Name:</span>
             <div className="flex-1 border-b-2 border-slate-300 font-extrabold text-base text-slate-900 px-2 py-0.5 bg-slate-50/50 print:bg-transparent">
-              {caseData.doctor_name || 'Dr. Attending'}
+              {stripDoctorHonorific(caseData.doctor_name) || 'Attending'}
             </div>
           </div>
 

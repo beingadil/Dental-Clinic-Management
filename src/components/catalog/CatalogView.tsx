@@ -213,13 +213,13 @@ export const CatalogView: React.FC = () => {
 
         {/* Search */}
         <div className="relative w-full md:w-72">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search material catalog..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition-colors"
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-ink-muted focus:outline-none focus:border-slate-400 focus:bg-white transition-colors"
           />
         </div>
       </div>
@@ -240,7 +240,7 @@ export const CatalogView: React.FC = () => {
                 <div className="flex items-center gap-1 no-print">
                   <button
                     onClick={() => startEdit(item)}
-                    className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors cursor-pointer"
+                    className="p-1 text-ink-muted hover:text-slate-700 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                     title="Edit Item"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -251,7 +251,7 @@ export const CatalogView: React.FC = () => {
                         deleteCaseType(item.id);
                       }
                     }}
-                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                    className="p-1 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded transition-colors cursor-pointer"
                     title="Delete Item"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -265,7 +265,7 @@ export const CatalogView: React.FC = () => {
 
               {item.material_system && (
                 <p className="text-[11px] text-slate-600 font-semibold flex items-start gap-1.5">
-                  <Layers className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                  <Layers className="w-3 h-3 text-ink-muted shrink-0 mt-0.5" />
                   <span>{item.material_system}</span>
                 </p>
               )}
@@ -308,19 +308,19 @@ export const CatalogView: React.FC = () => {
 
             <div className="pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center bg-slate-50 p-2.5 rounded-lg">
               <div>
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Base Price</span>
+                <span className="text-[10px] text-ink-muted font-bold block uppercase tracking-wider">Base Price</span>
                 <span className="font-bold text-slate-900 text-xs">PKR {item.base_price.toLocaleString()}</span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Turnaround</span>
+                <span className="text-[10px] text-ink-muted font-bold block uppercase tracking-wider">Turnaround</span>
                 <span className="font-medium text-slate-700 text-xs flex items-center justify-center gap-1 mt-0.5">
-                  <Clock className="w-3 h-3 text-slate-400" /> {item.lead_time_days || 3}d SLA
+                  <Clock className="w-3 h-3 text-ink-muted" /> {item.lead_time_days || 3}d SLA
                 </span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Warranty</span>
+                <span className="text-[10px] text-ink-muted font-bold block uppercase tracking-wider">Warranty</span>
                 <span className="font-medium text-emerald-700 text-xs flex items-center justify-center gap-1 mt-0.5">
-                  <Award className="w-3 h-3 text-emerald-600" /> {item.warranty_months ? `${item.warranty_months / 12}y` : 'N/A'}
+                  <Award className="w-3 h-3 text-ink-success" /> {item.warranty_months ? `${item.warranty_months / 12}y` : 'N/A'}
                 </span>
               </div>
             </div>
@@ -330,7 +330,7 @@ export const CatalogView: React.FC = () => {
 
       {filteredCatalog.length === 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">
-          <div className="w-10 h-10 bg-slate-100 text-slate-400 rounded-lg flex items-center justify-center mx-auto">
+          <div className="w-10 h-10 bg-slate-100 text-ink-muted rounded-lg flex items-center justify-center mx-auto">
             <BookOpen className="w-5 h-5" />
           </div>
           <h3 className="font-bold text-slate-800 text-sm">No Catalog Items Found</h3>
@@ -353,12 +353,12 @@ export const CatalogView: React.FC = () => {
                   <h3 className="font-bold text-slate-900 text-sm">
                     {editingItem ? 'Edit Restorative Material' : 'Add New Restorative Option'}
                   </h3>
-                  <p className="text-xs text-slate-400">Configure technical specifications & standard clinic rate</p>
+                  <p className="text-xs text-ink-muted">Configure technical specifications & standard clinic rate</p>
                 </div>
               </div>
               <button
                 onClick={resetForm}
-                className="text-slate-400 hover:text-slate-800 p-1 rounded-lg cursor-pointer"
+                className="text-ink-muted hover:text-slate-800 p-1 rounded-lg cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -439,8 +439,8 @@ export const CatalogView: React.FC = () => {
               </div>
 
               <div className="pt-1 border-t border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  Technical Specification <span className="normal-case font-medium text-slate-400">(optional — printed on the price list)</span>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted mb-2">
+                  Technical Specification <span className="normal-case font-medium text-ink-muted">(optional — printed on the price list)</span>
                 </p>
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">

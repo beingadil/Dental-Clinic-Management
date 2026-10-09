@@ -13,6 +13,7 @@ import type { DentalCase, CaseStatus } from '../../types';
 import { EmptyState, Badge, CaseStatusBadge } from '../common/ui';
 import { Search, ShieldAlert, CheckCircle2, TrendingUp } from 'lucide-react';
 import { getTodayStr, daysDiff } from '../../utils/dateUtils';
+import { formatDoctorName } from '../../utils/doctorName';
 
 export type QueueId =
   | 'overdue'
@@ -136,7 +137,7 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
           !term ||
           c.case_number.toLowerCase().includes(term) ||
           (c.patient_name || '').toLowerCase().includes(term) ||
-          (c.doctor_name || '').toLowerCase().includes(term) ||
+          formatDoctorName(c.doctor_name, '').toLowerCase().includes(term) ||
           (c.lab_name || '').toLowerCase().includes(term)
       )
       .sort(
@@ -173,7 +174,7 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close case queue"
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg text-ink-muted hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -181,7 +182,7 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
 
         <div className="px-5 py-3 border-b border-ds-line flex items-center justify-between gap-3">
           <div className="relative flex-1 min-w-0 max-w-xs">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -226,7 +227,7 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
                           #{c.case_number}
                         </span>
                         <span className="text-[12px] font-bold text-slate-900 truncate">
-                          {c.patient_name || c.doctor_name}
+                          {c.patient_name || formatDoctorName(c.doctor_name, 'Doctor')}
                         </span>
                         <CaseStatusBadge status={c.status as CaseStatus} size="xs" />
                       </div>

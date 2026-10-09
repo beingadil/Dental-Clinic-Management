@@ -55,7 +55,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       return (
         <div className="min-h-[400px] flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-8 text-center">
-            <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-14 h-14 bg-rose-50 text-ink-danger rounded-2xl flex items-center justify-center mx-auto mb-4">
               <AlertOctagon className="w-7 h-7" />
             </div>
             <h2 className="text-lg font-bold text-slate-900 mb-2">View Render Issue Encountered</h2>
@@ -85,7 +85,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <div className="mt-4 pt-4 border-t border-slate-100">
               <button
                 onClick={this.handleClearData}
-                className="text-xs text-slate-400 hover:text-rose-600 font-medium transition-colors cursor-pointer"
+                className="text-xs text-ink-muted hover:text-ink-danger font-medium transition-colors cursor-pointer"
               >
                 Reset workstation local storage cache
               </button>

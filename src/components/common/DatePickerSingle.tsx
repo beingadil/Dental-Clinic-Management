@@ -109,10 +109,10 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
         className={`w-full flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-all cursor-pointer ${
           value
             ? 'bg-indigo-50 border-indigo-200 text-indigo-900 font-semibold pr-9'
-            : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+            : 'bg-slate-50 border-slate-200 text-ink-body hover:bg-slate-100'
         }`}
       >
-        <CalendarDays className={`w-4 h-4 shrink-0 ${value ? 'text-indigo-600' : 'text-slate-400'}`} />
+        <CalendarDays className={`w-4 h-4 shrink-0 ${value ? 'text-indigo-600' : 'text-ink-muted'}`} />
         <span className={`flex-1 tabular-nums ${value ? '' : 'italic'}`}>{value || placeholder}</span>
       </button>
       {/* Kept a SIBLING of the trigger, not a nested control: nesting an
@@ -135,7 +135,7 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
             <button
               type="button"
               onClick={() => shiftMonth(-1)}
-              className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
+              className="p-1.5 rounded-lg text-ink-body hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
               aria-label="Previous month"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -165,7 +165,7 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
             <button
               type="button"
               onClick={() => shiftMonth(1)}
-              className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
+              className="p-1.5 rounded-lg text-ink-body hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
               aria-label="Next month"
             >
               <ChevronRight className="w-4 h-4" />
@@ -175,7 +175,7 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
           <div>
             <div className="grid grid-cols-7 mb-1">
               {WEEKDAYS.map((w) => (
-                <span key={w} className="text-center text-[10px] font-bold text-slate-400 py-1">{w}</span>
+                <span key={w} className="text-center text-[10px] font-bold text-ink-muted py-1">{w}</span>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-0.5">
@@ -190,7 +190,7 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
                       ? 'bg-indigo-600 text-white font-bold'
                       : c.inMonth
                       ? 'text-slate-700 hover:bg-slate-100'
-                      : 'text-slate-300 hover:bg-slate-50'
+                      : 'text-ink-muted hover:bg-slate-50'
                   } ${c.iso === today && c.iso !== value ? 'ring-1 ring-indigo-300' : ''}`}
                 >
                   {c.day}

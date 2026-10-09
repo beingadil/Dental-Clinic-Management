@@ -43,7 +43,7 @@ export const PanelLayoutBar: React.FC<{
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="ds-tap inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-white px-2.5 py-1 text-[11px] font-semibold text-ds-ink-soft hover:border-ds-accent-ring hover:text-ds-accent cursor-pointer"
+            className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-white px-2.5 py-1 text-[11px] font-semibold text-ds-ink-soft hover:border-ds-accent-ring hover:text-ds-accent cursor-pointer"
           >
             <EyeOff className="w-3.5 h-3.5" />
             {hiddenCount} hidden
@@ -61,7 +61,7 @@ export const PanelLayoutBar: React.FC<{
                     onRestore(k);
                     setOpen(false);
                   }}
-                  className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11.5px] font-semibold text-ds-ink-soft hover:bg-ds-surface-sunken cursor-pointer"
+                  className="ds-row-target w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11.5px] font-semibold text-ds-ink-soft hover:bg-ds-sunken cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   {labels[k] ?? k}
@@ -73,7 +73,7 @@ export const PanelLayoutBar: React.FC<{
       )}
 
       {dragLocked && (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-surface-sunken px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-sunken px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
           <Lock className="w-3.5 h-3.5" />
           Locked — unlock in Settings → Preferences
         </span>
@@ -83,7 +83,7 @@ export const PanelLayoutBar: React.FC<{
         type="button"
         onClick={onReset}
         title="Reset the dashboard layout"
-        className="ds-tap inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-white px-2.5 py-1 text-[11px] font-semibold text-ds-muted hover:text-ds-ink cursor-pointer"
+        className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-white px-2.5 py-1 text-[11px] font-semibold text-ds-muted hover:text-ds-ink cursor-pointer"
       >
         <RotateCcw className="w-3.5 h-3.5" />
         Reset layout

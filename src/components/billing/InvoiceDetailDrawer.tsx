@@ -3,6 +3,7 @@ import { Drawer, InvoiceStatusBadge } from '../common/ui';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
+import { formatDoctorName } from '../../utils/doctorName';
 import { caseDetailLines } from '../../services/ledgerCaseDetail';
 import { availableAdvanceCredit } from '../../services/transactionDomain';
 import { 
@@ -165,7 +166,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors"
+              className="p-2 rounded-lg text-ink-muted hover:text-slate-600 hover:bg-slate-200/60 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -179,20 +180,20 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
           {/* Clinic & Due Summary Card */}
           <div className="p-4 rounded-xl bg-slate-900 text-white shadow-sm flex items-center justify-between">
             <div>
-              <span className="text-xs text-slate-400 font-medium uppercase tracking-wider block mb-1">
+              <span className="text-xs text-slate-300 font-medium uppercase tracking-wider block mb-1">
                 Outstanding Balance Due
               </span>
               <span className="text-2xl font-bold font-mono text-white">
                 {formatPKR(netDue)}
               </span>
               <div className="text-xs text-slate-300 mt-1 flex items-center gap-2">
-                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                <Building2 className="w-3.5 h-3.5 text-slate-300" />
                 <span>{invoice.lab_name}</span>
               </div>
             </div>
 
             <div className="text-right space-y-1">
-              <div className="text-xs text-slate-400">Total Billed: <strong className="text-white font-mono">{formatPKR(invoice.final_amount)}</strong></div>
+              <div className="text-xs text-slate-300">Total Billed: <strong className="text-white font-mono">{formatPKR(invoice.final_amount)}</strong></div>
               <div className="text-xs text-emerald-400">Total Settled: <strong className="font-mono">{formatPKR(totalPaid)}</strong></div>
               {totalCredits > 0 && (
                 <div className="text-xs text-amber-400">Credit Notes: <strong className="font-mono">{formatPKR(totalCredits)}</strong></div>
@@ -210,10 +211,10 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                 </span>
                 <div className="flex items-center gap-2 mt-1 text-xs text-slate-600 flex-wrap">
                   <span className="inline-flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-slate-400" /> Dr. {invoice.doctor_name || linkedCase?.doctor_name || '—'}
+                    <User className="w-3.5 h-3.5 text-ink-muted" /> {formatDoctorName(invoice.doctor_name || linkedCase?.doctor_name)}
                   </span>
                   <span className="inline-flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400" /> {invoice.lab_name}
+                    <Building2 className="w-3.5 h-3.5 text-ink-muted" /> {invoice.lab_name}
                   </span>
                   {invoice.case_number && (
                     <span className="font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
@@ -282,7 +283,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
+                <ArrowDownLeft className="w-4 h-4 text-ink-success" />
                 Payment Allocations & Receipts ({(invoice.payments || []).length})
               </h3>
               {netDue > 0 && (
@@ -400,7 +401,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
 
                     <div className="flex items-center gap-3">
                       <span className={`font-mono font-bold text-sm ${
-                        pmt.is_reversed ? 'text-slate-400 line-through' : 'text-emerald-700'
+                        pmt.is_reversed ? 'text-ink-muted line-through' : 'text-emerald-700'
                       }`}>
                         {formatPKR(pmt.amount)}
                       </span>
@@ -439,7 +440,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
             >
               <span className="flex items-center gap-1.5">
-                <Scale className="w-4 h-4 text-slate-400" />
+                <Scale className="w-4 h-4 text-ink-muted" />
                 System Ledger Entry (Journal Voucher)
                 {linkedJournals.length > 0 && (
                   <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[11px] font-bold">{linkedJournals.length}</span>
@@ -467,7 +468,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                       <div className="text-[11px] text-slate-500 mb-2">{j.date} · {j.description}</div>
                       <table className="w-full text-[11px]">
                         <thead>
-                          <tr className="text-slate-400 uppercase tracking-wider">
+                          <tr className="text-ink-muted uppercase tracking-wider">
                             <th scope="col" className="text-left font-bold py-0.5">Account</th>
                             <th scope="col" className="text-right font-bold py-0.5">Debit</th>
                             <th scope="col" className="text-right font-bold py-0.5">Credit</th>
@@ -494,7 +495,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-amber-600" />
+                <ShieldCheck className="w-4 h-4 text-ink-warning" />
                 Credit Notes & Write-Offs ({creditNotes.length})
               </h3>
               {netDue > 0 && (
