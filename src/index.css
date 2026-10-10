@@ -215,6 +215,43 @@
   --chart-tooltip-line: #e2e8f0;
 }
 
+/*
+ * Chart surfaces the component cannot express as a utility.
+ *
+ * The dark theme works by remapping tokens, and an inline `style` paint is a
+ * literal that wins over that remap — scripts/audit-inline-bg.mjs fails the
+ * build on one. So the paint lives here and the one per-series colour is fed
+ * in as a CUSTOM property, which is the shape that audit endorses: the
+ * component writes `--swatch`, this file owns the `background`.
+ */
+.chart-tooltip {
+  background: var(--chart-tooltip-bg);
+  border: 1px solid var(--chart-tooltip-line);
+  border-radius: 10px;
+  color: var(--chart-tooltip-ink);
+  font-size: 11px;
+  padding: 7px 10px;
+}
+
+/* The hairline between a tooltip's rows and the note under them. */
+.chart-tip-divider {
+  border-top: 1px solid var(--chart-tooltip-line);
+}
+
+/* A legend/tooltip dot. The fallback keeps a forgotten swatch reading as a mark
+   rather than as an unpainted hole. */
+.chart-swatch {
+  background: var(--swatch, var(--chart-1));
+}
+
+/* A total printed at the end of a bar. SVG text, so the ink is `fill` — and it
+   still has to follow the theme. */
+.chart-bar-value {
+  fill: var(--chart-axis-ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 @layer base {
   :root {
     --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

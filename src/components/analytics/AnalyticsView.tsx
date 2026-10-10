@@ -15,7 +15,7 @@ import {
   PieChart, 
   Pie, 
   Cell, 
-  Legend 
+  LabelList 
 } from 'recharts';
 import { 
   BarChart3, 
@@ -37,6 +37,163 @@ const todayParts = () => {
     yearStart: `${now.getFullYear()}-01-01`,
   };
 };
+
+/**
+ * Axis ticks only. The axis has no room for the thousands separators the
+ * tooltips and KPI cards carry, so `85,000` reads `85k` and `1,250,000` reads
+ * `1.25M`. Never used for a figure an operator reads as an exact amount.
+ */
+const axisPKR = (n: number): string => {
+  const abs = Math.abs(n || 0);
+  if (abs >= 1_000_000) return `${parseFloat((n / 1_000_000).toFixed(2))}M`;
+  if (abs >= 1_000) return `${parseFloat((n / 1_000).toFixed(1))}k`;
+  return String(n || 0);
+};
+
+/** Recharts spreads this onto its tick text, so it wins in both themes. */
+const AXIS_TICK = { fontSize: 10, fill: 'var(--chart-axis-ink)' };
+
+/**
+ * Hand React the one custom property `.chart-swatch` consumes.
+ *
+ * `CSSProperties` has no index signature for `--x`, so the cast is
+ * unavoidable — and it is what lets the paint stay in the stylesheet instead
+ * of becoming an inline literal the dark token remap cannot reach.
+ */
+const swatchVars = (color: string) =>
+  ({ '--swatch': color }) as unknown as React.CSSProperties;
+
+/** A series-colour dot, painted by `.chart-swatch` from the custom property. */
+const Swatch: React.FC<{ color: string; className: string }> = ({ color, className }) => (
+  <span className={`chart-swatch ${className}`} style={swatchVars(color)} />
+);
+
+interface TipRow {
+  label: string;
+  value: string;
+  color: string;
+}
+
+/** The one tooltip shell (`.chart-tooltip`), so the four panels cannot drift. */
+const ChartTip: React.FC<{ heading?: string; rows: TipRow[]; note?: string }> = ({
+  heading,
+  rows,
+  note,
+}) => (
+  <div className="chart-tooltip">
+    {heading && <div className="mb-1 font-bold">{heading}</div>}
+    {rows.map((r) => (
+      <div key={r.label} className="flex items-center justify-between gap-4">
+        <span className="flex items-center gap-1.5">
+          <Swatch color={r.color} className="inline-block h-2 w-2 shrink-0 rounded-full" />
+          {r.label}
+        </span>
+        <span className="font-bold tabular-nums">{r.value}</span>
+      </div>
+    ))}
+    {note && (
+      <div className="chart-tip-divider mt-1 pt-1 text-[10px] font-semibold opacity-80">
+        {note}
+      </div>
+    )}
+  </div>
+);
+
+/** Billed-vs-collected, plus the collection rate the two bars imply. */
+const TrendTip: React.FC<any> = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const pick = (key: string) => Number(payload.find((p: any) => p.dataKey === key)?.value ?? 0);
+  const billed = pick('revenue');
+  const collected = pick('collected');
+  return (
+    <ChartTip
+      heading={String(label ?? '')}
+      rows={[
+        { label: 'Billed', value: `PKR ${billed.toLocaleString()}`, color: 'var(--chart-1)' },
+        { label: 'Collected', value: `PKR ${collected.toLocaleString()}`, color: 'var(--chart-4)' },
+      ]}
+      note={billed > 0 ? `${Math.round((collected / billed) * 100)}% collected` : undefined}
+    />
+  );
+};
+
+/** One clinic bar, with its share of the period's clinic revenue. */
+const ClinicTip: React.FC<any> = ({ active, payload, total }) => {
+  if (!active || !payload?.length) return null;
+  const value = Number(payload[0]?.value ?? 0);
+  return (
+    <ChartTip
+      heading={String(payload[0]?.payload?.name ?? '')}
+      rows={[
+        { label: 'Gross billing', value: `PKR ${value.toLocaleString()}`, color: 'var(--chart-2)' },
+      ]}
+      note={total > 0 ? `${Math.round((value / total) * 100)}% of clinic revenue` : undefined}
+    />
+  );
+};
+
+/** One pie slice: the value in its own unit, plus its share of the whole. */
+const SliceTip: React.FC<any> = ({ active, payload, total, label, unit, format }) => {
+  if (!active || !payload?.length) return null;
+  const row = payload[0];
+  const value = Number(row?.value ?? 0);
+  const shown = format === 'count' ? `${value.toLocaleString()} invoices` : `PKR ${value.toLocaleString()}`;
+  return (
+    <ChartTip
+      heading={String(row?.name ?? '')}
+      rows={[
+        {
+          label: label ?? 'Value',
+          value: shown,
+          color: String(row?.payload?.color ?? row?.color ?? 'var(--chart-1)'),
+        },
+      ]}
+      note={total > 0 ? `${Math.round((value / total) * 100)}% ${unit}` : undefined}
+    />
+  );
+};
+
+/** A shared swatch + label, so all four legends read identically. */
+const LegendItem: React.FC<{ color: string; label: string; value?: string }> = ({
+  color,
+  label,
+  value,
+}) => (
+  <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-600">
+    <Swatch color={color} className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" />
+    <span>{label}</span>
+    {value && <span className="font-bold tabular-nums text-slate-800">{value}</span>}
+  </span>
+);
+
+/**
+ * One card shell for every panel. The four used to repeat this markup, which
+ * is how their axis, legend and empty-state treatments drifted apart.
+ */
+const ChartPanel: React.FC<{
+  title: string;
+  hint: string;
+  legend?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ title, hint, legend, children }) => (
+  <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+    <div className="min-w-0">
+      <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+      <p className="text-xs text-slate-500">{hint}</p>
+    </div>
+    {legend && <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div>}
+    <div className="relative h-52">{children}</div>
+  </div>
+);
+
+/** The shared "there is nothing to plot" body. */
+const EmptyChart: React.FC<{ title: string; hint?: string }> = ({ title, hint }) => (
+  <div className="flex h-full flex-col items-center justify-center text-center">
+    <BarChart3 className="mb-2 h-7 w-7 text-slate-200" />
+    <p className="text-xs font-bold text-slate-600">{title}</p>
+    {hint && <p className="text-[11px] text-ink-muted">{hint}</p>}
+  </div>
+);
 
 export const AnalyticsView: React.FC = () => {
   const { cases, invoices, labs } = useApp();
@@ -131,6 +288,31 @@ export const AnalyticsView: React.FC = () => {
     () => analytics.restorationRevenue.filter((r) => r.revenue > 0 || r.cases > 0).map((r) => ({ name: r.material, value: r.revenue })),
     [analytics.restorationRevenue]
   );
+
+  // Clinic bars read top-down, so the biggest biller has to be first. Six of
+  // them keep every bar tall enough to compare; the rest were unreadable
+  // slivers. The share in each tooltip is still taken against ALL clinics, so
+  // "40% of clinic revenue" never overstates a capped ranking.
+  const rankedClinics = [...revenueByLabData].sort((a, b) => b.revenue - a.revenue);
+  const topClinics = rankedClinics.slice(0, 6);
+  const clinicRevenueTotal = rankedClinics.reduce((sum, d) => sum + d.revenue, 0);
+
+  const materialRevenueTotal = revenueByMaterialData.reduce((sum, d) => sum + d.value, 0);
+
+  const materialLegend = revenueByMaterialData.map((d, i) => (
+    <LegendItem
+      key={d.name}
+      color={MATERIAL_COLORS[i % MATERIAL_COLORS.length]}
+      label={d.name}
+      value={
+        materialRevenueTotal > 0 ? `${Math.round((d.value / materialRevenueTotal) * 100)}%` : undefined
+      }
+    />
+  ));
+
+  const paymentLegend = paymentStatusPieData.map((d) => (
+    <LegendItem key={d.name} color={d.color} label={d.name} value={String(d.value)} />
+  ));
 
   const handleExportCSV = () => {
     const rows = [
@@ -272,169 +454,185 @@ export const AnalyticsView: React.FC = () => {
       {/* Charts Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Monthly Revenue Trend */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Monthly Revenue & Collection Trend (PKR)</h3>
-            <p className="text-xs text-slate-500">Billed gross revenue vs cash collected</p>
-          </div>
-          <div className="h-48">
-            {monthlyRevenueData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center">
-                <BarChart3 className="w-8 h-8 text-slate-200 mb-2" />
-                <p className="text-xs font-bold text-slate-600">No invoices in this period</p>
-                <p className="text-[11px] text-ink-muted">Pick a wider reporting period to see the trend.</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyRevenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="var(--chart-grid)" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="var(--chart-grid)" />
-                  <Tooltip
-                    cursor={{ fill: 'var(--chart-grid)', fillOpacity: 0.5 }}
-                    contentStyle={{
-                      background: 'var(--chart-tooltip-bg)',
-                      border: '1px solid var(--chart-tooltip-line)',
-                      borderRadius: '12px',
-                      color: 'var(--chart-tooltip-ink)',
-                      fontSize: '11px',
-                    }}
-                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Amount']}
-                  />
-                  <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} name="Gross Revenue" />
-                  <Bar dataKey="collected" fill="var(--chart-4)" radius={[4, 4, 0, 0]} name="Cash Collected" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
+        <ChartPanel
+          title="Monthly Revenue & Collection Trend (PKR)"
+          hint="Billed gross revenue vs cash collected"
+          legend={
+            <>
+              <LegendItem color="var(--chart-1)" label="Billed" />
+              <LegendItem color="var(--chart-4)" label="Collected" />
+            </>
+          }
+        >
+          {monthlyRevenueData.length === 0 ? (
+            <EmptyChart
+              title="No invoices in this period"
+              hint="Pick a wider reporting period to see the trend."
+            />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyRevenueData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }} barGap={2}>
+                <defs>
+                  <linearGradient id="gradBilled" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.5} />
+                  </linearGradient>
+                  <linearGradient id="gradCollected" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--chart-4)" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="var(--chart-4)" stopOpacity={0.45} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                <XAxis
+                  dataKey="month"
+                  tick={AXIS_TICK}
+                  tickLine={false}
+                  axisLine={{ stroke: 'var(--chart-grid)' }}
+                />
+                <YAxis
+                  tick={AXIS_TICK}
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                  tickFormatter={axisPKR}
+                />
+                <Tooltip cursor={{ fill: 'var(--chart-grid)', fillOpacity: 0.6 }} content={<TrendTip />} />
+                <Bar dataKey="revenue" fill="url(#gradBilled)" radius={[4, 4, 0, 0]} maxBarSize={34} />
+                <Bar dataKey="collected" fill="url(#gradCollected)" radius={[4, 4, 0, 0]} maxBarSize={34} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
 
         {/* Revenue by Dental Clinic */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Revenue Breakdown by Dental Clinic</h3>
-            <p className="text-xs text-slate-500">Gross billing performance across client dental clinics</p>
-          </div>
-          <div className="h-48">
-            {revenueByLabData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center">
-                <BarChart3 className="w-8 h-8 text-slate-200 mb-2" />
-                <p className="text-xs font-bold text-slate-600">No clinic billing in this period</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={revenueByLabData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--chart-grid)" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--chart-grid)" />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} stroke="var(--chart-grid)" />
-                  <Tooltip
-                    cursor={{ fill: 'var(--chart-grid)', fillOpacity: 0.5 }}
-                    contentStyle={{
-                      background: 'var(--chart-tooltip-bg)',
-                      border: '1px solid var(--chart-tooltip-line)',
-                      borderRadius: '12px',
-                      color: 'var(--chart-tooltip-ink)',
-                      fontSize: '11px',
-                    }}
-                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Revenue']}
+        <ChartPanel
+          title="Revenue Breakdown by Dental Clinic"
+          hint="Top billing clinics this period, largest first"
+          legend={<LegendItem color="var(--chart-2)" label="Gross billing" />}
+        >
+          {topClinics.length === 0 ? (
+            <EmptyChart title="No clinic billing in this period" />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topClinics} layout="vertical" margin={{ top: 4, right: 36, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gradClinic" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.5} />
+                    <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0.95} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--chart-grid)" />
+                <XAxis
+                  type="number"
+                  tick={AXIS_TICK}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={axisPKR}
+                />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  tick={AXIS_TICK}
+                  tickLine={false}
+                  axisLine={false}
+                  width={94}
+                  interval={0}
+                />
+                <Tooltip
+                  cursor={{ fill: 'var(--chart-grid)', fillOpacity: 0.6 }}
+                  content={<ClinicTip total={clinicRevenueTotal} />}
+                />
+                <Bar dataKey="revenue" fill="url(#gradClinic)" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                  <LabelList
+                    dataKey="revenue"
+                    position="right"
+                    className="chart-bar-value"
+                    formatter={(v: any) => axisPKR(Number(v))}
                   />
-                  <Bar dataKey="revenue" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
 
         {/* Material Type Distribution — SQL restoration revenue */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Case Material Popularity & Revenue</h3>
-            <p className="text-xs text-slate-500">Revenue by restoration material (charted teeth × invoices)</p>
-          </div>
-          <div className="h-48 flex items-center justify-center">
-            {revenueByMaterialData.length === 0 ? (
-              <p className="text-xs text-ink-muted text-center">No charted case materials yet.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={revenueByMaterialData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={85}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {revenueByMaterialData.map((_entry, index) => (
-                      <Cell key={`cell-${index}`} fill={MATERIAL_COLORS[index % MATERIAL_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--chart-tooltip-bg)',
-                      border: '1px solid var(--chart-tooltip-line)',
-                      borderRadius: '12px',
-                      color: 'var(--chart-tooltip-ink)',
-                      fontSize: '11px',
-                    }}
-                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    formatter={(value: any) => [`PKR ${Number(value).toLocaleString()}`, 'Revenue']}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
+        <ChartPanel
+          title="Case Material Popularity & Revenue"
+          hint="Share of revenue by restoration material"
+          legend={materialLegend}
+        >
+          {revenueByMaterialData.length === 0 ? (
+            <EmptyChart title="No charted case materials yet" />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={revenueByMaterialData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={56}
+                  outerRadius={80}
+                  paddingAngle={3}
+                  stroke="none"
+                  dataKey="value"
+                >
+                  {revenueByMaterialData.map((_entry, index) => (
+                    <Cell key={`cell-${index}`} fill={MATERIAL_COLORS[index % MATERIAL_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  content={
+                    <SliceTip
+                      label="Revenue"
+                      unit="of material revenue"
+                      total={materialRevenueTotal}
+                    />
+                  }
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
 
         {/* Payment Status Breakdown Pie */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs space-y-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Invoice Payment Status Distribution</h3>
-            <p className="text-xs text-slate-500">Proportion of paid, partial, and unpaid invoices</p>
-          </div>
-          <div className="h-48 flex items-center justify-center">
-            {paymentStatusPieData.length === 0 ? (
-              <p className="text-xs text-ink-muted text-center">No invoices in this period.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={paymentStatusPieData}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={85}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {paymentStatusPieData.map((entry, index) => (
-                      <Cell key={`cell-pay-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--chart-tooltip-bg)',
-                      border: '1px solid var(--chart-tooltip-line)',
-                      borderRadius: '12px',
-                      color: 'var(--chart-tooltip-ink)',
-                      fontSize: '11px',
-                    }}
-                    labelStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    itemStyle={{ color: 'var(--chart-tooltip-ink)' }}
-                    formatter={(val: any) => [`${val} Invoices`, 'Count']}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
+        <ChartPanel
+          title="Invoice Payment Status Distribution"
+          hint="Paid, partial and unpaid invoices"
+          legend={paymentLegend}
+        >
+          {paymentStatusPieData.length === 0 ? (
+            <EmptyChart title="No invoices in this period" />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={paymentStatusPieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={56}
+                  outerRadius={80}
+                  paddingAngle={3}
+                  stroke="none"
+                  dataKey="value"
+                >
+                  {paymentStatusPieData.map((entry, index) => (
+                    <Cell key={`cell-pay-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  content={
+                    <SliceTip
+                      label="Invoices"
+                      unit="of invoices in this period"
+                      format="count"
+                      total={periodInvoices.length}
+                    />
+                  }
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
       </div>
 
       {/* Turnaround by Priority — computed from case status history in SQLite */}
