@@ -5,7 +5,8 @@
 # The message deliberately does NOT claim this operation caused it. The hook
 # only knows the check failed afterwards, and the drift may equally have been
 # sitting in the working tree already; asserting a cause the hook cannot
-# observe would send someone hunting for the wrong commit.
+# observe would send someone hunting for the wrong commit. The heading says
+# what was measured — the mismatch — rather than a guess at what produced it.
 #
 # WHY THIS EXISTS
 # The role primitives in src/index.css and src/theme/dark.css, and the alias
@@ -36,10 +37,22 @@ cd "$root" || exit 0
 output=$(node scripts/role-picker.mjs --check 2>&1)
 status=$?
 
+# Exit 2 is "the check could not run here", not "the files have drifted".
+# node_modules/tailwindcss/theme.css supplies the palette the solver grades
+# against, and a clone that has not run `npm ci` yet has none of it. Printing
+# the revert banner there would blame this git operation for a missing install
+# — and the advice would be wrong, because there is nothing to restore yet.
+if [ $status -eq 2 ]; then
+  echo ""
+  echo "  (role CSS check skipped — run \`npm ci\` to enable it)"
+  echo ""
+  exit 0
+fi
+
 if [ $status -ne 0 ]; then
   echo ""
   echo "  ┌─────────────────────────────────────────────────────────────┐"
-  echo "  │  GENERATED ROLE CSS WAS REVERTED BY THIS GIT OPERATION      │"
+  echo "  │  GENERATED ROLE CSS NO LONGER MATCHES THE SOLVER            │"
   echo "  └─────────────────────────────────────────────────────────────┘"
   echo ""
   echo "$output"
