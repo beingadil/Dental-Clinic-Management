@@ -3,6 +3,10 @@ import initSqlJs from 'sql.js';
 import { SqliteEngine, DbError } from '../../src/db/engine';
 import { MIGRATIONS } from '../../src/db/migrations';
 
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
+
 let engine: SqliteEngine;
 
 beforeAll(async () => {
@@ -14,13 +18,13 @@ beforeAll(async () => {
 describe('migrations', () => {
   it('applies all migrations once and records versions', () => {
     const versions = engine.all<{ version: number }>('SELECT version FROM schema_migrations ORDER BY version');
-    expect(versions.map((v) => v.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(versions.map((v) => v.version)).toEqual(ALL_VERSIONS);
   });
 
   it('is idempotent on re-run', () => {
     const { applied, skipped } = engine.migrate();
     expect(applied).toHaveLength(0);
-    expect(skipped).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(skipped).toEqual(ALL_VERSIONS);
   });
 
   it('creates the expected core tables', () => {

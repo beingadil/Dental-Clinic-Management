@@ -5,6 +5,10 @@ import { setDatabase } from '../../src/db/core';
 import { usersRepo } from '../../src/db/repos';
 import { MIGRATIONS } from '../../src/db/migrations';
 
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
+
 /**
  * Migrations 008 + 009 — zero shipped accounts.
  *
@@ -53,7 +57,7 @@ function rewindToSchema7(): void {
 
 describe('migrations 008 + 009 — zero shipped accounts', () => {
   it('registers both migrations in the ledger with the right identity', () => {
-    expect(MIGRATIONS.map((x) => x.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(MIGRATIONS.map((x) => x.version)).toEqual(ALL_VERSIONS);
     expect(MIGRATIONS[7]).toMatchObject({ version: 8, name: 'purge_demo_users' });
     expect(MIGRATIONS[8]).toMatchObject({ version: 9, name: 'drop_service_account' });
   });

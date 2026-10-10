@@ -10,6 +10,11 @@ import { setDatabase, getDatabase, isDatabaseReady } from '../../src/db/core';
 import { SqliteEngine } from '../../src/db/engine';
 import { generateSqliteExport } from '../../src/services/sqliteStorage';
 import * as snapshotStore from '../../src/services/safetySnapshotStore';
+import { MIGRATIONS } from '../../src/db/migrations';
+
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 
 /**
  * The `.sql` importer must be as careful as the restore it is a sibling of.
@@ -381,7 +386,7 @@ describe('importSqlDump', () => {
     expect(bytes).toBeInstanceOf(Uint8Array);
     // It must be the PRE-import database, i.e. still readable as the app's own.
     expect(new TextDecoder().decode(bytes.subarray(0, 15))).toBe('SQLite format 3');
-    expect(meta.schemaVersion).toBe(20);
+    expect(meta.schemaVersion).toBe(Number(LATEST_VERSION));
   });
 
   it('installs the dump and reports what came in', async () => {
@@ -461,7 +466,7 @@ describe('importer against the real exporter', () => {
     expect(report.errors).toEqual([]);
     expect(report.rejected).toEqual([]);
     expect(report.ok).toBe(true);
-    expect(report.schemaVersion).toBe(20);
+    expect(report.schemaVersion).toBe(Number(LATEST_VERSION));
     expect(report.header.labName).toBe('Analysed Dental');
     expect(report.tableCounts.users).toBe(1);
     expect(report.tableCounts.labs).toBe(1);
@@ -496,7 +501,7 @@ describe('importer against the real exporter', () => {
 
     // A dump of this build carries the full ledger, so nothing is upgraded.
     expect(outcome.upgraded).toBe(false);
-    expect(outcome.schemaVersion).toBe(20);
+    expect(outcome.schemaVersion).toBe(Number(LATEST_VERSION));
     expect(getDatabase().scalar(`SELECT username FROM users WHERE id='u9'`)).toBe('tech');
     expect(isDatabaseReady()).toBe(true);
   });

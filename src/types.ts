@@ -461,6 +461,12 @@ export interface CaseType {
   shade_guide?: string;       // default shade system, e.g. 'VITA Classical A1–D4'
   indications?: string;       // clinical indications
   contraindications?: string; // when NOT to use
+  /**
+   * Whether this product is per-tooth work. False means the case wizard skips
+   * charting and every output omits teeth and shade. Absent is read as true, so
+   * a product saved before migration 021 keeps its existing meaning.
+   */
+  needs_teeth?: boolean;
   created_at: string;
 }
 

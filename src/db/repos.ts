@@ -2,6 +2,7 @@ import { getDatabase } from './index';
 import { SqliteEngine, TransactionApi, DbError } from './engine';
 import { QcInspection } from '../types';
 import { stripDoctorHonorific } from '../utils/doctorName';
+import { fromStoredNeedsTeeth, toStoredNeedsTeeth } from '../utils/catalogToothRequirement';
 
 /**
  * Typed repository layer. Each repository maps an app domain type to SQLite
@@ -371,6 +372,8 @@ export interface CaseTypeRow {
   shade_guide?: string | null;
   indications?: string | null;
   contraindications?: string | null;
+  /** 1 = per-tooth work (chart teeth, shade applies); 0 = not per-tooth (migration 021). */
+  needs_teeth?: number | null;
   created_at: string;
   updated_at?: string | null;
 }
@@ -389,6 +392,8 @@ function caseTypeToDomain(row: CaseTypeRow): any {
     shade_guide: row.shade_guide ?? undefined,
     indications: row.indications ?? undefined,
     contraindications: row.contraindications ?? undefined,
+    // Absent/NULL is read as required: an unknown product keeps today's behaviour.
+    needs_teeth: fromStoredNeedsTeeth(row.needs_teeth),
     created_at: row.created_at,
   };
 }
@@ -404,23 +409,25 @@ export const caseTypesRepo = {
   insert(ct: any): any {
     const id = ct.id || genId('ct');
     requireEngine().run(
-      `INSERT INTO case_types (id, name, base_price, category, lead_time_days, warranty_months, description, material_system, unit_basis, shade_guide, indications, contraindications, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO case_types (id, name, base_price, category, lead_time_days, warranty_months, description, material_system, unit_basis, shade_guide, indications, contraindications, needs_teeth, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, ct.name, ct.base_price, ct.category ?? null, ct.lead_time_days ?? null,
        ct.warranty_months ?? null, ct.description ?? null, ct.material_system ?? null,
        ct.unit_basis ?? null, ct.shade_guide ?? null, ct.indications ?? null,
-       ct.contraindications ?? null, ct.created_at ?? now(), now()]
+       ct.contraindications ?? null, toStoredNeedsTeeth(ct.needs_teeth), ct.created_at ?? now(), now()]
     );
     return this.byId(id);
   },
   update(id: string, updates: any): any | null {
-    const allowed = ['name', 'base_price', 'category', 'lead_time_days', 'warranty_months', 'description', 'material_system', 'unit_basis', 'shade_guide', 'indications', 'contraindications'] as const;
+    const allowed = ['name', 'base_price', 'category', 'lead_time_days', 'warranty_months', 'description', 'material_system', 'unit_basis', 'shade_guide', 'indications', 'contraindications', 'needs_teeth'] as const;
     const sets: string[] = [];
     const params: any[] = [];
     for (const key of allowed) {
       if (key in updates) {
         sets.push(`${key} = ?`);
-        params.push(updates[key] ?? null);
+        // needs_teeth is a boolean in the domain but an INTEGER in SQLite; bind
+        // it explicitly rather than letting the driver coerce it.
+        params.push(key === 'needs_teeth' ? toStoredNeedsTeeth(updates[key]) : updates[key] ?? null);
       }
     }
     if (sets.length) {

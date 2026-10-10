@@ -3,6 +3,11 @@ import initSqlJs from 'sql.js';
 import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { userPreferencesRepo } from '../../src/db/userPreferencesRepo';
+import { MIGRATIONS } from '../../src/db/migrations';
+
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 
 /**
  * D4 / migration 014: per-user preferences. One JSON row per user, FK to
@@ -25,7 +30,7 @@ describe('migration 014 — user_preferences', () => {
     expect(fk[0].table).toBe('users');
     expect(fk[0].on_delete).toBe('CASCADE');
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('20');
+    expect(row?.value).toBe(LATEST_VERSION);
   });
 
   const seedUser = (id: string) =>

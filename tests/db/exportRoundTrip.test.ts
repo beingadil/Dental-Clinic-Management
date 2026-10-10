@@ -5,6 +5,11 @@ import { setDatabase } from '../../src/db/core';
 import { syncCollectionsToDb } from '../../src/db/syncCore';
 import { nextNumberStandalone, peekNumber } from '../../src/db/sequences';
 import { generateSqliteExport } from '../../src/services/sqliteStorage';
+import { MIGRATIONS } from '../../src/db/migrations';
+
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 
 /**
  * The `.sql` dump must be a *portable copy of the clinic's data*, not a summary
@@ -526,8 +531,8 @@ describe('sql dump round trip', () => {
     // dump had no schema_migrations rows at all: migration 1 would try to
     // CREATE TABLE cases on a database that already had it, and boot failed.
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
-    expect(booted.scalar("SELECT value FROM app_meta WHERE key = 'schema_version'")).toBe('20');
+    expect(result.skipped).toEqual(ALL_VERSIONS);
+    expect(booted.scalar("SELECT value FROM app_meta WHERE key = 'schema_version'")).toBe(LATEST_VERSION);
     booted.close();
   });
 

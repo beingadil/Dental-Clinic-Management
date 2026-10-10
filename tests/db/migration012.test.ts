@@ -3,6 +3,10 @@ import initSqlJs from 'sql.js';
 import { SqliteEngine } from '../../src/db/engine';
 import { MIGRATIONS } from '../../src/db/migrations';
 
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
+
 let engine: SqliteEngine;
 
 beforeAll(async () => {
@@ -93,6 +97,6 @@ describe('migration 012 — invoice journal backfill', () => {
   });
 
   it('keeps the migration ledger intact through 017', () => {
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(MIGRATIONS.map((m) => m.version)).toEqual(ALL_VERSIONS);
   });
 });

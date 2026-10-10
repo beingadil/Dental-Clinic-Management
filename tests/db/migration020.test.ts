@@ -3,6 +3,10 @@ import initSqlJs from 'sql.js';
 import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { MIGRATIONS } from '../../src/db/migrations';
+
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 import { formatDoctorName } from '../../src/utils/doctorName';
 
 /** A database at the pre-020 shape: v19 schema, prefixed doctor names. */
@@ -49,7 +53,7 @@ describe('migration 020 — stored doctor names become bare', () => {
   it('stamps schema_version 20', () => {
     expect(MIGRATIONS.map((m) => m.version)).toContain(20);
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('20');
+    expect(row?.value).toBe(LATEST_VERSION);
   });
 
   it('rewrites legacy rows in every table that stores a doctor name', async () => {

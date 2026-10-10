@@ -3,6 +3,10 @@ import initSqlJs from 'sql.js';
 import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { MIGRATIONS } from '../../src/db/migrations';
+
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 import { casesRepo, labsRepo } from '../../src/db/repos';
 
 /**
@@ -24,14 +28,14 @@ describe('migration 019 — cases.received_date', () => {
   });
 
   it('adds a nullable received_date column and stamps the current schema_version', () => {
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(MIGRATIONS.map((m) => m.version)).toEqual(ALL_VERSIONS);
     const cols = engine.all<{ name: string; notnull: number }>('PRAGMA table_info(cases)');
     const received = cols.find((c) => c.name === 'received_date');
     expect(received).toBeDefined();
     // NOT NULL would fail the migration on every pre-019 case row.
     expect(received?.notnull).toBe(0);
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('20');
+    expect(row?.value).toBe(LATEST_VERSION);
   });
 
   beforeEach(() => {

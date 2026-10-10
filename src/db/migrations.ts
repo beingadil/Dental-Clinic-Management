@@ -1114,6 +1114,21 @@ export const MIGRATION_020_BARE_DOCTOR_NAME: Migration = {
   ],
 };
 
+// ------------------------------------------------------------ 021 — catalog tooth requirement
+// Some products are not per-tooth work: retainers, healing posts, a denture
+// try-in. `needs_teeth = 0` lets the case wizard skip charting for them, and makes
+// every output omit teeth and shade (they are stored empty rather than faked).
+// DEFAULT 1 keeps every existing catalog row and every existing case meaning
+// exactly what it did before, so no backfill is required.
+export const MIGRATION_021_CATALOG_NEEDS_TEETH: Migration = {
+  version: 21,
+  name: 'catalog_needs_teeth',
+  statements: [
+    `ALTER TABLE case_types ADD COLUMN needs_teeth INTEGER NOT NULL DEFAULT 1`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '21')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1135,6 +1150,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_018_DOC_SEQUENCES,
   MIGRATION_019_CASE_RECEIVED_DATE,
   MIGRATION_020_BARE_DOCTOR_NAME,
+  MIGRATION_021_CATALOG_NEEDS_TEETH,
 ];
 
 /**

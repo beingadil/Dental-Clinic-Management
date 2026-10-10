@@ -4,6 +4,10 @@ import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { labsRepo, casesRepo, qcInspectionsRepo } from '../../src/db/repos';
 import { MIGRATIONS } from '../../src/db/migrations';
+
+/** The migration ledger must be 1..N with no gaps, for whatever N is now. */
+const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
+const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 import { qcDedupeKey } from '../../src/services/qcDomain';
 import { QcInspection, QcResult } from '../../src/types';
 
@@ -59,10 +63,10 @@ function seedCase(id: string, caseNumber: string): void {
 
 describe('QC persistence — schema', () => {
   it('ships every migration and records the current schema_version', () => {
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect(MIGRATIONS.map((m) => m.version)).toEqual(ALL_VERSIONS);
     expect(MIGRATIONS[7].name).toBe('purge_demo_users');
     const row = engine.get<{ value: string }>("SELECT value FROM app_meta WHERE key = 'schema_version'");
-    expect(row?.value).toBe('20');
+    expect(row?.value).toBe(LATEST_VERSION);
   });
 
   it('exposes cases.department as a nullable column so pre-v15 rows survive', () => {
