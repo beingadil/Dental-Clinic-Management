@@ -223,6 +223,49 @@
    * role. Each is a real collision found by census, not a guess.
    */
 
+  /*
+   * NOTE: `text-indigo-600` ink is re-pinned further down this file, under
+   * INK_ON_CARD (#8bb5ff, 8.5:1 on the dark page surface). It is NOT repeated
+   * here: `--color-indigo-600` is deliberately held as the fill under white ink
+   * for every primary button, and that single utility wears both hats.
+   */
+
+   /*
+   * Kanban case cards. The operator's branding colours reach the card as the
+   * inline custom property `--kanban-card-bg` (a LIGHT-theme value chosen
+   * against a white board). Consuming it directly via `background-color:
+   * var(--kanban-card-bg)` in an inline style would be unreachable from here,
+   * because an inline declaration outranks any class rule — which is exactly
+   * the bug: the card stayed #ffffff while `text-slate-900` resolved to
+   * #e9eff7, light-on-white at a measured 1.16:1.
+   *
+   * So these rules own `background-color` and deliberately IGNORE the custom
+   * property in dark. The board surface is slate-100 (#111a2b); a card sits a
+   * step above it so it reads as a card. The full-warning variant keeps the
+   * rose tint's identity as a dark wash rather than dropping the signal — the
+   * accent border and ring carry most of the urgency, so the fill only has to
+   * whisper it. Selection is indigo-washed for the same reason.
+   */
+  .dark .kanban-case-card {
+    background-color: #161f2f;
+  }
+  .dark .kanban-case-card[data-warn='full'] {
+    background-color: #2f1620;
+  }
+  .dark .kanban-case-card[data-selected='true'] {
+    background-color: #1b2549;
+  }
+
+  /* The branding preview wears the identical contract, for the same reason: it
+     is the operator's check that a chosen colour reads correctly, so a preview
+     that kept its light hex in dark mode would be actively misleading. */
+  .dark .branding-preview-card {
+    background-color: #161f2f;
+  }
+  .dark .branding-preview-card[data-preview-warn='full'] {
+    background-color: #2f1620;
+  }
+
   /* `bg-white` is a card/popover surface (309 uses) but `text-white` is ink
      on a saturated fill (223 uses). The token flip covers the former; ink has
      to be restored here, or every indigo button loses its label. */

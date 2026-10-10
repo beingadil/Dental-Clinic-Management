@@ -797,7 +797,33 @@ export const CaseListView: React.FC = () => {
 
                       const colorTheme = brandingSettings?.warningHighlightColor || 'rose';
                       const styleMode = brandingSettings?.warningHighlightStyle || 'border';
-                      const customCardBg = brandingSettings?.cardBgColor || '#ffffff';
+
+                      /*
+                       * The operator's branding colours are LIGHT-theme values
+                       * chosen against a white board. Painting them as an
+                       * inline `backgroundColor` made them unreachable by the
+                       * `.dark` token remap, so the card stayed #ffffff while
+                       * `text-slate-900` resolved to #e9eff7 — light-on-white at
+                       * a measured 1.16:1, i.e. an unreadable card.
+                       *
+                       * The inline style now sets a custom property rather than
+                       * `backgroundColor` directly, because an inline custom
+                       * property that the element ALSO consumes would beat the
+                       * `.dark` value by specificity. Writing the light value
+                       * into `--kanban-card-bg` and letting a
+                       * `.dark .kanban-case-card` rule repaint
+                       * `background-color` keeps one owner of the background
+                       * per theme.
+                       */
+                      const warningTint = (
+                        colorTheme === 'rose' ? '#fff1f2'
+                        : colorTheme === 'amber' ? '#fffbeb'
+                        : colorTheme === 'purple' ? '#f5f3ff'
+                        : colorTheme === 'indigo' ? '#eef2ff'
+                        : colorTheme === 'emerald' ? '#ecfdf5'
+                        : '#fef2f2' // red
+                      );
+                      const fullWarn = isWarning && styleMode === 'full';
 
                       // Dynamic warning border & shadow
                       let warningClasses = '';
@@ -824,13 +850,15 @@ export const CaseListView: React.FC = () => {
                           onDragStart={(e) => handleDragStart(e, c.id)}
                           onClick={() => setViewedCaseId(c.id)}
                           style={{
-                            backgroundColor: (isWarning && styleMode === 'full')
-                              ? (colorTheme === 'rose' ? '#fff1f2' : colorTheme === 'amber' ? '#fffbeb' : '#fef2f2')
-                              : customCardBg
-                          }}
-                          className={`rounded-2xl p-4 border shadow-xs hover:shadow-md cursor-grab active:cursor-grabbing transition-all relative group ${
+                            '--kanban-card-bg': fullWarn
+                              ? warningTint
+                              : (brandingSettings?.cardBgColor || '#ffffff'),
+                          } as React.CSSProperties}
+                          data-warn={fullWarn ? 'full' : undefined}
+                          data-selected={isSelected ? 'true' : undefined}
+                          className={`kanban-case-card rounded-2xl p-4 border shadow-xs hover:shadow-md cursor-grab active:cursor-grabbing transition-all relative group ${
                             isSelected
-                              ? 'border-indigo-500 ring-2 ring-indigo-500/30 bg-indigo-50/20'
+                              ? 'border-indigo-500 ring-2 ring-indigo-500/30'
                               : isWarning
                               ? warningClasses
                               : 'border-slate-200'

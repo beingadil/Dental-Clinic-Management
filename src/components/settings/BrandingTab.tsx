@@ -560,7 +560,24 @@ export const BrandingTab: React.FC = () => {
 
             {/* Warning Highlighted Card Preview */}
             <div
-              className={`rounded-2xl p-3.5 border shadow-md space-y-2 relative transition-all ${
+              /*
+               * Same contract as the real kanban card in CaseListView: these
+               * branding values are LIGHT-theme colours chosen against a white
+               * board, so they arrive as a custom property and a class rule owns
+               * `background-color`. Painting them inline left the preview on
+               * #ffffff while `text-slate-900` remapped to a light ink — the
+               * preview lied about dark mode. Audited by
+               * scripts/audit-inline-bg.mjs.
+               */
+              style={{
+                '--preview-card-bg': brandingForm.warningHighlightStyle === 'full'
+                  ? ((brandingForm.warningHighlightColor || 'rose') === 'rose' ? '#fff1f2' : '#fef2f2')
+                  : (brandingForm.cardBgColor || '#ffffff'),
+              } as React.CSSProperties}
+              data-preview-warn={
+                brandingForm.warningHighlightStyle === 'full' ? 'full' : undefined
+              }
+              className={`branding-preview-card rounded-2xl p-3.5 border shadow-md space-y-2 relative transition-all ${
                 (brandingForm.warningHighlightColor || 'rose') === 'rose'
                   ? 'border-rose-500 ring-2 ring-rose-500/40'
                   : (brandingForm.warningHighlightColor) === 'red'
@@ -573,11 +590,6 @@ export const BrandingTab: React.FC = () => {
                   ? 'border-indigo-500 ring-2 ring-indigo-500/40'
                   : 'border-emerald-500 ring-2 ring-emerald-500/40'
               }`}
-              style={{
-                backgroundColor: brandingForm.warningHighlightStyle === 'full'
-                  ? ((brandingForm.warningHighlightColor || 'rose') === 'rose' ? '#fff1f2' : '#fef2f2')
-                  : (brandingForm.cardBgColor || '#ffffff')
-              }}
             >
               {brandingForm.warningHighlightStyle === 'solid' && (
                 <div className="bg-rose-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-t-xl -mx-3.5 -mt-3.5 mb-2 flex items-center justify-between">
