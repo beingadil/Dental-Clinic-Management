@@ -1,7 +1,7 @@
 {
   "name": "dental-solutions",
   "private": true,
-  "version": "2.20.0",
+  "version": "2.21.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/verify-binaries.mjs && npm run role:check && vite --port=3000 --host=0.0.0.0",
