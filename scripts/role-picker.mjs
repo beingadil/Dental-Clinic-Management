@@ -131,6 +131,50 @@ const L = {
   blue50: lightHex('blue-50'),
   blue100: lightHex('blue-100'),
 }
+/*
+ * Every surface above must resolve to a hex, or `ratio()` dereferences null
+ * and the whole run dies with a stack trace instead of a diagnosis.
+ *
+ * This is NOT the same as the "no tokens at all" guard above. The project's own
+ * `--color-ink-*` / `--color-ds-*` primitives live in src/index.css and
+ * dashboard-tokens.css, which are in the repository — so a clone with no
+ * node_modules still reports a NON-empty palette and sails past that guard,
+ * while every Tailwind step it actually grades against (`slate-50`, `rose-50`,
+ * …) is missing. The crash that produced: `parseHex(null)` inside `ratio`,
+ * reached from `walk`, with the message
+ *
+ *   TypeError: Cannot read properties of null (reading 'replace')
+ *
+ * which says nothing about the actual cause. Since `role:check` now runs
+ * inside `dev` and `build`, that is a stack trace on the first command a new
+ * developer types.
+ *
+ * So check the tokens this script DEPENDS ON, not the palette's size, and exit
+ * 2 — the same "cannot run here" code the guard script above already uses.
+ *
+ * The names are listed here rather than derived from the `L` keys, because the
+ * key names (`slate50`) are not the token names (`--color-slate-50`) and
+ * reconstructing one from the other is how a diagnostic ends up quoting
+ * tokens that do not exist.
+ */
+{
+  const REQUIRED = [
+    'white', 'slate-50', 'slate-100',
+    'rose-50', 'rose-100',
+    'emerald-50', 'emerald-100',
+    'amber-50', 'amber-100',
+    'blue-50', 'blue-100',
+  ]
+  const missing = REQUIRED.filter((t) => !lightHex(t))
+  if (missing.length) {
+    console.error(
+      `The Tailwind palette is incomplete — ${missing.length} surface token(s) the solver grades against are absent:\n` +
+        missing.map((t) => `  --color-${t}`).join('\n') +
+        '\n\nThey come from node_modules/tailwindcss/theme.css. Run `npm ci`.',
+    )
+    process.exit(2)
+  }
+}
 /* The dark counterparts, verbatim from src/theme/dark.css. An ink token is
    only safe if it clears AA on BOTH lists — one is not enough. */
 const D = {
