@@ -19,7 +19,6 @@ import {
   AlertTriangle, 
   Clock, 
   Calendar,
-  X,
   LayoutGrid,
   Table as TableIcon,
   GripVertical,
@@ -1250,13 +1249,10 @@ export const CaseListView: React.FC = () => {
       {templateLibraryOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-3xl w-full p-6 border border-slate-200 shadow-2xl relative">
-            <button
-              onClick={() => setTemplateLibraryOpen(false)}
-              className="absolute top-4 right-4 text-ink-muted hover:text-slate-700 p-1"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {/* The library renders its own close control, so this overlay no
+                longer draws a second one in the corner. */}
             <CaseTemplateModal
+              onClose={() => setTemplateLibraryOpen(false)}
               onApplyTemplate={(tmpl) => {
                 setAppliedTemplate(tmpl);
                 setTemplateLibraryOpen(false);

@@ -19,6 +19,26 @@ project adheres to [Semantic Versioning](https://semver.org/).
   of advertising an archive it no longer owns.
 
 ### Fixed
+- **The journal inspector now reports the variance it actually has.**
+  `JournalEntryModal` rendered a hardcoded "Variance: PKR 0.00" banner, so an
+  unbalanced posting was presented to the auditor as mathematically verified.
+  The banner now computes debit and credit totals from the entry's own lines,
+  states the real difference and its direction, and turns red when the entry
+  does not balance — gated by the same `assertJournalBalanced` rule
+  `postJournal` accepts, so the screen cannot disagree with the ledger.
+- **A batch print now confirms what it logged.** `BulkPrintModal` kept its
+  save-success state in a discarded boolean that nothing rendered, so after
+  printing a batch there was no sign the vouchers had been recorded. The
+  footer now announces "N job slips/invoices logged to billing history" for a
+  few seconds beside the print controls.
+- **The template library has a close control again.** `CaseTemplateModal`
+  declared an `onClose` prop it never read; the only way to dismiss it was a
+  separate ✕ drawn by `CaseListView` outside the dialog. The modal owns its
+  own single close button now, like every other dialog in the app.
+- **A lab address's country can be edited.** `LabContactsManager` held
+  `country` as a setter-less constant with no input, so every saved address
+  silently stamped the same value with no way to correct it. Country is a
+  real, validated field now.
 - **A batch print that outgrew one page no longer slices rows in half.**
   `BatchInvoicePrintModal` emitted the whole selection as a single sheet, so
   past about a dozen invoices the table ran past the bottom of the paper and the

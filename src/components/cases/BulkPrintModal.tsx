@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DentalCase, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { Printer, X, Landmark, Download } from 'lucide-react';
+import { Printer, X, Landmark, Download, CheckCircle2 } from 'lucide-react';
 import { JobSlipCard } from '../print/JobSlipCard';
 import { chunkSlipsForA4 } from '../../lib/slipPagination';
 import { SavePdfButton } from '../print/SavePdfButton';
@@ -71,13 +71,24 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
 }) => {
   const { invoices, saveVoucherToSystem, brandingSettings } = useApp();
   const [printType, setPrintType] = useState<'slips' | 'invoices'>(initialPrintType);
-  const [, setSavedSuccess] = useState(false);
+  // How many vouchers the last print logged. This used to be a boolean whose
+  // value was discarded (`const [, setSavedSuccess]`) and which nothing ever
+  // rendered, so an operator printing a batch got no confirmation that the run
+  // had been recorded in billing history. Carrying the count is what makes the
+  // confirmation worth showing; 0 simply means "nothing to announce".
+  const [savedCount, setSavedCount] = useState(0);
   const [slipStyle] = useState<PrintSettings['jobSlipStyle']>(() => loadPrintSettings().jobSlipStyle);
   // Preview zoom: 'fit' scales sheets to the modal width (default); 0.75 / 1
   // are the operator's explicit choices for reading fine print on screen.
   const [zoom, setZoom] = useState<'fit' | 0.75 | 1>('fit');
   const sheetWrapRef = useSheetFit(zoom);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  /** Announce a completed save for a few seconds, then clear it. */
+  const announceSaved = (count: number) => {
+    setSavedCount(count);
+    setTimeout(() => setSavedCount(0), 4000);
+  };
 
   /**
    * The ONE print entry point (footer button). Renders exactly the active
@@ -107,8 +118,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
           notes: `Batch Workstation Card - FDI Teeth: ${c.selected_teeth.join(', ')}`
         });
       });
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 4000);
+      announceSaved(selectedCases.length);
       if (slipStyle === 'compact') {
         doSlipPrint();
       } else {
@@ -130,8 +140,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
           });
         }
       });
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 4000);
+      announceSaved(matchedInvoices.filter((m) => m.invoice).length);
       // The modal root is .print-area: printStyles.css reveals exactly the
       // modal contents (invoices as previewed) and hides all app chrome.
       setTimeout(() => window.print(), 60);
@@ -453,21 +462,36 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
         </div>
 
         {/* Modal Footer (Hidden on print) */}
-        <div className="flex items-center justify-end gap-3 no-print pt-4 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={() => handlePrint()}
-            className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
-          >
-            <Printer className="w-4 h-4" /> Print All Batch Documents
-          </button>
+        <div className="flex items-center justify-between gap-3 no-print pt-4 border-t border-slate-100">
+          {/* The confirmation lives outside the print area, because printing
+              fires the moment this runs — the dialog covers the screen, and
+              this is what the operator reads on coming back to it. */}
+          <div className="min-w-0" role="status" aria-live="polite">
+            {savedCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-ink-success" />
+                {`${savedCount} ${printType === 'slips' ? 'job slip' : 'invoice'}${
+                  savedCount === 1 ? '' : 's'
+                } logged to billing history`}
+              </span>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePrint()}
+              className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Printer className="w-4 h-4" /> Print All Batch Documents
+            </button>
+          </div>
         </div>
       </div>
     </div>

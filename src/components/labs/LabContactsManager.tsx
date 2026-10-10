@@ -38,7 +38,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
   const [aCity, setACity] = useState('Islamabad');
   const [aState, setAState] = useState('ICT');
   const [aPostal, setAPostal] = useState('44000');
-  const [aCountry] = useState('Pakistan');
+  const [aCountry, setACountry] = useState('Pakistan');
   const [aDefault, setADefault] = useState(false);
   const [addressErrs, setAddressErrs] = useState<Record<string, string>>({});
 
@@ -65,6 +65,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
     if (!aCity.trim()) errs.city = 'City is required';
     if (!aState.trim()) errs.state = 'State is required';
     if (!aPostal.trim()) errs.postal_code = 'Postal code is required';
+    if (!aCountry.trim()) errs.country = 'Country is required';
     setAddressErrs(errs);
     return Object.keys(errs).length === 0;
   };
@@ -271,7 +272,10 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            {/* Country used to be a state constant with no setter and no
+                input at all, so every address silently saved the same value
+                with no way to correct it. It is an operator field now. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <input
                 type="text"
                 value={aCity}
@@ -293,7 +297,18 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
                 placeholder="Postal Code"
                 className="p-2 text-xs bg-white border border-slate-200 rounded-lg"
               />
+              <input
+                type="text"
+                value={aCountry}
+                onChange={(e) => setACountry(e.target.value)}
+                placeholder="Country"
+                aria-label="Country"
+                className="p-2 text-xs bg-white border border-slate-200 rounded-lg"
+              />
             </div>
+            {addressErrs.country && (
+              <p className="text-[10px] text-rose-500 mt-0.5">{addressErrs.country}</p>
+            )}
 
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
               <input

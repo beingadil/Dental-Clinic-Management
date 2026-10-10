@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CaseTemplate } from '../../types';
-import { Bookmark, Plus, Trash2, Check, Search, ShieldAlert } from 'lucide-react';
+import { Bookmark, Plus, Trash2, Check, Search, ShieldAlert, X } from 'lucide-react';
 
 interface CaseTemplateModalProps {
   onApplyTemplate?: (template: CaseTemplate) => void;
   onClose?: () => void;
 }
 
-export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTemplate }) => {
+export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTemplate, onClose }) => {
   const { templates, caseTypes, deleteTemplate, saveAsTemplate } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -88,13 +88,30 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
             Standard preset configurations for quick case registration
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{showCreateForm ? 'Cancel' : 'New Preset Template'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{showCreateForm ? 'Cancel' : 'New Preset Template'}</span>
+          </button>
+          {/* This library was the one dialog dismissed from OUTSIDE itself:
+              CaseListView drew the only close control, and the `onClose`
+              declared here was never read. It owns its own dismissal now, the
+              way every other dialog in the app does, so there is exactly one
+              close control and it cannot silently go missing again. */}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close template library"
+              className="p-1.5 text-ink-muted hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search Bar */}

@@ -1,8 +1,8 @@
 import React from 'react';
 import { JournalEntry } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { formatPKR } from '../../services/financeDomain';
-import { Scale, FileText, Calendar, Building2, User, ShieldCheck } from 'lucide-react';
+import { formatPKR, assertJournalBalanced } from '../../services/financeDomain';
+import { Scale, FileText, Calendar, Building2, User, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Modal } from '../common/ui';
 
 interface JournalEntryModalProps {
@@ -28,6 +28,15 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
   const totalDebit = journal.lines.reduce((sum, l) => sum + (l.debit || 0), 0);
   const totalCredit = journal.lines.reduce((sum, l) => sum + (l.credit || 0), 0);
+
+  // The banner must report what the lines actually say. A posting CAN be
+  // wrong, and a hardcoded "Variance: PKR 0.00" beside an unbalanced entry is
+  // the output telling an auditor the books are sound when they are not.
+  //
+  // The rule is financeDomain's own — the same one postJournal gates on — so
+  // this screen cannot disagree with what the ledger was willing to accept.
+  const balanced = assertJournalBalanced(journal.lines);
+  const variance = totalDebit - totalCredit;
 
   return (
     <Modal
@@ -141,7 +150,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               <tfoot>
                 <tr className="bg-slate-50 border-t-2 border-slate-200 font-mono font-semibold text-slate-900">
                   <td colSpan={2} className="px-3.5 py-2.5 text-right font-sans text-xs">
-                    Total Balanced Entry:
+                    Entry Totals:
                   </td>
                   <td className="px-3.5 py-2.5 text-right text-indigo-700 font-bold">
                     {formatPKR(totalDebit).replace('PKR ', '')}
@@ -154,13 +163,37 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             </table>
           </div>
 
-          {/* Balance status banner */}
-          <div className="mt-4 flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+          {/* Balance status banner — states the real difference, in whichever
+              direction it falls, instead of asserting a balance it never
+              checked. An unbalanced posting is a defect an auditor has to be
+              able to see, so it also changes tone, not just the number. */}
+          <div
+            className={`mt-4 flex items-center justify-between gap-3 px-3 py-2 rounded-lg border text-xs ${
+              balanced
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}
+          >
             <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-ink-success" />
-              <span>Double-entry mathematical verification: <strong>Debits equal Credits</strong></span>
+              {balanced ? (
+                <ShieldCheck className="w-4 h-4 shrink-0 text-ink-success" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0 text-ink-danger" />
+              )}
+              <span>
+                Double-entry mathematical verification:{' '}
+                <strong>
+                  {balanced
+                    ? 'Debits equal Credits'
+                    : `Entry does not balance — ${
+                        variance > 0 ? 'debits exceed credits' : 'credits exceed debits'
+                      }`}
+                </strong>
+              </span>
             </div>
-            <span className="font-mono font-semibold">Variance: PKR 0.00</span>
+            <span className="font-mono font-semibold shrink-0">
+              Variance: {formatPKR(Math.abs(variance))}
+            </span>
           </div>
         </div>
 
