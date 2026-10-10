@@ -4,8 +4,9 @@ import viteConfig from './vite.config';
 /**
  * Wall-clock budget suite.
  *
- * `tests/db/syncScale.test.ts` and `tests/db/autosaveScale.test.ts` assert that
- * a 10k-case sync and one autosave fit inside a main-thread budget. Both
+ * `tests/db/syncScale.test.ts`, `tests/db/autosaveScale.test.ts` and
+ * `tests/db/syncScale100k.test.ts` assert that a 10k-case sync, one autosave,
+ * and a 100k-case/100k-invoice run fit inside their budgets. All
  * budgets are wall-clock, so they measure the machine, not just the code: run
  * alongside the other 84 files they share the box with 86 Vitest workers and
  * report ~2x their true cost — a genuine 1233 ms sync reads as 2631 ms and a
@@ -30,15 +31,18 @@ export default defineConfig(async (env) => {
       include: [
         'tests/db/syncScale.test.ts',
         'tests/db/autosaveScale.test.ts',
+        'tests/db/syncScale100k.test.ts',
       ],
       // One worker, one file at a time: the whole point is an uncontended CPU.
       pool: 'forks',
       minWorkers: 1,
       maxWorkers: 1,
       fileParallelism: false,
-      // These budgets are the slowest thing in the suite by design.
-      testTimeout: 120_000,
-      hookTimeout: 120_000,
+      // These budgets are the slowest thing in the suite by design. The 100k
+      // run builds 200k objects and ships a 123 MB base64 payload, so give it
+      // room well past its own 300 s per-test timeout.
+      testTimeout: 300_000,
+      hookTimeout: 300_000,
     },
   });
 });

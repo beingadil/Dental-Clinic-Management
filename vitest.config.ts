@@ -31,7 +31,12 @@ export default defineConfig(async (env) => {
       // Wall-clock budget tests. They need an uncontended CPU or they measure
       // the other 84 files competing for it; vitest.scale.config.ts runs them
       // alone and `npm test` chains both configs.
-      exclude: ['**/node_modules/**', 'tests/db/syncScale.test.ts', 'tests/db/autosaveScale.test.ts'],
+      exclude: [
+        '**/node_modules/**',
+        'tests/db/syncScale.test.ts',
+        'tests/db/autosaveScale.test.ts',
+        'tests/db/syncScale100k.test.ts',
+      ],
       // Persist transforms between runs. ~30% of the suite was re-transforming
       // identical modules; this reuses them across processes.
       fsModuleCache: true,

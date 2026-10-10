@@ -1,5 +1,7 @@
 import { getDatabase, isDatabaseReady } from './core';
 import { getFailureSummary, recordFailure, recordSuccess } from './failureLog';
+import { encodeAuditState } from './auditState';
+import { toStoredNeedsTeeth } from '../utils/catalogToothRequirement';
 
 /**
  * Collection syncer: persists the AppContext collections into SQLite inside
@@ -229,11 +231,20 @@ function syncNow(c: SyncCollections): void {
     // ── catalog ──
     tx.run('DELETE FROM case_types');
     for (const ct of c.caseTypes) {
+      // Every column must be listed here. This block DELETEs all of case_types and
+      // rebuilds it from React state, so any column omitted here is not merely left
+      // stale — it is destroyed on every autosave and silently lost on reload.
+      // Keep in step with caseTypesRepo.insert in repos.ts.
       tx.run(
-        `INSERT INTO case_types (id, name, base_price, category, lead_time_days, warranty_months, description, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO case_types (id, name, base_price, category, lead_time_days, warranty_months, description,
+                                 material_system, unit_basis, shade_guide, indications, contraindications,
+                                 needs_teeth, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [ct.id, ct.name, ct.base_price ?? 0, ct.category ?? null, ct.lead_time_days ?? null,
-         ct.warranty_months ?? null, ct.description ?? null, ct.created_at ?? now, now]
+         ct.warranty_months ?? null, ct.description ?? null,
+         ct.material_system ?? null, ct.unit_basis ?? null, ct.shade_guide ?? null,
+         ct.indications ?? null, ct.contraindications ?? null,
+         toStoredNeedsTeeth(ct.needs_teeth), ct.created_at ?? now, now]
       );
     }
     // Catalog children — written here, once every case_types row exists in this
@@ -260,14 +271,19 @@ function syncNow(c: SyncCollections): void {
       if (!liveLabIds.has(cse.lab_id)) continue; // cases.lab_id FK -> labs
       const caseNumber = uniqueNumber(String(cse.case_number || 'DS-LEGACY'), usedCaseNumbers);
       tx.run(
+        // `department` was added to the schema in migration 015 and is written
+        // by casesRepo, but this rebuild omitted it: the bench-department panel
+        // grouped cases under "Unassigned" after one debounce window, with no
+        // error anywhere. Same trap as needs_teeth — omitted here means erased.
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
-                            selected_teeth, tooth_details, shade, material, delivery_date, received_date, priority, price, discount, final_price,
+                            selected_teeth, tooth_details, shade, material, department, delivery_date, received_date, priority, price, discount, final_price,
                             instructions, photo_url, status, archived_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [cse.id, caseNumber, cse.patient_name ?? null, cse.lab_id, cse.lab_name,
          cse.case_type_id ?? null, cse.case_type_name ?? null, cse.units_count ?? null, cse.doctor_name ?? '',
          JSON.stringify(cse.selected_teeth ?? []), cse.tooth_details ? JSON.stringify(cse.tooth_details) : null,
-         cse.shade ?? null, cse.material ?? null, cse.delivery_date, cse.received_date ?? null, cse.priority ?? 'normal',
+         cse.shade ?? null, cse.material ?? null, cse.department ?? null,
+         cse.delivery_date, cse.received_date ?? null, cse.priority ?? 'normal',
          cse.price ?? 0, cse.discount ?? 0, cse.final_price ?? 0, cse.instructions ?? null,
          cse.photo_url ?? null, cse.status ?? 'received', cse.archived_at ?? null, cse.created_at ?? now, cse.updated_at ?? now]
       );
@@ -298,8 +314,10 @@ function syncNow(c: SyncCollections): void {
         if (usedNoteIds.has(nid)) nid = genId('note');
         usedNoteIds.add(nid);
         tx.run(
-          `INSERT INTO case_notes (id, case_id, note_text, author, created_at) VALUES (?, ?, ?, ?, ?)`,
-          [nid, cse.id, n.note_text ?? '', n.author ?? 'System', n.created_at ?? now]
+          // updated_at carries the "edited" stamp set by editCaseNote; it was
+          // dropped here, so every edit looked freshly authored after a reload.
+          `INSERT INTO case_notes (id, case_id, note_text, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+          [nid, cse.id, n.note_text ?? '', n.author ?? 'System', n.created_at ?? now, n.updated_at ?? null]
         );
       }
       for (const a of c.caseAttachments[cse.id] || []) {
@@ -404,9 +422,18 @@ function syncNow(c: SyncCollections): void {
     // boot-time backfill to pick up.
     const knownJournalIds = new Set<string>((c.journalEntries || []).map((j: any) => j.id));
     const issuanceJournalByInvoice = new Map<string, string>();
+    // Same healer for payments: a payment whose journal was dropped but whose id
+    // survived re-links to its own payment_received journal rather than being
+    // left dangling.
+    const paymentJournalByPayment = new Map<string, string>();
     for (const j of c.journalEntries || []) {
-      if (j.event_type === 'invoice_issued' && j.reference_id && !issuanceJournalByInvoice.has(j.reference_id)) {
-        issuanceJournalByInvoice.set(j.reference_id, j.id);
+      if (j.reference_id) {
+        if (j.event_type === 'invoice_issued' && !issuanceJournalByInvoice.has(j.reference_id)) {
+          issuanceJournalByInvoice.set(j.reference_id, j.id);
+        }
+        if (j.event_type === 'payment_received' && !paymentJournalByPayment.has(j.reference_id)) {
+          paymentJournalByPayment.set(j.reference_id, j.id);
+        }
       }
     }
 
@@ -436,10 +463,13 @@ function syncNow(c: SyncCollections): void {
         usedPaymentIds.add(pid);
         const payNum = p.payment_number ? uniqueNumber(String(p.payment_number), usedPaymentNumbers) : null;
         tx.run(
+          // journal_id is stamped on every payment by useTransactionCommands.
+          // Omitting it here unlinked each payment from its double-entry record
+          // on the very next autosave, so the ledger lost the receipt side.
           `INSERT INTO payments (id, payment_number, receipt_number, invoice_id, invoice_number, case_id, case_number, lab_id, lab_name,
                                  amount, payment_method, payment_date, reference_number, notes, recorded_by, payment_type, status,
-                                 unapplied_amount, advance_payment_id, is_reversed, reversal_reason, reversed_at, reversed_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 unapplied_amount, advance_payment_id, is_reversed, reversal_reason, reversed_at, reversed_by, journal_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [pid, payNum, p.receipt_number || null, inv.id, inv.invoice_number,
            p.case_id || inv.case_id || null, p.case_number || inv.case_number || null,
            p.lab_id || inv.lab_id, p.lab_name || inv.lab_name,
@@ -451,6 +481,7 @@ function syncNow(c: SyncCollections): void {
            // as live money after one debounce window (audit F6).
            p.unapplied_amount ?? 0, p.advance_payment_id ?? null,
            p.is_reversed ? 1 : 0, p.reversal_reason ?? null, p.reversed_at ?? null, p.reversed_by ?? null,
+           p.journal_id && knownJournalIds.has(p.journal_id) ? p.journal_id : (paymentJournalByPayment.get(pid) ?? null),
            p.created_at || p.payment_date || now]
         );
         for (const a of p.attachments || []) {
@@ -591,8 +622,8 @@ function syncNow(c: SyncCollections): void {
         `INSERT INTO audit_events (id, timestamp, actor, action, entity_type, entity_id, entity_ref, reason, old_state, new_state, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [a.id, a.timestamp, a.actor, a.action, a.entity_type, a.entity_id, a.entity_ref || null,
-         a.reason || null, a.old_state ? JSON.stringify(a.old_state) : null,
-         a.new_state ? JSON.stringify(a.new_state) : null, a.notes || null]
+         a.reason || null, encodeAuditState(a.old_state),
+         encodeAuditState(a.new_state), a.notes || null]
       );
     }
   });

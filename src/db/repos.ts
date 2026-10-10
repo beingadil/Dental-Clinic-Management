@@ -3,6 +3,7 @@ import { SqliteEngine, TransactionApi, DbError } from './engine';
 import { QcInspection } from '../types';
 import { stripDoctorHonorific } from '../utils/doctorName';
 import { fromStoredNeedsTeeth, toStoredNeedsTeeth } from '../utils/catalogToothRequirement';
+import { decodeAuditState, encodeAuditState } from './auditState';
 
 /**
  * Typed repository layer. Each repository maps an app domain type to SQLite
@@ -1635,6 +1636,7 @@ export const vouchersRepo = {
 
 // ─────────────────────────────────────────────────────────── audit
 
+/** A row exactly as SQLite stores it — `old_state` / `new_state` are TEXT. */
 export interface AuditRow {
   id: string;
   timestamp: string;
@@ -1649,11 +1651,24 @@ export interface AuditRow {
   notes?: string | null;
 }
 
+/**
+ * A row as the app consumes it: the state columns decoded back to values, so
+ * `old_state` is the object the caller logged rather than JSON text. Mirrors
+ * AuditEvent, which is what React state and AuditLogView expect.
+ */
+export interface AuditEntry extends Omit<AuditRow, 'old_state' | 'new_state' | 'entity_ref'> {
+  entity_ref?: string;
+  old_state?: unknown;
+  new_state?: unknown;
+}
+
 export const auditRepo = {
-  all(): any[] {
+  all(): AuditEntry[] {
     return requireEngine().all<AuditRow>('SELECT * FROM audit_events ORDER BY timestamp DESC').map((r) => ({
       ...r,
       entity_ref: r.entity_ref ?? undefined,
+      old_state: decodeAuditState(r.old_state),
+      new_state: decodeAuditState(r.new_state),
     }));
   },
   log(event: {
@@ -1667,21 +1682,32 @@ export const auditRepo = {
     old_state?: any;
     new_state?: any;
     timestamp?: string;
-  }): AuditRow {
+  }): AuditEntry {
     const id = genId('aud');
     requireEngine().run(
       `INSERT INTO audit_events (id, timestamp, actor, action, entity_type, entity_id, entity_ref, reason, old_state, new_state, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, event.timestamp ?? now(), event.actor ?? 'System', event.action, event.entity_type, event.entity_id,
        event.entity_ref ?? null, event.reason ?? null,
-       event.old_state ? JSON.stringify(event.old_state) : null,
-       event.new_state ? JSON.stringify(event.new_state) : null,
+       encodeAuditState(event.old_state),
+       encodeAuditState(event.new_state),
        event.notes ?? null]
     );
-    return requireEngine().get<AuditRow>('SELECT * FROM audit_events WHERE id = ?', [id])!;
+    const row = requireEngine().get<AuditRow>('SELECT * FROM audit_events WHERE id = ?', [id])!;
+    return {
+      ...row,
+      entity_ref: row.entity_ref ?? undefined,
+      old_state: decodeAuditState(row.old_state),
+      new_state: decodeAuditState(row.new_state),
+    };
   },
-  forEntity(entityId: string): any[] {
-    return requireEngine().all<AuditRow>('SELECT * FROM audit_events WHERE entity_id = ? ORDER BY timestamp DESC', [entityId]);
+  forEntity(entityId: string): AuditEntry[] {
+    return requireEngine().all<AuditRow>('SELECT * FROM audit_events WHERE entity_id = ? ORDER BY timestamp DESC', [entityId]).map((r) => ({
+      ...r,
+      entity_ref: r.entity_ref ?? undefined,
+      old_state: decodeAuditState(r.old_state),
+      new_state: decodeAuditState(r.new_state),
+    }));
   },
   clear(): void {
     requireEngine().run('DELETE FROM audit_events');
