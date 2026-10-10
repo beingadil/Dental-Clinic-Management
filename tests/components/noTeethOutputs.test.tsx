@@ -123,17 +123,37 @@ describe('A case with no teeth (a product that is not per-tooth work)', () => {
     expect(screen.getByText('Delivery Due')).toBeTruthy();
   });
 
-  it('omits the Teeth and Shade rows from the ledger / invoice case block', () => {
+  it('reduces the ledger / invoice case block to who and what', () => {
     const labels = caseDetailLines(toothlessCase).map((l) => l.label);
-    expect(labels).not.toContain('Teeth');
-    expect(labels).not.toContain('Shade');
-    // Identity and dates still resolve, so the money line stays reconcilable.
-    expect(labels).toEqual([
-      'Patient',
-      'Procedure',
-      'Received Date',
-      'Delivery Date',
-    ]);
+    // Nothing was charted, so there is no procedure detail to spell out, and
+    // the two bench dates describe a job rather than this money line. What is
+    // left is the identity of the row: who it was for and what the product is.
+    expect(labels).toEqual(['Patient', 'Procedure']);
+  });
+
+  it('prints only who and what on the batch statement row', () => {
+    render(
+      <PrintDocument
+        kind="statement"
+        sections={DEFAULT_ENABLED.statement}
+        branding={branding}
+        invoices={[invoice]}
+        cases={[toothlessCase]}
+        labName="Cases Clinic"
+        period={{ from: '2026-10-01', to: '2026-10-31' }}
+        page={{ page: 1, pageCount: 1 }}
+        balanceInvoices={[invoice]}
+        showBalance
+      />
+    );
+    // The row still identifies the job...
+    expect(screen.getByText('Ali Raza')).toBeTruthy();
+    expect(screen.getByText('Retainer')).toBeTruthy();
+    // ...and carries none of the four rows a charted case would.
+    expect(screen.queryByText('Teeth')).toBeNull();
+    expect(screen.queryByText('Shade')).toBeNull();
+    expect(screen.queryByText('Received Date')).toBeNull();
+    expect(screen.queryByText('Delivery Date')).toBeNull();
   });
 
   it('prints no teeth table, no odontogram and no shade label on the job slip', () => {

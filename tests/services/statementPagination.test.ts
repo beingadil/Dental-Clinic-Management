@@ -19,7 +19,16 @@ const invoice = (id: string, over: Partial<Invoice> = {}): Invoice =>
     ...over,
   }) as Invoice;
 
-/** A case whose detail block renders the full five-pair grid. */
+/**
+ * A case whose detail block renders the full six-pair grid.
+ *
+ * The field is `selected_teeth`, the ARRAY the formatter reads. This fixture
+ * used to carry a `teeth` STRING that no reader looks at, which made the
+ * "detail-heavy" row only as tall as a case with no charting at all — and
+ * charting becomes meaningful the moment `caseDetailLines` shortens the
+ * uncharted case to two rows. Chart it for real so this row stays the tall one
+ * the paging assertions below are about.
+ */
 const detailedCase = (id: string): DentalCase =>
   ({
     id,
@@ -27,7 +36,7 @@ const detailedCase = (id: string): DentalCase =>
     patient_name: 'Jane Doe',
     case_type_name: 'Zirconia Bridge',
     shade: 'A2',
-    teeth: '#21, #21',
+    selected_teeth: [21, 11],
     received_date: 'Oct 5, 2026',
     delivery_date: 'Oct 15, 2026',
   }) as unknown as DentalCase;

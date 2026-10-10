@@ -8,12 +8,16 @@
  * day it is promised back. Anything else about the job (doctor, material,
  * units) belongs to the case record, not the money line.
  *
+ * A case with no charting is a product that is not per-tooth work, and it has
+ * no procedure-specific detail to spell out — see `caseDetailLines` below.
+ *
  * One formatter, every consumer (general ledger screen, its CSV, its PDF, the
  * clinic statement, and the invoice drawer's case card) so the on-screen
  * statement, the printed one and the invoice can never drift apart.
  */
 
 import { formatDate, receivedDateFor } from '../utils/dateUtils';
+import { caseHasChartedTeeth } from '../utils/catalogToothRequirement';
 import type { DentalCase, Invoice, LedgerEntry } from '../types';
 
 export interface CaseDetailLine {
@@ -66,9 +70,24 @@ export const formatDeliveryDate = (c: DentalCase): string => {
  * case actually is.
  */
 export const caseDetailLines = (c: DentalCase): CaseDetailLine[] => {
-  const lines: CaseDetailLine[] = [
+  const identity: CaseDetailLine[] = [
     { label: 'Patient', value: c.patient_name || '' },
     { label: 'Procedure', value: c.case_type_name || c.case_type || '' },
+  ];
+
+  // Work that is not per-tooth (a retainer, an aligner, a healing post) commits
+  // no charting, and none of the four rows below is part of its identity: teeth
+  // and shade were never entered, and the two bench dates describe a job rather
+  // than the money line. What the clinic reads on that row is who the case was
+  // for and what the product was — so that is all it gets, on the invoice
+  // drawer and the printed statement alike.
+  //
+  // Keyed off the CASE, never the catalog flag, so every consumer reaches the
+  // same answer for the same row and none can drift from the others.
+  if (!caseHasChartedTeeth(c)) return identity.filter((l) => !!l.value);
+
+  const lines: CaseDetailLine[] = [
+    ...identity,
     { label: 'Teeth', value: formatTeeth(c) },
     { label: 'Shade', value: c.shade || '' },
     { label: 'Received Date', value: formatReceivedDate(c) },
