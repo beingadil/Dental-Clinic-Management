@@ -52,8 +52,10 @@ describe('ledgerCaseDetail', () => {
       expect(formatTeeth(baseCase)).toBe('#11, #12, #21');
     });
 
-    it('falls back to a dash when the case has no teeth', () => {
-      expect(formatTeeth({ ...baseCase, selected_teeth: [] })).toBe('—');
+    it('is empty when the case has no teeth, so the row drops', () => {
+      // A catalog product that is not per-tooth work stores no teeth. A dash
+      // there would read as "charting was forgotten", so the row is omitted.
+      expect(formatTeeth({ ...baseCase, selected_teeth: [] })).toBe('');
     });
   });
 
@@ -131,7 +133,7 @@ describe('ledgerCaseDetail', () => {
         delivery_date: '',
         created_at: '',
       });
-      // Teeth always render (a dash when the case has none); the rest drop out.
+      // Teeth survive here because baseCase has them; everything else drops out.
       expect(lines.map((l) => l.label)).toEqual(['Teeth']);
       expect(lines.every((l) => !!l.value)).toBe(true);
     });

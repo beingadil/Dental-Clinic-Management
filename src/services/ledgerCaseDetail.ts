@@ -21,10 +21,14 @@ export interface CaseDetailLine {
   value: string;
 }
 
-/** FDI teeth as `#11, #12, #21`, or a dash when the case has none. */
+/**
+ * FDI teeth as `#11, #12, #21`. Empty when the case has none — a product that is
+ * not per-tooth work is stored with no teeth, and the caller drops the row rather
+ * than print a dash that reads as "we forgot to chart this".
+ */
 export const formatTeeth = (c: DentalCase): string => {
   const teeth = (c.selected_teeth || []).slice().sort((a, b) => a - b);
-  return teeth.length ? teeth.map((t) => `#${t}`).join(', ') : '—';
+  return teeth.length ? teeth.map((t) => `#${t}`).join(', ') : '';
 };
 
 /**

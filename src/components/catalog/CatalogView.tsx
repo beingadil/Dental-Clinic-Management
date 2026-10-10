@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { getTodayStr } from '../../utils/dateUtils';
+import { catalogNeedsTeeth, toStoredNeedsTeeth } from '../../utils/catalogToothRequirement';
 
 export const CatalogView: React.FC = () => {
   const { caseTypes, addCaseType, updateCaseType, deleteCaseType, brandingSettings } = useApp();
@@ -40,6 +41,9 @@ export const CatalogView: React.FC = () => {
   const [shadeGuide, setShadeGuide] = useState('');
   const [indications, setIndications] = useState('');
   const [contraindications, setContraindications] = useState('');
+  // Default true: most products are per-tooth work, and a product saved before
+  // migration 021 must keep meaning what it meant. Only opt out deliberately.
+  const [needsTeeth, setNeedsTeeth] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
@@ -67,6 +71,11 @@ export const CatalogView: React.FC = () => {
       shade_guide: shadeGuide.trim(),
       indications: indications.trim(),
       contraindications: contraindications.trim(),
+      // The checkbox state is already a boolean, so this is an identity today.
+      // It stays routed through the resolver because the contract that matters is
+      // "never undefined": an omitted flag would be stored as 1 by the autosave,
+      // so a product the operator turned off would silently come back on.
+      needs_teeth: catalogNeedsTeeth({ needs_teeth: needsTeeth }),
     };
 
     if (editingItem) {
@@ -91,6 +100,7 @@ export const CatalogView: React.FC = () => {
     setShadeGuide(item.shade_guide || '');
     setIndications(item.indications || '');
     setContraindications(item.contraindications || '');
+    setNeedsTeeth(catalogNeedsTeeth(item));
     setShowAddModal(true);
   };
 
@@ -106,6 +116,7 @@ export const CatalogView: React.FC = () => {
     setShadeGuide('');
     setIndications('');
     setContraindications('');
+    setNeedsTeeth(true);
     setErrors({});
     setEditingItem(null);
     setShowAddModal(false);
@@ -236,6 +247,15 @@ export const CatalogView: React.FC = () => {
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
                   {item.category ? item.category.replace('_', ' ') : 'General'}
                 </span>
+
+                {!catalogNeedsTeeth(item) && (
+                  <span
+                    className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200"
+                    title="Not per-tooth work: cases skip tooth selection and shade"
+                  >
+                    No teeth
+                  </span>
+                )}
 
                 <div className="flex items-center gap-1 no-print">
                   <button
@@ -499,6 +519,22 @@ export const CatalogView: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                <label className="flex items-start gap-2.5 cursor-pointer select-none pt-1">
+                  <input
+                    type="checkbox"
+                    checked={needsTeeth}
+                    onChange={(e) => setNeedsTeeth(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <span className="text-xs text-slate-600 leading-relaxed">
+                    <span className="font-semibold text-slate-800">Requires tooth selection.</span>{' '}
+                    Cases for this product ask which teeth are involved and record a shade.
+                    Turn this off for products that are not per-tooth work (retainers, healing
+                    posts, a denture try-in) — teeth and shade are then skipped when creating a
+                    case and left off the job slip and invoice.
+                  </span>
+                </label>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">

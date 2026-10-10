@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { slipBandFor, guessCategory } from '../../lib/slipBanding';
 import { receivedDateFor } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
+import { caseHasChartedTeeth } from '../../utils/catalogToothRequirement';
 
 /**
  * Compact physical laboratory job tag — the ONE true job slip.
@@ -38,7 +39,7 @@ interface JobSlipCardProps {
 }
 
 export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName, logoUrl }) => {
-  const teeth = (c.selected_teeth || []).map((t) => `#${t}`).join(', ');
+  const teeth = caseHasChartedTeeth(c) ? c.selected_teeth!.map((t) => `#${t}`).join(', ') : '';
   // The tag carries the day the lab received the job, not the future promised
   // delivery date — a bag in a pile is sorted by when it arrived.
   const receivedDate = receivedDateFor(c);

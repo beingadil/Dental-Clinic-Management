@@ -36,10 +36,13 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
       }).replace(/\//g, '-')
     : '';
 
-  // Teeth string or representation
-  const teethStr = caseData.selected_teeth.length > 0 
-    ? caseData.selected_teeth.map(t => `#${t}`).join(', ') 
-    : 'Full Arch';
+  // Empty when the product is not per-tooth work. The rows are then dropped
+  // rather than filled with a placeholder like "Full Arch" or a shade the case
+  // never had — a printed card must not claim work that was not charted.
+  const teethStr = caseData.selected_teeth.length > 0
+    ? caseData.selected_teeth.map(t => `#${t}`).join(', ')
+    : '';
+  const shadeStr = (caseData.shade || '').trim();
 
   // QR Code tracking payload string
   const qrTrackingPayload = JSON.stringify({
@@ -141,12 +144,14 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
 
         {/* Teeth Numbers & Material */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {teethStr && (
           <div className="flex items-baseline gap-2">
             <span className="font-extrabold text-slate-900 min-w-[75px]">Teeth No:</span>
             <div className="flex-1 border-b-2 border-slate-300 font-mono font-black text-indigo-700 print:text-black px-2 py-0.5 bg-indigo-50/30 print:bg-transparent">
               {teethStr}
             </div>
           </div>
+          )}
 
           <div className="flex items-baseline gap-2">
             <span className="font-extrabold text-slate-900 min-w-[75px]">Material:</span>
@@ -158,12 +163,14 @@ export const LabCardSlip: React.FC<LabCardSlipProps> = ({ caseData }) => {
 
         {/* Shade & Priority */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {shadeStr && (
           <div className="flex items-baseline gap-2">
             <span className="font-extrabold text-slate-900 min-w-[75px]">Shade:</span>
             <div className="flex-1 border-b-2 border-slate-300 font-mono font-black text-lg text-amber-700 print:text-black px-2 py-0.5 tracking-wider bg-amber-50/30 print:bg-transparent">
-              {caseData.shade || 'A1.5'}
+              {shadeStr}
             </div>
           </div>
+          )}
 
           <div className="flex items-baseline gap-2">
             <span className="font-extrabold text-slate-900 min-w-[75px]">Priority:</span>

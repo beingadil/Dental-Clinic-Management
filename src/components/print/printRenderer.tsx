@@ -3,6 +3,7 @@ import { DentalCase, Invoice, BrandingSettings, PaymentRecord } from '../../type
 import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
+import { caseHasChartedTeeth, billableUnits } from '../../utils/catalogToothRequirement';
 import { caseDetailLines, findCaseForInvoice } from '../../services/ledgerCaseDetail';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
@@ -127,6 +128,13 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
 
   const toothDetails = (caseData?.tooth_details || {}) as Record<number, any>;
 
+  /* Every tooth-dependent block below is gated on the shared "did this case
+     actually get charted?" rule, not on the catalog flag. A product flagged
+     "no teeth" commits an empty array, so this is the single condition that
+     keeps the job slip, invoice and statement from disagreeing with what the
+     operator charted. */
+  const hasTeeth = caseHasChartedTeeth(caseData);
+
   /* Honest settlement label — read from the invoice itself, never guessed. */
   const invStatus = (() => {
     if (!invoice) return null;
@@ -196,7 +204,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           {on(sections, 'patient') && (
             <div className="grid grid-cols-2 gap-4 mb-3">
               <Field label="Patient Name / ID" value={caseData.patient_name || '—'} />
-              <Field label="Units" value={String(caseData.selected_teeth.length)} />
+              {/* A product that is not per-tooth work is still one billable
+                  unit — a retainer is one piece of lab work, not zero. Printing
+                  "0" would read as a charting failure on a case that is complete. */}
+              <Field label="Units" value={String(billableUnits(caseData))} />
             </div>
           )}
           {on(sections, 'caseMeta') && (
@@ -206,7 +217,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               <Field label="Delivery Due" value={caseData.delivery_date} />
             </div>
           )}
-          {on(sections, 'teeth') && (
+          {on(sections, 'teeth') && hasTeeth && (
             <table className="w-full border-collapse text-[11px] mb-4">
               <thead>
                 <tr>
@@ -232,7 +243,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               </tbody>
             </table>
           )}
-          {on(sections, 'odontogram') && (
+          {on(sections, 'odontogram') && hasTeeth && (
             <PrintOdontogram
               selectedTeeth={caseData.selected_teeth}
               toothDetails={toothDetails}
@@ -240,11 +251,18 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           )}
           {on(sections, 'shade') && (
             <div className="mb-4 text-[11px]">
-              <span className="font-bold">Shade: </span>{caseData.shade || '—'}
-              {caseData.shade && SHADE_COLORS[caseData.shade] && (
-                <span className="inline-block align-middle ml-1 border border-slate-400" style={{ width: 12, height: 12, background: SHADE_COLORS[caseData.shade] }} />
+              {/* Shade is omitted entirely for a product that is not per-tooth
+                  work; printing an em dash would read as a missing value rather
+                  than a deliberate "this does not apply". */}
+              {caseData.shade && (
+                <span className="mr-4">
+                  <span className="font-bold">Shade: </span>{caseData.shade}
+                  {SHADE_COLORS[caseData.shade] && (
+                    <span className="inline-block align-middle ml-1 border border-slate-400" style={{ width: 12, height: 12, background: SHADE_COLORS[caseData.shade] }} />
+                  )}
+                </span>
               )}
-              <span className="font-bold ml-4">Material: </span>{caseData.material || '—'}
+              <span className="font-bold">Material: </span>{caseData.material || '—'}
             </div>
           )}
           {on(sections, 'instructions') && caseData.instructions && (
@@ -309,8 +327,8 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   <td className="border border-slate-300 px-2 py-1.5">
                     <span className="font-semibold">{invoice.case_type_name}</span>
                     {invoice.case_number && <span className="text-slate-500"> · Case {invoice.case_number}</span>}
-                    {caseData?.selected_teeth && caseData.selected_teeth.length > 0 && (
-                      <div className="text-slate-500">Teeth: {caseData.selected_teeth.map((t) => `#${t}`).join(', ')}</div>
+                    {caseData?.selected_teeth && hasTeeth && (
+                      <div className="text-slate-500">Teeth: {caseData.selected_teeth!.map((t) => `#${t}`).join(', ')}</div>
                     )}
                     {(caseData?.material || caseData?.shade) && (
                       <div className="text-slate-500">
@@ -318,7 +336,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                       </div>
                     )}
                   </td>
-                  <td className="border border-slate-300 px-2 py-1.5">{caseData?.selected_teeth?.length || 1}</td>
+                  <td className="border border-slate-300 px-2 py-1.5">{billableUnits(caseData)}</td>
                   <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
                   <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
                 </tr>

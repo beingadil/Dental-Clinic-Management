@@ -21,6 +21,19 @@ interface CaseJobSlipModalProps {
 }
 
 /**
+ * The free-text note stored on the saved voucher. Teeth and shade are only
+ * mentioned when the case actually has them — a product that is not per-tooth
+ * work is saved with both empty, and "Teeth:  | Shade: N/A" on a voucher reads
+ * as a mistake rather than as "not applicable".
+ */
+function buildVoucherNotes(c: DentalCase): string {
+  const parts: string[] = [];
+  if (c.selected_teeth.length > 0) parts.push(`Teeth: ${c.selected_teeth.join(', ')}`);
+  if (c.shade) parts.push(`Shade: ${c.shade}`);
+  return parts.join(' | ');
+}
+
+/**
  * Single Job Slip — MODE A (compact physical tag, 100 × 95 mm).
  *
  * The preview shows the slip at its true physical proportions (100:95),
@@ -85,7 +98,8 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
       doctor_name: caseData.doctor_name,
       patient_name: caseData.patient_name || 'Clinical Patient',
       case_type_name: caseData.case_type_name,
-      notes: `Teeth: ${caseData.selected_teeth.join(', ')} | Shade: ${caseData.shade || 'N/A'}`
+      // Empty for a product that is not per-tooth work, rather than "Teeth:  | Shade: N/A".
+      notes: buildVoucherNotes(caseData)
     });
 
     setSavedSuccess(true);

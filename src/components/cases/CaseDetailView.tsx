@@ -117,7 +117,11 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
             // Formatted, not raw: `doctor_name` is stored bare, so printing the
             // column verbatim here is the one surface that would drop the honorific.
             { icon: User, label: 'Doctor', value: formatDoctorName(c.doctor_name), sub: c.patient_name ? `Patient: ${c.patient_name}` : undefined },
-            { icon: Palette, label: 'Teeth & Shade', value: c.selected_teeth.map((t) => `#${t}`).join(' ') || '—', sub: c.shade ? `Shade ${c.shade}` : undefined },
+            // Dropped entirely when the product is not per-tooth work: an empty-teeth tile
+            // reading "—" would imply charting was forgotten rather than not applicable.
+            ...(c.selected_teeth.length > 0
+              ? [{ icon: Palette, label: 'Teeth & Shade', value: c.selected_teeth.map((t) => `#${t}`).join(' '), sub: c.shade ? `Shade ${c.shade}` : undefined }]
+              : []),
             { icon: CircleDollarSign, label: 'Price', value: `PKR ${c.final_price.toLocaleString()}`, sub: c.discount > 0 ? `PKR ${c.price.toLocaleString()} − PKR ${c.discount.toLocaleString()} discount` : `List PKR ${c.price.toLocaleString()}` },
             { icon: Calendar, label: 'Delivery Due', value: formatDate(c.delivery_date), sub: isOverdue ? 'Past due' : 'On schedule' },
             { icon: Hash, label: 'Registered', value: formatDate(c.created_at), sub: `Updated ${formatDate(c.updated_at)}` },

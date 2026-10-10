@@ -9,6 +9,7 @@ import { openFileInBrowser } from '../../utils/fileUtils';
 import { useDialogBehavior } from '../common/ui/useDialogBehavior';
 import { LAB_DEPARTMENTS } from '../../utils/labDepartments';
 import { stripDoctorHonorific } from '../../utils/doctorName';
+import { catalogNeedsTeeth } from '../../utils/catalogToothRequirement';
 import { getClinicalSpecs } from '../../services/clinicalSpecsService';
 import {
   X,
@@ -243,9 +244,16 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [maxVisited, setMaxVisited] = useState(isEdit ? STEPS.length - 1 : 0);
   const [attempted, setAttempted] = useState(false);
 
+  /* Catalog products that are not per-tooth work opt out of charting. An unknown
+     or unset flag is read as "required", so every product saved before migration
+     021 behaves exactly as it did. The teeth/shade state is deliberately left
+     untouched when the flag flips: it is only cleared on commit, so switching
+     back to a per-tooth product does not silently discard a charted case. */
+  const needsTeeth = catalogNeedsTeeth(caseTypes.find((ct) => ct.id === caseTypeId));
+
   const stepValid: Record<StepKey, boolean> = {
     basics: !!(labId && caseTypeId && doctorName.trim().length >= 2 && doctorName.trim().length <= 100),
-    chart: selectedTeeth.length > 0,
+    chart: needsTeeth ? selectedTeeth.length > 0 : true,
     schedule:
       !!deliveryDate &&
       !isNaN(new Date(deliveryDate).getTime()) &&
@@ -267,7 +275,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       : !caseTypeId
       ? 'Please select a case procedure / type'
       : null,
-    chart: selectedTeeth.length === 0 ? 'At least one tooth must be selected on the FDI chart' : null,
+    chart: needsTeeth && selectedTeeth.length === 0 ? 'At least one tooth must be selected on the FDI chart' : null,
     schedule: !deliveryDate || isNaN(new Date(deliveryDate).getTime())
       ? 'Delivery date is required'
       : new Date(deliveryDate).getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000
@@ -452,7 +460,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       errs.doctorName = 'Doctor name must be between 2 and 100 characters';
     }
 
-    if (selectedTeeth.length === 0) {
+    if (needsTeeth && selectedTeeth.length === 0) {
       errs.selectedTeeth = 'At least one tooth must be selected on the FDI chart';
     }
 
@@ -515,6 +523,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
     const finalPrice = Math.max(0, price - discount);
 
+    /* A product that is not per-tooth work is stored with empty teeth and no
+       shade. Every output keys off that emptiness — rather than the catalog flag —
+       so a printed slip can never claim a tooth the case does not have. */
+    const savedTeeth = needsTeeth ? selectedTeeth : [];
+    const savedToothDetails = needsTeeth ? toothDetails : {};
+    const savedShade = needsTeeth ? shade.trim() : '';
+
     if (committingRef.current) return;
     committingRef.current = true;
 
@@ -528,9 +543,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           case_type_id: caseTypeId,
           case_type_name: selectedCT ? selectedCT.name : initialCase.case_type_name,
           doctor_name: stripDoctorHonorific(doctorName),
-          selected_teeth: selectedTeeth,
-          tooth_details: toothDetails,
-          shade: shade.trim(),
+          selected_teeth: savedTeeth,
+          tooth_details: savedToothDetails,
+          shade: savedShade,
           material: material.trim(),
           department: department || null,
           delivery_date: deliveryDate,
@@ -553,9 +568,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         case_type_id: caseTypeId,
         case_type_name: selectedCT ? selectedCT.name : 'Zirconia Crown',
         doctor_name: stripDoctorHonorific(doctorName),
-        selected_teeth: selectedTeeth,
-        tooth_details: toothDetails,
-        shade: shade.trim(),
+        selected_teeth: savedTeeth,
+        tooth_details: savedToothDetails,
+        shade: savedShade,
         material: material.trim(),
         department: department || null,
         delivery_date: deliveryDate,
@@ -854,28 +869,42 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     <div className="space-y-6">
       <div className={bezelCard}>
         <div className={bezelCardInner}>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-            <Eyebrow>FDI Charting</Eyebrow>
-            <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3.5 py-1.5 font-mono text-[11px] font-bold tracking-wider text-white">
-              {selectedTeeth.length} UNIT{selectedTeeth.length === 1 ? '' : 'S'} ACTIVE
-            </span>
-          </div>
-          <Odontogram
-            initialSelected={selectedTeeth}
-            initialRestorations={odontogramRestorations}
-            initialShades={odontogramShades}
-            initialMaterials={odontogramMaterials}
-            onChange={handleOdontogramChange}
-          />
-          {errors.selectedTeeth && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink-danger">
-              <AlertCircle className="h-3.5 w-3.5" /> {errors.selectedTeeth}
-            </p>
+          {!needsTeeth && (
+            <div className="mb-5">
+              <Eyebrow>FDI Charting</Eyebrow>
+              <p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+                <span className="font-bold text-slate-800">Not applicable to this product.</span>{' '}
+                {caseTypes.find((ct) => ct.id === caseTypeId)?.name} is not per-tooth work, so no
+                teeth or shade are recorded. They will also be left off the job slip and invoice.
+              </p>
+            </div>
           )}
-          {attempted && stepError.chart && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink-danger">
-              <AlertCircle className="h-3.5 w-3.5" /> {stepError.chart}
-            </p>
+          {needsTeeth && (
+            <>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                <Eyebrow>FDI Charting</Eyebrow>
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3.5 py-1.5 font-mono text-[11px] font-bold tracking-wider text-white">
+                  {selectedTeeth.length} UNIT{selectedTeeth.length === 1 ? '' : 'S'} ACTIVE
+                </span>
+              </div>
+              <Odontogram
+                initialSelected={selectedTeeth}
+                initialRestorations={odontogramRestorations}
+                initialShades={odontogramShades}
+                initialMaterials={odontogramMaterials}
+                onChange={handleOdontogramChange}
+              />
+              {errors.selectedTeeth && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink-danger">
+                  <AlertCircle className="h-3.5 w-3.5" /> {errors.selectedTeeth}
+                </p>
+              )}
+              {attempted && stepError.chart && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink-danger">
+                  <AlertCircle className="h-3.5 w-3.5" /> {stepError.chart}
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
