@@ -12,13 +12,12 @@ import {
   CheckSquare,
   Paperclip,
   HardDrive,
-  Database,
 } from 'lucide-react';
 
 /** TAB: TESTING & SYSTEM RESET (DANGER ZONE) — extracted verbatim from
     SettingsView (P3 split); the global backupMessage lives in the container. */
 export const TestingTab: React.FC = () => {
-  const { cases, labs, invoices, caseTypes, savedVouchers, caseNotes, caseAttachments, wipeAllData, resetToDemoData } = useApp();
+  const { cases, labs, invoices, caseTypes, savedVouchers, caseNotes, caseAttachments, wipeAllData } = useApp();
 
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [wipeConfirmText, setWipeConfirmText] = useState('');
@@ -36,7 +35,6 @@ export const TestingTab: React.FC = () => {
     attachmentsCount,
   };
 
-  // Reset to Demo Data
   // Total Data Wipe for Software Testing
   const handleExecuteFullWipe = () => {
     wipeAllData();
@@ -132,7 +130,9 @@ export const TestingTab: React.FC = () => {
             <div>
               <h2 className="text-base font-bold text-slate-900">Software Testing & Data Reset Console</h2>
               <p className="text-xs text-slate-500">
-                Use these control tools while testing the application to quickly populate sample demo data or clear everything for a clean test run.
+                Destructive controls for clearing the database between test runs. This build ships no
+                seed data: there is deliberately no way to populate the app with demo or synthetic
+                records from the UI.
               </p>
             </div>
           </div>
@@ -145,7 +145,7 @@ export const TestingTab: React.FC = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {/* Complete System Data Wipe / Delete Everything */}
           <div className="p-6 bg-rose-50/80 border border-rose-300 rounded-3xl space-y-4 flex flex-col justify-between">
             <div className="space-y-2">
@@ -164,28 +164,6 @@ export const TestingTab: React.FC = () => {
             >
               <Trash2 className="w-4 h-4" />
               <span>Delete everything — wipe all data</span>
-            </button>
-          </div>
-
-          {/* F13: resetToDemoData existed in the auth domain with no UI caller;
-              surfaced as the supported training/demonstration reset path. */}
-          <div className="p-6 bg-indigo-50/60 border border-indigo-200 rounded-3xl space-y-4 flex flex-col justify-between">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-indigo-700 font-extrabold text-xs uppercase tracking-wider">
-                <Database className="w-4 h-4 text-indigo-600" /> Load Sample Data
-              </div>
-              <h3 className="font-bold text-slate-900 text-base">Reset to Demo Data</h3>
-              <p className="text-xs text-slate-700 leading-relaxed">
-                Replaces current data with a small built-in sample set — useful for training staff or demonstrating the workflow. Your user account and branding stay.
-              </p>
-            </div>
-
-            <button
-              onClick={() => { resetToDemoData(); setWipeSuccess(true); setTimeout(() => setWipeSuccess(false), 5000); }}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Database className="w-4 h-4" />
-              <span>Reset to demo data</span>
             </button>
           </div>
         </div>

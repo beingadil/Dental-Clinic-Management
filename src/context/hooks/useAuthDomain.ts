@@ -11,25 +11,7 @@ import { usersRepo, sessionsRepo } from '../../db/repos';
 import { isDatabaseReady, getDatabase } from '../../db/core';
 import { getTodayStr } from '../../utils/dateUtils';
 import { hashPassword, verifyPassword } from '../../db/crypto';
-import {
-  INITIAL_CASES,
-  INITIAL_LABS,
-  INITIAL_CASE_TYPES,
-  INITIAL_INVOICES,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_TEMPLATES,
-  INITIAL_LAB_CONTACTS,
-  INITIAL_LAB_ADDRESSES,
-  INITIAL_PRICING_OVERRIDES,
-  INITIAL_LAB_REVIEWS,
-  INITIAL_DOCTOR_PREFERENCES,
-  INITIAL_USER_PREFERENCES,
-  INITIAL_ADVANCE_PAYMENTS,
-  INITIAL_ADJUSTMENTS,
-  INITIAL_JOURNAL_ENTRIES,
-  INITIAL_AUDIT_EVENTS,
-  INITIAL_RECONCILIATION_ITEMS,
-} from '../../data/initialData';
+import { INITIAL_USER_PREFERENCES } from '../../data/initialData';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
 
 /**
@@ -387,39 +369,6 @@ export function useAuthDomain(deps: {
     }
   };
 
-  const resetToDemoData = () => {
-    setCases(INITIAL_CASES);
-    setLabs(INITIAL_LABS);
-    setCaseTypes(INITIAL_CASE_TYPES);
-    setInvoices(INITIAL_INVOICES);
-    setAdvancePayments(INITIAL_ADVANCE_PAYMENTS);
-    setAccountAdjustments(INITIAL_ADJUSTMENTS);
-    setJournalEntries(INITIAL_JOURNAL_ENTRIES);
-    setAuditEvents(INITIAL_AUDIT_EVENTS);
-    setReconciliationItems(INITIAL_RECONCILIATION_ITEMS);
-    setNotifications(INITIAL_NOTIFICATIONS);
-    setTemplates(INITIAL_TEMPLATES);
-    setLabContacts(INITIAL_LAB_CONTACTS);
-    setLabAddresses(INITIAL_LAB_ADDRESSES);
-    setPricingOverrides(INITIAL_PRICING_OVERRIDES);
-    setLabReviews(INITIAL_LAB_REVIEWS);
-    setDoctorPreferences(INITIAL_DOCTOR_PREFERENCES);
-    setUserPreferences(INITIAL_USER_PREFERENCES);
-    setBrandingSettings(DEFAULT_BRANDING_SETTINGS);
-    setSavedVouchers([]);
-    setQcInspections([]);
-    setCaseAttachments({
-      'case-1': [
-        { id: 'att-1', case_id: 'case-1', filename: 'shade_guide_a2.jpg', file_type: 'image/jpeg', file_url: '', uploaded_at: '2026-07-26 10:00', uploaded_by: 'Dr. Tariq', file_size: '1.2 MB' },
-      ],
-    });
-    setCaseNotes({
-      'case-1': [
-        { id: 'note-1', case_id: 'case-1', note_text: 'Anterior wax-up approved by doctor over call.', author: 'Tech Hamza', created_at: '2026-07-26 14:30' },
-      ],
-    });
-  };
-
   const wipeAllData = () => {
     setCases([]);
     setLabs([]);
@@ -482,7 +431,6 @@ export function useAuthDomain(deps: {
     changePassword,
     getBackupData,
     restoreBackupData,
-    resetToDemoData,
     wipeAllData,
   };
 }

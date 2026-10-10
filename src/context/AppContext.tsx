@@ -195,7 +195,6 @@ interface AppContextType {
   // Backup & Restore
   getBackupData: () => any;
   restoreBackupData: (data: any) => boolean;
-  resetToDemoData: () => void;
   wipeAllData: () => void;
 
   // Cases
@@ -825,7 +824,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     changePassword,
     getBackupData,
     restoreBackupData,
-    resetToDemoData,
     wipeAllData,
   } = useAuthDomain({
     user,
@@ -1884,7 +1882,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateBrandingSettings,
         getBackupData,
         restoreBackupData,
-        resetToDemoData,
         wipeAllData,
 
         addCase,
