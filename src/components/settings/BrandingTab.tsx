@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import type { BrandingSettings } from '../../types';
 import { validateFile } from '../../services/fileValidation';
 import { BRAND_SWATCHES, resolveBrandSwatch, applyBrandColor } from '../../services/brandingTheme';
 import { PreviewFrame } from '../common/ui';

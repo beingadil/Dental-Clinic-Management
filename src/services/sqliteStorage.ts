@@ -15,18 +15,6 @@ import { getDatabase, isDatabaseReady } from '../db/core';
 import { SqliteEngine } from '../db/engine';
 import { schemaScript } from '../db/migrations';
 
-export interface SqliteTableInfo {
-  name: string;
-  rowCount: number;
-  columns: string[];
-}
-
-export interface SqliteExportOptions {
-  includeSchema?: boolean;
-  includeData?: boolean;
-  labName?: string;
-}
-
 /**
  * Schema for the generated .sql dump — derived from MIGRATIONS, never hand-written.
  *
@@ -238,44 +226,5 @@ export function exportSqliteFile(opts: { labName?: string } = {}, customFilename
   const filename = customFilename || `dental_solutions_sqlite_${new Date().toISOString().split('T')[0]}.sql`;
   downloadSqliteDump(sql, filename);
   return filename;
-}
-
-/**
- * Diagnostic row counts for the core ERP tables, from a state snapshot.
- *
- * Not a description of the export: the dump writes every table in the database
- * (see `generateSqliteExport`), which is more than the eleven listed here.
- */
-export function getSqliteTableStats(appData: any) {
-  return [
-    { name: 'users', count: appData.users?.length || 0, description: 'User accounts, permissions & authentication' },
-    { name: 'labs', count: appData.labs?.length || 0, description: 'Registered dental clinics & partner laboratories' },
-    { name: 'case_types', count: appData.caseTypes?.length || 0, description: 'CAD/CAM catalog items & base fee matrix' },
-    { name: 'cases', count: appData.cases?.length || 0, description: 'Dental clinical restoration cases & FDI odontogram' },
-    { name: 'invoices', count: appData.invoices?.length || 0, description: 'Billing invoices & financial balances' },
-    { name: 'payments', count: (appData.payments?.length || appData.invoices?.flatMap((i: any) => i.payments || []).length || 0), description: 'Invoice payment receipts & remittances' },
-    { name: 'advance_payments', count: appData.advancePayments?.length || 0, description: 'Clinic prepayment & unallocated deposits' },
-    { name: 'account_adjustments', count: appData.accountAdjustments?.length || 0, description: 'Credit/Debit memos & ledger adjustments' },
-    { name: 'journal_entries', count: appData.journalEntries?.length || 0, description: 'Double-entry audit journals & lines' },
-    { name: 'audit_events', count: appData.auditEvents?.length || 0, description: 'Immutable system compliance log' },
-    { name: 'notifications', count: appData.notifications?.length || 0, description: 'Real-time workflow & overdue alerts' },
-  ];
-}
-
-/**
- * Parses an exported JSON backup or SQL inserts structure to reconstruct relational state
- */
-export function parseSqliteDumpToState(sqlOrJsonText: string): any | null {
-  try {
-    // If it's a JSON string
-    if (sqlOrJsonText.trim().startsWith('{')) {
-      const parsed = JSON.parse(sqlOrJsonText);
-      return parsed;
-    }
-    return null;
-  } catch (err) {
-    console.error('Failed to parse database dump:', err);
-    return null;
-  }
 }
 

@@ -29,10 +29,6 @@ export const generateId = (prefix: string): string => {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
 };
 
-export const generateCanonicalReference = (prefix: string, sequenceNum: number): string => {
-  return `${prefix}-${new Date().getFullYear()}-${String(sequenceNum).padStart(4, '0')}`;
-};
-
 /**
  * Validate that journal lines strictly balance (Sum of Debits === Sum of Credits)
  */

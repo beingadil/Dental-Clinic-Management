@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import initSqlJs from 'sql.js';
 import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { seedDatabase } from '../../src/db/seeds';
-import { usersRepo, caseTypesRepo, settingsRepo, clinicalSpecsRepo, emailTemplatesRepo, notificationConfigRepo, appMetaRepo } from '../../src/db/repos';
+import { usersRepo, caseTypesRepo, settingsRepo, clinicalSpecsRepo, emailTemplatesRepo, notificationConfigRepo } from '../../src/db/repos';
 let engine: SqliteEngine;
 
 beforeAll(async () => {

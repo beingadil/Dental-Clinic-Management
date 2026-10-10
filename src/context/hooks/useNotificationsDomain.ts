@@ -1,8 +1,5 @@
 import { useCallback } from 'react';
 import type { AppNotification } from '../../types';
-import { notificationsRepo } from '../../db/repos';
-import { isDatabaseReady } from '../../db/core';
-import { mirrorSet } from './domainState';
 import {
   buildGenericNotification,
   prependUniqueNotifications,
@@ -16,20 +13,9 @@ import {
  * every consumer stay unchanged.
  */
 export function useNotificationsDomain(
-  notifications: AppNotification[],
   setNotifications: React.Dispatch<React.SetStateAction<AppNotification[]>>,
   onBulkDelete?: (count: number) => void,
 ) {
-  const dbWrite = (fn: () => void): void => {
-    if (!isDatabaseReady()) return;
-    try {
-      fn();
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.error('[cutover] DB write failed:', e?.message || e);
-    }
-  };
-
   /** Insert fresh notification(s) with the shared dedupe-on-prepend rule. */
   const pushNotifications = useCallback(
     (fresh: AppNotification | AppNotification[]) => {

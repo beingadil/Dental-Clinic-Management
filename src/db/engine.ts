@@ -51,13 +51,7 @@ const ALLOWED_TABLE = /^[a-z_][a-z0-9_]*$/;
  *  compiled statement held in `stmtCache`. */
 const DDL_RE = /\b(CREATE|DROP|ALTER|ATTACH|DETACH|VACUUM|REINDEX)\b/i;
 
-/** Column types the JSON codec can round-trip through TEXT columns. */
-export interface JsonCodecConfig {
-  [column: string]: 'array' | 'object' | 'boolean';
-}
-
 export class SqliteEngine {
-  private static savepointCounter = 0;
   private constructor(private db: Database, public readonly SQL: SqlJsStatic) {}
 
   static async create(sqlJs: SqlJsStatic, existingBytes?: Uint8Array | null): Promise<SqliteEngine> {
@@ -114,7 +108,7 @@ export class SqliteEngine {
           // reused. Drop it, then report exactly what the uncached path would.
           this.stmtCache.delete(sql);
           try { cached.free(); } catch { /* already gone */ }
-          throw new DbError(this.explain(err, sql), this.classify(err, sql), err);
+          throw new DbError(this.explain(err, sql), this.classify(err), err);
         }
       }
       try {
@@ -129,13 +123,13 @@ export class SqliteEngine {
         this.stmtCache.set(sql, stmt);
         return;
       } catch (err) {
-        throw new DbError(this.explain(err, sql), this.classify(err, sql), err);
+        throw new DbError(this.explain(err, sql), this.classify(err), err);
       }
     }
     try {
       this.db.run(sql, params as any);
     } catch (err) {
-      throw new DbError(this.explain(err, sql), this.classify(err, sql), err);
+      throw new DbError(this.explain(err, sql), this.classify(err), err);
     } finally {
       // Schema DDL recompiles every statement against the new shape. Detected
       // by keyword rather than a whitelist so a migration, a CREATE TABLE in
@@ -163,7 +157,7 @@ export class SqliteEngine {
     try {
       this.db.run(sql);
     } catch (err) {
-      throw new DbError(this.explain(err, sql), this.classify(err, sql), err);
+      throw new DbError(this.explain(err, sql), this.classify(err), err);
     }
   }
 
@@ -179,7 +173,7 @@ export class SqliteEngine {
         stmt.free();
       }
     } catch (err) {
-      throw new DbError(this.explain(err, sql), this.classify(err, sql), err);
+      throw new DbError(this.explain(err, sql), this.classify(err), err);
     }
   }
 
@@ -359,7 +353,7 @@ export class SqliteEngine {
     return `${msg} [sql: ${sql.slice(0, 120)}]`;
   }
 
-  private classify(err: unknown, sql: string): DbError['code'] {
+  private classify(err: unknown): DbError['code'] {
     const msg = (err instanceof Error ? err.message : String(err)).toUpperCase();
     if (msg.includes('CONSTRAINT') || msg.includes('UNIQUE')) return 'CONSTRAINT';
     if (msg.includes('NO SUCH TABLE') || msg.includes('NO SUCH COLUMN')) return 'NOT_FOUND';
@@ -371,13 +365,6 @@ export interface TransactionApi {
   run(sql: string, params?: SqlValue[]): void;
   all<T>(sql: string, params?: SqlValue[]): T[];
   get<T>(sql: string, params?: SqlValue[]): T | undefined;
-}
-
-/** Convenience: assert a required foreign key target exists before insert. */
-export function assertExists(engine: SqliteEngine, table: string, id: string, label: string): void {
-  if (!engine.get(`SELECT id FROM ${table} WHERE id = ?`, [id])) {
-    throw new DbError(`${label} not found: ${id}`, 'NOT_FOUND');
-  }
 }
 
 export { MIGRATIONS };

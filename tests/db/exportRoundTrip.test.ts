@@ -333,11 +333,6 @@ async function buildSourceDatabase(SQL: any): Promise<{ engine: SqliteEngine; is
     [JSON.stringify([{ type: 'header' }]), T.now],
   );
   eng.run(
-    `INSERT INTO ledger_entries (id, date, lab_id, lab_name, entry_type, reference_id, reference_number, case_number, doctor_name, description, debit, credit, running_balance, payment_method, notes, recorded_by, journal_id, created_at)
-     VALUES ('le-1', ?, 'lab-1', 'Bright Smiles Clinic', 'invoice', 'inv-1', 'INV-0001', 'DS-0001', 'Dr. O''Brien', 'Invoice issued', 23000, 0, 23000, 'bank', ?, 'Lab Admin', 'je-1', ?)`,
-    [T.day, TRICKY, T.now],
-  );
-  eng.run(
     `INSERT INTO payment_allocations (id, source_type, source_id, source_ref, invoice_id, invoice_number, amount, allocated_at, allocated_by, notes)
      VALUES ('pal-1', 'payment', 'pay-1', 'REC-0001', 'inv-1', 'INV-0001', 13000, ?, 'Lab Admin', NULL)`,
     [T.now],
@@ -408,7 +403,7 @@ const POPULATED = [
   'advance_payments', 'advance_allocations', 'account_adjustments', 'journal_entries', 'journal_lines',
   'reconciliation_items', 'saved_vouchers', 'audit_events', 'notifications', 'attachments',
   'qc_inspections', 'settings', 'user_preferences', 'notification_config', 'email_templates',
-  'print_templates', 'ledger_entries', 'legacy_backup', 'shade_guides', 'implant_brands',
+  'print_templates', 'legacy_backup', 'shade_guides', 'implant_brands',
   'clinical_materials', 'clinical_prep_types', 'chairside_appointments', 'doc_sequences', 'schema_migrations',
 ];
 
@@ -508,7 +503,8 @@ describe('sql dump round trip', () => {
     expect(importedSnap.rows.reconciliation_items).toHaveLength(1);
     expect(importedSnap.rows.saved_vouchers).toHaveLength(1);
     expect(importedSnap.rows.attachments).toHaveLength(1);
-    expect(importedSnap.rows.ledger_entries).toHaveLength(1);
+    // Migration 022 removed the dead mirror, so it must not reappear in a dump.
+    expect(importedSnap.tables).not.toContain('ledger_entries');
     // ...and the preferences the app needs to look the same on the new machine.
     expect(importedSnap.rows.user_preferences).toHaveLength(1);
     expect(importedSnap.rows.settings).toHaveLength(1);

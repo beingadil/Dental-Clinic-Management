@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { LabContact, LabAddress } from '../../types';
-import { UserCheck, MapPin, Plus, Trash2, Edit2, Check, ShieldAlert, Star } from 'lucide-react';
+import { LabAddress } from '../../types';
+import { UserCheck, MapPin, Plus, Trash2 } from 'lucide-react';
 
 interface LabContactsManagerProps {
   labId: string;
@@ -12,10 +12,8 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
     labContacts, 
     labAddresses, 
     addLabContact, 
-    updateLabContact, 
     deleteLabContact, 
     addLabAddress, 
-    updateLabAddress, 
     deleteLabAddress 
   } = useApp();
 
@@ -40,7 +38,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
   const [aCity, setACity] = useState('Islamabad');
   const [aState, setAState] = useState('ICT');
   const [aPostal, setAPostal] = useState('44000');
-  const [aCountry, setACountry] = useState('Pakistan');
+  const [aCountry] = useState('Pakistan');
   const [aDefault, setADefault] = useState(false);
   const [addressErrs, setAddressErrs] = useState<Record<string, string>>({});
 

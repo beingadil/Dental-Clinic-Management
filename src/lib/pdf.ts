@@ -296,8 +296,6 @@ function planColumns(g: Geo): { cols: LedgerCol[]; X: Record<string, number>; ta
   return { cols, X, tableW: g.CONTENT_W };
 }
 
-const LHS_KEYS = ['date', 'clinic', 'case', 'type', 'narr'];
-
 function drawTableHeader(
   ops: PdfOp[], g: Geo, cols: LedgerCol[], X: Record<string, number>, y: number,
 ): void {

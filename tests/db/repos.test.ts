@@ -3,7 +3,7 @@ import initSqlJs from 'sql.js';
 import { SqliteEngine } from '../../src/db/engine';
 import {
   labsRepo, casesRepo, caseTypesRepo, invoicesRepo, paymentsRepo, advancePaymentsRepo,
-  adjustmentsRepo, journalRepo, ledgerRepo, notificationsRepo, usersRepo, caseNotesRepo,
+  adjustmentsRepo, journalRepo, notificationsRepo, usersRepo, caseNotesRepo,
   attachmentsRepo, settingsRepo, statsRepo, sessionsRepo,
 } from '../../src/db/repos';
 import { nextNumber, ensureCounterAtLeast, SEQ_KEYS, ensureSequenceTable } from '../../src/db/sequences';
@@ -118,7 +118,7 @@ describe('billing flow (invoice → payments → balance)', () => {
     expect(invoiceItemsRepoHelper(inv.id).length).toBe(1);
 
     // Payment 1 — 30,000
-    const p1 = paymentsRepo.insert({
+    paymentsRepo.insert({
       payment_number: 'PAY-1001',
       invoice_id: inv.id,
       invoice_number: 'INV-1001',
@@ -255,30 +255,11 @@ describe('journal and ledger', () => {
     expect(totalDebit).toBe(totalCredit);
   });
 
-  it('writes ledger entries and recomputes per-lab running balances', () => {
-    ledgerRepo.clear();
-    ledgerRepo.insert({
-      date: '2026-09-17', lab_id: 'lab-fin', lab_name: 'Finance Clinic', entry_type: 'invoice',
-      reference_id: 'ref-inv-1', reference_number: 'INV-1001', description: 'Invoice', debit: 100000, credit: 0,
-    });
-    ledgerRepo.insert({
-      date: '2026-09-18', lab_id: 'lab-fin', lab_name: 'Finance Clinic', entry_type: 'payment',
-      reference_id: 'ref-pay-1', reference_number: 'PAY-1001', description: 'Payment', debit: 0, credit: 30000,
-    });
-    ledgerRepo.insert({
-      date: '2026-09-19', lab_id: 'lab-fin', lab_name: 'Finance Clinic', entry_type: 'payment',
-      reference_id: 'ref-pay-2', reference_number: 'PAY-1002', description: 'Payment', debit: 0, credit: 20000,
-    });
-    ledgerRepo.recomputeRunningBalance();
-    const rows = ledgerRepo.byLab('lab-fin');
-    expect(rows.map((r: any) => r.running_balance)).toEqual([100000, 70000, 50000]);
-    // idempotent UNIQUE guard per source transaction
-    expect(() =>
-      ledgerRepo.insert({
-        date: '2026-09-17', lab_id: 'lab-fin', lab_name: 'Finance Clinic', entry_type: 'invoice',
-        reference_id: 'ref-inv-1', reference_number: 'INV-1001', description: 'Invoice', debit: 100000, credit: 0,
-      })
-    ).toThrow();
+  it('has no dead per-document ledger mirror left (migration 022)', () => {
+    // The mirror and its repo were removed: the journal is the only ledger
+    // story, so a second, drifting one is no longer reachable.
+    expect(engine.tableExists('ledger_entries')).toBe(false);
+    expect(Object.keys(statsRepo.all())).not.toContain('ledger_entries');
   });
 });
 

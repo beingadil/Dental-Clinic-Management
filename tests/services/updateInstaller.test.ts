@@ -120,8 +120,6 @@ describe('phase store fan-out', () => {
 
     offA();
     offB();
-    expect(typeof offA).toBe('function');
-    expect(typeof offB).toBe('function');
   });
 });
 

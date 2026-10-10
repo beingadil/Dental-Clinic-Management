@@ -8,7 +8,6 @@ coverage/
 
 # Tauri / Rust build artifacts (regenerated from src-tauri/)
 src-tauri/target/
-src-tauri/gen/schemas/
 
 # Runtime application data — NEVER commit clinic data
 *.sqlite
@@ -43,10 +42,6 @@ desktop.ini
 .freebuff
 .freebuff*
 *freebuff*
-
-# AI Studio export artifacts
-metadata.json
-bun.lock
 
 # Temporary
 tmp/

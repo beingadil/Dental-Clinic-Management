@@ -17,10 +17,6 @@ const FOCUSABLE_SELECTOR = [
  */
 const dialogStack: symbol[] = [];
 
-export function topDialogToken(): symbol | undefined {
-  return dialogStack[dialogStack.length - 1];
-}
-
 /**
  * V-19 — the behaviour every dialog needs and every dialog used to re-invent:
  * focus moves in on open, Tab cycles inside, Escape closes, focus returns to

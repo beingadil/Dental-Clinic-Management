@@ -47,7 +47,6 @@ describe('first-run admin — survives app restart', () => {
 
     // Close the app: export bytes; reopen: rebuild the engine from them.
     const bytes = engine.export();
-    const SQL = await initSqlJs();
     const restarted = await initEngineFromBytes(bytes);
     setDatabase(restarted);
 

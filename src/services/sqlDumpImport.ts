@@ -591,15 +591,6 @@ export async function analyzeSqlDump(script: string): Promise<SqlDumpAnalysis> {
 
 // --------------------------------------------------------------------- import
 
-/** One-line summary of a report for the settings panel. */
-export function describeSqlDump(report: SqlDumpReport): string {
-  const parts = [
-    `${report.totalRows.toLocaleString()} rows across ${Object.keys(report.tableCounts).length} tables`,
-    `schema v${report.schemaVersion}`,
-  ];
-  return parts.join(' · ');
-}
-
 function currentSchemaVersion(): number {
   if (!isDatabaseReady()) return 0;
   try {

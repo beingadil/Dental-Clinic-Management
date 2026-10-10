@@ -1,5 +1,5 @@
 import { getDatabase } from './index';
-import { SqliteEngine, TransactionApi, DbError } from './engine';
+import { SqliteEngine, DbError } from './engine';
 import { QcInspection } from '../types';
 import { stripDoctorHonorific } from '../utils/doctorName';
 import { fromStoredNeedsTeeth, toStoredNeedsTeeth } from '../utils/catalogToothRequirement';
@@ -870,14 +870,6 @@ export const invoicesRepo = {
   },
 };
 
-export const invoiceItemsRepo = {
-  byInvoice(invoiceId: string): any[] {
-    return requireEngine()
-      .all<any>('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY rowid', [invoiceId])
-      .map((r) => ({ ...r, teeth_numbers: r.teeth_numbers ? JSON.parse(r.teeth_numbers) : [] }));
-  },
-};
-
 // ─────────────────────────────────────────────────────────── payments
 
 export interface PaymentRow {
@@ -1006,24 +998,6 @@ export const paymentsRepo = {
     const before = requireEngine().rowCount('payments');
     requireEngine().run('DELETE FROM payments WHERE id = ?', [id]);
     return requireEngine().rowCount('payments') < before;
-  },
-};
-
-export const paymentAttachmentsRepo = {
-  byPayment(paymentId: string): any[] {
-    return requireEngine().all('SELECT * FROM payment_attachments WHERE payment_id = ? ORDER BY uploaded_at', [paymentId]);
-  },
-  insert(att: { payment_id: string; file_name: string; file_type: string; file_size?: string; file_url: string; uploaded_by?: string }): any {
-    const id = genId('pa');
-    requireEngine().run(
-      `INSERT INTO payment_attachments (id, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, att.payment_id, att.file_name, att.file_type, att.file_size ?? null, att.file_url, now(), att.uploaded_by ?? null]
-    );
-    return requireEngine().get('SELECT * FROM payment_attachments WHERE id = ?', [id]);
-  },
-  delete(id: string): void {
-    requireEngine().run('DELETE FROM payment_attachments WHERE id = ?', [id]);
   },
 };
 
@@ -1315,81 +1289,6 @@ export const journalRepo = {
   },
 };
 
-// ─────────────────────────────────────────────────────────── ledger
-
-export interface LedgerRow {
-  id: string;
-  date: string;
-  lab_id?: string | null;
-  lab_name?: string | null;
-  entry_type: string;
-  reference_id: string;
-  reference_number?: string | null;
-  case_number?: string | null;
-  doctor_name?: string | null;
-  description: string;
-  debit: number;
-  credit: number;
-  running_balance?: number | null;
-  payment_method?: string | null;
-  notes?: string | null;
-  recorded_by?: string | null;
-  journal_id?: string | null;
-  created_at: string;
-}
-
-export const ledgerRepo = {
-  all(): any[] {
-    return requireEngine().all<LedgerRow>('SELECT * FROM ledger_entries ORDER BY date ASC, created_at ASC')
-      .map((r) => ({ ...r, running_balance: r.running_balance ?? undefined }));
-  },
-  byLab(labId: string): any[] {
-    return requireEngine().all<LedgerRow>(
-      'SELECT * FROM ledger_entries WHERE lab_id = ? ORDER BY date ASC, created_at ASC',
-      [labId]
-    );
-  },
-  insert(entry: Omit<LedgerRow, 'id' | 'created_at' | 'running_balance'> & { id?: string; created_at?: string }): LedgerRow {
-    const db = requireEngine();
-    const id = entry.id || genId('led');
-    db.run(
-      `INSERT INTO ledger_entries (id, date, lab_id, lab_name, entry_type, reference_id, reference_number, case_number, doctor_name,
-                                   description, debit, credit, payment_method, notes, recorded_by, journal_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, entry.date, entry.lab_id ?? null, entry.lab_name ?? null, entry.entry_type, entry.reference_id,
-       entry.reference_number ?? null, entry.case_number ?? null, bareDoctorOrNull(entry.doctor_name),
-       entry.description, entry.debit ?? 0, entry.credit ?? 0, entry.payment_method ?? null,
-       entry.notes ?? null, entry.recorded_by ?? null, entry.journal_id ?? null, entry.created_at ?? now()]
-    );
-    return db.get<LedgerRow>('SELECT * FROM ledger_entries WHERE id = ?', [id])!;
-  },
-  deleteForRef(entryType: string, referenceId: string): void {
-    requireEngine().run('DELETE FROM ledger_entries WHERE entry_type = ? AND reference_id = ?', [entryType, referenceId]);
-  },
-  allRows(): LedgerRow[] {
-    return this.all();
-  },
-  clear(): void {
-    requireEngine().run('DELETE FROM ledger_entries');
-  },
-  /** Recomputes per-lab running balances deterministically (ordered by date, then insertion). */
-  recomputeRunningBalance(): void {
-    const db = requireEngine();
-    db.withTransaction((tx) => {
-      const rows = tx.all<{ id: string; lab_id: string | null; debit: number; credit: number }>(
-        'SELECT id, lab_id, debit, credit FROM ledger_entries ORDER BY date ASC, created_at ASC, id ASC'
-      );
-      const balances = new Map<string, number>();
-      for (const r of rows) {
-        const key = r.lab_id || '_global';
-        const bal = (balances.get(key) ?? 0) + (r.debit || 0) - (r.credit || 0);
-        balances.set(key, bal);
-        tx.run('UPDATE ledger_entries SET running_balance = ? WHERE id = ?', [bal, r.id]);
-      }
-    });
-  },
-};
-
 // ─────────────────────────────────────────────────────────── reconciliation
 
 export interface ReconciliationRow {
@@ -1551,47 +1450,6 @@ export const caseTemplatesRepo = {
     const before = requireEngine().rowCount('case_templates');
     requireEngine().run('DELETE FROM case_templates WHERE id = ?', [id]);
     return requireEngine().rowCount('case_templates') < before;
-  },
-};
-
-// ─────────────────────────────────────────────────────────── print templates
-
-export interface PrintTemplateRow {
-  id: string;
-  kind: string;
-  name: string;
-  sections: string[];
-  created_at: string;
-}
-
-export const printTemplatesRepo = {
-  all(): PrintTemplateRow[] {
-    return requireEngine()
-      .all<{ id: string; kind: string; name: string; sections: string; created_at: string }>(
-        'SELECT * FROM print_templates ORDER BY created_at DESC'
-      )
-      .map((r) => {
-        let sections: string[] = [];
-        try { sections = JSON.parse(r.sections || '[]'); } catch { /* corrupt row → empty */ }
-        return { id: r.id, kind: r.kind, name: r.name, sections, created_at: r.created_at };
-      });
-  },
-  insert(t: { kind: string; name: string; sections: string[] }): PrintTemplateRow {
-    const id = genId('prt');
-    requireEngine().run(
-      `INSERT INTO print_templates (id, kind, name, sections, created_at) VALUES (?, ?, ?, ?, ?)`,
-      [id, t.kind, t.name, JSON.stringify(t.sections), now()]
-    );
-    const row = requireEngine().get<{ id: string; kind: string; name: string; sections: string; created_at: string }>(
-      'SELECT * FROM print_templates WHERE id = ?',
-      [id]
-    )!;
-    return { ...row, sections: JSON.parse(row.sections || '[]') };
-  },
-  delete(id: string): boolean {
-    const before = requireEngine().rowCount('print_templates');
-    requireEngine().run('DELETE FROM print_templates WHERE id = ?', [id]);
-    return requireEngine().rowCount('print_templates') < before;
   },
 };
 
@@ -1910,7 +1768,6 @@ export interface DbStats {
   advance_payments: number;
   account_adjustments: number;
   journal_entries: number;
-  ledger_entries: number;
   notifications: number;
   audit_events: number;
   attachments: number;
@@ -1921,7 +1778,7 @@ export const statsRepo = {
   all(): DbStats {
     const db = requireEngine();
     const tables: (keyof DbStats)[] = ['users', 'labs', 'case_types', 'cases', 'invoices', 'payments',
-      'payment_attachments', 'advance_payments', 'account_adjustments', 'journal_entries', 'ledger_entries',
+      'payment_attachments', 'advance_payments', 'account_adjustments', 'journal_entries',
       'notifications', 'audit_events', 'attachments', 'invoice_items'];
     const out = {} as DbStats;
     for (const t of tables) {
@@ -1938,7 +1795,7 @@ export const statsRepo = {
  * delete(): a mistaken inspection is amended by appending a `correction` row
  * that names the event it replaces (supersedes_id). The UNIQUE dedupe_key is
  * the idempotency guard — the same physical inspection can never be posted
- * twice, mirroring `ledger_entries`.
+ * twice, mirroring the journal's UNIQUE(source_type, source_id) guard.
  */
 export const qcInspectionsRepo = {
   all(): QcInspection[] {

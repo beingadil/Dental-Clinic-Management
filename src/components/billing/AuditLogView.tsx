@@ -7,22 +7,16 @@ import { EmptyState } from '../common/ui';
 import { 
   ShieldCheck, 
   Search, 
-  Filter, 
   Download, 
   Calendar, 
-  User, 
   Activity, 
   AlertTriangle, 
   RotateCcw, 
   CheckCircle2, 
-  FileText, 
   DollarSign, 
   Wallet, 
-  CreditCard, 
-  Eye, 
   X,
-  Code,
-  ArrowRight
+  Code
 } from 'lucide-react';
 
 export const AuditLogView: React.FC = () => {

@@ -29,7 +29,6 @@ export const buildAuditEvent = (
 });
 
 const nowStamp = (): string => getNowStamp();
-const todayPart = (nowStr: string): string => nowStr.split(' ')[0];
 
 /** Status a fresh payment takes, given the cashier's verification flag. */
 export const derivePaymentStatusV2 = (
@@ -552,7 +551,7 @@ export const buildReversalAuditEvent = (input: {
 /** Invoice update when one of its payments is reversed (paid total recomputed from active payments). */
 export const applyPaymentReversalToInvoice = (
   inv: Invoice,
-  referenceId: string,
+  _referenceId: string,
   updatedPayments: PaymentRecord[],
 ): Invoice => {
   const activePaid = updatedPayments

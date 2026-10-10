@@ -1,11 +1,10 @@
 import initSqlJs from 'sql.js';
 import { SqliteEngine, SqlJsStatic, DbError } from './engine';
 import { seedDatabase } from './seeds';
-import { runLegacyMigration, getLastLegacyReport } from './legacyMigrator';
+import { runLegacyMigration } from './legacyMigrator';
 import { installAutoPersistence, loadSnapshot } from './persistence';
 import { setDatabase, getDatabase, isDatabaseReady, exportDatabaseBytes } from './core';
 
-export { getLastLegacyReport };
 export { getDatabase, isDatabaseReady, exportDatabaseBytes };
 let bootPromise: Promise<SqliteEngine> | null = null;
 let wasmLocator: ((file: string) => string) | null = null;

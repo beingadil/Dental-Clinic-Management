@@ -5,7 +5,6 @@ import { MIGRATIONS } from '../../src/db/migrations';
 
 /** The migration ledger must be 1..N with no gaps, for whatever N is now. */
 const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
-const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 
 let engine: SqliteEngine;
 
@@ -28,9 +27,11 @@ describe('migrations', () => {
   });
 
   it('creates the expected core tables', () => {
-    for (const t of ['users', 'labs', 'cases', 'invoices', 'payments', 'ledger_entries', 'audit_events', 'settings']) {
+    for (const t of ['users', 'labs', 'cases', 'invoices', 'payments', 'journal_entries', 'audit_events', 'settings']) {
       expect(engine.tableExists(t)).toBe(true);
     }
+    // Migration 022 dropped the dead per-document ledger mirror.
+    expect(engine.tableExists('ledger_entries')).toBe(false);
   });
 });
 

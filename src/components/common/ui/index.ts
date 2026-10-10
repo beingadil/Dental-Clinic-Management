@@ -3,7 +3,6 @@ export * from './Modal';
 export * from './Drawer';
 export * from './ConfirmDialog';
 export * from './useDialogBehavior';
-export * from './StatCard';
 export * from './EmptyState';
 export * from './PreviewFrame';
 export * from './PageHeader';

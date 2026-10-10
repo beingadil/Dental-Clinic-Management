@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Check, Copy, Info, CheckCircle2 } from 'lucide-react';
+import { X, Sparkles, Check, Copy, CheckCircle2 } from 'lucide-react';
 
 interface ShadeGuideModalProps {
   onClose: () => void;

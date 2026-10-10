@@ -275,11 +275,6 @@ export function getFailureSummary(): FailureSummary {
   };
 }
 
-export function getRecentFailures(kind?: FailureKind): PersistenceFailure[] {
-  const all = load().failures;
-  return (kind ? all.filter((f) => f.kind === kind) : all).slice();
-}
-
 /**
  * Plain-text diagnostics for the "copy" button — the format is deliberately
  * the same shape as the audit findings, so a report pasted into a support

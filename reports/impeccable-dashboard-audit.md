@@ -28,15 +28,15 @@
 
 The dashboard is not interchangeable with an unrelated product. Evidence:
 
-- [dashboard-tokens.css:1-14](src/components/dashboard/dashboard-tokens.css#L1-L14) documents a deliberate
+- [dashboard-tokens.css:1-14](../src/components/dashboard/dashboard-tokens.css#L1-L14) documents a deliberate
   three-layer token architecture *and the reason for it* — "repointing `--ds-accent` at a different
   primitive repaints every accent surface in the dashboard without touching a single component class."
-- [panelRegistry.ts:1-9](src/components/dashboard/panelRegistry.ts#L1-L9) exists specifically because a
+- [panelRegistry.ts:1-9](../src/components/dashboard/panelRegistry.ts#L1-L9) exists specifically because a
   layout saved from Settings used to be filtered by a different key set than the dashboard rendered,
   silently dropping panels out of a saved arrangement. The file's reason for existing is a real past bug.
 - Domain vocabulary is precise and correct for the domain: **Bench Workload**, **Production Workflow**
   (Received → In Production → QC → Ready → Dispatched), **Clinic Accounts**, **Revenue & Collections**.
-- [ShadeGuideModal.tsx](src/components/dashboard/ShadeGuideModal.tsx) is a genuine dental-artifact feature
+- [ShadeGuideModal.tsx](../src/components/dashboard/ShadeGuideModal.tsx) is a genuine dental-artifact feature
   (A1–D4 shade selection), not decoration.
 
 **False positives called out explicitly:**
@@ -44,7 +44,7 @@ The dashboard is not interchangeable with an unrelated product. Evidence:
 - The 25 hex literals in `ShadeGuideModal.tsx` are **not** hard-coded theme colors. They are dental
   shade-guide values describing physical tooth colors. Flagging these as theming violations would be wrong.
 - The hex literals in `dashboard-tokens.css` are the primitive layer — the correct place for them.
-- `bg-ds-sunken` in [dashboard-panels.tsx:67](src/components/dashboard/dashboard-panels.tsx#L67) **looks**
+- `bg-ds-sunken` in [dashboard-panels.tsx:67](../src/components/dashboard/dashboard-panels.tsx#L67) **looks**
   like a typo for `bg-ds-surface-sunken` but is correct: `--color-ds-sunken` is aliased to
   `--ds-surface-sunken` in the `@theme inline` block. Verified working at runtime.
 
@@ -76,7 +76,7 @@ fix touch targets and nav occlusion → then semantics.
 ### P1 — Major
 
 #### **[P1] `--ds-muted` fails WCAG AA across 38 text nodes**
-- **Location:** [dashboard-tokens.css:82](src/components/dashboard/dashboard-tokens.css#L82) — `--ds-muted: var(--p-slate-400)` = `#9aa3b2`
+- **Location:** [dashboard-tokens.css:82](../src/components/dashboard/dashboard-tokens.css#L82) — `--ds-muted: var(--p-slate-400)` = `#9aa3b2`
 - **Category:** Accessibility
 - **Measured:** `2.43:1` on canvas, `2.54:1` on white — against a 4.5:1 requirement
 - **Impact:** Every secondary label on the dashboard is washed out at 10–11px, the hardest size to read.
@@ -90,14 +90,14 @@ fix touch targets and nav occlusion → then semantics.
 - **Suggested command:** `$impeccable colorize`
 
 #### **[P1] `bg-ds-surface-sunken` is a dead utility — hover states render nothing**
-- **Location:** 7 occurrences across [Sidebar.tsx:127](src/components/common/Sidebar.tsx#L127),
-  [Sidebar.tsx:149](src/components/common/Sidebar.tsx#L149), [Sidebar.tsx:195](src/components/common/Sidebar.tsx#L195),
-  [Sidebar.tsx:213](src/components/common/Sidebar.tsx#L213),
-  [PanelControls.tsx:51](src/components/dashboard/PanelControls.tsx#L51),
-  [PanelLayoutBar.tsx:64](src/components/dashboard/PanelLayoutBar.tsx#L64),
-  [PanelLayoutBar.tsx:76](src/components/dashboard/PanelLayoutBar.tsx#L76)
+- **Location:** 7 occurrences across [Sidebar.tsx:127](../src/components/common/Sidebar.tsx#L127),
+  [Sidebar.tsx:149](../src/components/common/Sidebar.tsx#L149), [Sidebar.tsx:195](../src/components/common/Sidebar.tsx#L195),
+  [Sidebar.tsx:213](../src/components/common/Sidebar.tsx#L213),
+  [PanelControls.tsx:51](../src/components/dashboard/PanelControls.tsx#L51),
+  [PanelLayoutBar.tsx:64](../src/components/dashboard/PanelLayoutBar.tsx#L64),
+  [PanelLayoutBar.tsx:76](../src/components/dashboard/PanelLayoutBar.tsx#L76)
 - **Category:** Implementation Integrity / Theming
-- **Root cause:** `@theme inline` aliases `--color-ds-sunken` ([dashboard-tokens.css:154](src/components/dashboard/dashboard-tokens.css#L154))
+- **Root cause:** `@theme inline` aliases `--color-ds-sunken` ([dashboard-tokens.css:154](../src/components/dashboard/dashboard-tokens.css#L154))
   but **not** `--color-ds-surface-sunken`. Tailwind never emits
   a utility for an unaliased name, and it fails silently.
 - **Verified at runtime** by injection test:
@@ -161,9 +161,9 @@ fix touch targets and nav occlusion → then semantics.
 
 #### **[P2] `--ds-dispatch` fails both text and non-text contrast**
 - **Location:** `--ds-dispatch: var(--p-cyan-500)` = `#06b6d4`
-  ([dashboard-tokens.css:106](src/components/dashboard/dashboard-tokens.css#L106)); used at
-  [dashboard-panels.tsx:71](src/components/dashboard/dashboard-panels.tsx#L71),
-  [:81](src/components/dashboard/dashboard-panels.tsx#L81), [:92](src/components/dashboard/dashboard-panels.tsx#L92)
+  ([dashboard-tokens.css:106](../src/components/dashboard/dashboard-tokens.css#L106)); used at
+  [dashboard-panels.tsx:71](../src/components/dashboard/dashboard-panels.tsx#L71),
+  [:81](../src/components/dashboard/dashboard-panels.tsx#L81), [:92](../src/components/dashboard/dashboard-panels.tsx#L92)
 - **Category:** Accessibility
 - **Measured:** **2.43:1** on white — fails the 4.5:1 text threshold *and* the 3:1 threshold for
   meaningful non-text graphics (the workload bar fill)
@@ -176,8 +176,8 @@ fix touch targets and nav occlusion → then semantics.
   darker outline, or switch the bar to `cyan-600`.
 
 #### **[P2] Raw palette values escape the token layer**
-- **Location:** exactly two entries — [dashboard-panels.tsx:77](src/components/dashboard/dashboard-panels.tsx#L77)
-  `bg-slate-100 text-slate-500` (in `TONE_ICON_BG`) and [dashboard-panels.tsx:87](src/components/dashboard/dashboard-panels.tsx#L87)
+- **Location:** exactly two entries — [dashboard-panels.tsx:77](../src/components/dashboard/dashboard-panels.tsx#L77)
+  `bg-slate-100 text-slate-500` (in `TONE_ICON_BG`) and [dashboard-panels.tsx:87](../src/components/dashboard/dashboard-panels.tsx#L87)
   `bg-slate-300` (in `TONE_BAR`)
 - **Category:** Theming
 - **Impact:** Both `muted` entries in the tone maps reference Tailwind's default slate ramp instead of

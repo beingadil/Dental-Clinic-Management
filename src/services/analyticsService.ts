@@ -74,7 +74,6 @@ export function computeAnalyticsForPeriod(from: string | null, to: string | null
   const caseParams: string[] = [];
   if (from) { caseWhere.push('h.timestamp >= ?'); caseParams.push(from); }
   if (to) { caseWhere.push("substr(h.timestamp, 1, 10) <= ?"); caseParams.push(to); }
-  const caseWhereSql = caseWhere.length ? `AND ${caseWhere.join(' AND ')}` : '';
 
   // ---- Turnaround per priority (delivery vs. created / SLA due date) ----
   const delivered = db.all<{ priority: string; created_at: string; delivery_date: string | null; first_delivery: string | null }>(`

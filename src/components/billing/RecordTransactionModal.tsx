@@ -1,25 +1,20 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Invoice, PaymentAttachment } from '../../types';
+import { PaymentAttachment } from '../../types';
 import { formatPKR } from '../../services/financeDomain';
 import { validateFile } from '../../services/fileValidation';
 import { canPost } from '../../services/permissions';
 import { 
-  X, 
   DollarSign, 
   Wallet, 
-  FileText, 
   ArrowDownLeft, 
   CheckCircle2, 
   AlertCircle, 
   Upload, 
   Scale, 
-  Calendar, 
-  Building2, 
   Split, 
   ShieldCheck,
-  Percent,
-  Plus
+  Percent
 } from 'lucide-react';
 import { Modal } from '../common/ui';
 import { getTodayStr, getNowStamp } from '../../utils/dateUtils';
@@ -348,8 +343,6 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       setFormError(err instanceof Error ? err.message : 'Could not post the transaction. Please try again.');
     }
   };
-
-  const selectedClinic = labs.find((l) => l.id === clinicId);
 
   return (
     <Modal

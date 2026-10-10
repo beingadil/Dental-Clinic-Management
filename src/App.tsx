@@ -30,8 +30,8 @@ const LabListView = lazy(() =>
 const BillingView = lazy(() =>
   import('./components/billing/BillingView').then((m) => ({ default: m.BillingView }))
 );
-const AnalyticsView = lazy(() =>
-  import('./components/analytics/AnalyticsView').then((m) => ({ default: m.AnalyticsView }))
+const ReportsView = lazy(() =>
+  import('./components/reports/ReportsView').then((m) => ({ default: m.ReportsView }))
 );
 const NotificationsView = lazy(() =>
   import('./components/notifications/NotificationsView').then((m) => ({ default: m.NotificationsView }))
@@ -82,7 +82,7 @@ const MainAppContent: React.FC = () => {
         <SaveFailureBanner />
 
         {/* Top Header */}
-        <Header onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
+        <Header />
 
         {/* View Main Content Area wrapped in Error Boundary */}
         {/* pb-24 below lg: the mobile bottom bar is a fixed ~60px strip and the
@@ -106,7 +106,7 @@ const MainAppContent: React.FC = () => {
 
                 {currentView === 'catalog' && <CatalogView />}
 
-                {currentView === 'analytics' && <AnalyticsView />}
+                {currentView === 'analytics' && <ReportsView />}
 
                 {currentView === 'notifications' && <NotificationsView />}
 

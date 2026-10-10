@@ -8,18 +8,14 @@ import {
   Edit2, 
   Search, 
   Printer, 
-  ShieldAlert, 
-  Sparkles,
   Clock,
   Award,
-  CheckCircle2,
-  DollarSign,
   Layers,
   X
 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { getTodayStr } from '../../utils/dateUtils';
-import { catalogNeedsTeeth, toStoredNeedsTeeth } from '../../utils/catalogToothRequirement';
+import { catalogNeedsTeeth } from '../../utils/catalogToothRequirement';
 
 export const CatalogView: React.FC = () => {
   const { caseTypes, addCaseType, updateCaseType, deleteCaseType, brandingSettings } = useApp();

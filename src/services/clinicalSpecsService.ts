@@ -174,31 +174,3 @@ export function getClinicalSpecs(): ClinicalSpecsState {
     };
   }
 }
-
-export function saveClinicalSpecs(specs: ClinicalSpecsState): void {
-  // Primary write: SQLite (survives resets, included in backups)
-  const db = getDbHelpers();
-  if (db) {
-    try {
-      db.clinicalSpecsRepo.materials.deleteAll();
-      db.clinicalSpecsRepo.prepTypes.deleteAll();
-      db.clinicalSpecsRepo.shadeGuides.deleteAll();
-      db.clinicalSpecsRepo.implantBrands.deleteAll();
-      specs.materials.forEach((m) => db.clinicalSpecsRepo.materials.insert(m));
-      specs.prepTypes.forEach((p) => db.clinicalSpecsRepo.prepTypes.insert(p));
-      specs.shadeGuides.forEach((g) => db.clinicalSpecsRepo.shadeGuides.insert(g));
-      specs.implantBrands.forEach((b) => db.clinicalSpecsRepo.implantBrands.insert(b));
-    } catch (err) {
-      console.error('Failed to write clinical specs to SQLite:', err);
-    }
-  }
-
-  // Mirror write: localStorage kept in sync as legacy fallback
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(specs));
-  } catch (err) {
-    console.error('Failed to save clinical specs:', err);
-  }
-
-  window.dispatchEvent(new CustomEvent('clinical-specs-updated', { detail: specs }));
-}

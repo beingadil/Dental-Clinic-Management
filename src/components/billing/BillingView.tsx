@@ -9,44 +9,30 @@ import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from './PaymentProofModal';
 import { PaymentReceiptModal } from './PaymentReceiptModal';
 import { TransactionRegister } from './TransactionRegister';
-import { BillingReportsView } from './BillingReportsView';
-import { GeneralLedgerView } from './GeneralLedgerView';
 import { BatchInvoicePrintModal } from './BatchInvoicePrintModal';
-import { AuditLogView } from './AuditLogView';
 import { RecordTransactionModal } from './RecordTransactionModal';
 import { JournalEntryModal } from './JournalEntryModal';
 import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
-import { ClinicAccountsTable } from './ClinicAccountsTable';
-import { PageHeader, EmptyState, TabsNav, Badge, DataTable, FilterBar, usePagination } from '../common/ui';
+import { PageHeader, EmptyState, TabsNav, DataTable, FilterBar, usePagination } from '../common/ui';
+import { BILLING_TABS, labelOf, type BillingTab } from '../common/financeTabs';
 import { todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { 
-  DollarSign, 
   Wallet, 
   FileCheck2, 
-  BookOpen, 
-  BarChart3, 
   Printer, 
   Search, 
   Download, 
-  Trash2, 
-  FileText,
-  Building2, 
+  Trash2,
   CheckCircle2, 
-  AlertCircle,
   AlertTriangle,
   Clock,
-  ChevronRight,
   ArrowDownLeft,
   ArrowUpRight,
-  Scale,
-  ShieldCheck,
   Eye,
-  Activity,
-  CheckCheck,
   FileSpreadsheet
 } from 'lucide-react';
 
@@ -56,19 +42,15 @@ export const BillingView: React.FC = () => {
     cases, 
     bulkMarkPaid, 
     deleteInvoice, 
-    allPayments, 
-    advancePayments, 
-    accountAdjustments, 
     labs,
     getLabFinancialSummary,
-    journalEntries,
-    auditEvents,
-    user,
-    setCurrentView
+    user
   } = useApp();
 
-  // Core navigation: 5 tabs for complete dental laboratory ERP accounting
-  const [activeTab, setActiveTab] = useState<'invoices' | 'transactions' | 'clinic_accounts' | 'general_ledger' | 'audit_log' | 'reports'>('invoices');
+  // Core navigation. Clinic accounts, the double-entry ledger, the audit
+  // trail and the monthly report/statement archives are the read-only side of
+  // the money — they live in Analytics & Reports. This module is money in.
+  const [activeTab, setActiveTab] = useState<BillingTab>('invoices');
 
   // Invoices tab filter states
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -345,20 +327,11 @@ export const BillingView: React.FC = () => {
       
       {/* Module Title and Unified Action Buttons Header */}
       <PageHeader
-        title="Billing, Invoicing & Receivables"
-        subtitle="Complete dental lab accounting • Clinic invoices, payments register, double-entry ledger & audit statements"
+        title="Billing, Invoicing & Receivables"subtitle="Clinic invoices & payments register • Clinic accounts, ledger, audit trail and statement archives live under Analytics & Reports"
         breadcrumbs={[
           { label: 'Financial Hub' },
-          { 
-            label: activeTab === 'invoices' 
-              ? 'Invoices & Receivables' 
-              : activeTab === 'transactions' 
-              ? 'Payments & Transactions' 
-              : activeTab === 'general_ledger' 
-              ? 'General Ledger' 
-              : activeTab === 'audit_log' 
-              ? 'Audit Trail' 
-              : 'Reports & Statements' 
+          {
+            label: labelOf(BILLING_TABS, activeTab)
           }
         ]}
         actions={
@@ -473,22 +446,15 @@ export const BillingView: React.FC = () => {
       />
 
       {/* Main Tab Navigation (Comprehensive ERP Finance Modules) */}
-      <TabsNav
+      <TabsNav<BillingTab>
         activeTab={activeTab}
         onChange={(tabId) => {
-          setActiveTab(tabId as any);
+          setActiveTab(tabId);
           setSelectedIds([]);
         }}
         fit="fill"
         variant="pills"
-        tabs={[
-          { id: 'invoices', label: 'Invoices & Receivables', icon: FileText },
-          { id: 'transactions', label: 'Payments & Transactions', icon: DollarSign },
-          { id: 'clinic_accounts', label: 'Clinic Accounts', icon: Building2 },
-          { id: 'general_ledger', label: 'General Ledger', icon: BookOpen },
-          { id: 'audit_log', label: 'Audit Trail', icon: ShieldCheck },
-          { id: 'reports', label: 'Reports & Statements', icon: BarChart3 },
-        ]}
+        tabs={[...BILLING_TABS]}
       />
 
       {/* TAB 1: INVOICES & RECEIVABLES */}
@@ -797,66 +763,10 @@ export const BillingView: React.FC = () => {
       {/* TAB 2: UNIFIED PAYMENTS & TRANSACTIONS REGISTER */}
       {activeTab === 'transactions' && (
         <TransactionRegister
-          onOpenPaymentModal={(inv, labId) => {
-            setUnifiedModalLabId(labId || inv?.lab_id);
-            setUnifiedModalInvoiceId(inv?.id);
-            setUnifiedModalMode('payment');
-            setIsUnifiedRecordModalOpen(true);
-          }}
-          onOpenAdvanceModal={(labId) => {
-            setUnifiedModalLabId(labId);
-            setUnifiedModalMode('advance_deposit');
-            setIsUnifiedRecordModalOpen(true);
-          }}
-          onOpenAdjustmentModal={(labId) => {
-            setUnifiedModalLabId(labId);
-            setUnifiedModalMode('credit_note');
-            setIsUnifiedRecordModalOpen(true);
-          }}
           onViewProof={(pay) => setSelectedProofPayment(pay)}
           onPrintReceipt={(pay, inv) => setSelectedReceiptPayment({ payment: pay, invoice: inv })}
           onReverseTransaction={(target) => setReversalTarget(target)}
           onOpenJournalModal={(refId) => setJournalModalRef(refId)}
-        />
-      )}
-
-      {/* TAB 3: CLINIC ACCOUNTS LEDGER — moved here from the dashboard, where
-          it was the widest element on screen and had to be capped at 12 rows.
-          Money lives in the finance workspace; this gives it full width. */}
-      {activeTab === 'clinic_accounts' && (
-        <ClinicAccountsTable
-          labs={labs}
-          invoices={invoices}
-          cases={cases}
-          todayStr={getTodayStr()}
-          onCollect={(clinicId) => {
-            setUnifiedModalLabId(clinicId);
-            setUnifiedModalInvoiceId(undefined);
-            setUnifiedModalMode('payment');
-            setIsUnifiedRecordModalOpen(true);
-          }}
-          onStatement={(clinicId) => setClinicStatementModalId(clinicId)}
-          onOpenClinics={() => setCurrentView('labs')}
-        />
-      )}
-
-      {/* TAB 4: CLINIC GENERAL LEDGER */}
-      {activeTab === 'general_ledger' && (
-        <GeneralLedgerView
-          onOpenJournalModal={(refId) => setJournalModalRef(refId)}
-        />
-      )}
-
-      {/* TAB 5: IMMUTABLE AUDIT TRAIL */}
-      {activeTab === 'audit_log' && (
-        <AuditLogView />
-      )}
-
-      {/* TAB 6: MONTHLY REPORTS & STATEMENTS ARCHIVES */}
-      {activeTab === 'reports' && (
-        <BillingReportsView
-          onPrintInvoice={(inv) => setPrintModalInvoice(inv)}
-          onViewCaseSlip={(caseItem) => setViewSlipCase(caseItem)}
         />
       )}
 

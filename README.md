@@ -19,11 +19,11 @@ Local application API (typed repositories, src/db/repos.ts)
         │
         └── Services
                 backupService (.dentalbackup) · updateService + updateInstaller
-                attachmentService · prioritySla · financeDomain
+                prioritySla · financeDomain · fileValidation
 ```
 
 - **Browser build:** the SQLite engine (WASM, bundled locally — no CDN) persists
-  snapshots to localStorage under a single binary-safe key.
+  snapshots to IndexedDB under a single binary-safe key, with localStorage as a fallback.
 - **Desktop build (Tauri 2):** the exact same engine bytes are written to a real
   `dental_solutions.sqlite` file in the OS app-data directory (atomic tmp +
   fsync + rename). Same schema, same file format, both directions portable.
@@ -116,11 +116,12 @@ Fonts and the SQLite WASM are bundled; there are no runtime CDN/API calls.
 
 ## Documentation
 
-- `docs/ARCHITECTURE_AUDIT.md` — original architecture discovery
-- `docs/MIGRATION_AUDIT.md` — module-by-module data-flow audit
-- `docs/DATABASE.md` — schema, relationships, migrations, backup format
-- `docs/DATA_MIGRATION_REPORT.md` — legacy localStorage import details
-- `docs/MIGRATION_PROGRESS.md` — phase-by-phase progress
+- `docs/DATABASE.md` — schema, relationships, migrations, seed layer, backup format
+- `docs/sqlite-persistence-audit.md` — the SQLite persistence & data-integrity audit
+  (schema, engine, repos, the React→SQLite sync, autosave, backup/restore, `.sql` export & import)
+- `docs/SMOKE_TEST_CHECKLIST.md` — the per-release manual smoke test to run on the clinic PC
+- `reports/impeccable-dashboard-audit.md` — Dashboard UI audit (accessibility, responsive, theming)
+- `reports/impeccable-create-case-audit.md` — Create New Case (`CaseDetailModal` + odontogram) UI audit
 - `CHANGELOG.md` — release history
 
 ## Security notes

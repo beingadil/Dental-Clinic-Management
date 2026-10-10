@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { receivedDateFor } from '../../utils/dateUtils';
 import { stripDoctorHonorific } from '../../utils/doctorName';
 import { QRCodeSVG } from 'qrcode.react';
-import { Phone, MapPin, Mail, Facebook, Calendar, Clock, Sparkles } from 'lucide-react';
+import { Phone, MapPin, Mail } from 'lucide-react';
 
 interface LabCardSlipProps {
   caseData: DentalCase;

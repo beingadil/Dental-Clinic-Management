@@ -6,12 +6,6 @@
  */
 import { getDatabase } from './core';
 
-export interface StoredUserPreferences {
-  user_id: string;
-  value: unknown;
-  updated_at: string;
-}
-
 export const userPreferencesRepo = {
   get(userId: string): unknown | undefined {
     const row = getDatabase().get<{ value: string }>('SELECT value FROM user_preferences WHERE user_id = ?', [userId]);

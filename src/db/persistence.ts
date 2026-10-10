@@ -667,5 +667,3 @@ function installLifecycleHooks(): void {
 export function isSnapshotDirty(): boolean {
   return dirty || ls()?.getItem(DIRTY_KEY) === 'true';
 }
-
-export const SNAPSHOT_INFO = { SNAPSHOT_KEY, MAGIC };

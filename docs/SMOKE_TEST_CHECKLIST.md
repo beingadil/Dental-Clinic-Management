@@ -18,11 +18,22 @@ Tested by: ____________________  Windows version: ______________
 - [ ] Choose per-user or all-users install; complete the wizard
 - [ ] Desktop / Start-menu shortcuts exist with the correct icon
 
-## 2. First Launch & Login
+## 2. First Launch & First-Run Account
 
-- [ ] App opens with the "Initializing local database…" splash, then login screen
-- [ ] Login works with the documented bootstrap credentials
-- [ ] **Change each bootstrap password** (Settings → My Account & Security)
+There is **no bootstrap password** — the app ships zero accounts. On a fresh install the login
+screen shows the first-run setup form instead of the sign-in form, so the operator chooses their
+own credentials on this machine.
+
+- [ ] App opens with the "Initializing local database…" splash, then the login screen reading
+      "First-time setup" / "Create the administrator"
+- [ ] Enter a full name, a username, and a password of at least 8 characters (the counter under the
+      password field counts the remaining characters down; "Create administrator" stays disabled
+      until all three are filled and the password is long enough)
+- [ ] Click **Create administrator**; the toast reads "Administrator account created. Please sign
+      in." and the screen flips to the normal sign-in form
+- [ ] Sign in with the credentials just created
+- [ ] The account carries the **Super Admin** role (shown by the role-scoped UI). Add further staff
+      accounts afterwards in Settings → User Management
 
 ## 3. Core Module Walkthrough (all offline)
 

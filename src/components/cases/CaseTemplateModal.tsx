@@ -8,7 +8,7 @@ interface CaseTemplateModalProps {
   onClose?: () => void;
 }
 
-export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTemplate, onClose }) => {
+export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTemplate }) => {
   const { templates, caseTypes, deleteTemplate, saveAsTemplate } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);

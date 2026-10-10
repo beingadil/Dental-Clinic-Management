@@ -4,21 +4,29 @@
 
 - **sql.js 1.13.0** — SQLite compiled to WebAssembly, bundled at build time (`dist/assets/sql-wasm-*.wasm`).
   No CDN, no server, no native modules: the entire database runs and persists locally, fully offline.
-- Persistence: the full SQLite file (`engine.export()`) is snapshotted to the single localStorage key
-  `dsw_sqlite_snapshot` (base64, `DSDB1:` header), debounced 400 ms after any write and flushed on page hide/unload.
-  Corrupt/foreign snapshots are detected by header and safely discarded.
-- Under a future desktop shell (Tauri/Electron), `src/db/persistence.ts` is the single seam that changes:
-  the same bytes go to a real file instead of localStorage. Zero engine/repository changes.
+- Persistence: the full SQLite file (`engine.export()`) is snapshotted to **IndexedDB** (`dsw_sqlite/snapshots`,
+  a single binary-safe base64 key), debounced 400 ms after any write and flushed on page hide/unload.
+  IndexedDB is primary on purpose — a localStorage origin quota is ~5 MB and base64 inflates the
+  database by 4/3, so a real clinic database hits the ceiling and every save then throws.
+  localStorage (`dsw_sqlite_snapshot`, `DSDB1:` header) is a fallback, kept for databases that predate
+  the IndexedDB store and deleted once a verified IndexedDB write succeeds. Corrupt/foreign snapshots
+  are detected by header and safely discarded.
+- In the shipped desktop build (Tauri 2), `src/db/persistence.ts` is the single seam that changes:
+  the same bytes go to a real file in the OS app-data directory instead of browser storage.
+  Zero engine/repository changes.
 
 ## Migrations
 
 - `src/db/migrations.ts` — ordered, append-only; each runs inside a transaction.
 - Applied versions recorded in `schema_migrations`; re-runs skip applied versions (idempotent).
-- Current: `001_initial_schema`, `002_pragmas_and_fts` (ledger table), `003_demo_fixtures` (reserved), `004_app_version`, `005_qc_inspections` (append-only quality stream).
+- Current: 22 applied migrations — `001_initial_schema`, `002_pragmas_and_fts` (ledger table),
+  `003_demo_fixtures` (reserved), `004_app_version`, `005_print_templates`,
+  `006_qc_inspections` (append-only quality stream), … `021_catalog_needs_teeth`,
+  `022_drop_ledger_entries`. See `src/db/migrations.ts` for the full numbered list.
 - **Never edit an applied migration.** Add a new numbered one.
 - `PRAGMA foreign_keys = ON` is set on every connection open.
 
-## Schema (v5)
+## Schema (v22)
 
 ```
 users ─┬─< sessions
@@ -36,7 +44,7 @@ labs (clinics) ─┬─< lab_contacts / lab_addresses / lab_pricing_overrides /
                 │             └─< account_adjustments (credit notes, write-offs…)
                 └─< doctor_preferred_labs
 journal_entries ─< journal_lines (double entry)
-ledger_entries (materialized, UNIQUE(entry_type, reference_id) = idempotency guard)
+
 reconciliation_items, notifications, saved_vouchers, audit_events (append-only)
 settings (namespaced K/V), notification_config, email_templates
 clinical_materials / clinical_prep_types / shade_guides / implant_brands
@@ -45,8 +53,7 @@ chairside_appointments, case_templates, legacy_backup (quarantine), app_meta, do
 
 Key integrity rules: FKs with CASCADE on child tables; CHECK constraints on all enums and money
 (> 0 on payments, ≥ 0 on invoices); UNIQUE on all document numbers and clinic names
-(case-insensitive); `ledger_entries` UNIQUE guard prevents double-posting the same source
-transaction; `doc_sequences` guarantees gap-free-ish numbering (DS-, INV-, PAY-, ADV-, CR-…)
+(case-insensitive); `doc_sequences` guarantees gap-free-ish numbering (DS-, INV-, PAY-, ADV-, CR-…)
 without collisions. `qc_inspections` is append-only with `UNIQUE(dedupe_key)` as the retry
 guard: an inspection is never updated in place — a mistake is amended by a `correction`
 row carrying `supersedes_id`, and QC state/metrics are derived from the stream.
@@ -69,11 +76,15 @@ row carrying `supersedes_id`, and QC state/metrics are derived from the stream.
 
 Phase 8 deliverable (Settings UI): export the DB snapshot bytes + attachments as a versioned
 `.dentalbackup` package; restore validates the header, takes a safety snapshot of current data,
-then swaps atomically. The engine export/restore path is already proven by
-`tests/db/persistence.test.ts`.
+then swaps atomically. That export/restore path is proven by `tests/services/backup.test.ts`,
+`tests/services/backupRestore.test.ts` and `tests/services/backupRestoreSafety.test.ts`; the
+engine-level snapshot round-trip underneath it is `tests/db/persistence.test.ts`.
 
 ## Seeding
 
-`src/db/seeds.ts` — idempotent; only fills empty tables. Seeds the four users with **hashed**
-passwords (the old plaintext seeds are gone), the 8-item catalog, clinical specs, branding,
-notification config, and email templates. Synthetic demo data only; no real patient data ships with the repo.
+`src/db/seeds.ts` — idempotent; only fills empty tables. **It seeds no users at all:** the app
+ships zero accounts, and the operator's Super Admin is created through the login screen's
+first-run setup flow (`src/components/auth/LoginPage.tsx`), so the operator chooses that
+credential rather than inheriting a documented default. What it does seed is the 8-item catalog,
+clinical specs, branding, notification config, and email templates. Synthetic demo data only;
+no real patient data ships with the repo.

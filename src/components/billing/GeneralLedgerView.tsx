@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { LedgerEntry, DentalLab } from '../../types';
+import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
-import { getDateStr, getTodayStr } from '../../utils/dateUtils';
+import { getDateStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { 
   Search, 
@@ -29,7 +29,6 @@ import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { DentalCase } from '../../types';
 
 interface GeneralLedgerViewProps {
-  onOpenJournalModal?: (referenceId: string) => void;
 }
 
 /** One row of the narration cell: the type badge, the headline and the
@@ -43,8 +42,8 @@ interface NarrationDetails {
   caseDetail: { label: string; value: string }[];
 }
 
-export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJournalModal }) => {
-  const { labs, getLedgerEntries, brandingSettings, cases, setSelectedCaseForModal } = useApp();
+export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
+  const { labs, getLedgerEntries, brandingSettings, cases } = useApp();
 
   // Case drill-down state: which case's record is open from a ledger row.
   const [selectedCaseForModal, setSelectedCaseForModalLocal] = useState<DentalCase | null>(null);
@@ -201,7 +200,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
   }, [getLedgerEntries, selectedClinicId]);
 
   // Compute opening balance before startDate and active entries within date range
-  const { openingBalance, ledgerItems, totalDebits, totalCredits, closingBalance } = useMemo(() => {
+  const { openingBalance, ledgerItems } = useMemo(() => {
     /* Order strictly by POSTING TIME (the engine's exact sequence), never by
        document number: sorting by reference string interleaved same-day rows
        and made the running balance jump up and down. The source array arrives
@@ -410,50 +409,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
     };
   };
 
-  // CSV Export — needs a specific clinic (no consolidated mode exists)
-  const handleExportCSV = () => {
-    if (!selectedClinic) return;
-    try {
-      const clinicTitle = selectedClinic.name;
-      const filename = `Ledger_${clinicTitle.replace(/\s+/g, '_')}_${getTodayStr()}.csv`;
-
-      const headers = ['Sr No.', 'Date', 'Clinic', 'Type', 'Narration', 'Debit (PKR)', 'Credit (PKR)', 'Closing Balance (PKR)'];
-      const rows: string[][] = [];
-
-      // Add opening balance if any
-      if (openingBalance !== 0 || startDate) {
-        rows.push(['0', startDate || '-', selectedClinic?.name || 'Consolidated', 'Opening Balance', 'Balance brought forward', '0', '0', openingBalance.toString()]);
-      }
-
-      ledgerItems.forEach((item, idx) => {
-        const details = getNarrationDetails(item);
-        const c = findCaseForEntry(item, cases);
-        const narration = [details.narration, c ? caseDetailText(c) : ''].filter(Boolean).join(' • ');
-        rows.push([
-          (idx + 1).toString(),
-          String(item.date || '').slice(0, 10),
-          `"${String(item.lab_name || '').replace(/"/g, '""')}"`,
-          `"${String(details.typeLabel || '')}"`,
-          `"${String(narration).replace(/"/g, '""')}"`,
-          (item.debit || 0).toString(),
-          (item.credit || 0).toString(),
-          (item.closing_balance || 0).toString()
-        ]);
-      });
-
-      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (e) {
-      console.error('Error exporting CSV:', e);
-    }
-  };
-
   /* PDF export — a real vector document (text, table, page breaks), not a
      screenshot. Reuses the exact rows/totals the on-screen preview shows. */
   const handleExportPDF = () => {
@@ -499,17 +454,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ onOpenJour
       );
     } catch (e) {
       console.error('Error exporting PDF:', e);
-    }
-  };
-
-  // Handle Print safely. The printable block only exists while the preview
-  // is active, so activate it first — otherwise the printout would be blank.
-  const handlePrint = () => {
-    setIsPreviewActive(true);
-    try {
-      setTimeout(() => window.print(), 50);
-    } catch (e) {
-      console.warn('Print not supported in iframe environment:', e);
     }
   };
 

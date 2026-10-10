@@ -76,11 +76,9 @@
 /* ── Layer 2 · SEMANTIC ───────────────────────────────────────────────── */
 :root {
   /* Surfaces */
-  --ds-canvas: var(--p-slate-50);
   --ds-surface: var(--p-white);
   --ds-surface-sunken: var(--p-slate-50);
   --ds-line: var(--p-slate-200);
-  --ds-line-strong: var(--p-slate-300);
 
   /* Type */
   --ds-ink: var(--p-slate-950);
@@ -124,17 +122,14 @@
 /* ── Layer 3 · COMPONENT ──────────────────────────────────────────────── */
 :root {
   --ds-radius-card: 16px;
-  --ds-radius-tile: 12px;
   --ds-radius-pill: 9999px;
 
   /* Wide, low-opacity, hue-tinted — depth without a hard edge. */
   --ds-shadow-card: 0 1px 2px rgba(20, 28, 43, 0.04), 0 1px 3px rgba(20, 28, 43, 0.03);
-  --ds-shadow-tile: 0 1px 2px rgba(20, 28, 43, 0.05);
   --ds-shadow-lift: 0 4px 12px -2px rgba(20, 28, 43, 0.08);
 
   --ds-pad-card: 20px;
   --ds-gap-grid: 16px;
-  --ds-control-h: 36px;
   --ds-font-scale: 1;
 }
 
@@ -156,11 +151,9 @@
 
 @theme inline {
   /* Surfaces */
-  --color-ds-canvas: var(--ds-canvas);
   --color-ds-surface: var(--ds-surface);
   --color-ds-sunken: var(--ds-surface-sunken);
   --color-ds-line: var(--ds-line);
-  --color-ds-line-strong: var(--ds-line-strong);
 
   /* Type */
   --color-ds-ink: var(--ds-ink);
@@ -194,15 +187,10 @@
 
   /* Shape */
   --radius-ds-card: var(--ds-radius-card);
-  --radius-ds-tile: var(--ds-radius-tile);
 
   /* Elevation */
   --shadow-ds-card: var(--ds-shadow-card);
-  --shadow-ds-tile: var(--ds-shadow-tile);
   --shadow-ds-lift: var(--ds-shadow-lift);
-
-  /* Type scale — the dashboard is deliberately dense (density 8/10) */
-  --font-numeric: var(--ds-numeric);
 }
 
 /* ── Dashboard-local primitives ───────────────────────────────────────── */
@@ -379,41 +367,11 @@
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
-
-  /* The trend dot that marks "live" */
-  .ds-live-dot {
-    position: relative;
-    display: inline-flex;
-    width: 6px;
-    height: 6px;
-  }
-  .ds-live-dot::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 9999px;
-    background: var(--ds-pos);
-    opacity: 0.55;
-    animation: ds-ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
-  .ds-live-dot::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 9999px;
-    background: var(--ds-pos);
-  }
-
-  @keyframes ds-ping {
-    0% { transform: scale(1); opacity: 0.55; }
-    70%, 100% { transform: scale(2.6); opacity: 0; }
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ds-enter,
-  .ds-meter-fill,
-  .ds-live-dot::before {
+  .ds-meter-fill {
     animation: none !important;
   }
   .ds-meter-fill { transform: scaleX(1) !important; }

@@ -14,11 +14,6 @@ import type { EmailTemplate, NotificationConfig } from '../types';
 
 const TEMPLATE_KEYS: EmailTemplate['key'][] = ['overdue_case', 'pending_payment', 'escalation', 'payment_received'];
 
-export const REMINDER_KINDS = [
-  { id: 'overdue_cases' as const, label: 'Overdue cases', configKey: 'overdue_frequencies' as const },
-  { id: 'pending_payment' as const, label: 'Outstanding invoices', configKey: 'payment_frequencies' as const },
-];
-
 export const CADENCE_OPTIONS = [
   { id: '1_day_before', label: '1 day before' },
   { id: 'on_due_date', label: 'On the due date' },

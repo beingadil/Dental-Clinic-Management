@@ -46,7 +46,6 @@ import { ShadeGuideModal } from './ShadeGuideModal';
 import { DeliveryCalendarModal } from './DeliveryCalendarModal';
 import { CaseQueueModal, type QueueId } from './CaseQueueModal';
 import { getTodayStr } from '../../utils/dateUtils';
-import { APP_VERSION } from '../../services/backupService';
 import {
   ClipboardList,
   CreditCard,

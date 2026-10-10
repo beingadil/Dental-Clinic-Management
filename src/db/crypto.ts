@@ -73,16 +73,4 @@ export async function sha256Hex(data: Uint8Array | string): Promise<string> {
     .join('');
 }
 
-/** Deterministic legacy password hash (SHA-256), used only to import pre-migration plaintext. */
-export async function legacyHashForMigration(plaintext: string, salt: Uint8Array): Promise<string> {
-  const encoder = new TextEncoder();
-  const combined = new Uint8Array(encoder.encode(plaintext).length + salt.length);
-  combined.set(encoder.encode(plaintext));
-  combined.set(salt, encoder.encode(plaintext).length);
-  const digest = await crypto.subtle.digest('SHA-256', combined as unknown as BufferSource);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
-export const PBKDF2_ITERATIONS = ITERATIONS;

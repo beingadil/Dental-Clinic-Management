@@ -4,8 +4,6 @@ import { CaseAttachment } from '../../types';
 import { openFileInBrowser } from '../../utils/fileUtils';
 import { 
   Upload, 
-  File, 
-  Image as ImageIcon, 
   Download, 
   Trash2, 
   Eye, 

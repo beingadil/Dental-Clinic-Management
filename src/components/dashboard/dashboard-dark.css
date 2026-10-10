@@ -14,11 +14,9 @@
 
 @media screen {
   .dark {
-    --ds-canvas: #0b1220;
     --ds-surface: #0f1826;
     --ds-surface-sunken: #0e1622;
     --ds-line: #1e2b40;
-    --ds-line-strong: #2a3a52;
 
     --ds-ink: #f1f5f9;
     --ds-ink-soft: #cbd5e1;
@@ -58,7 +56,6 @@
 
     /* Elevation on dark = a light rim plus depth, never a black shadow. */
     --ds-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.02);
-    --ds-shadow-tile: 0 1px 2px rgba(0, 0, 0, 0.45);
     --ds-shadow-lift: 0 4px 14px -2px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
 
     /* The meter track is a surface, not ink. */

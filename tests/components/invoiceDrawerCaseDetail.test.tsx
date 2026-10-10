@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import React from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import type { DentalCase, Invoice } from '../../src/types';
@@ -138,7 +137,7 @@ describe('InvoiceDetailDrawer case detail', () => {
    * fails here until the drawer renders it. */
   it('renders exactly the rows the shared case formatter produces', () => {
     renderDrawer();
-    const block = caseBlock();
+    caseBlock();
 
     const expected = caseDetailLines(CASE);
     expect(expected.length).toBeGreaterThan(0);

@@ -1,4 +1,4 @@
-import { BrandingSettings, UserPreferences } from '../types';
+import { BrandingSettings } from '../types';
 
 /**
  * No bootstrap accounts ship with this build.
@@ -46,17 +46,3 @@ export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
   cardBgColor: '#ffffff',
 };
 
-export const DEFAULT_USER_PREFS: UserPreferences = {
-  channels: ['in_app', 'email'],
-  frequency: 'real_time',
-  quiet_hours_enabled: false,
-  quiet_hours_start: '22:00',
-  quiet_hours_end: '07:00',
-  enabled_types: ['overdue_case', 'pending_payment', 'escalation', 'status_change'],
-  unsubscribed_all: false,
-  currency: 'PKR',
-  default_turnaround_days: 3,
-  default_priority: 'normal',
-  auto_print_job_slips: false,
-  auto_archive_completed_cases: true,
-};

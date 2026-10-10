@@ -8,7 +8,7 @@ import { CaseTemplateModal } from './CaseTemplateModal';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
-import { PageHeader, EmptyState, Badge, CaseStatusBadge, PriorityBadge, usePagination } from '../common/ui';
+import { PageHeader, EmptyState, CaseStatusBadge, PriorityBadge, usePagination } from '../common/ui';
 import { 
   PlusCircle, 
   Search, 
@@ -17,15 +17,12 @@ import {
   ArrowUpZA,
   Bookmark, 
   AlertTriangle, 
-  CheckCircle2, 
   Clock, 
-  Eye, 
   Calendar,
   X,
   LayoutGrid,
   Table as TableIcon,
   GripVertical,
-  ChevronRight,
   Move,
   Printer,
   CheckSquare,
@@ -158,7 +155,7 @@ const SORT_OPTIONS: { group: string; options: { value: CaseSortKey; label: strin
 ];
 
 export const CaseListView: React.FC = () => {
-  const { cases, labs, caseTypes, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently } = useApp();
+  const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently } = useApp();
 
   /* Workstation shows ACTIVE cases; the Archive tab shows completed cases
      (archived_at set). Archived rows never enter the kanban/table pipeline. */
@@ -791,7 +788,7 @@ export const CaseListView: React.FC = () => {
                     )
                   ) : (
                     stageCases.map((c) => {
-                      const { isWarning, isOverdue, isDueSoon, hoursLeft } = checkCaseWarning(c);
+                      const { isWarning, isOverdue, hoursLeft } = checkCaseWarning(c);
                       const isBeingDragged = draggedCaseId === c.id;
                       const isSelected = selectedCaseIds.includes(c.id);
 
@@ -1265,7 +1262,6 @@ export const CaseListView: React.FC = () => {
                 setTemplateLibraryOpen(false);
                 setIsNewModalOpen(true);
               }}
-              onClose={() => setTemplateLibraryOpen(false)}
             />
           </div>
         </div>

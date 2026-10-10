@@ -6,6 +6,168 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Reports & Statements now lives only under Analytics & Reports.**
+  `Analytics & Reports` became a tabbed view
+  (`src/components/reports/ReportsView.tsx`) — Overview, Clinic Accounts,
+  General Ledger, Audit Trail, Reports & Statements — each tab carrying its own
+  modals (collect payment, clinic statement, journal inspector, invoice
+  statement, case job slip), so nothing lost an action on the way. The duplicate
+  `Reports & Statements` tab is gone from `BillingView`, which keeps Invoices &
+  Receivables, Payments & Transactions, Clinic Accounts, General Ledger and
+  Audit Trail, and its header now points readers at Analytics & Reports instead
+  of advertising an archive it no longer owns.
+
+### Fixed
+- **A batch print that outgrew one page no longer slices rows in half.**
+  `BatchInvoicePrintModal` emitted the whole selection as a single sheet, so
+  past about a dozen invoices the table ran past the bottom of the paper and the
+  browser cut it mid-row: the clinic got a statement with an orphaned line item
+  and no totals. New `src/services/statementPagination.ts` splits the selection
+  into sheets that each fit the chosen paper and font scale, weighting a row by
+  whether its case carries the detail block (one unit bare, three with detail).
+  Each sheet repeats the statement header, is numbered `Page n of m`, and the
+  balance block prints on the final sheet only — over the whole run, so adding
+  up the printed pages still reconciles. A row heavier than a whole sheet gets
+  its own page instead of being dropped.
+- **A system reset no longer leaves money rows behind.** `payment_allocations`
+  (invoice → payment allocations written by `paymentsRepo`) and the legacy
+  `ledger_entries` mirror belonged to no writer and no rebuilder: the
+  collection sync never touched `payment_allocations` and the reset never
+  deleted it, so resetting the system left every allocation in place pointing
+  at payments and invoices that no longer existed. `payment_allocations` is now
+  emptied and rebuilt with the payments in `syncNow` (exactly as
+  `advance_allocations` already was), and `ledger_entries` is part of
+  `WIPE_EXPLICIT_TABLES`.
+- **The batch-print pagination tests no longer expire after one day.**
+  `tests/components/batchInvoicePrintPaging.test.tsx` dated its 40 fixture
+  invoices `2026-10-10` while the modal opens on the *Today* period and filters
+  the batch by `issue_date`. The day after that hard-coded date every sheet came
+  back empty and all four assertions failed — a red suite on a test that had
+  never actually been wrong. The fixture now derives today the way its sibling
+  `tests/components/batchPrintCaseDetail.test.tsx` already did, so the file
+  tests the packer instead of the calendar.
+
+### Testing
+- **`tests/db/systemReset.test.ts`** fills every business table the app writes —
+  cases, teeth, invoices, items, payments, proof attachments, allocations,
+  advances, adjustments, journals and lines, QC, notifications, audit, vouchers,
+  templates — performs the reset exactly as `wipeAllData` performs it, then
+  asserts the sync did not abort, the integrity check still passes, and no
+  business row survived. A second test pins the allocation round-trip through an
+  ordinary autosave.
+- **`tests/components/batchInvoicePrintPaging.test.tsx`** renders the modal over
+  40 detail-carrying invoices and asserts the batch spans exactly five sheets,
+  prints every invoice once in order, carries the balance block on the last
+  sheet only, and numbers the sheets. `tests/services/statementPagination.test.ts`
+  covers the packer itself, including the balance-block reservation on the final
+  sheet and the oversized-row case.
+
+### Removed
+- **The 100k scale guard and the wall-clock budget suite.** `syncScale100k`
+  (100,000 cases + 100,000 invoices), `syncScale` (10k) and `autosaveScale`
+  are deleted, along with `vitest.scale.config.ts` and the `test:scale` script
+  that `npm test` chained after the main suite. None of them ran in the app or
+  the dev server — they were test-only, gated behind `npm test` — so this
+  shortens the test run and removes nothing from the shipped product. The
+  2.20.0 prepared-statement cache that took a 10k sync from ~3110 ms to
+  ~1190 ms stays; only the assertions around it are gone. `npm test` is now a
+  single `vitest run` with no scale exclude list.
+- **Three audit scripts nothing could run, and two assertions nothing could
+  fail.** `scripts/audit-column-coverage.mjs`, `scripts/audit-swallows.mjs` and
+  `scripts/audit-untransactional.mjs` had no npm script, no CI step and no git
+  hook — no code path could reach them, so they were documentation wearing
+  tooling's clothes. Their findings are already recorded in
+  `docs/sqlite-persistence-audit.md`, which now calls them the one-off sweeps
+  they were rather than advertising a way to re-run them. Two dead assertions
+  went with them: `tests/services/updateInstaller.test.ts` checked
+  `typeof offA`/`offB` was `'function'` on the two lines *after* invoking them
+  (a non-function would already have thrown), and
+  `tests/db/syncSchemaCoverage.test.ts` carried an `it()` whose sole assertion
+  was byte-identical to the one directly above it. No real assertion is
+  touched — the suite drops by exactly one test.
+
+### Verified
+- `tsc --noEmit` and the full `vitest` suite pass after the removal; CI runs
+  `npm test`, so it picks the change up with no workflow edit. Suite total is
+  now 775 tests across 94 files; the batch-print split sheets, their
+  `Page n of m` numbering and the final-sheet totals were also confirmed in the
+  running app, and the Billing tab strip no longer lists Reports & Statements.
+
+### Changed
+- **`tsc` now fails on dead code.** `noUnusedLocals` and `noUnusedParameters`
+  are on in `tsconfig.json`, so an unused import, an unused local or an unread
+  destructured field is a build error instead of silence. Turning them on
+  exposed 211 violations across 74 files, all now removed — the leftovers of
+  the domain-hook extraction in `AppContext.tsx` (27 imports it stopped using),
+  the icon imports the tab extraction stranded in `BillingView` and
+  `AuditLogView`, and the `React` default import that `"jsx": "react-jsx"`
+  made redundant in 17 test files. Every one was a deletion, not a rename or a
+  `void`: the compiler proved each was unread, so nothing that ran stops
+  running. A dead state that hid a real defect went with them — `BatchInvoicePrintModal`
+  loaded its invoice section list on every open and discarded it.
+
+### Removed
+- **Three files nothing imported.** `src/services/attachmentService.ts` (its
+  only mention in the repo was a line of prose in `README.md`, since corrected
+  to name the validation service that is actually wired up),
+  `src/components/common/ui/StatCard.tsx` (reachable only through the barrel's
+  `export *`, never through a component) and
+  `src/components/dashboard/ClinicStatementModal.tsx`, a 45-line pass-through
+  that no longer had a caller after the clinic statement moved to Billing.
+- **`motion`, `autoprefixer` and `@types/express` are not dependencies.**
+  `motion` was a *production* dependency with a `manualChunks` rule in
+  `vite.config.ts` and no import anywhere — the rule could never match, and
+  every animation in the app is CSS. `autoprefixer` had no `postcss.config.*`
+  to run under Tailwind v4, and `@types/express` outlived `express` itself.
+- **The exports, context values, props and CSS that nothing reached.** About
+  fifty exports with no reference outside their own declaration (including
+  `getTomorrowStr`, `getYesterdayStr`, the whole `sqliteStorage` localStorage
+  era, and three repository wrappers whose tables are still written by other
+  code), 24 context members no component ever destructured, 13 props no caller
+  ever passed, and the `.ds-live-dot` animation with the tokens and dark-theme
+  remaps behind it. `ConfirmationModal` is now unreachable dead UI — removing
+  `confirmAction` removed its only trigger — and is left in place rather than
+  deleted on a judgement call.
+
+### Documentation
+- **The documentation set now links only to files that exist.** `README.md`'s
+  Documentation list pointed at four files that were never committed
+  (`docs/ARCHITECTURE_AUDIT.md`, `docs/MIGRATION_AUDIT.md`,
+  `docs/DATA_MIGRATION_REPORT.md`, `docs/MIGRATION_PROGRESS.md`). It now lists
+  what is actually there — `docs/DATABASE.md`,
+  `docs/sqlite-persistence-audit.md`, `docs/SMOKE_TEST_CHECKLIST.md` and the two
+  `reports/impeccable-*.md` UI audits, which nothing reachable linked to before.
+  All 46 relative links in `docs/sqlite-persistence-audit.md` and all 19 in
+  `reports/impeccable-dashboard-audit.md` were missing their `../` hop and so
+  resolved to `docs/src/…` and `reports/src/…`; every target does exist at the
+  repo root, and all 65 now resolve.
+- **`docs/DATABASE.md` was describing a build that no longer exists.** It
+  claimed five migrations and a "Schema (v5)" (there are 22, the latest being
+  `022_drop_ledger_entries`); that browser snapshots went to the single
+  localStorage key `dsw_sqlite_snapshot` (IndexedDB is primary and localStorage
+  is the legacy fallback, for exactly the ~3.7 MB quota ceiling the audit
+  documented); that Tauri was "a future desktop shell" (Tauri 2 ships, and CI
+  builds the NSIS installer on every release); and that seeding created four
+  users with hashed passwords (the app ships zero accounts —
+  `tests/db/firstRunAdmin.test.ts` asserts `usersRepo.count()` is 0, and the
+  operator's Super Admin is created by the login screen's first-run setup). Its
+  proof-of-restore pointer moved from `tests/db/persistence.test.ts` to the
+  backup suites `tests/services/backup.test.ts`, `backupRestore.test.ts` and
+  `backupRestoreSafety.test.ts`, with `persistence.test.ts` kept for the
+  engine-level snapshot round-trip it actually covers.
+- **Smoke-test step 2 was a step that could never pass.**
+  `docs/SMOKE_TEST_CHECKLIST.md` told the operator to log in with "the
+  documented bootstrap credentials" and then change each bootstrap password; on
+  a fresh install there is nothing to log in with. It now walks the real
+  first-run flow — the "Create the administrator" form, the 8-character minimum,
+  the confirmation toast, and the Super Admin role the first account receives.
+- **`.gitignore` stopped ignoring a toolchain that never existed here.**
+  `bun.lock` and `metadata.json` (under an "AI Studio export artifacts" heading)
+  and `src-tauri/gen/schemas/` (where `src-tauri/gen` does not exist) are gone.
+  All four `.env*` patterns are deliberately untouched — narrowing those risks
+  committing a secret — and `coverage/` stays.
+
 ## [2.20.0] — 2026-10-10
 
 ### Performance

@@ -13,7 +13,6 @@ import * as snapshotStore from '../../src/services/safetySnapshotStore';
 import { MIGRATIONS } from '../../src/db/migrations';
 
 /** The migration ledger must be 1..N with no gaps, for whatever N is now. */
-const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
 const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 
 /**

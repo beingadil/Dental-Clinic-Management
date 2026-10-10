@@ -25,7 +25,6 @@
  * exactly what a pre-migration-021 database looks like on disk; resolving it to
  * "required" is then the DEFAULT clause's doing, not a property of the test.
  */
-import React from 'react';
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import initSqlJs from 'sql.js';

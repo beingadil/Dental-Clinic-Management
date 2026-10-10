@@ -5,6 +5,7 @@ import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getDateStr, getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
+import { paginateStatementInvoices } from '../../services/statementPagination';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
@@ -44,10 +45,6 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   const [to, setTo] = useState<string>(() => todayISO());
   const [excluded, setExcluded] = useState<string[]>([]);
   const [printSettings] = useState(() => loadPrintSettings());
-  /* Same stored invoice content list as the single-invoice dialog. */
-  const [invoiceSections] = useState<string[]>(() =>
-    loadDocumentSections('invoice', DEFAULT_ENABLED.invoice)
-  );
   /* Statement section list for the one-sheet batch summary. */
   const [statementSections] = useState<string[]>(() =>
     loadDocumentSections('statement', DEFAULT_ENABLED.statement)
@@ -77,6 +74,15 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     (sum, inv) => sum + Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0)),
     0
   );
+
+  /* A selection longer than one sheet is split into sheets that each fit the
+     paper, so nothing is sliced mid-row. The sheet count follows the live
+     print settings — switch to Letter or Large text and it re-paginates. */
+  const pages = useMemo(
+    () => paginateStatementInvoices(selected, cases, printSettings),
+    [selected, cases, printSettings]
+  );
+  const pageCount = pages.length;
 
   const toggle = (id: string) =>
     setExcluded((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -126,7 +132,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             <div>
               <h3 className="text-sm font-bold text-slate-900">Batch Print Unpaid Invoices</h3>
               <p className="text-xs text-slate-500">
-                Pick a clinic and a period — all unpaid invoices print on one summary sheet.
+                Pick a clinic and a period — the unpaid invoices print as one statement, split across as many sheets as they need.
               </p>
             </div>
           </div>
@@ -283,38 +289,54 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
           )}
         </div>
 
-        {/* Paper preview — ONE summary sheet listing every selected unpaid
-            invoice (no per-invoice page breaks). NOT `.no-print`: the preview
-            shell must stay printable, otherwise the whole batch comes out
-            blank (the card above carries print-area). */}
+        {/* Paper preview — one sheet per page of the selected unpaid invoices.
+            A long batch becomes several `.print-doc-page` sheets; the shared
+            print CSS turns each into a real page break on paper (and a dashed
+            divider on screen). NOT `.no-print`: the preview shell must stay
+            printable, otherwise the whole batch comes out blank (the card
+            above carries print-area). */}
         <div className="print-preview-shell">
-          <div className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter' : 'print-preview-page'}>
-            <div>
-              {selected.length === 0 ? (
+          <div className="w-full">
+            {selected.length === 0 ? (
+              <div className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter' : 'print-preview-page'}>
                 <div className="py-16 text-center text-xs text-ink-muted">
                   <CheckCircle2 className="mx-auto mb-2 h-6 w-6 text-slate-300" />
                   Nothing selected to print.
                 </div>
-              ) : (
-                <PrintDocument
-                  kind="statement"
-                  sections={statementSections}
-                  branding={brandingSettings}
-                  printSettings={printSettings}
-                  invoices={selected}
-                  cases={cases}
-                  labName={selectedClinic?.name}
-                  period={{ from, to }}
-                />
-              )}
-            </div>
+              </div>
+            ) : (
+              pages.map((page) => (
+                <div
+                  key={page.pageNumber}
+                  className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter print-doc-page' : 'print-preview-page print-doc-page'}
+                >
+                  <PrintDocument
+                    kind="statement"
+                    sections={statementSections}
+                    branding={brandingSettings}
+                    printSettings={printSettings}
+                    invoices={page.rows}
+                    cases={cases}
+                    labName={selectedClinic?.name}
+                    period={{ from, to }}
+                    page={{ page: page.pageNumber, pageCount }}
+                    /* Totals cover the whole run and land on the final sheet
+                       only, so adding up the printed pages never double-counts. */
+                    balanceInvoices={selected}
+                    showBalance={page.pageNumber === pageCount}
+                  />
+                </div>
+              ))
+            )}
           </div>
         </div>
 
         {/* Screen footer */}
         <div className="no-print flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-3">
           <span className="text-xs text-slate-500">
-            Each printed invoice is logged to billing history.
+            {pageCount > 1
+              ? `Prints as ${pageCount} sheets · each printed invoice is logged to billing history.`
+              : 'Each printed invoice is logged to billing history.'}
           </span>
           <button
             type="button"

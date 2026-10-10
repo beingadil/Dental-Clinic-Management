@@ -725,7 +725,7 @@ function regenerateAliases(css) {
 }
 
 const TARGETS = [
-  { file: join(ROOT, 'src', 'index.css'), theme: 'light', indent: '  ', label: 'src/index.css :root' },
+  { file: join(ROOT, 'src', 'index.css'), theme: 'light', indent: '  ', label: 'src/index.css @theme static' },
   { file: join(ROOT, 'src', 'theme', 'dark.css'), theme: 'dark', indent: '    ', label: 'src/theme/dark.css .dark' },
 ]
 

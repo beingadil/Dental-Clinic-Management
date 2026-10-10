@@ -12,7 +12,7 @@ import {
   History,
   ArrowLeft,
 } from 'lucide-react';
-import type { DentalCase, CaseStatus, PriorityLevel } from '../../types';
+import type { DentalCase, PriorityLevel } from '../../types';
 import { formatDoctorName } from '../../utils/doctorName';
 import { CaseNotesPanel } from './CaseNotesPanel';
 import { CaseAttachmentsPanel } from './CaseAttachmentsPanel';

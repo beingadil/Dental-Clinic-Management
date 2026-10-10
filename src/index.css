@@ -54,8 +54,22 @@
  * re-verified end-to-end by scripts/contrast-audit.mjs. A fill is a brand
  * surface, so it holds one tone across the theme switch; only the ink on it
  * changes. The dark counterparts live in src/theme/dark.css.
+ *
+ * WHY `@theme` AND NOT `:root`
+ * Tailwind v4 only generates utilities from variables declared in `@theme`.
+ * These tokens spent their whole life in a plain `:root` block, which emits the
+ * custom property but produces NO `text-ink-*` / `bg-fill-*` utility at all —
+ * so 490 call sites silently styled nothing and every element fell back to the
+ * unstyled/inherited value. A translucent or white button on a white card was
+ * the visible symptom. `@theme` declares the same variables in the same place
+ * and additionally makes the utility classes real.
+ *
+ * `static` is required because the `fill-*-hover` / `fill-*-active` tokens are
+ * consumed by the hand-written alias rules below via `var()`, which Tailwind
+ * cannot see as utility usage. Without it the default tree-shake drops them and
+ * the hover/active states resolve to nothing.
  */
-:root {
+@theme static {
   --color-ink-muted: #68707b;
   --color-ink-body: #464e58;
   --color-ink-danger: #d50033;
@@ -225,43 +239,10 @@
   border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
-.glass-panel-dark {
-  background: rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(51, 65, 85, 0.6);
-}
-
 /* Refined micro-dot grid for dental workstation canvas */
 .dental-grid-bg {
   background-size: 24px 24px;
   background-image: radial-gradient(circle, rgba(148, 163, 184, 0.18) 1px, transparent 1px);
-}
-
-/* Pinterest-inspired card column masonry and flexible flow */
-.pinterest-columns {
-  column-count: 1;
-  column-gap: 1.25rem;
-}
-@media (min-width: 640px) {
-  .pinterest-columns {
-    column-count: 2;
-  }
-}
-@media (min-width: 1024px) {
-  .pinterest-columns {
-    column-count: 3;
-  }
-}
-@media (min-width: 1440px) {
-  .pinterest-columns {
-    column-count: 4;
-  }
-}
-
-.pinterest-item {
-  break-inside: avoid;
-  margin-bottom: 1.25rem;
 }
 
 /* Sleek subtle scrollbars */
@@ -292,16 +273,12 @@
 }
 
 /* Completely remove scroll bars across Billing & Invoices modules */
-.billing-module *::-webkit-scrollbar,
-.billing-scroll-clean *::-webkit-scrollbar,
-.billing-scroll-clean::-webkit-scrollbar {
+.billing-module *::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
 }
-.billing-module *,
-.billing-scroll-clean *,
-.billing-scroll-clean {
+.billing-module * {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
 }
@@ -414,28 +391,14 @@
   .animate-step-in,
   .animate-fadeIn,
   .animate-ping,
-  .animate-ping-slow,
   .animate-pulse,
-  .animate-pulse-slow,
-  .animate-bounce,
-  .animate-bounce-slow {
+  .animate-bounce {
     animation: none !important;
   }
 
-  .animate-spin,
-  .animate-spin-slow {
+  .animate-spin {
     animation-duration: 2.4s !important;
   }
-}
-
-/* Conic donut progress ring simulation */
-.donut-chart {
-  background: conic-gradient(
-    #2563eb 0% 42%,
-    #0284c7 42% 70%,
-    #10b981 70% 88%,
-    #f59e0b 88% 100%
-  );
 }
 
 

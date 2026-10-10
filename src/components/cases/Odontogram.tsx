@@ -1,19 +1,13 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { getTodayStr } from '../../utils/dateUtils';
 import {
-  Check,
   Trash2,
   Activity,
   Stethoscope,
 } from "lucide-react";
 import "./Odontogram.css";
 import {
-  getClinicalSpecs,
-  ClinicalMaterial,
-  ClinicalPrepType,
-  ClinicalShadeGuide,
-  ClinicalImplantBrand,
-  DEFAULT_MATERIALS
+  getClinicalSpecs
 } from "../../services/clinicalSpecsService";
 
 /* =========================================================================
@@ -307,8 +301,8 @@ function Odontogram({
   const [shades, setShades] = useState<Record<number, string>>(initialShades);
   const [materials, setMaterials] = useState<Record<number, string>>(initialMaterials);
   const [toothDetailsState, setToothDetailsState] = useState<Record<number, ToothDetailData>>({});
-  const [activeRestoration, setActiveRestoration] = useState("crown");
-  const [activeMaterial, setActiveMaterial] = useState(defaultMaterial);
+  const [activeRestoration] = useState("crown");
+  const [activeMaterial] = useState(defaultMaterial);
   const [activeShade, setActiveShade] = useState("A2");
   const [selectedToothId, setSelectedToothId] = useState<number | null>(initialSelected[0] || null);
 
@@ -325,8 +319,6 @@ function Odontogram({
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
-  const activeMaterials = useMemo(() => clinicalSpecs.materials.filter(m => m.is_active), [clinicalSpecs]);
-  const activePrepTypes = useMemo(() => clinicalSpecs.prepTypes.filter(p => p.is_active), [clinicalSpecs]);
   const activeShadeList = useMemo(() => {
     const list: string[] = [];
     clinicalSpecs.shadeGuides.forEach(g => {
@@ -347,8 +339,6 @@ function Odontogram({
       selected: selectedSet.has(tooth.id),
     }));
   }, [restorations, shades, selectedSet, toothDetailsState]);
-
-  const selectedTooth = teeth.find((t) => t.id === selectedToothId) ?? null;
 
   function getDisplayNumber(fdiTooth: number): number | string {
     return numbering === "FDI" ? fdiTooth : UNIVERSAL_NUMBERS[fdiTooth] || fdiTooth;
@@ -438,24 +428,6 @@ function Odontogram({
     setMaterials(nextMaterials);
     setSelectedToothId(nextSelected.length > 0 ? nextSelected[0] : null);
     emitChange(nextSelected, nextRestorations, nextShades, nextMaterials);
-  }
-
-  function applyRestoration(restType: string) {
-    setActiveRestoration(restType);
-    if (!selectedToothId) return;
-
-    const nextRestorations = { ...restorations, [selectedToothId]: restType };
-    setRestorations(nextRestorations);
-    emitChange(selected, nextRestorations, shades, materials);
-  }
-
-  function applyMaterial(matName: string) {
-    setActiveMaterial(matName);
-    if (!selectedToothId) return;
-
-    const nextMaterials = { ...materials, [selectedToothId]: matName };
-    setMaterials(nextMaterials);
-    emitChange(selected, restorations, shades, nextMaterials);
   }
 
   function applyShade(shadeVal: string) {
@@ -805,11 +777,6 @@ function Odontogram({
  * `onChange` stable, otherwise the memo would never hit.
  */
 export default React.memo(Odontogram);
-
-function prepLabel(prepTypes: ClinicalPrepType[], id: string): string {
-  const found = prepTypes.find((p) => p.id === id);
-  return found ? found.name : id;
-}
 
 /* =========================================================================
    TOOTH NODE (SVG)

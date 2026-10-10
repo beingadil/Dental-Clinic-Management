@@ -9,7 +9,6 @@
  * teeth: the lab card said "Full Arch", the print renderer emitted an empty
  * "Shade: —", and the saved voucher note read "Teeth:  | Shade: N/A".
  */
-import React from 'react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 

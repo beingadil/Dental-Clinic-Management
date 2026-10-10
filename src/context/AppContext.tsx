@@ -17,12 +17,9 @@ import {
   PaymentRecord,
   PaymentAttachment,
   LedgerEntry,
-  LedgerEntryType,
   LabFinancialSummary,
   CaseNote,
   CaseAttachment,
-  CaseStatus,
-  PriorityLevel,
   BrandingSettings,
   SavedVoucher,
   AdvancePayment,
@@ -30,10 +27,6 @@ import {
   JournalEntry,
   AuditEvent,
   ReconciliationItem,
-  PaymentAllocation,
-  InvoiceStatusV2,
-  PaymentStatusV2,
-  AdvanceCreditStatus,
   QcInspection,
   QcCaseState,
   QcMetrics,
@@ -41,9 +34,6 @@ import {
   QcReceipt
 } from '../types';
 import {
-  deriveInvoiceStatus,
-  formatPKR,
-  getAgingBucket,
   buildInvoiceJournal,
   buildPaymentJournal,
   buildReversalJournal,
@@ -75,7 +65,7 @@ import { applyBrandColor } from '../services/brandingTheme';
 import { readNotificationCadence, NOTIFICATION_CONFIG_CHANGED } from '../services/notificationSettings';
 import { useTransactionCommands } from './hooks/useTransactionCommands';
 import { useAuthDomain } from './hooks/useAuthDomain';
-import { deriveSimpleStatus, buildInvoiceAllocation, buildPaymentSideEffects } from '../services/paymentDomain';
+import { buildInvoiceAllocation } from '../services/paymentDomain';
 import { useBillingDomain } from './hooks/useBillingDomain';
 import { useNotificationsDomain } from './hooks/useNotificationsDomain';
 import { useVoucherLogging } from './hooks/useVoucherLogging';
@@ -84,25 +74,20 @@ import {
   buildQcFailedNotification,
   buildOverdueAlerts,
   buildUnpaidInvoiceAlerts,
-  buildAdvanceDepositV2Notification,
   buildAdjustmentNotification,
-  buildPaymentReceivedNotification,
   prependUniqueNotifications,
 } from '../services/notificationDomain';
-import { hydrateAllFromDb as hydrateAllFromDbShared, dbRows, dbMirror, groupByCase, attachmentsByCase } from './hooks/domainState';
-import { isDatabaseReady, getDatabase } from '../db/core';
+import { dbRows, dbMirror } from './hooks/domainState';
+import { isDatabaseReady } from '../db/core';
 import { DEFAULT_BRANDING_SETTINGS } from '../db/defaults';
 import { syncCollectionsToDb, getLastSyncError } from '../db/syncCore';
 import { runIntegrityCheckSafe, IntegrityReport } from '../db/integrityCheck';
 import {
-  usersRepo, labsRepo, caseTypesRepo, casesRepo, caseNotesRepo, attachmentsRepo,
-  caseTemplatesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo,
-  notificationsRepo, settingsRepo, auditRepo,
+  usersRepo, casesRepo, caseTemplatesRepo,
   sessionsRepo, labContactsRepo, labAddressesRepo, labPricingOverridesRepo, labReviewsRepo,
-  doctorPreferredLabsRepo, reconciliationRepo, qcInspectionsRepo,
+  doctorPreferredLabsRepo, qcInspectionsRepo,
 } from '../db/repos';
 import type { UserRow } from '../db/repos';
-import { hashPassword, verifyPassword } from '../db/crypto';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -114,23 +99,6 @@ import { hashPassword, verifyPassword } from '../db/crypto';
 let dbReflected = false;
 export function getDbReflected(): boolean {
   return dbReflected;
-}
-
-function hydrateAllFromDb(): boolean {
-  const ok = hydrateAllFromDbShared();
-  if (ok) dbReflected = true;
-  return ok;
-}
-
-/** DB write helper — no-ops when the engine is not booted (tests). */
-function dbWrite(fn: () => void): void {
-  if (!isDatabaseReady()) return;
-  try {
-    fn();
-  } catch (e: any) {
-    // eslint-disable-next-line no-console
-    console.error('[cutover] DB write failed:', e?.message || e);
-  }
 }
 
 export const DEFAULT_BRANDING = DEFAULT_BRANDING_SETTINGS;
@@ -167,6 +135,7 @@ interface AppContextType {
   userPreferences: UserPreferences;
   /** Boot-time DB integrity self-check result (null until the boot sweep ran). */
   integrityReport: IntegrityReport | null;
+  runIntegritySelfCheck: () => void;
   caseAttachments: Record<string, CaseAttachment[]>;
   /* Quality control — append-only stream, one command, derived reads. */
   qcInspections: QcInspection[];
@@ -185,8 +154,6 @@ interface AppContextType {
   // Computed metrics
   unreadCount: number;
   overdueCount: number;
-  dueTodayCount: number;
-  dueThisWeekCount: number;
 
   // Actions
   // Branding
@@ -194,7 +161,6 @@ interface AppContextType {
 
   // Backup & Restore
   getBackupData: () => any;
-  restoreBackupData: (data: any) => boolean;
   wipeAllData: () => void;
 
   // Cases
@@ -223,10 +189,8 @@ interface AppContextType {
   deleteLab: (id: string) => void;
   reassignLabRecords: (fromLabId: string, toLabId: string) => boolean;
   addLabContact: (contact: Omit<LabContact, 'id'>) => void;
-  updateLabContact: (id: string, updates: Partial<LabContact>) => void;
   deleteLabContact: (id: string) => void;
   addLabAddress: (address: Omit<LabAddress, 'id'>) => void;
-  updateLabAddress: (id: string, updates: Partial<LabAddress>) => void;
   deleteLabAddress: (id: string) => void;
   addPricingOverride: (override: Omit<LabPricingOverride, 'id'>) => void;
   deletePricingOverride: (id: string) => void;
@@ -241,23 +205,13 @@ interface AppContextType {
   deleteCaseType: (id: string) => void;
 
   // Invoices & Billing
-  deletePayment: (paymentId: string) => void;
   allPayments: PaymentRecord[];
   getLabFinancialSummary: (labId: string) => LabFinancialSummary;
-  getClinicFinancialSummary: (clinicId: string) => LabFinancialSummary;
   getLedgerEntries: (filterLabId?: string) => LedgerEntry[];
-  generatePaymentNumber: () => string;
-  updateInvoice: (id: string, updates: Partial<Invoice>) => void;
   bulkMarkPaid: (invoiceIds: string[], paymentDate?: string) => void;
   deleteInvoice: (id: string) => void;
 
   // Advance Payments & Account Adjustments
-  applyAdvanceCredit: (
-    labId: string,
-    invoiceId: string,
-    amount: number,
-    notes?: string
-  ) => boolean;
   recordAccountAdjustment: (
     labId: string,
     type: 'credit_note' | 'debit_adjustment' | 'refund',
@@ -267,8 +221,6 @@ interface AppContextType {
     attachments?: PaymentAttachment[],
     date?: string
   ) => AccountAdjustment;
-  deleteAdvancePayment: (advanceId: string) => void;
-  deleteAccountAdjustment: (adjustmentId: string) => void;
 
   // Payments & Receivables 2.0 Core Financial Engine
   recordTransactionV2: (command: {
@@ -313,10 +265,6 @@ interface AppContextType {
     referenceId: string;
     reason: string;
   }) => boolean;
-  reconcileItemV2: (id: string, matchNotes?: string) => void;
-  flagReconciliationExceptionV2: (id: string, reason: string) => void;
-  getJournalEntriesForEntity: (referenceId: string) => JournalEntry[];
-  getAuditHistoryForEntity: (entityId: string) => AuditEvent[];
 
   // Saved Vouchers & Slips
   saveVoucherToSystem: (voucher: Omit<SavedVoucher, 'id' | 'created_at' | 'saved_by'>) => SavedVoucher;
@@ -331,10 +279,7 @@ interface AppContextType {
   archiveNotification: (id: string) => void;
   restoreNotification: (id: string) => void;
   deleteNotification: (id: string) => void;
-  bulkDeleteNotifications: (ids: string[]) => void;
   addNotification: (notification: Omit<AppNotification, 'id' | 'created_at'>) => void;
-  markAsRead: (id: string) => void;
-  markAllNotificationsAsRead: () => void;
 
   // Selected Case Modal helper
   selectedCaseForModal: DentalCase | null;
@@ -355,42 +300,7 @@ interface AppContextType {
     isDanger?: boolean;
     onConfirm: () => void;
   } | null;
-  confirmAction: (options: {
-    title: string;
-    message: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    isDanger?: boolean;
-    onConfirm: () => void;
-  }) => void;
   closeConfirmModal: () => void;
-
-  // Filter presets for navigation
-  caseFilterPreset: {
-    overdue?: boolean;
-    dueToday?: boolean;
-    dueThisWeek?: boolean;
-    dueSoon?: boolean;
-    labId?: string;
-    status?: string;
-  } | null;
-  setCaseFilterPreset: (preset: {
-    overdue?: boolean;
-    dueToday?: boolean;
-    dueThisWeek?: boolean;
-    dueSoon?: boolean;
-    labId?: string;
-    status?: string;
-  } | null) => void;
-
-  billingFilterPreset: {
-    labId?: string;
-    status?: string;
-  } | null;
-  setBillingFilterPreset: (preset: {
-    labId?: string;
-    status?: string;
-  } | null) => void;
 
   // Settings
   updateUserPreferences: (prefs: Partial<UserPreferences>) => void;
@@ -537,8 +447,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     markNotificationRead, markNotificationUnread, markAllNotificationsRead,
     clearReadNotifications, clearAllNotifications,
     archiveNotification, restoreNotification,
-    deleteNotification, bulkDeleteNotifications, addNotification,
-  } = useNotificationsDomain(notifications, setNotifications, (count) =>
+    deleteNotification, addNotification,
+  } = useNotificationsDomain(setNotifications, (count) =>
     showToast(`Removed ${count} notification(s)`, 'info'),
   );
 
@@ -623,19 +533,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, [cases, userPreferences]);
 
-  // ─── Integrity self-check (boot-time, read-only) ───
-  // Runs once per session after hydration: FK pragma, orphan rows, ledger
-  // balance, invoice-journal coverage. Result lands in provider state so
-  // Settings → Database & Backup can display it without its own boot scan.
+  // ─── Integrity self-check (boot-time + after every system reset) ───
+  // Reads FK pragma, orphan rows, ledger balance and invoice-journal coverage.
+  // Runs once per session after hydration (nonce 0) and again whenever a reset
+  // bumps the nonce — a reset that leaves a money row behind has to SAY so.
+  // The result lands in provider state so Settings → Database & Backup can
+  // display it without its own boot scan, and a failing post-boot re-check
+  // raises a toast naming the failed checks instead of surviving silently.
+  //
+  // Declared BELOW the write-through sync effect on purpose: in the commit that
+  // follows a reset, React runs effects in declaration order, so the sync has
+  // already rewritten the tables before the check reads them.
   const [integrityReport, setIntegrityReport] = useState<IntegrityReport | null>(null);
-  const integrityRanRef = useRef(false);
+  const [integrityNonce, setIntegrityNonce] = useState(0);
+  const integrityRunsRef = useRef(0);
   useEffect(() => {
-    if (integrityRanRef.current) return;
     if (!isDatabaseReady()) return;
     if (!dbMirror['cases']) return; // wait for hydration
-    integrityRanRef.current = true;
-    setIntegrityReport(runIntegrityCheckSafe());
-  }, []);
+    const report = runIntegrityCheckSafe();
+    setIntegrityReport(report);
+    // Runs > 0 means this is a re-check (i.e. after a reset), not the boot scan.
+    if (integrityRunsRef.current > 0 && report && !report.ok) {
+      const failed = report.findings.filter((f) => !f.ok).map((f) => f.check);
+      showToast(
+        `Reset finished, but the integrity self-check failed: ${failed.join('; ')}. See Settings → Database & Backup.`,
+        'error',
+      );
+    }
+    integrityRunsRef.current += 1;
+  }, [integrityNonce]);
+
+  /** Re-run the integrity self-check (called after a system reset). */
+  const runIntegritySelfCheck = useCallback(() => setIntegrityNonce((n) => n + 1), []);
 
   // ─── Sync-failure surfacing + ledger backfill sweep ───
   // Migration 012 backfills issuance journals for invoices that predate the
@@ -747,21 +676,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [user]);
 
-  // Filter Presets & Navigation States
-  const [caseFilterPreset, setCaseFilterPreset] = useState<{
-    overdue?: boolean;
-    dueToday?: boolean;
-    dueThisWeek?: boolean;
-    dueSoon?: boolean;
-    labId?: string;
-    status?: string;
-  } | null>(null);
-
-  const [billingFilterPreset, setBillingFilterPreset] = useState<{
-    labId?: string;
-    status?: string;
-  } | null>(null);
-
   // Global Toast
   const [toast, setToast] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
@@ -794,20 +708,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     onConfirm: () => void;
   } | null>(null);
 
-  const confirmAction = (options: {
-    title: string;
-    message: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    isDanger?: boolean;
-    onConfirm: () => void;
-  }) => {
-    setConfirmModal({
-      isOpen: true,
-      ...options
-    });
-  };
-
   const closeConfirmModal = () => {
     setConfirmModal(null);
   };
@@ -823,7 +723,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteUser,
     changePassword,
     getBackupData,
-    restoreBackupData,
     wipeAllData,
   } = useAuthDomain({
     user,
@@ -845,6 +744,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLabContacts, setLabAddresses, setPricingOverrides, setLabReviews, setDoctorPreferences,
     setUserPreferences, setBrandingSettings, setSavedVouchers, setCaseAttachments, setCaseNotes,
     setQcInspections,
+    refreshIntegrityReport: runIntegritySelfCheck,
   });
 
 
@@ -865,20 +765,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const overdueCount = (cases || []).filter((c) => {
     if (!c || c.status === 'delivered' || c.status === 'cancelled') return false;
     return (c.delivery_date || '') < todayStr;
-  }).length;
-
-  const dueTodayCount = (cases || []).filter((c) => {
-    if (!c || c.status === 'delivered' || c.status === 'cancelled') return false;
-    return c.delivery_date === todayStr;
-  }).length;
-
-  const dueThisWeekCount = (cases || []).filter((c) => {
-    if (!c || c.status === 'delivered' || c.status === 'cancelled') return false;
-    if (!c.delivery_date) return false;
-    const del = new Date(c.delivery_date).getTime();
-    const today = new Date(todayStr).getTime();
-    const sevenDaysLater = today + 7 * 24 * 60 * 60 * 1000;
-    return del >= today && del <= sevenDaysLater;
   }).length;
 
   // D1 — Settings → Notifications announces a cadence change; bumping a counter
@@ -943,8 +829,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Derived Financial Summary for specific Clinic / Lab
   const getLabFinancialSummary = (labId: string): LabFinancialSummary =>
     buildLabFinancialSummary({ labId, invoices, advancePayments, accountAdjustments });
-
-  const getClinicFinancialSummary = getLabFinancialSummary;
 
   // Derived Comprehensive Double-Entry Ledger Engine (pure ledger domain)
   const getLedgerEntries = useCallback((filterLabId?: string): LedgerEntry[] =>
@@ -1445,20 +1329,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLabContacts((prev) => [...prev, newC]);
   };
 
-  const updateLabContact = (id: string, updates: Partial<LabContact>) => {
-    setLabContacts((prev) =>
-      prev.map((c) => {
-        if (c.id !== id) return c;
-        const updated = { ...c, ...updates };
-        if (updates.is_primary) {
-          // demote others
-          setLabContacts((all) => all.map((item) => (item.lab_id === updated.lab_id && item.id !== id ? { ...item, is_primary: false } : item)));
-        }
-        return updated;
-      })
-    );
-  };
-
   const deleteLabContact = (id: string) => {
     setLabContacts((prev) => prev.filter((c) => c.id !== id));
   };
@@ -1469,12 +1339,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLabAddresses((prev) => prev.map((a) => (a.lab_id === newA.lab_id ? { ...a, is_default: false } : a)));
     }
     setLabAddresses((prev) => [...prev, newA]);
-  };
-
-  const updateLabAddress = (id: string, updates: Partial<LabAddress>) => {
-    setLabAddresses((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, ...updates } : a))
-    );
   };
 
   const deleteLabAddress = (id: string) => {
@@ -1541,37 +1405,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Billing & Invoices
-  const deletePayment = (paymentId: string) => {
-    // Money rows may not be deleted (audit F6): the payment list is owned by
-    // the transaction flows, and removal must keep the reversal journal, audit
-    // and reversal flags that applyPaymentReversalToInvoice/reverseTransactionV2
-    // produce. This legacy entry point is latent (zero callers) and now refuses
-    // instead of silently destroying the money trail.
-    const target = allPayments.find((p) => p.id === paymentId);
-    if (target) {
-      showToast(
-        `Payment ${target.payment_number || paymentId} cannot be deleted — reverse it instead (Reversal flow).`,
-        'error'
-      );
-    }
-  };
-
-  const updateInvoice = (id: string, updates: Partial<Invoice>) => {
-    setInvoices((prev) =>
-      prev.map((inv) => {
-        if (inv.id !== id) return inv;
-        // Money columns are owned by the transaction flows (audit F5): a
-        // generic invoice edit may change pricing/notes, never silently
-        // replace its payment list or paid total.
-        const { payments: _ignoredPayments, amount_paid: _ignoredPaid, ...safeUpdates } = updates;
-        const updated = { ...inv, ...safeUpdates };
-        const finalAmt = safeUpdates.final_amount !== undefined ? safeUpdates.final_amount : updated.final_amount;
-        updated.payment_status = deriveSimpleStatus(inv.amount_paid, finalAmt);
-        return updated;
-      })
-    );
-  };
-
   const bulkMarkPaid = (invoiceIds: string[], paymentDate?: string) => {
     const today = paymentDate || getTodayStr();
     const newJournals: JournalEntry[] = [];
@@ -1705,23 +1538,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Invoice ${target.invoice_number} voided — ledger reversed and audit trail updated.`, 'success');
   };
 
-  // Legacy advance-credit entry point (audit F9): zero callers today, and the
-  // old body hand-wrote invoice.payments + wallet + status. It now delegates to
-  // the V2 command, so there is exactly one implementation of the money
-  // movement (journal, allocations, advance wallet and audit all included).
-  const applyAdvanceCredit = (
-    labId: string,
-    invoiceId: string,
-    amount: number,
-    notes?: string
-  ): boolean =>
-    applyAdvanceCreditV2({
-      clinicId: labId,
-      invoiceId,
-      amount,
-      notes: notes || 'Applied from clinic credit wallet',
-    });
-
   const recordAccountAdjustment = (
     labId: string,
     type: 'credit_note' | 'debit_adjustment' | 'refund',
@@ -1763,24 +1579,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newAdj;
   };
 
-  const deleteAdvancePayment = (advanceId: string) => {
-    // Same money rule as deletePayment (audit F6): advances are reversed
-    // (reverseTransactionV2), never deleted — the wallet, journal and audit
-    // rows must survive.
-    const target = advancePayments.find((a) => a.id === advanceId);
-    if (target) {
-      showToast(`Advance ${target.payment_number || advanceId} cannot be deleted — reverse it instead (Reversal flow).`, 'error');
-    }
-  };
-
-  const deleteAccountAdjustment = (adjustmentId: string) => {
-    // Same money rule (audit F6): adjustments are reversed, never deleted.
-    const target = accountAdjustments.find((a) => a.id === adjustmentId || a.adjustment_number === adjustmentId);
-    if (target) {
-      showToast(`Adjustment ${target.adjustment_number || adjustmentId} cannot be deleted — reverse it instead (Reversal flow).`, 'error');
-    }
-  };
-
   // ==========================================
   // PAYMENTS & RECEIVABLES 2.0 ENGINE
   // ==========================================
@@ -1793,8 +1591,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     applyAdvanceCreditV2,
     issueCreditNoteV2,
     reverseTransactionV2,
-    reconcileItemV2,
-    flagReconciliationExceptionV2,
   } = useTransactionCommands({
     labs,
     invoices,
@@ -1815,20 +1611,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     genId,
     saveVoucherToSystem,
   });
-
-  const getJournalEntriesForEntity = (referenceId: string): JournalEntry[] => {
-    if (!referenceId) return [];
-    return journalEntries.filter(
-      (j) => j.reference_id === referenceId || j.reference_number === referenceId
-    );
-  };
-
-  const getAuditHistoryForEntity = (entityId: string): AuditEvent[] => {
-    if (!entityId) return [];
-    return auditEvents.filter(
-      (a) => a.entity_id === entityId || a.entity_ref === entityId
-    );
-  };
 
   // Notifications (mark/archive/delete/add live in useNotificationsDomain)
 
@@ -1876,13 +1658,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         unreadCount,
         overdueCount,
-        dueTodayCount,
-        dueThisWeekCount,
 
         updateBrandingSettings,
         getBackupData,
-        restoreBackupData,
         wipeAllData,
+        runIntegritySelfCheck,
 
         addCase,
         updateCase,
@@ -1908,10 +1688,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteLab,
         reassignLabRecords,
         addLabContact,
-        updateLabContact,
         deleteLabContact,
         addLabAddress,
-        updateLabAddress,
         deleteLabAddress,
         addPricingOverride,
         deletePricingOverride,
@@ -1923,13 +1701,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCaseType,
         deleteCaseType,
 
-        deletePayment,
         allPayments,
         getLabFinancialSummary,
-        getClinicFinancialSummary,
         getLedgerEntries,
-        generatePaymentNumber,
-        updateInvoice,
         bulkMarkPaid,
         deleteInvoice,
 
@@ -1938,10 +1712,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         journalEntries,
         auditEvents,
         reconciliationItems,
-        applyAdvanceCredit,
         recordAccountAdjustment,
-        deleteAdvancePayment,
-        deleteAccountAdjustment,
 
         // Payments & Receivables 2.0
         recordTransactionV2,
@@ -1949,10 +1720,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         applyAdvanceCreditV2,
         issueCreditNoteV2,
         reverseTransactionV2,
-        reconcileItemV2,
-        flagReconciliationExceptionV2,
-        getJournalEntriesForEntity,
-        getAuditHistoryForEntity,
 
         saveVoucherToSystem,
         deleteSavedVoucher,
@@ -1965,10 +1732,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         archiveNotification,
         restoreNotification,
         deleteNotification,
-        bulkDeleteNotifications,
         addNotification,
-        markAsRead: markNotificationRead,
-        markAllNotificationsAsRead: markAllNotificationsRead,
 
         selectedCaseForModal,
         setSelectedCaseForModal,
@@ -1978,14 +1742,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast,
         hideToast,
         confirmModal,
-        confirmAction,
         closeConfirmModal,
-
-        // Filter presets
-        caseFilterPreset,
-        setCaseFilterPreset,
-        billingFilterPreset,
-        setBillingFilterPreset,
 
         updateUserPreferences,
 

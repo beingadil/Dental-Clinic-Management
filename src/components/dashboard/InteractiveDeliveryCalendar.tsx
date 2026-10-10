@@ -5,13 +5,9 @@ import {
   ChevronRight, 
   Truck, 
   CheckCircle2, 
-  Clock, 
-  AlertTriangle, 
   Plus, 
-  User, 
   ExternalLink,
-  PackageCheck,
-  SendHorizontal
+  PackageCheck
 } from 'lucide-react';
 import { DentalCase } from '../../types';
 
@@ -44,7 +40,6 @@ export const InteractiveDeliveryCalendar: React.FC<InteractiveDeliveryCalendarPr
   const [currentYear, setCurrentYear] = useState<number>(initialDate.getFullYear());
   const [currentMonth, setCurrentMonth] = useState<number>(initialDate.getMonth()); // 0-indexed
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr || '2026-09-17');
-  const [selectedRiderFilter, setSelectedRiderFilter] = useState<'all' | 'rider1' | 'rider2' | 'courier'>('all');
 
   // Month navigation
   const handlePrevMonth = () => {

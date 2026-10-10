@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatPKR, roundMoney } from '../../services/financeDomain';
 import { downloadCSV } from '../../services/csvExport';
-import { X, Printer, Download, Calendar, Building2, FileText, CheckCircle2 } from 'lucide-react';
+import { X, Printer, Download, FileText } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { Modal } from '../common/ui';
 import { getTodayStr } from '../../utils/dateUtils';
@@ -31,8 +31,8 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   } = useApp();
 
   const [dateRange, setDateRange] = useState<'all' | 'this_month' | 'last_month' | 'custom'>('all');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  const [startDate] = useState<string>('');
+  const [endDate] = useState<string>('');
 
   const clinic = useMemo(() => {
     return labs.find((l) => l.id === clinicId) || labs[0];

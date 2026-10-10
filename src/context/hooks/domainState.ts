@@ -12,10 +12,6 @@ import {
  */
 export const dbMirror: Record<string, any[]> = {};
 
-export function mirrorGet(key: string): any[] | undefined {
-  return dbMirror[key];
-}
-
 export function mirrorSet(key: string, rows: any[]): void {
   dbMirror[key] = rows;
 }

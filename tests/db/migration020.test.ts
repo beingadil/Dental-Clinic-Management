@@ -5,7 +5,6 @@ import { setDatabase } from '../../src/db/core';
 import { MIGRATIONS } from '../../src/db/migrations';
 
 /** The migration ledger must be 1..N with no gaps, for whatever N is now. */
-const ALL_VERSIONS = Array.from({ length: MIGRATIONS.length }, (_, i) => i + 1);
 const LATEST_VERSION = String(MIGRATIONS[MIGRATIONS.length - 1].version);
 import { formatDoctorName } from '../../src/utils/doctorName';
 
@@ -62,11 +61,14 @@ describe('migration 020 — stored doctor names become bare', () => {
 
     v19.migrate();
 
-    // All six, not just `cases`: each renders independently, so fixing only one
-    // would leave an invoice or a ledger line printing "Dr. Dr." forever.
-    for (const table of ['labs', 'cases', 'invoices', 'ledger_entries', 'saved_vouchers', 'doctor_preferred_labs']) {
+    // All of them, not just `cases`: each renders independently, so fixing only
+    // one would leave an invoice or a saved slip printing "Dr. Dr." forever.
+    // `ledger_entries` was the sixth; migration 022 drops that dead table, so it
+    // no longer survives the replay this assertion sees.
+    for (const table of ['labs', 'cases', 'invoices', 'saved_vouchers', 'doctor_preferred_labs']) {
       expect(nameIn(v19, table), `${table}.doctor_name`).toBe('Tariq Mahmood');
     }
+    expect(v19.tableExists('ledger_entries')).toBe(false);
   });
 
   it('strips both the dotted and undotted spellings', async () => {

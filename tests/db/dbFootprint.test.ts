@@ -79,6 +79,8 @@ describe('empty database footprint', () => {
       'idx_notif_read',
       'idx_ledger_ref',
       'idx_print_templates_kind',
+      // Migration 022: dropped with the dead ledger_entries table it indexed.
+      'idx_ledger_lab_date',
     ];
     const live = indexesOf(engine);
     for (const name of dead) expect(live).not.toContain(name);
@@ -103,8 +105,10 @@ describe('empty database footprint', () => {
 
   it('holds the index count steady so a new index must be a deliberate decision', () => {
     // A drift alarm, not a law: if this fails, work out what the new index buys
-    // (see the EXPLAIN QUERY PLAN note in migration 017) before bumping the number.
-    expect(indexesOf(engine)).toHaveLength(18);
+    // (see the EXPLAIN QUERY PLAN note in migration 017) before bumping the
+    // number. It was 18 until migration 022 dropped idx_ledger_lab_date along
+    // with the dead table it served.
+    expect(indexesOf(engine)).toHaveLength(17);
   });
 });
 

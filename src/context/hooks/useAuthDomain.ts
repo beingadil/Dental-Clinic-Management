@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   DentalCase, DentalLab, CaseType, Invoice, AppNotification, CaseTemplate,
   LabContact, LabAddress, LabPricingOverride, LabReview, DoctorPreferredLab,
@@ -7,11 +6,12 @@ import {
   CaseAttachment, CaseNote, UserProfile, QcInspection,
 } from '../../types';
 import type { UserRow } from '../../db/repos';
-import { usersRepo, sessionsRepo } from '../../db/repos';
+import { usersRepo, sessionsRepo, caseTypesRepo } from '../../db/repos';
 import { isDatabaseReady, getDatabase } from '../../db/core';
 import { getTodayStr } from '../../utils/dateUtils';
 import { hashPassword, verifyPassword } from '../../db/crypto';
-import { INITIAL_USER_PREFERENCES } from '../../data/initialData';
+import { INITIAL_USER_PREFERENCES, INITIAL_CASE_TYPES } from '../../data/initialData';
+import { getClinicalSpecs } from '../../services/clinicalSpecsService';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
 
 /**
@@ -22,13 +22,17 @@ import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
  *
  * `branding` and `user_preferences` are deliberately absent — setting their
  * state above persists defaults through their own effects (useSettingsDomain).
+ *
+ * The service catalog (`case_types`) and the clinical spec tables
+ * (clinical_materials / clinical_prep_types / shade_guides / implant_brands)
+ * are deliberately ABSENT too. They are clinic configuration, not business
+ * data: a reset that deleted the price list and the material/prep references
+ * left the Catalog and the Odontogram empty until the next app start, and the
+ * operator had to rebuild a working catalog from memory to price a case. A
+ * reset restores the shipped defaults (see `restoreConfigAfterReset`) instead.
  */
 export const WIPE_EXPLICIT_TABLES = [
   'chairside_appointments',
-  'clinical_materials',
-  'clinical_prep_types',
-  'shade_guides',
-  'implant_brands',
   'notification_config',
   'email_templates',
 ] as const;
@@ -81,6 +85,9 @@ export function useAuthDomain(deps: {
   setCaseAttachments: React.Dispatch<React.SetStateAction<Record<string, CaseAttachment[]>>>;
   setCaseNotes: React.Dispatch<React.SetStateAction<Record<string, CaseNote[]>>>;
   setQcInspections: React.Dispatch<React.SetStateAction<QcInspection[]>>;
+  // Re-runs the integrity self-check after a reset, so money rows the reset
+  // failed to clear are reported instead of quietly surviving (AppContext).
+  refreshIntegrityReport: () => void;
 }) {
   const {
     user, setUser, users, setUsers, setCurrentView, loginBackoffState, showToast, genId, snapshot,
@@ -88,7 +95,7 @@ export function useAuthDomain(deps: {
     setJournalEntries, setAuditEvents, setReconciliationItems, setNotifications, setTemplates,
     setLabContacts, setLabAddresses, setPricingOverrides, setLabReviews, setDoctorPreferences,
     setUserPreferences, setBrandingSettings, setSavedVouchers, setCaseAttachments, setCaseNotes,
-    setQcInspections,
+    setQcInspections, refreshIntegrityReport,
   } = deps;
 
   const dbWrite = (fn: () => void): void => {
@@ -370,9 +377,10 @@ export function useAuthDomain(deps: {
   };
 
   const wipeAllData = () => {
+    // Config is restored below, before the sync effect rewrites `case_types`
+    // from state — so it must NOT be blanked here.
     setCases([]);
     setLabs([]);
-    setCaseTypes([]);
     setInvoices([]);
     setAdvancePayments([]);
     setAccountAdjustments([]);
@@ -406,6 +414,17 @@ export function useAuthDomain(deps: {
       });
     }
 
+    // Clinic configuration survives the reset — and is reloaded HERE, not left
+    // to a later mount, so the Catalog and Odontogram are usable the moment
+    // the reset dialog closes instead of blank until the next app start.
+    setCaseTypes(restoreConfigAfterReset());
+
+    // Integrity self-check: a reset claims to leave a blank slate, so prove it.
+    // Runs after the write-through rebuild (AppContext orders the sync effect
+    // first), and raises a toast naming every failed check rather than letting
+    // orphaned money rows survive in silence.
+    refreshIntegrityReport();
+
     // Purge local storage safely
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -419,6 +438,44 @@ export function useAuthDomain(deps: {
       // eslint-disable-next-line no-console
       console.warn('Notice clearing local storage:', e);
     }
+  };
+
+  /**
+   * Clinic configuration that a system reset keeps: the service catalog and the
+   * clinical specs. Both are configuration, not business data — deleting them
+   * cost the operator a working price list until the next app start.
+   *
+   * The catalog is owned by the collection sync, so returning it into state
+   * before that sync runs is what persists it. The clinical spec tables have no
+   * React owner at all — `clinicalSpecsService` reads them straight out of
+   * SQLite — so keeping them means not touching the rows, then broadcasting the
+   * current set so an Odontogram or case editor open over the reset dialog
+   * repaints immediately.
+   */
+  const restoreConfigAfterReset = (): CaseType[] => {
+    let caseTypes: CaseType[] = [];
+    if (isDatabaseReady()) {
+      try {
+        caseTypes = caseTypesRepo.all() as CaseType[];
+      } catch (e: any) {
+        // eslint-disable-next-line no-console
+        console.error('[reset] could not reload the service catalog:', e?.message || e);
+      }
+    }
+    // A database whose catalog was never seeded still gets the shipped
+    // defaults — a reset must never hand back an unpriceable clinic.
+    if (caseTypes.length === 0) caseTypes = INITIAL_CASE_TYPES;
+
+    try {
+      const specs = getClinicalSpecs(); // self-seeds the default rows if empty
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('clinical-specs-updated', { detail: specs }));
+      }
+    } catch {
+      /* specs are non-critical: the Odontogram falls back to its own defaults */
+    }
+
+    return caseTypes;
   };
 
   return {

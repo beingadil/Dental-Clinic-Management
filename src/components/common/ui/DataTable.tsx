@@ -29,7 +29,6 @@ interface DataTableProps<T> {
   emptyState?: React.ReactNode;
   /** Rendered inside the card, below the table (e.g. "show more" bar). */
   footer?: React.ReactNode;
-  wrapperClassName?: string;
 }
 
 const ALIGN = {
@@ -52,15 +51,9 @@ export function DataTable<T>({
   selection,
   emptyState,
   footer,
-  wrapperClassName,
 }: DataTableProps<T>) {
   return (
-    <div
-      className={
-        wrapperClassName ??
-        'bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden'
-      }
-    >
+    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
       {data.length === 0 ? (
         emptyState ?? null
       ) : (

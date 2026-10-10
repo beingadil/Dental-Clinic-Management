@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { PaymentRecord, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { X, Printer, CheckCircle2, Building2, Calendar, CreditCard, ShieldCheck } from 'lucide-react';
+import { X, Printer, CheckCircle2 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { Modal } from '../common/ui';
 

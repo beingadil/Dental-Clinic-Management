@@ -13,42 +13,44 @@ remain open and are documented rather than hidden.
 
 | Layer | Fact | Evidence |
 |---|---|---|
-| Engine | `sql.js` WASM, database lives **in memory**; Rust does file I/O only | [engine.ts](src/db/engine.ts), [lib.rs](src-tauri/src/lib.rs) |
-| Transactions | Every write path goes through `withTransaction` (SAVEPOINT), nested-safe | [engine.ts:110](src/db/engine.ts#L110) |
-| Desktop write | engine bytes → base64 → `db_save_bytes` IPC → tmp + fsync + rename | [persistence.ts:186](src/db/persistence.ts#L186) |
-| Browser write | engine bytes → base64 → **IndexedDB** (`dsw_sqlite/snapshots`), localStorage legacy fallback | [persistence.ts:165](src/db/persistence.ts#L165) |
-| Collection sync | one debounced SAVEPOINT rebuilds every table from React state | [syncCore.ts:60](src/db/syncCore.ts#L60) |
-| Autosave | 400 ms debounce, 5 s checkpoint, flush on hide, awaited flush on window close | [persistence.ts](src/db/persistence.ts) |
-| Failure surface | `SaveFailureBanner` / `SyncStatusBanner` — never silent | [SaveFailureBanner.tsx](src/components/common/SaveFailureBanner.tsx) |
+| Engine | `sql.js` WASM, database lives **in memory**; Rust does file I/O only | [engine.ts](../src/db/engine.ts), [lib.rs](../src-tauri/src/lib.rs) |
+| Transactions | Every write path goes through `withTransaction` (SAVEPOINT), nested-safe | [engine.ts:110](../src/db/engine.ts#L110) |
+| Desktop write | engine bytes → base64 → `db_save_bytes` IPC → tmp + fsync + rename | [persistence.ts:186](../src/db/persistence.ts#L186) |
+| Browser write | engine bytes → base64 → **IndexedDB** (`dsw_sqlite/snapshots`), localStorage legacy fallback | [persistence.ts:165](../src/db/persistence.ts#L165) |
+| Collection sync | one debounced SAVEPOINT rebuilds every table from React state | [syncCore.ts:60](../src/db/syncCore.ts#L60) |
+| Autosave | 400 ms debounce, 5 s checkpoint, flush on hide, awaited flush on window close | [persistence.ts](../src/db/persistence.ts) |
+| Failure surface | `SaveFailureBanner` / `SyncStatusBanner` — never silent | [SaveFailureBanner.tsx](../src/components/common/SaveFailureBanner.tsx) |
 
 **The central risk class:** the collection sync rebuilds tables inside one transaction.
 A single UNIQUE / CHECK / FK violation aborts the whole SAVEPOINT, so *one bad row stops
 all persistence for the app*. Every finding below is judged by that blast radius.
 
-**Audits run** (all re-runnable, all in `scripts/`):
-`audit-untransactional.mjs` (zero hits — the repo layer is genuinely transactional),
-`audit-swallows.mjs` (10 hits, all benign read/decoding fallbacks, **no swallowed writes**),
-`audit-column-coverage.mjs` (43 tables, 101 write sites, 0 UNKNOWN, 0 REQUIRED, 12 DEAD).
+**Sweeps run during this audit** (one-off scans; the results below are the record — the
+scan scripts themselves were not kept, as nothing invoked them and re-running them by
+hand is cheaper than maintaining them):
+untransactional-writes sweep (zero hits — the repo layer is genuinely transactional),
+swallowed-error sweep (10 hits, all benign read/decoding fallbacks, **no swallowed writes**),
+column-coverage sweep (43 tables, 101 write sites, 0 UNKNOWN, 0 REQUIRED, 12 DEAD).
 
 ---
 
 ## 2. Findings
 
 ### F1 — CRITICAL, FIXED · `payment_attachments` FK rejected every advance/adjustment proof
-**Schema:** `payment_attachments.payment_id` was declared `FOREIGN KEY … REFERENCES payments(id) ON DELETE CASCADE` ([migrations.ts:294](src/db/migrations.ts#L294)), but all three write sites store an **advance** or **adjustment** id there: [syncCore.ts:474](src/db/syncCore.ts#L474), [syncCore.ts:500](src/db/syncCore.ts#L500), [repos.ts:1049](src/db/repos.ts#L1049), [repos.ts:1085](src/db/repos.ts#L1085), [repos.ts:1168](src/db/repos.ts#L1168), [legacyMigrator.ts:415](src/db/legacyMigrator.ts#L415).
+**Schema:** `payment_attachments.payment_id` was declared `FOREIGN KEY … REFERENCES payments(id) ON DELETE CASCADE` ([migrations.ts:294](../src/db/migrations.ts#L294)), but all three write sites store an **advance** or **adjustment** id there: [syncCore.ts:474](../src/db/syncCore.ts#L474), [syncCore.ts:500](../src/db/syncCore.ts#L500), [repos.ts:1049](../src/db/repos.ts#L1049), [repos.ts:1085](../src/db/repos.ts#L1085), [repos.ts:1168](../src/db/repos.ts#L1168), [legacyMigrator.ts:415](../src/db/legacyMigrator.ts#L415).
 
 **Reproduction (before the fix):** `FOREIGN KEY constraint failed [sql: INSERT INTO payment_attachments …]`, with `advance_payments: []` and `account_adjustments: []` — the abort rolled back the entire sync.
 
-**Fix:** migration 016 ([migrations.ts:898](src/db/migrations.ts#L898)) rebuilds the table as `payment_attachments_v16` with `owner_type TEXT NOT NULL DEFAULT 'payment' CHECK (owner_type IN ('payment','advance','adjustment'))`, carries existing rows over inferring `owner_type` from `advance_payments`/`account_adjustments`, re-adds the index, and re-implements cascade delete as three AFTER DELETE triggers. Every write site now names `owner_type` explicitly.
+**Fix:** migration 016 ([migrations.ts:898](../src/db/migrations.ts#L898)) rebuilds the table as `payment_attachments_v16` with `owner_type TEXT NOT NULL DEFAULT 'payment' CHECK (owner_type IN ('payment','advance','adjustment'))`, carries existing rows over inferring `owner_type` from `advance_payments`/`account_adjustments`, re-adds the index, and re-implements cascade delete as three AFTER DELETE triggers. Every write site now names `owner_type` explicitly.
 
-**Tests:** [tests/db/moneyAttachmentFk.test.ts](tests/db/moneyAttachmentFk.test.ts) — 10 tests.
+**Tests:** [tests/db/moneyAttachmentFk.test.ts](../tests/db/moneyAttachmentFk.test.ts) — 10 tests.
 
 ### F2 — HIGH, FIXED · pricing overrides written before the rows they reference
 `lab_pricing_overrides` (FK → `case_types` ON DELETE CASCADE) was inserted **inside the labs loop, before** `case_types` was rewritten. It either aborted the save on the FK or was cascade-deleted by the catalog rewrite itself.
 **Fix:** moved to the catalog block, after the `case_types` insert, with orphan guards.
 
 ### F3 — HIGH, FIXED · `advance_allocations` cleared and never rewritten
-The up-front `DELETE FROM advance_allocations` had no matching insert, so every advance→invoice allocation was destroyed within one debounce window. The advance wallet read back with its money but none of its history. Now rewritten from state inside the advance loop ([syncCore.ts:465](src/db/syncCore.ts#L465)), guarded by `liveInvoiceIds`.
+The up-front `DELETE FROM advance_allocations` had no matching insert, so every advance→invoice allocation was destroyed within one debounce window. The advance wallet read back with its money but none of its history. Now rewritten from state inside the advance loop ([syncCore.ts:465](../src/db/syncCore.ts#L465)), guarded by `liveInvoiceIds`.
 
 ### F4 — HIGH, FIXED · orphan parents aborted the whole sync
 Cases/invoices/advances/adjustments/allocations could reference labs, invoices or case types that no longer existed in state. Any one of them killed all persistence.
@@ -62,17 +64,17 @@ The `CHECK` on `notifications.type` rejects unknown values; legacy/imported rows
 - `is_reversed` fell back to its `DEFAULT 0` → **a reversed payment read back as live money**, and
 - the reason, timestamp and actor were dropped **permanently**.
 
-Found by column coverage: 12 columns existed in the schema that no write site ever named (9 reversal columns, plus `users.updated_at`, `case_notes.updated_at`, `ledger_entries.running_balance` — the latter two are cosmetic and `running_balance` is correctly written by the repo layer at [repos.ts:1341](src/db/repos.ts#L1341), so they are non-issues).
+Found by column coverage: 12 columns existed in the schema that no write site ever named (9 reversal columns, plus `users.updated_at`, `case_notes.updated_at`, `ledger_entries.running_balance` — the latter two are cosmetic and `running_balance` is correctly written by the repo layer at [repos.ts:1341](../src/db/repos.ts#L1341), so they are non-issues).
 
-**Fix:** all three INSERTs now carry the reversal trail plus `unapplied_amount` and `advance_payment_id` ([syncCore.ts:426](src/db/syncCore.ts#L426), [syncCore.ts:456](src/db/syncCore.ts#L456), [syncCore.ts:495](src/db/syncCore.ts#L495)).
-**Tests:** [tests/db/reversalDurability.test.ts](tests/db/reversalDurability.test.ts) — verifies the trail survives a save *and* three repeated saves.
+**Fix:** all three INSERTs now carry the reversal trail plus `unapplied_amount` and `advance_payment_id` ([syncCore.ts:426](../src/db/syncCore.ts#L426), [syncCore.ts:456](../src/db/syncCore.ts#L456), [syncCore.ts:495](../src/db/syncCore.ts#L495)).
+**Tests:** [tests/db/reversalDurability.test.ts](../tests/db/reversalDurability.test.ts) — verifies the trail survives a save *and* three repeated saves.
 
 ### F7 — CRITICAL, FIXED · browser persistence died at ~3.7 MB and the app got slow
 **This is the banner you saw.** The browser snapshot was a single base64 string in `localStorage`, whose per-origin quota is ~5 MB — and base64 inflates the database by 4/3, so the ceiling is hit at a **~3.7 MB database**. Worse, a freshly migrated *empty* database was already **569 KB** (43 tables, their indexes and triggers), i.e. 0.74 MB of quota spent before a single record. (The floor is now **532 KB** across 45 tables — see §4a.)
 
 Once over the line: every save threw `QuotaExceededError`, the dirty flag never cleared, and the 5-second checkpoint **re-serialized the entire database and threw again, forever** — persistence dead and the UI visibly slowing down. Measured at the time: `VACUUM` on a working database does *not* reclaim the sync rebuild churn (999,424 bytes before and after), because those pages are genuinely occupied by live rows — so compaction was rejected as the fix for *that* problem. It is still required for a different one: pages freed by a DROP only reach the freelist, and freelist pages count towards the exported size, which is why `compact()` now runs after any migration that applied (§4a).
 
-**Fixes** ([persistence.ts](src/db/persistence.ts)):
+**Fixes** ([persistence.ts](../src/db/persistence.ts)):
 1. **IndexedDB is now the primary browser store** (disk-quota'd, not 5 MB). localStorage is a fallback only; the legacy copy is deleted after a verified IndexedDB write so the origin doesn't carry two databases.
 2. **Actionable quota message** — states the snapshot size and points at `.dentalbackup`, instead of the raw `Failed to execute 'setItem'` DOM text.
 3. **Failure backoff** (1 s → 5 s → 15 s → 60 s → 5 min) so the checkpoint stops re-encoding megabytes on the UI thread. Backup restore still writes through with `force: true`.
@@ -82,23 +84,23 @@ Once over the line: every save threw `QuotaExceededError`, the dirty flag never 
 - Fresh boot: `indexedDbSnapshotChars: 775518`, `legacySnapshotChars: 0`, `dirtyFlag: "false"`, no banner.
 - Upgrade path: planted a legacy localStorage-only snapshot, cleared IndexedDB, reloaded → loaded correctly, migrated to IndexedDB, legacy copy removed, no banner.
 
-**Tests:** [tests/db/persistenceQuota.test.ts](tests/db/persistenceQuota.test.ts) — IndexedDB round-trip with no legacy copy, actionable quota message, and backoff proven by asserting `engine.export()` is *not* called inside the backoff window.
+**Tests:** [tests/db/persistenceQuota.test.ts](../tests/db/persistenceQuota.test.ts) — IndexedDB round-trip with no legacy copy, actionable quota message, and backoff proven by asserting `engine.export()` is *not* called inside the backoff window.
 
 ---
 
 ## 3. Also hardened along the way
 
-- **Duplicate healing:** duplicate `payment_number` / document numbers and duplicate ids across multi-invoice slices are healed deterministically (`-D2` suffix) instead of aborting the sync — [tests/db/syncCoreDuplicateHeal.test.ts](tests/db/syncCoreDuplicateHeal.test.ts).
+- **Duplicate healing:** duplicate `payment_number` / document numbers and duplicate ids across multi-invoice slices are healed deterministically (`-D2` suffix) instead of aborting the sync — [tests/db/syncCoreDuplicateHeal.test.ts](../tests/db/syncCoreDuplicateHeal.test.ts).
 - **Journal rebuild ordering:** the journal rebuild moved ahead of invoices, with a `knownJournalIds` / `issuanceJournalByInvoice` healer, so `invoices.journal_id` no longer dangles.
 - **Attachment round-trip:** sync wrote `size_bytes = NULL, checksum = NULL` and parked the human string ("2.34 MB") in `description`. Added `parseBytes()` and carried `size_bytes`/`checksum`/`description` through `domainState.attachmentsByCase`.
-- **Integrity check finding #6** — "Money attachment owners", via `ORPHAN_MONEY_ATTACHMENTS_SQL` ([integrityCheck.ts:48](src/db/integrityCheck.ts#L48)), skipped safely on pre-016 schemas.
-- **No swallowed writes anywhere.** All 10 `audit-swallows.mjs` hits are read-side fallbacks (corrupt JSON, guarded reads, non-browser `dispatchEvent`).
+- **Integrity check finding #6** — "Money attachment owners", via `ORPHAN_MONEY_ATTACHMENTS_SQL` ([integrityCheck.ts:48](../src/db/integrityCheck.ts#L48)), skipped safely on pre-016 schemas.
+- **No swallowed writes anywhere.** All 10 swallowed-error sweep hits are read-side fallbacks (corrupt JSON, guarded reads, non-browser `dispatchEvent`).
 
 ---
 
 ## 4. Open, documented divergences (not defects)
 
-1. **`invoices.journal_id` is plain TEXT with no FK** ([migrations.ts:233](src/db/migrations.ts#L233)). Adding an FK now would be a table rebuild; the AppContext boot sweep heals it instead, and the journal-ordering fix above removes the dangling case.
+1. **`invoices.journal_id` is plain TEXT with no FK** ([migrations.ts:233](../src/db/migrations.ts#L233)). Adding an FK now would be a table rebuild; the AppContext boot sweep heals it instead, and the journal-ordering fix above removes the dangling case.
 2. **`payment_allocations` is never populated by the sync** (only `advance_allocations` is). The table is never deleted by the sync either, so repo-written rows survive — but repo- and sync-written allocations are not one unified history.
 3. **`nextNumber` skips the first number of every series.** `nextNumber` seeds a new counter with `INSERT … VALUES (?, 2)`, so the first document ever issued for a key is `-0002` and `-0001` is never used (observed first by the round-trip drill — `DS-0002` on a fresh database — and again in the external import check, where two allocations left the counter at 4). Existing databases are unaffected — the insert is `ON CONFLICT DO NOTHING`, so it only fires once per key — and no test codified the behaviour. Left unfixed here because it is a numbering-semantics change, not an export defect, and it was found incidentally; it is a one-character fix (`2` → `1`).
 4. **The `.sql` dump is a full copy, not an incremental one.** It contains `users.password_hash` / `password_salt` (like the live database and like `.dentalbackup`) and everything else in the file, so it is as sensitive as a backup and as large as one. The file header says so.
@@ -113,13 +115,13 @@ Once over the line: every save threw `QuotaExceededError`, the dirty flag never 
 
 `sqliteStorage.ts` carried its own hand-maintained `SQLITE_DDL_SCHEMA` string (L160-410). It had silently drifted: no `payment_attachments` table at all, no `owner_type` from migration 016, and roughly thirty missing tables. A `.sql` dump exported from Settings > Database & Backup therefore could **not** be replayed into a database this app would recognise — the divergence was in the export path, the one thing a clinic reaches for when the real database is the problem.
 
-`SQLITE_DDL_SCHEMA` is now `schemaScript()` ([migrations.ts:1057](src/db/migrations.ts#L1057)), which renders `MIGRATIONS` verbatim with `-- ── migration N: name ──` headers. Drift is now structurally impossible: a new migration ships and the export picks it up. The engine's own `migrate()` also uses the shared `SCHEMA_MIGRATIONS_DDL` string instead of a duplicate literal.
+`SQLITE_DDL_SCHEMA` is now `schemaScript()` ([migrations.ts:1057](../src/db/migrations.ts#L1057)), which renders `MIGRATIONS` verbatim with `-- ── migration N: name ──` headers. Drift is now structurally impossible: a new migration ships and the export picks it up. The engine's own `migrate()` also uses the shared `SCHEMA_MIGRATIONS_DDL` string instead of a duplicate literal.
 
-[Tests/db/exportSchema.test.ts](tests/db/exportSchema.test.ts) executes the generated script against a blank sql.js database and compares it object-for-object (tables, column names/types/NOT NULL, indexes, triggers, row-level round-trip through all eleven hand-written INSERTs) with a `SqliteEngine.migrate()` database.
+[Tests/db/exportSchema.test.ts](../tests/db/exportSchema.test.ts) executes the generated script against a blank sql.js database and compares it object-for-object (tables, column names/types/NOT NULL, indexes, triggers, row-level round-trip through all eleven hand-written INSERTs) with a `SqliteEngine.migrate()` database.
 
 ### Empty-database floor: 569,344 → 532,480 bytes
 
-All 12 indexes dropped by `MIGRATION_017_DROP_UNUSED_INDEXES` ([migrations.ts:990](src/db/migrations.ts#L990)) are chosen by *no* statement the app can issue, verified by extracting every SQL literal from `src/` and planning each with `EXPLAIN QUERY PLAN`. The reason is structural: the app loads whole collections into memory and filters, sorts and searches them in JavaScript, so the only SQL that runs is `SELECT * FROM t` plus id-keyed lookups.
+All 12 indexes dropped by `MIGRATION_017_DROP_UNUSED_INDEXES` ([migrations.ts:990](../src/db/migrations.ts#L990)) are chosen by *no* statement the app can issue, verified by extracting every SQL literal from `src/` and planning each with `EXPLAIN QUERY PLAN`. The reason is structural: the app loads whole collections into memory and filters, sorts and searches them in JavaScript, so the only SQL that runs is `SELECT * FROM t` plus id-keyed lookups.
 
 | | empty DB | 2,000 rows/table |
 |---|---|---|
@@ -130,7 +132,7 @@ Measured result: **569,344 → 524,288 bytes** (exactly 11 × 4,096-byte pages r
 
 Two details were required to make the drop real:
 
-- **`SqliteEngine.compact()` (VACUUM)** runs at the end of `migrate()` when any migration applied ([engine.ts:185](src/db/engine.ts#L185)). A dropped index only releases its pages to the *freelist*, and freelist pages still count towards the exported byte length. Without the VACUUM the floor did not move at all — the whole point of dropping the indexes was to shrink what the webview re-encodes on every save. It is skipped entirely on an up-to-date database, so the common boot pays nothing.
+- **`SqliteEngine.compact()` (VACUUM)** runs at the end of `migrate()` when any migration applied ([engine.ts:185](../src/db/engine.ts#L185)). A dropped index only releases its pages to the *freelist*, and freelist pages still count towards the exported byte length. Without the VACUUM the floor did not move at all — the whole point of dropping the indexes was to shrink what the webview re-encodes on every save. It is skipped entirely on an up-to-date database, so the common boot pays nothing.
 - **`idx_alloc_source` was replaced, not merely dropped.** It was declared `(source_type, source_id)`, but every lookup constrains `source_id` alone, and a composite index is unusable when only its second column is constrained — the plan was `SCAN payment_allocations`. `idx_alloc_source_id` on `source_id` makes both the read and the delete `SEARCH … USING INDEX`.
 
 `idx_qc_created` is deliberately **kept**: `qcRepo.all()` orders by `created_at` and SQLite does use the index for it.
@@ -180,11 +182,11 @@ Two conclusions that matter for the floor work: **rows dominate, indexes do not*
 
 Four tables report no growth because a synthetic row cannot satisfy their constraints (`case_teeth`, `lab_reviews`, `legacy_backup`, `settings` — CHECK ranges, reserved namespaces), and `notification_config` holds a single row by design. All five are small and fixed-size in practice, so their omission does not change the picture.
 
-[Tests/db/dbFootprint.test.ts](tests/db/dbFootprint.test.ts) guards the ceiling, the zero-freelist invariant, the absence of every dropped index, the plan for the replacement, and the index count (so a new index must be a deliberate decision). It also proves `compact()` reclaims pages after row deletion.
+[Tests/db/dbFootprint.test.ts](../tests/db/dbFootprint.test.ts) guards the ceiling, the zero-freelist invariant, the absence of every dropped index, the plan for the replacement, and the index count (so a new index must be a deliberate decision). It also proves `compact()` reclaims pages after row deletion.
 
 ### Quota-exhaustion drill
 
-[Tests/db/quotaDrill.test.ts](tests/db/quotaDrill.test.ts) grows a **real 16.2 MB database (21.6 MB encoded)** — past the legacy ~5 MiB localStorage ceiling — using 4,000 audit rows, and then proves, in order:
+[Tests/db/quotaDrill.test.ts](../tests/db/quotaDrill.test.ts) grows a **real 16.2 MB database (21.6 MB encoded)** — past the legacy ~5 MiB localStorage ceiling — using 4,000 audit rows, and then proves, in order:
 
 1. the legacy path genuinely cannot hold it: the save fails, `dsw_sqlite_snapshot` is absent, and localStorage holds bookkeeping only (`dsw_persistence_failures`, `dsw_sqlite_dirty`) — under 50 KB total;
 2. the IndexedDB snapshot holds the same file;
@@ -194,17 +196,17 @@ Four tables report no growth because a synthetic row cannot satisfy their constr
 
 ### Failure visibility: persisted counters + a Settings panel
 
-[src/db/failureLog.ts](src/db/failureLog.ts) is a persisted journal (capped at 50 entries, in localStorage — the one store that still works when the *database* store is what failed). `persistence.ts` and `syncCore.ts` both write to it, and the retry backoff now reads its persisted streak instead of the module variable that used to reset to zero on every launch — a save broken for a week no longer looks healthy each morning.
+[src/db/failureLog.ts](../src/db/failureLog.ts) is a persisted journal (capped at 50 entries, in localStorage — the one store that still works when the *database* store is what failed). `persistence.ts` and `syncCore.ts` both write to it, and the retry backoff now reads its persisted streak instead of the module variable that used to reset to zero on every launch — a save broken for a week no longer looks healthy each morning.
 
 Each entry carries a classified cause: `storage-full`, `indexeddb`, `no-storage`, `disk-io`, `data-constraint`, `unknown`. Sync failures also carry the failing statement, because `SqliteEngine` embeds it in its message (`[sql: INSERT INTO …]`) — which is what pinpoints the single row that aborts persistence for every table at once. Save failures carry the backend and the snapshot size.
 
-Settings > Database & Backup now renders [PersistenceHealthPanel.tsx](src/components/settings/PersistenceHealthPanel.tsx): save/sync/restore totals, consecutive-failure streaks, the storage backend actually used, last snapshot size, last-success times, the full failure table with causes, and Copy-diagnostics / Clear-log actions. Verified live in the browser in both states — healthy ("ALL SAVES SUCCEEDING", `last save OK 41s ago`) and failing ("FAILING (save streak 2, sync streak 1)" with per-row causes and the offending SQL).
+Settings > Database & Backup now renders [PersistenceHealthPanel.tsx](../src/components/settings/PersistenceHealthPanel.tsx): save/sync/restore totals, consecutive-failure streaks, the storage backend actually used, last snapshot size, last-success times, the full failure table with causes, and Copy-diagnostics / Clear-log actions. Verified live in the browser in both states — healthy ("ALL SAVES SUCCEEDING", `last save OK 41s ago`) and failing ("FAILING (save streak 2, sync streak 1)" with per-row causes and the offending SQL).
 
-**One real bug found while testing this:** `openIdb()` cached its result forever, so an IndexedDB that was *transiently* blocked (the realistic case — a second app window mid-version-change) degraded the session to the 5 MB localStorage fallback permanently. A failed open is now forgotten so the next save retries. [Tests/db/failureLog.test.ts](tests/db/failureLog.test.ts) covers the classification, persistence across reload, ring-buffer cap, corrupt-log recovery, and both failure paths end-to-end.
+**One real bug found while testing this:** `openIdb()` cached its result forever, so an IndexedDB that was *transiently* blocked (the realistic case — a second app window mid-version-change) degraded the session to the 5 MB localStorage fallback permanently. A failed open is now forgotten so the next save retries. [Tests/db/failureLog.test.ts](../tests/db/failureLog.test.ts) covers the classification, persistence across reload, ring-buffer cap, corrupt-log recovery, and both failure paths end-to-end.
 
 ### `doc_sequences` was in no migration at all (found by replaying the export in the browser)
 
-Running the **real** `generateSqliteExport()` against the **running** app's schema — rather than reading the code — showed the dump at 44 tables against the live 45. The missing one was `doc_sequences`, the document-number counter, which no migration ever created: it was built lazily by `ensureSequenceTable()` ([sequences.ts:18](src/db/sequences.ts#L18)) and by the seeder, so it was present in every real database and absent from every declared one.
+Running the **real** `generateSqliteExport()` against the **running** app's schema — rather than reading the code — showed the dump at 44 tables against the live 45. The missing one was `doc_sequences`, the document-number counter, which no migration ever created: it was built lazily by `ensureSequenceTable()` ([sequences.ts:18](../src/db/sequences.ts#L18)) and by the seeder, so it was present in every real database and absent from every declared one.
 
 Two consequences, both now fixed by `MIGRATION_018_DOC_SEQUENCES` (an `IF NOT EXISTS` no-op on existing databases):
 
@@ -230,7 +232,7 @@ Two value-fidelity bugs went with it:
 
 #### The proof
 
-[Tests/db/exportRoundTrip.test.ts](tests/db/exportRoundTrip.test.ts) dumps a database populated through the app's own writer (sync + repos + direct inserts across **43 tables**), replays the script into a brand-new SQLite file the way `sqlite3 clinic.sqlite < dump.sql` would, and then asserts:
+[Tests/db/exportRoundTrip.test.ts](../tests/db/exportRoundTrip.test.ts) dumps a database populated through the app's own writer (sync + repos + direct inserts across **43 tables**), replays the script into a brand-new SQLite file the way `sqlite3 clinic.sqlite < dump.sql` would, and then asserts:
 
 - **every table, every column, every cell is identical** — one comparison over all 45 tables, storage-class aware (`INTEGER` vs `TEXT` cannot hide) — plus identical column lists and `integrity_check = ok` with zero FK violations;
 - values containing backslashes, both quote characters and a newline round-trip byte-for-byte;
@@ -259,7 +261,7 @@ The round trip above replays the dump through sql.js, the same engine the app ru
 
 The export work above made `.sql` files safe to hand around. But on a **fresh machine** the only way back in was a `.dentalbackup` — if all a clinic had was `clinic.sql` (from `sqlite3 .dump`, from a support ticket, from a previous build of this app), it could not be restored without installing SQLite tooling. That is the exact moment a clinic needs the app most.
 
-[src/services/sqlDumpImport.ts](src/services/sqlDumpImport.ts) adds that path: Settings → Database & Backup → **Restore From a SQL Dump (.sql)**.
+[src/services/sqlDumpImport.ts](../src/services/sqlDumpImport.ts) adds that path: Settings → Database & Backup → **Restore From a SQL Dump (.sql)**.
 
 ### The shape of it
 
@@ -294,7 +296,7 @@ A dump carries `users.password_hash` and `password_salt`. The validation report 
 
 ### The proof
 
-[tests/db/sqlDumpImport.test.ts](tests/db/sqlDumpImport.test.ts) — **34 tests**, seeding real engines with `seededDump()` and running them through the real `generateSqliteExport`:
+[tests/db/sqlDumpImport.test.ts](../tests/db/sqlDumpImport.test.ts) — **34 tests**, seeding real engines with `seededDump()` and running them through the real `generateSqliteExport`:
 
 - splitter regressions for `cases` / `case_types` / `case_number`, quoted `'case …'`, a bare `BEGIN;` transaction, trigger bodies, `--` and `/* */` comments;
 - every forbidden statement is refused and named in the report; a dump whose only statement is `ATTACH` restores nothing;
@@ -348,7 +350,7 @@ app, and only the "Restart & Apply Updates" button calls it.
 
 The `stage` field on the progress event is what turned an opaque spinner into a
 readable five-step pipeline — the Settings variant renders it as a checklist
-([AutoUpdatePanel.tsx](src/components/common/AutoUpdatePanel.tsx)).
+([AutoUpdatePanel.tsx](../src/components/common/AutoUpdatePanel.tsx)).
 
 ### Why the exit is the last step, not the first
 
@@ -365,7 +367,7 @@ the NSIS `HKCU\...\Uninstall\Dental Solutions\InstallLocation` key, not
 ### The receipt now has three meanings
 
 Because staging no longer implies applying, the boot-time reconciliation of
-[updateInstaller.ts](src/services/updateInstaller.ts) reads the receipt three
+[updateInstaller.ts](../src/services/updateInstaller.ts) reads the receipt three
 ways, and this is where the old behaviour was actively wrong:
 
 - `settled` → record "Updated to vX" **once per version** (a naive re-record
@@ -379,10 +381,10 @@ ways, and this is where the old behaviour was actively wrong:
 
 ### Proof
 
-- [tests/services/updateInstaller.test.ts](tests/services/updateInstaller.test.ts) — 11 tests: `isAutoUpdateBusy` across every phase (notably `ready_to_apply` is **not** busy — it is waiting on a person), listener fan-out, and the three-way receipt reconciliation including the once-per-version install record.
-- [tests/components/autoUpdatePanel.test.tsx](tests/components/autoUpdatePanel.test.tsx) — 8 tests: the floating panel renders nothing when there is no update, never shows a "download installer" banner, shows the restart prompt once staged, and `Restart & Apply Updates` really invokes `update_apply`; *Not now* invokes `update_discard`.
+- [tests/services/updateInstaller.test.ts](../tests/services/updateInstaller.test.ts) — 11 tests: `isAutoUpdateBusy` across every phase (notably `ready_to_apply` is **not** busy — it is waiting on a person), listener fan-out, and the three-way receipt reconciliation including the once-per-version install record.
+- [tests/components/autoUpdatePanel.test.tsx](../tests/components/autoUpdatePanel.test.tsx) — 8 tests: the floating panel renders nothing when there is no update, never shows a "download installer" banner, shows the restart prompt once staged, and `Restart & Apply Updates` really invokes `update_apply`; *Not now* invokes `update_discard`.
 - `cd src-tauri && cargo test --lib` — 7 passed, including the stage-receipt shape and the magic filter.
-- [tests/lib/tauriWindowPermissions.test.ts](tests/lib/tauriWindowPermissions.test.ts) — the ACL scanner's self-guard dropped from 5 window call sites to 4, because the deleted `UpdateStatusPill` owned a `destroy()` that the native `update_apply` now replaces.
+- [tests/lib/tauriWindowPermissions.test.ts](../tests/lib/tauriWindowPermissions.test.ts) — the ACL scanner's self-guard dropped from 5 window call sites to 4, because the deleted `UpdateStatusPill` owned a `destroy()` that the native `update_apply` now replaces.
 
 ---
 

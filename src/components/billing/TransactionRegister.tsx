@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { getTodayStr } from '../../utils/dateUtils';
 import { useApp } from '../../context/AppContext';
-import { PaymentRecord, AdvancePayment, AccountAdjustment, Invoice, PaymentMethod } from '../../types';
+import { PaymentRecord, AdvancePayment, AccountAdjustment, Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { 
   DollarSign, 
@@ -12,12 +12,6 @@ import {
   Printer, 
   Image as ImageIcon, 
   Building2, 
-  Calendar, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  PlusCircle, 
-  RotateCcw,
-  Receipt,
   Download,
   Scale,
   ArrowLeftRight
@@ -52,9 +46,6 @@ export interface UnifiedTransaction {
 }
 
 interface TransactionRegisterProps {
-  onOpenPaymentModal: (invoice?: Invoice | null, labId?: string) => void;
-  onOpenAdvanceModal: (labId?: string) => void;
-  onOpenAdjustmentModal: (labId?: string) => void;
   onViewProof: (payment: PaymentRecord) => void;
   onPrintReceipt: (payment: PaymentRecord, invoice?: Invoice) => void;
   onReverseTransaction?: (target: {
@@ -70,9 +61,6 @@ interface TransactionRegisterProps {
 }
 
 export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
-  onOpenPaymentModal,
-  onOpenAdvanceModal,
-  onOpenAdjustmentModal,
   onViewProof,
   onPrintReceipt,
   onReverseTransaction,

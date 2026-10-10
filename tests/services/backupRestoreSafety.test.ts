@@ -56,10 +56,6 @@ async function packageFrom(engine: SqliteEngine, note?: string) {
   return pkg;
 }
 
-function b64ToBytes(b64: string): Uint8Array {
-  return Uint8Array.from(atob(b64), (c: string) => c.charCodeAt(0));
-}
-
 describe('restore safety', () => {
   let localStorageShim: ReturnType<typeof memoryShim>;
 
@@ -132,7 +128,6 @@ describe('restore safety', () => {
     setDatabase(current);
     labsRepo.insert({ id: 'lab-keep2', name: 'Current Data Two', created_at: '2026-01-01' });
 
-    const realBytes = b64ToBytes(pkg.database_b64);
     const buildAndSwap = factory(SQL);
     await expect(
       applyRestoredBytes(pkg, async (bytes: Uint8Array) => {

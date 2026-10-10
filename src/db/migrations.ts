@@ -1129,6 +1129,35 @@ export const MIGRATION_021_CATALOG_NEEDS_TEETH: Migration = {
   ],
 };
 
+/**
+ * 022 — drop the dead `ledger_entries` table.
+ *
+ * `ledger_entries` was a per-document mirror of the double-entry journal that
+ * the live money path stopped writing years ago: the General Ledger renders
+ * `journal_entries`/`journal_lines`, and every posting goes through
+ * `journalRepo` + the invoice/advance/adjustment triggers. Nothing in the app
+ * read or wrote the mirror any more — the only code touching it was
+ * `ledgerRepo`, which nothing called, plus the system-reset purge list, which
+ * existed purely to keep the dead rows from surviving a wipe.
+ *
+ * Dropping the table (rather than leaving it to rot) also removes a second
+ * ledger-balance story that could drift from the real one. `IF EXISTS` keeps
+ * the migration replayable from any older snapshot, and the index goes first
+ * so no orphan index is left behind.
+ */
+export const MIGRATION_022_DROP_LEDGER_ENTRIES: Migration = {
+  version: 22,
+  name: 'drop_ledger_entries',
+  statements: [
+    // Both indexes migration 001 created on the table (017 already dropped
+    // idx_ledger_ref, but an older snapshot may still carry it).
+    `DROP INDEX IF EXISTS idx_ledger_ref`,
+    `DROP INDEX IF EXISTS idx_ledger_lab_date`,
+    `DROP TABLE IF EXISTS ledger_entries`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '22')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1151,6 +1180,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_019_CASE_RECEIVED_DATE,
   MIGRATION_020_BARE_DOCTOR_NAME,
   MIGRATION_021_CATALOG_NEEDS_TEETH,
+  MIGRATION_022_DROP_LEDGER_ENTRIES,
 ];
 
 /**

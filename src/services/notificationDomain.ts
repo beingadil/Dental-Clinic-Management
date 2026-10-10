@@ -182,21 +182,6 @@ export const buildAdvanceDepositNotification = (
   created_at: input.at ?? nowStamp(),
 });
 
-/** Advance credit fully settled an invoice. */
-export const buildAdvanceSettledInvoiceNotification = (
-  input: BaseInput & { invoice: Invoice; amount: number },
-): AppNotification => ({
-  id: input.id,
-  type: 'system',
-  title: `Invoice ${input.invoice.invoice_number} Settled via Advance`,
-  message: `Advance credit of PKR ${(input.amount || 0).toLocaleString()} applied to ${input.invoice.invoice_number} for ${input.invoice.lab_name}. Invoice is fully settled.`,
-  invoice_id: input.invoice.id,
-  lab_id: input.invoice.lab_id,
-  is_read: false,
-  is_archived: false,
-  created_at: input.at ?? nowStamp(),
-});
-
 /** Credit note / debit adjustment / refund posted. */
 export const buildAdjustmentNotification = (
   input: BaseInput & {

@@ -44,22 +44,3 @@ export function computeSlaDueDate(priority: PriorityLevel, from: Date = new Date
   // booking before 05:00 PKT.
   return getDateStr(d);
 }
-
-/**
- * Non-negative days until due (0 when overdue). Consistent with the app's
- * date-string comparisons (YYYY-MM-DD sorts lexicographically).
- */
-export function daysUntilDue(dueDate: string, today: string): number {
-  if (!dueDate) return 0;
-  const diff = Math.round(
-    (new Date(dueDate).getTime() - new Date(today).getTime()) / (24 * 60 * 60 * 1000)
-  );
-  return Math.max(0, diff);
-}
-
-export const PRIORITY_BADGE_CLASS: Record<PriorityLevel, string> = {
-  urgent: 'bg-rose-100 text-rose-800 border-rose-200',
-  high: 'bg-amber-100 text-amber-800 border-amber-200',
-  normal: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  low: 'bg-blue-100 text-blue-800 border-blue-200',
-};

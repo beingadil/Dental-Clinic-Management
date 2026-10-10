@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ClipboardCopy, Eraser, HardDrive, RefreshCw } from 'lucide-react';
 import {
   clearFailureLog,

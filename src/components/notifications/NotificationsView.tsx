@@ -1,11 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { AppNotification, DentalCase } from '../../types';
+import { AppNotification } from '../../types';
 import { 
   Bell, 
   AlertTriangle, 
   DollarSign, 
-  Info, 
   Check, 
   Trash2, 
   CheckCheck, 
@@ -14,18 +13,12 @@ import {
   RotateCcw,
   Eye,
   EyeOff,
-  Filter,
   Search,
   PlusCircle,
   Sparkles,
-  Layers,
-  FileText,
   Clock,
   CheckCircle2,
-  X,
-  Stethoscope,
-  Building2,
-  Receipt
+  X
 } from 'lucide-react';
 
 export const NotificationsView: React.FC = () => {

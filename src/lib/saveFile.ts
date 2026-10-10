@@ -46,11 +46,6 @@ async function loadTauriApis(): Promise<boolean> {
   }
 }
 
-/** True when this environment can open a native save dialog (desktop only). */
-export async function canSaveFile(): Promise<boolean> {
-  return loadTauriApis();
-}
-
 /** Bytes → base64 in chunks, so a large export cannot blow the call stack. */
 function toBase64(bytes: Uint8Array): string {
   const CHUNK = 0x8000;

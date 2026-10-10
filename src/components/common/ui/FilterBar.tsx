@@ -35,8 +35,6 @@ interface FilterBarProps {
   search?: FilterBarSearch;
   dateRange?: FilterBarDateRange;
   clinics?: FilterBarClinics;
-  /** View-specific selects rendered after the clinic dropdown (method, ...). */
-  extra?: React.ReactNode;
   /** Action buttons grouped with the date range (export, ...). */
   actions?: React.ReactNode;
   pills?: FilterPill[];
@@ -54,7 +52,6 @@ export function FilterBar({
   search,
   dateRange,
   clinics,
-  extra,
   actions,
   pills,
   activePill,
@@ -104,8 +101,6 @@ export function FilterBar({
             </select>
           </div>
         )}
-
-        {extra}
       </div>
 
       {pills && pills.length > 0 && (

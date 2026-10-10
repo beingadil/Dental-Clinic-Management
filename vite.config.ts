@@ -34,7 +34,6 @@ export default defineConfig(() => {
             if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react-core';
             // Charting stack (recharts pulls the d3 family with it).
             if (/[\\/]node_modules[\\/](recharts|d3-[a-z-]+|victory-vendor|internmap|decimal\.js|eventemitter3)[\\/]/.test(id)) return 'charts';
-            if (/[\\/]node_modules[\\/](motion|framer-motion)[\\/]/.test(id)) return 'motion';
             if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) return 'icons';
             if (/[\\/]node_modules[\\/]sql\.js[\\/]/.test(id)) return 'db-engine';
             return undefined;

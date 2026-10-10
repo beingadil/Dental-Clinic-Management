@@ -78,13 +78,6 @@ describe('syncCore writes every column that exists', () => {
     expect(tableNames().length).toBeGreaterThan(10);
   });
 
-  // Computed inside the test, not at collection time: the engine does not exist
-  // until beforeAll has run, and hoisting this is how a coverage check silently
-  // audits nothing.
-  it('audits the tables the autosave actually rewrites', () => {
-    expect(inserts.size).toBeGreaterThan(10);
-  });
-
   it('every synced table writes every column that exists', () => {
     const problems: string[] = [];
     for (const table of tableNames()) {

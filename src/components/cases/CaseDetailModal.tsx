@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, ToothDetail, CaseAttachment } from '../../types';
-import Odontogram, { SHADE_COLORS, type OdontogramData } from './Odontogram';
+import Odontogram, { type OdontogramData } from './Odontogram';
 import { CaseNotesPanel } from './CaseNotesPanel';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
@@ -10,7 +10,6 @@ import { useDialogBehavior } from '../common/ui/useDialogBehavior';
 import { LAB_DEPARTMENTS } from '../../utils/labDepartments';
 import { stripDoctorHonorific } from '../../utils/doctorName';
 import { catalogNeedsTeeth } from '../../utils/catalogToothRequirement';
-import { getClinicalSpecs } from '../../services/clinicalSpecsService';
 import {
   X,
   Check,
@@ -23,13 +22,11 @@ import {
   Maximize2,
   Minimize2,
   Download,
-  File,
   Upload,
   CheckCircle2,
   Box,
   Layers,
   ExternalLink,
-  Save,
   ArrowRight,
   ArrowLeft,
   CalendarDays
@@ -179,15 +176,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
      dashboard reports as Unassigned rather than guessing. */
   const [department, setDepartment] = useState<string>(initialCase?.department || '');
   const [shade, setShade] = useState(initialCase?.shade || appliedTemplate?.shade || initialShade || 'A2');
-  const [clinicalSpecs, setClinicalSpecs] = useState(getClinicalSpecs());
-
-  useEffect(() => {
-    const handleSpecsUpdate = () => {
-      setClinicalSpecs(getClinicalSpecs());
-    };
-    window.addEventListener('clinical-specs-updated', handleSpecsUpdate);
-    return () => window.removeEventListener('clinical-specs-updated', handleSpecsUpdate);
-  }, []);
 
   const [priority, setPriority] = useState<PriorityLevel>(
     initialCase?.priority || appliedTemplate?.default_priority || 'normal'
@@ -639,7 +627,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
   const finalComputedPrice = Math.max(0, price - discount);
 
-  const selectedLab = labs.find((l) => l.id === labId);
   const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
 
   /* Tracks when the wizard landed on the current step so the final submit can
@@ -664,21 +651,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     normal: 'bg-indigo-400/10 text-indigo-300 ring-1 ring-indigo-400/30',
     high: 'bg-amber-400/10 text-amber-300 ring-1 ring-amber-400/30',
     urgent: 'bg-rose-400/10 text-rose-300 ring-1 ring-rose-400/30',
-  };
-
-  /* Shared shade-toggle handler (sets global shade + per-tooth details) */
-  const applyShadeToSelection = (s: string) => {
-    setShade(s);
-    setToothDetails((prev) => {
-      const updated = { ...prev };
-      selectedTeeth.forEach((t) => {
-        updated[t] = {
-          ...(updated[t] || { tooth_number: t, prep_type: 'crown', material }),
-          shade: s,
-        };
-      });
-      return updated;
-    });
   };
 
   /* ================================================================== */

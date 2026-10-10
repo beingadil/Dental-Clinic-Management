@@ -16,7 +16,6 @@ export interface PreviewFrameProps {
   /** Right side of the caption strip — toggles, zoom, re-print… */
   actions?: React.ReactNode;
   className?: string;
-  id?: string;
   children: React.ReactNode;
 }
 
@@ -51,13 +50,11 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
   bodyClassName = 'p-3',
   actions,
   className = '',
-  id,
   children,
 }) => {
   const dark = surface === 'dark';
   return (
     <div
-      id={id}
       data-preview-artefact={artefact}
       className={`rounded-2xl border overflow-hidden shadow-2xs ${SURFACE_CLASS[surface]} ${className}`}
     >

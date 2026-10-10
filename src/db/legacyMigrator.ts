@@ -1,5 +1,5 @@
 import { getDatabase } from './index';
-import { appMetaRepo, usersRepo, labsRepo, caseTypesRepo, casesRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo, journalRepo, notificationsRepo, settingsRepo, notificationConfigRepo, emailTemplatesRepo, clinicalSpecsRepo, chairsideRepo, auditRepo, caseNotesRepo, attachmentsRepo, vouchersRepo } from './repos';
+import { appMetaRepo, usersRepo, labsRepo, caseTypesRepo, casesRepo, invoicesRepo, advancePaymentsRepo, journalRepo, notificationsRepo, settingsRepo, notificationConfigRepo, emailTemplatesRepo, clinicalSpecsRepo, chairsideRepo, caseNotesRepo, attachmentsRepo, vouchersRepo } from './repos';
 import { ensureSequenceTable, ensureCounterAtLeast, SEQ_KEYS } from './sequences';
 import { hashPassword } from './crypto';
 import { DEFAULT_MATERIALS, DEFAULT_PREP_TYPES, DEFAULT_SHADE_GUIDES, DEFAULT_IMPLANT_BRANDS } from '../services/clinicalSpecsService';
@@ -61,9 +61,9 @@ class ReportBuilder {
   skip(reason: string, record?: any) {
     this.counts.skipped += 1;
     this.counts.problems.push(reason);
-    if (record !== undefined) this.preserve(this.current, record, reason);
+    if (record !== undefined) this.preserve(this.current, record);
   }
-  preserve(tableName: string, record: any, reason: string) {
+  preserve(tableName: string, record: any) {
     try {
       const id = String(record?.id ?? record?.case_number ?? record?.invoice_number ?? record?.payment_number ?? `unknown-${Math.random().toString(36).slice(2, 8)}`);
       getDatabase().run(

@@ -304,5 +304,3 @@ export async function applyRestoredBytes(
 function closeQuietly(engine: SqliteEngine): void {
   try { engine.close(); } catch { /* already closed */ }
 }
-
-export const RESTORE_NOTE = 'Restores replace ALL current data — a safety snapshot is taken first.';

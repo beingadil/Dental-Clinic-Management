@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { MessageSquare, Plus, Edit2, Trash2, Check, X, User } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X } from 'lucide-react';
 
 interface CaseNotesPanelProps {
   caseId: string;

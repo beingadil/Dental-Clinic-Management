@@ -7,9 +7,6 @@ interface PrintSectionPickerProps {
   /** Section ids that are currently ON, in document order. */
   value: string[];
   onChange: (next: string[]) => void;
-  /** Optional wrapper classes (the parent usually supplies the card). */
-  className?: string;
-  compact?: boolean;
 }
 
 /**
@@ -21,8 +18,6 @@ export const PrintSectionPicker: React.FC<PrintSectionPickerProps> = ({
   kind,
   value,
   onChange,
-  className = '',
-  compact = false,
 }) => {
   const sections = PRINT_SECTIONS[kind];
 
@@ -33,7 +28,7 @@ export const PrintSectionPicker: React.FC<PrintSectionPickerProps> = ({
   };
 
   return (
-    <div className={`grid grid-cols-1 sm:grid-cols-2 gap-1.5 ${className}`}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
       {sections.map((s) => {
         const isOn = value.includes(s.id);
         return (
@@ -55,7 +50,7 @@ export const PrintSectionPicker: React.FC<PrintSectionPickerProps> = ({
             </span>
             <span className="min-w-0">
               <span className="block text-xs font-bold text-slate-800">{s.label}</span>
-              {!compact && <span className="block text-[10px] text-slate-500">{s.hint}</span>}
+              <span className="block text-[10px] text-slate-500">{s.hint}</span>
             </span>
           </button>
         );

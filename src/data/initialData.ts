@@ -1,24 +1,9 @@
 import { 
-  DentalCase, 
-  DentalLab, 
   CaseType, 
-  Invoice, 
   AppNotification, 
-  CaseTemplate, 
-  LabContact, 
-  LabAddress, 
-  LabPricingOverride, 
-  LabReview, 
-  DoctorPreferredLab, 
   NotificationConfig, 
   EmailTemplate, 
   UserPreferences,
-  AdvancePayment,
-  AccountAdjustment,
-  JournalEntry,
-  AuditEvent,
-  ReconciliationItem,
-  UserProfile
 } from '../types';
 
 // Standard Production Dental Laboratory Case Types & Material Catalog
@@ -117,21 +102,7 @@ export const INITIAL_CASE_TYPES: CaseType[] = [
 ];
 
 // Production Clean State: Empty Seeded Data for fresh operational deployment
-export const INITIAL_LABS: DentalLab[] = [];
-export const INITIAL_LAB_CONTACTS: LabContact[] = [];
-export const INITIAL_LAB_ADDRESSES: LabAddress[] = [];
-export const INITIAL_PRICING_OVERRIDES: LabPricingOverride[] = [];
-export const INITIAL_LAB_REVIEWS: LabReview[] = [];
-export const INITIAL_DOCTOR_PREFERENCES: DoctorPreferredLab[] = [];
-export const INITIAL_CASES: DentalCase[] = [];
-export const INITIAL_INVOICES: Invoice[] = [];
-export const INITIAL_ADVANCE_PAYMENTS: AdvancePayment[] = [];
-export const INITIAL_ADJUSTMENTS: AccountAdjustment[] = [];
 export const INITIAL_NOTIFICATIONS: AppNotification[] = [];
-export const INITIAL_TEMPLATES: CaseTemplate[] = [];
-export const INITIAL_JOURNAL_ENTRIES: JournalEntry[] = [];
-export const INITIAL_AUDIT_EVENTS: AuditEvent[] = [];
-export const INITIAL_RECONCILIATION_ITEMS: ReconciliationItem[] = [];
 
 export const INITIAL_NOTIFICATION_CONFIG: NotificationConfig = {
   overdue_frequencies: ['1_day_before', 'on_due_date', '1_day_after', '3_days_after', '7_days_after'],
@@ -203,16 +174,4 @@ export const INITIAL_USER_PREFERENCES: UserPreferences = {
   auto_archive_completed_cases: true,
   theme_mode: 'system',
 };
-
-/**
- * No demo/bootstrap users ship with this build.
- *
- * Earlier revisions seeded demo accounts (adil / Zeeshan / hamza / Sana) into
- * fresh installs via the legacy localStorage fallback; the legacy migrator
- * then carried them into SQLite. Fresh profiles now start with an EMPTY users
- * table — the login screen's first-run setup provisions the operator's own
- * Super Admin. Migration 009 removed the retired hidden service account.
- * Kept as an empty password-free shape so legacy import code still typechecks.
- */
-export const INITIAL_USERS: UserProfile[] = [];
 

@@ -98,7 +98,25 @@ interface PrintDocumentProps {
   cases?: DentalCase[] | null;
   labName?: string;
   payment?: PaymentRecord | null;
-  period?: { from: string; to: string };
+  period?: { from: string; to: string } | null;
+  /**
+   * Batch statement paging.
+   *
+   * A batch of invoices can exceed one sheet, so the statement renders one
+   * page per chunk and the caller passes where this page sits in the run.
+   * `page`/`pageCount` drive the "Page x of y" marker so a clinic can tell a
+   * continued sheet from a fresh statement. `showBalance` is false on every
+   * page but the last: totals belong to the whole run, so repeating them per
+   * page would double-count when someone adds the sheets up.
+   */
+  page?: { page: number; pageCount: number };
+  showBalance?: boolean;
+  /**
+   * Which invoices the balance block sums. On a paginated run this is the
+   * WHOLE selection, not the rows on this page — the last sheet's totals must
+   * be the statement's totals, not that page's slice.
+   */
+  balanceInvoices?: Invoice[] | null;
 }
 
 export const PrintDocument: React.FC<PrintDocumentProps> = ({
@@ -113,6 +131,9 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   labName,
   payment,
   period,
+  page,
+  showBalance = true,
+  balanceInvoices,
 }) => {
   const lab = branding;
   const paper = printSettings?.paper || 'a4';
@@ -152,6 +173,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
     : (invoice ? [invoice] : []);
   const statementCases = casesProp ?? [];
 
+  /* The balance block must total the whole run even when the table is split
+     across sheets, so it sums `balanceInvoices` when the caller supplies it. */
+  const balanceRows = balanceInvoices ?? statementInvoices;
+
   // Dynamic page setup — the chosen paper size + margin become the actual
   // @page rule for printing (overrides the 12mm stylesheet default).
   const pageMarginMm = margin === 'narrow' ? 8 : margin === 'wide' ? 18 : 12;
@@ -189,6 +214,14 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
       {on(sections, 'docTitle') && (
         <div className="text-center mt-4 mb-4">
           <span className="inline-block border-2 border-slate-900 px-6 py-1 text-sm font-bold tracking-[0.25em]">{title}</span>
+          {/* Sheet counter — only meaningful when a run spans several pages.
+              `pageCount > 1` keeps single-page documents untouched. */}
+          {page && page.pageCount > 1 && (
+            <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+              Page {page.page} of {page.pageCount}
+              {page.page > 1 && ' (continued)'}
+            </div>
+          )}
         </div>
       )}
 
@@ -480,6 +513,13 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               <span className="font-bold">Period: </span>{period.from} → {period.to}
             </div>
           )}
+          {/* Continued sheets restate which slice of the run this is. Without
+              it, page 2 is indistinguishable from a separate statement. */}
+          {page && page.pageCount > 1 && page.page > 1 && (
+            <div className="mb-3 text-[11px]">
+              <span className="font-bold">Period (continued): </span>{period ? `${period.from} → ${period.to}` : '—'}
+            </div>
+          )}
           {on(sections, 'invoiceTable') && (
             <table className="w-full border-collapse text-[11px] mb-4">
               <thead>
@@ -529,13 +569,13 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               </tbody>
             </table>
           )}
-          {on(sections, 'balanceSummary') && (
+          {on(sections, 'balanceSummary') && showBalance && (
             <div className="flex justify-end mb-4">
               <table className="text-[11px] w-64">
                 <tbody>
-                  <tr><td className="py-0.5 text-slate-600">Total Billed</td><td className="py-0.5 text-right font-bold">{money(statementInvoices.reduce((s, i) => s + i.final_amount, 0))}</td></tr>
-                  <tr><td className="py-0.5 text-slate-600">Total Paid</td><td className="py-0.5 text-right">{money(statementInvoices.reduce((s, i) => s + (i.amount_paid || 0), 0))}</td></tr>
-                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Outstanding</td><td className="py-1 text-right font-bold">{money(statementInvoices.reduce((s, i) => s + (i.final_amount - (i.amount_paid || 0)), 0))}</td></tr>
+                  <tr><td className="py-0.5 text-slate-600">Total Billed</td><td className="py-0.5 text-right font-bold">{money(balanceRows.reduce((s, i) => s + i.final_amount, 0))}</td></tr>
+                  <tr><td className="py-0.5 text-slate-600">Total Paid</td><td className="py-0.5 text-right">{money(balanceRows.reduce((s, i) => s + (i.amount_paid || 0), 0))}</td></tr>
+                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Outstanding</td><td className="py-1 text-right font-bold">{money(balanceRows.reduce((s, i) => s + (i.final_amount - (i.amount_paid || 0)), 0))}</td></tr>
                 </tbody>
               </table>
             </div>

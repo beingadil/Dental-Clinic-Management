@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getTodayStr } from '../../utils/dateUtils';
-import { DollarSign, Plus, Trash2, Tag, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Tag } from 'lucide-react';
 
 interface LabPricingManagerProps {
   labId: string;

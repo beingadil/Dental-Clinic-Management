@@ -3,24 +3,20 @@ import React from 'react';
 export interface PageHeaderProps {
   title: string;
   subtitle?: string;
-  badge?: React.ReactNode;
   actions?: React.ReactNode;
   breadcrumbs?: { label: string; onClick?: () => void }[];
   className?: string;
-  id?: string;
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
   title,
   subtitle,
-  badge,
   actions,
   breadcrumbs,
   className = '',
-  id
 }) => {
   return (
-    <div id={id} className={`flex flex-col lg:flex-row lg:items-center justify-between gap-2 pb-1 ${className}`}>
+    <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-2 pb-1 ${className}`}>
       <div className="space-y-0.5 min-w-0">
         {breadcrumbs && breadcrumbs.length > 0 && (
           <nav className="flex items-center gap-1.5 text-[11px] text-slate-600">
@@ -49,7 +45,6 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           <h1 className="text-lg font-bold tracking-tight text-slate-900 leading-tight">
             {title}
           </h1>
-          {badge}
         </div>
 
         {subtitle && (

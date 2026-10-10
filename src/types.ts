@@ -20,8 +20,6 @@ export type InvoiceStatusV2 = 'draft' | 'open' | 'partially_paid' | 'paid' | 'ov
 
 export type AdvanceCreditStatus = 'available' | 'partially_allocated' | 'fully_allocated' | 'on_hold' | 'refunded' | 'reversed';
 
-export type AdjustmentType = 'credit_note' | 'write_off' | 'debit_adjustment' | 'refund' | 'reversal';
-
 export interface PaymentAllocation {
   id: string;
   source_type: 'payment' | 'advance';
@@ -98,7 +96,7 @@ export interface ReconciliationItem {
   verified_by?: string;
 }
 
-export type TransactionType = 
+type TransactionType = 
   | 'invoice_payment' 
   | 'advance_payment' 
   | 'advance_allocation' 
@@ -126,7 +124,7 @@ export interface CaseNote {
   updated_at?: string;
 }
 
-export interface CaseStatusHistory {
+interface CaseStatusHistory {
   id: string;
   case_id: string;
   status: CaseStatus;
@@ -135,7 +133,7 @@ export interface CaseStatusHistory {
   updated_by: string;
 }
 
-export type ToothPrepType = 'crown' | 'veneer' | 'inlay_onlay' | 'abutment' | 'pontic' | 'implant' | 'coping';
+type ToothPrepType = 'crown' | 'veneer' | 'inlay_onlay' | 'abutment' | 'pontic' | 'implant' | 'coping';
 
 export interface ToothDetail {
   tooth_number: number; // FDI e.g. 11
@@ -443,10 +441,6 @@ export interface LabFinancialSummary {
   advance_count: number;
 }
 
-export type ClinicFinancialSummary = LabFinancialSummary;
-export type DentalClinic = DentalLab;
-export type Clinic = DentalLab;
-
 export interface CaseType {
   id: string;
   name: string;
@@ -470,7 +464,7 @@ export interface CaseType {
   created_at: string;
 }
 
-export type NotificationType = 'overdue_case' | 'pending_payment' | 'escalation' | 'status_change' | 'unpaid_invoice' | 'system';
+type NotificationType = 'overdue_case' | 'pending_payment' | 'escalation' | 'status_change' | 'unpaid_invoice' | 'system';
 
 export interface AppNotification {
   id: string;
@@ -586,15 +580,6 @@ export interface BrandingSettings {
   printLogoPosition?: 'left' | 'center' | 'right';
 }
 
-export interface InvoiceLineItem {
-  id: string;
-  description: string;
-  teeth_numbers?: number[];
-  quantity: number;
-  unit_price: number;
-  total_price: number;
-}
-
 export interface SavedVoucher {
   id: string;
   voucher_number: string;
@@ -628,7 +613,7 @@ export type QcReasonCode =
   | 'other';
 
 /** `inspection` appends a new fact; `correction` amends a mistaken fact without mutating it. */
-export type QcEventKind = 'inspection' | 'correction';
+type QcEventKind = 'inspection' | 'correction';
 
 /** One immutable row of the append-only QC stream (`qc_inspections` table). */
 export interface QcInspection {

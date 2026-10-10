@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { DatePickerSingle } from '../../src/components/common/DatePickerSingle';

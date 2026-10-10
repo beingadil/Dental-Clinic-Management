@@ -89,9 +89,6 @@ export const DEFAULT_BRAND_COLOR: BrandColorId = 'indigo';
 /** The fallback accent, used for a missing, malformed or unknown stored value. */
 export const FALLBACK_BRAND_SWATCH = BRAND_SWATCHES[0];
 
-/** Every CSS custom property `applyBrandColor` writes. */
-export const BRAND_TOKEN_KEYS = ['--brand-50', '--brand-100', '--brand-200', '--brand-600', '--brand-700'] as const;
-
 const SWATCH_BY_ID = new Map(BRAND_SWATCHES.map((s) => [s.id, s]));
 const SWATCH_BY_HEX = new Map(BRAND_SWATCHES.map((s) => [s.hex.toLowerCase(), s]));
 

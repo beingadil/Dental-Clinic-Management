@@ -157,6 +157,12 @@ function syncNow(c: SyncCollections): void {
     tx.run('DELETE FROM case_notes');
     tx.run('DELETE FROM qc_inspections');
     tx.run('DELETE FROM payment_attachments');
+    // payment_allocations belongs to the payments rebuild below (mirroring
+    // advance_allocations). The table has NO foreign key and NO cascade, so
+    // nothing else ever cleared it: every allocation survived a payment delete,
+    // and — worse — survived a system reset, leaving money rows pointing at
+    // invoices and payments that no longer exist.
+    tx.run('DELETE FROM payment_allocations');
     tx.run('DELETE FROM payments');
     // advance_allocations references invoices (no cascade) — must die first.
     // advance_payments/account_adjustments reference labs (no cascade) and are
@@ -490,6 +496,18 @@ function syncNow(c: SyncCollections): void {
              VALUES (?, 'payment', ?, ?, ?, ?, ?, ?, ?)`,
             [a.id || genId('pa'), pid, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
              a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
+          );
+        }
+        // Payment allocations, same rule as advance allocations below: the
+        // table was emptied above, so an allocation not rewritten here is gone.
+        for (const al of p.allocations || []) {
+          if (!liveInvoiceIds.has(al.invoice_id)) continue; // orphan -> skip
+          tx.run(
+            `INSERT INTO payment_allocations (id, source_type, source_id, source_ref, invoice_id, invoice_number, amount, allocated_at, allocated_by, notes)
+             VALUES (?, 'payment', ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [al.id || genId('alloc'), pid, p.payment_number || null,
+             al.invoice_id, al.invoice_number ?? null, al.amount,
+             al.allocated_at || now, al.allocated_by || null, al.notes ?? null]
           );
         }
       });

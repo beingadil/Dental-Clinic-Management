@@ -14,12 +14,6 @@ export const deriveSimpleStatus = (
   finalAmount: number,
 ): 'unpaid' | 'partial' | 'paid' => (amountPaid >= finalAmount ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid');
 
-/** Recompute an invoice's paid total + status from its payment list. */
-export const deriveInvoicePaidState = (inv: Invoice): { amount_paid: number; payment_status: Invoice['payment_status'] } => {
-  const amount_paid = (inv.payments || []).reduce((sum, p) => sum + p.amount, 0);
-  return { amount_paid, payment_status: deriveSimpleStatus(amount_paid, inv.final_amount) };
-};
-
 export interface BuildPaymentSideEffectsInput {
   payment: PaymentRecord;
   invoice: Invoice;

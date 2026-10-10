@@ -28,7 +28,6 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
   const totalDebit = journal.lines.reduce((sum, l) => sum + (l.debit || 0), 0);
   const totalCredit = journal.lines.reduce((sum, l) => sum + (l.credit || 0), 0);
-  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   return (
     <Modal

@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Drawer, InvoiceStatusBadge } from '../common/ui';
 import { useApp } from '../../context/AppContext';
-import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
+import { Invoice, PaymentRecord } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
 import { formatDoctorName } from '../../utils/doctorName';
 import { caseDetailLines } from '../../services/ledgerCaseDetail';
@@ -9,21 +9,15 @@ import { availableAdvanceCredit } from '../../services/transactionDomain';
 import { 
   X, 
   FileText, 
-  Calendar, 
   Building2, 
   User, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
   Scale, 
   Printer, 
   Plus, 
   ArrowDownLeft, 
   ShieldCheck, 
-  ExternalLink,
   ChevronRight,
   Receipt,
-  FileDown,
   ArrowLeftRight,
   Wallet
 } from 'lucide-react';
@@ -79,7 +73,6 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   const totalCredits = invoice.credit_notes_total || 0;
   const netDue = Math.max(0, invoice.final_amount - totalPaid - totalCredits);
 
-  const isPaid = netDue <= 0;
   const statusV2 = invoice.status_v2 || deriveInvoiceStatus(invoice.final_amount, totalPaid, invoice.due_date, totalCredits);
   const availableCredit = availableAdvanceCredit(advancePayments, invoice.lab_id);
 

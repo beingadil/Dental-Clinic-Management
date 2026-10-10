@@ -24,18 +24,6 @@ export const getDateStr = (d: Date = new Date()): string => {
 
 export const getTodayStr = (): string => getDateStr();
 
-export const getTomorrowStr = (): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return getDateStr(d);
-};
-
-export const getYesterdayStr = (): string => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return getDateStr(d);
-};
-
 export const getDaysOffsetStr = (days: number): string => {
   const d = new Date();
   d.setDate(d.getDate() + days);

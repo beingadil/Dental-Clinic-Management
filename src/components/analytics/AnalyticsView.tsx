@@ -20,7 +20,6 @@ import {
 import { 
   BarChart3, 
   DollarSign, 
-  Clock, 
   CheckCircle2, 
   AlertTriangle, 
   Download, 
@@ -40,7 +39,7 @@ const todayParts = () => {
 };
 
 export const AnalyticsView: React.FC = () => {
-  const { cases, invoices, labs, caseTypes } = useApp();
+  const { cases, invoices, labs } = useApp();
 
   const t = todayParts();
   const [dateFilter, setDateFilter] = useState<PeriodId>('this_month');
@@ -168,14 +167,12 @@ export const AnalyticsView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Header — the page title lives on the Reports page header, so this row
+          only carries the overview's own export action. */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Analytics & Business Intelligence</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Real-time financial performance, revenue breakdown by lab & material, and quality delivery SLA metrics.
-          </p>
-        </div>
+        <p className="text-xs text-slate-500 sm:max-w-2xl">
+          Real-time financial performance, revenue breakdown by lab &amp; material, and quality delivery SLA metrics.
+        </p>
 
         <div className="flex items-center gap-2">
           <button
@@ -373,7 +370,7 @@ export const AnalyticsView: React.FC = () => {
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    {revenueByMaterialData.map((entry, index) => (
+                    {revenueByMaterialData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={MATERIAL_COLORS[index % MATERIAL_COLORS.length]} />
                     ))}
                   </Pie>

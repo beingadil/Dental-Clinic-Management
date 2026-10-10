@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DentalCase, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { Printer, X, Landmark, Download, CheckCircle2 } from 'lucide-react';
+import { Printer, X, Landmark, Download } from 'lucide-react';
 import { JobSlipCard } from '../print/JobSlipCard';
 import { chunkSlipsForA4 } from '../../lib/slipPagination';
 import { SavePdfButton } from '../print/SavePdfButton';
@@ -10,7 +10,6 @@ import {
   SLIP_PRINT_ROOT_CLASS,
   PRINT_CONTAINER_SELECTOR,
   BATCH_STANDALONE_CSS,
-  collectInlineStyles,
   buildStandaloneHtml,
   downloadStandaloneHtml,
 } from '../print/printPipeline';
@@ -72,7 +71,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
 }) => {
   const { invoices, saveVoucherToSystem, brandingSettings } = useApp();
   const [printType, setPrintType] = useState<'slips' | 'invoices'>(initialPrintType);
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [, setSavedSuccess] = useState(false);
   const [slipStyle] = useState<PrintSettings['jobSlipStyle']>(() => loadPrintSettings().jobSlipStyle);
   // Preview zoom: 'fit' scales sheets to the modal width (default); 0.75 / 1
   // are the operator's explicit choices for reading fine print on screen.

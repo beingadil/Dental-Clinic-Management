@@ -17,7 +17,6 @@ import {
   UserCheck,
   Stethoscope,
   Hash,
-  Clock,
   ArrowRight,
   ExternalLink
 } from 'lucide-react';
@@ -26,12 +25,7 @@ import { WindowControls } from './WindowControls';
 import { ThemeToggle } from './ThemeToggle';
 import { formatDoctorName } from '../../utils/doctorName';
 
-interface HeaderProps {
-  /** Reserved for future global actions; the header intentionally hosts no case-creation entry. */
-  onOpenNewCaseModal?: () => void;
-}
-
-export const Header: React.FC<HeaderProps> = () => {
+export const Header: React.FC = () => {
   const { 
     user, 
     logout, 

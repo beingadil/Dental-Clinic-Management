@@ -5,7 +5,7 @@ import {
   reconciliationRepo, invoicesRepo, advancePaymentsRepo, adjustmentsRepo,
   journalRepo, vouchersRepo, auditRepo, notificationsRepo,
 } from '../../db/repos';
-import { hydrateAllFromDb, dbMirror, dbRows } from './domainState';
+import { dbMirror, dbRows } from './domainState';
 
 /**
  * Billing domain state — invoices, advances, adjustments, journal, audit,

@@ -6,7 +6,6 @@ import {
   casesRepo,
   invoicesRepo,
   labsRepo,
-  ledgerRepo,
   vouchersRepo,
   doctorPreferredLabsRepo,
 } from '../../src/db/repos';
@@ -100,8 +99,8 @@ describe('repo write boundary — doctor names normalise on the way in', () => {
     expect(created.doctor_name).toBe('Prof. Ahmed Khan');
   });
 
-  it('normalises the clinic, invoice, ledger and voucher columns as well', () => {
-    // Fixing only `cases` would leave an invoice or a ledger line printing
+  it('normalises the clinic, invoice and voucher columns as well', () => {
+    // Fixing only `cases` would leave an invoice or a voucher printing
     // "Dr. Dr." forever, because each renders independently.
     const lab = labsRepo.insert({ id: 'lab-w5', name: 'All Columns Lab', doctor_name: 'Dr. Ayesha Khan' });
     expect(lab.doctor_name).toBe('Ayesha Khan');
@@ -118,19 +117,6 @@ describe('repo write boundary — doctor names normalise on the way in', () => {
       created_at: STAMP,
     });
     expect(inv.doctor_name).toBe('Ayesha Khan');
-
-    const ledger = ledgerRepo.insert({
-      date: '2026-05-01',
-      lab_id: 'lab-w5',
-      lab_name: 'All Columns Lab',
-      entry_type: 'invoice',
-      reference_id: inv.id,
-      description: 'Issuance',
-      debit: 1000,
-      credit: 0,
-      doctor_name: 'Dr. Ayesha Khan',
-    });
-    expect(ledger.doctor_name).toBe('Ayesha Khan');
 
     const voucher = vouchersRepo.insert({
       id: 'vch-w5',

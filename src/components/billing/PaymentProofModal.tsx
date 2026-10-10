@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PaymentRecord, PaymentAttachment } from '../../types';
-import { Download, ExternalLink, Image as ImageIcon, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Download, Image as ImageIcon, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { Modal } from '../common/ui';
 
 interface PaymentProofModalProps {

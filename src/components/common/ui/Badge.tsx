@@ -7,7 +7,6 @@ export interface BadgeProps {
   size?: 'xs' | 'sm' | 'md';
   dot?: boolean;
   className?: string;
-  id?: string;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
@@ -16,7 +15,6 @@ export const Badge: React.FC<BadgeProps> = ({
   size = 'sm',
   dot = false,
   className = '',
-  id
 }) => {
   const variantStyles = {
     default: 'bg-slate-100 text-slate-700 border-slate-200/80',
@@ -50,7 +48,6 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span
-      id={id}
       className={`inline-flex items-center gap-1.5 rounded-full border transition-colors whitespace-nowrap ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
     >
       {dot && <span className={`w-1.5 h-1.5 rounded-full ${dotColors[variant]}`} />}

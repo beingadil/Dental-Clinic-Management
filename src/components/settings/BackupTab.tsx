@@ -68,7 +68,6 @@ export const BackupTab: React.FC<{
     caseNotes,
     caseAttachments,
     getBackupData,
-    integrityReport,
   } = useApp();
 
   const [backupSchedule, setBackupSchedule] = useState<BackupScheduleState>(() => getBackupSchedule());

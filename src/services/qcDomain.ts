@@ -41,12 +41,6 @@ export const QC_REASON_LABELS: Record<QcReasonCode, string> = {
   other: 'Other',
 };
 
-/** Statuses from which a case is still "in flight" through the QC gate. */
-export const QC_IN_FLIGHT_STATUSES: CaseStatus[] = ['received', 'in_progress', 'qc', 'revision'];
-
-/** Statuses that a QC pass unlocks and a QC failure refuses. */
-export const QC_GATED_STATUSES: CaseStatus[] = ['ready', 'delivered'];
-
 export const QC_EMPTY_DISPLAY = '—';
 
 /** Coerce arbitrary stored text into a known reason code (unknown → `other`). */
@@ -63,7 +57,7 @@ export function qcReasonLabel(code?: string | null): string {
 
 /**
  * Deterministic idempotency key of an inspection fact. Mirrors the
- * `ledger_entries` UNIQUE(entry_type, reference_id) guard: re-appending the same
+ * `journal_entries` UNIQUE(source_type, source_id) guard: re-appending the same
  * physical inspection is rejected by the database instead of duplicating work.
  */
 export function qcDedupeKey(caseId: string, inspectionNo: number, result: QcResult, kind: string): string {
