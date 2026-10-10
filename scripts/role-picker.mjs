@@ -445,6 +445,14 @@ const ROLE_LINE = /^\s*(--color-(?:ink|fill)-[a-z]+(?:-[a-z]+)?):\s*[^;]+;\s*$/
  * has no role block at all, which the caller treats as an error.
  */
 function regenerate(css, theme, indent) {
+  // `core.autocrlf=true` makes every `git checkout` rewrite these files with
+  // CRLF, and this check compares generated lines byte-for-byte. A trailing
+  // `\r` is not token drift, so normalize before comparing — otherwise the
+  // check fails permanently on Windows after any checkout, and `--write` would
+  // "fix" it by rewriting the whole file's endings. The file's own endings are
+  // restored on write so a CRLF checkout stays CRLF.
+  const hadCrlf = css.includes('\r\n')
+  css = css.replace(/\r\n/g, '\n')
   const srcLines = css.split('\n')
   const byName = new Map(out.map((r) => [r.name, theme === 'light' ? r.light : r.dark]))
   const orphans = []
@@ -489,7 +497,15 @@ function regenerate(css, theme, indent) {
   }
 
   const text = next.filter((l) => l !== null).join('\n')
-  return { text, changed: changed || text !== css, found: true, orphans }
+  return {
+    // Only a REAL edit counts as changed. On an unchanged file the original
+    // bytes are returned untouched, so a CRLF checkout is never rewritten just
+    // because it is checked.
+    text: text === css ? css : hadCrlf ? text.replace(/\n/g, '\r\n') : text,
+    changed: changed || text !== css,
+    found: true,
+    orphans,
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -631,6 +647,10 @@ const withoutComments = (arr) => {
 }
 
 function regenerateAliases(css) {
+  // Same CRLF reasoning as regenerate(): an autocrlf checkout must not read as
+  // alias drift, and an unchanged file must keep its own line endings.
+  const hadCrlf = css.includes('\r\n')
+  css = css.replace(/\r\n/g, '\n')
   const srcLines = css.split('\n')
   const ranges = aliasRuleRanges(srcLines)
   if (ranges.length === 0) return { text: css, changed: false, found: false }
@@ -656,7 +676,8 @@ function regenerateAliases(css) {
 
   const next = [...srcLines.slice(0, a), ...aliasBlock().split('\n'), ...srcLines.slice(b + 1)]
   const text = next.join('\n')
-  return { text, changed: text !== css, found: true }
+  if (text === css) return { text: css, changed: false, found: true }
+  return { text: hadCrlf ? text.replace(/\n/g, '\r\n') : text, changed: true, found: true }
 }
 
 const TARGETS = [

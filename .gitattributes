@@ -1,0 +1,10 @@
+# Shell hooks are executed by /bin/sh. A Windows checkout with core.autocrlf=true
+# would otherwise write them with CRLF endings, and the first line becomes
+# `#!/bin/sh\r` — which every POSIX shell rejects with "bad interpreter". The
+# guard would then be dead on exactly the machines where it cannot be debugged,
+# so the endings are pinned here rather than left to each developer's config.
+* text=auto
+
+.githooks/** text eol=lf
+
+*.sh text eol=lf

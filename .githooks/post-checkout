@@ -1,0 +1,12 @@
+#!/bin/sh
+# Runs after every `git checkout`, including `git checkout -- <file>` and every
+# branch switch.
+#
+# `$1` is the previous HEAD, `$2` the new one, `$3` is 1 for a branch switch
+# and 0 for a file checkout. Both are drift risks, so neither is filtered out.
+#
+# See role-css-guard.sh for why this exists and for the measured coverage
+# limits (a `git stash` fires no hook and is not catchable here).
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 0
+exec sh "$dir/role-css-guard.sh"

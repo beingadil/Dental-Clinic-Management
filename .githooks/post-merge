@@ -1,0 +1,14 @@
+#!/bin/sh
+# Runs after every `git merge` (and every `git pull` that merges).
+#
+# A merge that touches src/index.css or src/theme/dark.css can resolve in
+# favour of the committed copy of the generated role CSS and drop the
+# solver's pending tokens, exactly as a checkout does.
+#
+# `$1` is 1 if the merge was a squash or a fast-forward.
+#
+# See role-css-guard.sh for why this exists and for the measured coverage
+# limits (a `git stash` fires no hook and is not catchable here).
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 0
+exec sh "$dir/role-css-guard.sh"
