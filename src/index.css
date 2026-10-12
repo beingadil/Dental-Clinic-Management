@@ -282,6 +282,33 @@
   background-image: radial-gradient(circle, rgba(148, 163, 184, 0.18) 1px, transparent 1px);
 }
 
+/*
+ * Card surfaces whose background is an operator-chosen branding colour.
+ *
+ * The component writes a custom PROPERTY (never `background-color`) and this
+ * rule is the only thing that paints it. That split is deliberate and is the
+ * fix for the original bug: an inline `background-color` outranks every class
+ * rule, so `.dark .kanban-case-card` in src/theme/dark.css could never take
+ * over and the card stayed on the light `#ffffff` while `text-slate-900`
+ * remapped to a light ink (a measured 1.16:1 — an unreadable card).
+ *
+ * Writing the value into a property instead leaves `background-color` to the
+ * cascade, so each theme keeps exactly one owner: this rule in light, the
+ * `.dark` rules in dark. Those deliberately IGNORE the property and repaint,
+ * because the operator's colour was chosen against a white board and has no
+ * business being a page background in a dark UI.
+ *
+ * This light half was simply missing, so `--preview-card-bg` and
+ * `--kanban-card-bg` were written by three call sites and read by nobody: the
+ * warning preview card and every kanban card painted no background at all in
+ * light mode, and the operator's chosen card colour never appeared. Written
+ * unlayered so it loses to the `.dark` rules above on specificity.
+ */
+.branding-preview-card,
+.kanban-case-card {
+  background-color: var(--preview-card-bg, var(--kanban-card-bg, #ffffff));
+}
+
 /* Sleek subtle scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

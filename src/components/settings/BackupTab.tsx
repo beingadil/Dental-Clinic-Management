@@ -497,14 +497,21 @@ export const BackupTab: React.FC<{
               disabled={busy === 'backup'}
               className="w-full py-2.5 bg-fill-success hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
-              <Download className="w-4 h-4 text-emerald-200" />
+              {/* No `text-emerald-200` here. The dark remap paints the 200
+                  step as a dark SURFACE tint (emerald-200 -> #14532d), so a
+                  "pale" icon collapsed to 1.70:1 on this fill. Inheriting the
+                  button's text-white is also what every sibling button here
+                  already does (UsersTab, TestingTab, PreferencesTab). */}
+              <Download className="w-4 h-4" />
               <span>{busy === 'backup' ? 'Verifying…' : 'Export .dentalbackup'}</span>
             </button>
             <button
               onClick={handleExportSqliteDump}
               className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
-              <Download className="w-4 h-4 text-blue-200" />
+              {/* Same reason as the .dentalbackup button above; blue-200
+                  remaps to #1c3f66, which was 1.58:1 on this blue fill. */}
+              <Download className="w-4 h-4" />
               <span>Export SQLite (.SQL)</span>
             </button>
           </div>
@@ -772,7 +779,7 @@ export const BackupTab: React.FC<{
             disabled={backupBusy}
             className="w-full py-2.5 bg-fill-success hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
           >
-            <Database className="w-4 h-4 text-emerald-200" />
+            <Database className="w-4 h-4" />
             <span>{backupBusy ? 'Backing up…' : 'Back Up Now'}</span>
           </button>
 

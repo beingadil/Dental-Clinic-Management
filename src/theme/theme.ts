@@ -15,6 +15,13 @@
  * three functions here are the whole surface.
  */
 
+// `--brand-50/100/200` are written as INLINE styles on documentElement, so an
+// inline declaration outranks the `.dark` remap in src/theme/dark.css and the
+// tints cannot follow the theme on their own. Repaint them here, after the
+// class flips. brandingTheme imports nothing from this module, so there is no
+// cycle.
+import { syncBrandColor } from '../services/brandingTheme';
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 
@@ -68,6 +75,9 @@ export function applyTheme(resolved: ResolvedTheme): void {
   const root = document.documentElement;
   root.classList.toggle('dark', resolved === 'dark');
   root.style.colorScheme = resolved;
+  // Must follow the class flip: `syncBrandColor` reads `root.classList` to
+  // decide which set of accent tints to write.
+  syncBrandColor();
 
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) meta.content = resolved === 'dark' ? '#0b1220' : '#4f46e5';

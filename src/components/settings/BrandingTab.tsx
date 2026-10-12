@@ -544,10 +544,20 @@ export const BrandingTab: React.FC = () => {
           hint={<>Threshold: <strong className="text-white">{brandingForm.warningThresholdHours || 24} Hours</strong></>}
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-900">
-            {/* Normal Card Preview */}
+            {/* Normal Card Preview — same contract as the warning card below.
+                Painting `cardBgColor` inline left this card on #ffffff while
+                `text-slate-800/600` and `text-ink-muted` remapped to light
+                inks, so the preview measured 1.40:1 on its own title. The
+                class rule in src/theme/dark.css owns `background-color` and
+                deliberately ignores the custom property in dark, exactly as it
+                does for the warning preview and the real kanban card. */}
             <div
-              className="rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2"
-              style={{ backgroundColor: brandingForm.cardBgColor || '#ffffff' }}
+              className="branding-preview-card rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2"
+              style={
+                {
+                  '--preview-card-bg': brandingForm.cardBgColor || '#ffffff',
+                } as React.CSSProperties
+              }
             >
               <div className="flex items-center justify-between text-xs font-bold text-slate-800">
                 <span>DS-0042 • Normal Case</span>

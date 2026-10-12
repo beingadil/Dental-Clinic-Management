@@ -373,6 +373,32 @@
      (see scripts/role-picker.mjs). A hand-picked `.dark` value for them would
      out-specify the alias and quietly reintroduce the dual-role bug. */
 
+  /*
+   * Control boundaries. WCAG 2.1 SC 1.4.11 NON-TEXT CONTRAST (MINIMUM) wants
+   * 3:1 for "visual information required to identify user interface components
+   * and states". A text input's border is the only thing that identifies it —
+   * its fill is a near-black well barely a step off the card — so on the dark
+   * remap `border-slate-200` (#1b2637) sat at 1.17:1 against the card it was
+   * drawn on, and every field in Settings looked like an unbounded slab.
+   *
+   * `--color-slate-200` and `-300` are SURFACES in dark, not lines, so the
+   * token remap cannot serve both jobs. Re-pinned here, the same way
+   * `bg-slate-800/900` are: 3.02:1 and 4.21:1 on the card, while staying well
+   * below the ink (5.10:1 and 3.65:1 against #e9eff7) so a field outline never
+   * competes with the label sitting in it. The 200/300 ORDER is preserved, so
+   * a `border-slate-300` still reads as the stronger of the two.
+   *
+   * COLOUR-CODED BORDERS ARE UNAFFECTED: `border-indigo-200`,
+   * `border-rose-200` and friends resolve from their own hue ramps, so an
+   * invalid or focused field keeps saying what it is saying.
+   */
+  .dark .border-slate-200 {
+    border-color: #556580;
+  }
+  .dark .border-slate-300 {
+    border-color: #6b7c99;
+  }
+
   /* `border-slate-900` is a strong divider in light mode; on dark it would be
      near-invisible against a dark card, so it becomes a visible light rule. */
   .dark .border-slate-900 {
@@ -490,6 +516,15 @@
   }
   .dark .bg-amber-800 {
     background-color: #973c00;
+  }
+  /* The amber-900 REMAP (line ~95) turns amber-900 into a pale cream fill,
+     because amber-900 is primarily a TEXT colour on a dark-amber surface in
+     this theme. But it is also used as a BUTTON FILL in `hover:bg-amber-900`,
+     where white text on that pale cream measured 1.06:1 — invisible. amber-800
+     above already has this override; amber-900 was simply missing from the list,
+     so the hover state fell through to the remapped token. */
+  .dark .bg-amber-900 {
+    background-color: #7c3100;
   }
   /* FILL_NUDGED */
   .dark .bg-rose-600 {
