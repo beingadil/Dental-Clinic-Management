@@ -19,14 +19,26 @@
 
 - `src/db/migrations.ts` — ordered, append-only; each runs inside a transaction.
 - Applied versions recorded in `schema_migrations`; re-runs skip applied versions (idempotent).
-- Current: 22 applied migrations — `001_initial_schema`, `002_pragmas_and_fts` (ledger table),
+- Current: 23 applied migrations — `001_initial_schema`, `002_pragmas_and_fts` (ledger table),
   `003_demo_fixtures` (reserved), `004_app_version`, `005_print_templates`,
   `006_qc_inspections` (append-only quality stream), … `021_catalog_needs_teeth`,
-  `022_drop_ledger_entries`. See `src/db/migrations.ts` for the full numbered list.
+  `022_drop_ledger_entries`, `023_catalog_categories`. See `src/db/migrations.ts` for the full
+  numbered list.
 - **Never edit an applied migration.** Add a new numbered one.
 - `PRAGMA foreign_keys = ON` is set on every connection open.
+- **023 rebuilds `case_types`** to drop the five-value `CHECK` on `category`. A migration that
+  rebuilds a table must declare `rebuildsTable: true`; the runner then suspends FK enforcement
+  for that migration only and runs `PRAGMA foreign_key_check` before committing. `DROP TABLE`
+  on a referenced parent otherwise fires the child's `ON DELETE CASCADE` — and
+  `PRAGMA foreign_keys` is a no-op inside a transaction, so it cannot be suspended by a
+  statement in `statements`.
+- `case_types.category` points at `catalog_categories.id` but is **plain TEXT, not a foreign
+  key**. That is deliberate: a real FK would refuse a delete with an opaque constraint error
+  instead of one the UI can explain and offer remedies for. The cost is that
+  `PRAGMA foreign_key_check` is structurally blind to a dangling category, so
+  `integrityCheck.ts` carries a targeted query for it.
 
-## Schema (v22)
+## Schema (v23)
 
 ```
 users ─┬─< sessions
@@ -48,6 +60,7 @@ journal_entries ─< journal_lines (double entry)
 reconciliation_items, notifications, saved_vouchers, audit_events (append-only)
 settings (namespaced K/V), notification_config, email_templates
 clinical_materials / clinical_prep_types / shade_guides / implant_brands
+catalog_categories (operator-managed; case_types.category is a soft reference)
 chairside_appointments, case_templates, legacy_backup (quarantine), app_meta, doc_sequences
 ```
 

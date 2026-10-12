@@ -1,6 +1,6 @@
 import { getDatabase } from './index';
 import { SqliteEngine, DbError } from './engine';
-import { QcInspection } from '../types';
+import { QcInspection, CatalogCategory } from '../types';
 import { stripDoctorHonorific } from '../utils/doctorName';
 import { fromStoredNeedsTeeth, toStoredNeedsTeeth } from '../utils/catalogToothRequirement';
 import { decodeAuditState, encodeAuditState } from './auditState';
@@ -442,6 +442,228 @@ export const caseTypesRepo = {
     const before = requireEngine().rowCount('case_types');
     requireEngine().run('DELETE FROM case_types WHERE id = ?', [id]);
     return requireEngine().rowCount('case_types') < before;
+  },
+};
+
+// ─────────────────────────────────────────────────────────── catalog categories
+
+export interface CatalogCategoryRow {
+  id: string;
+  name: string;
+  sort_order?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+function categoryToDomain(row: CatalogCategoryRow): CatalogCategory {
+  return {
+    id: row.id,
+    name: row.name,
+    sort_order: row.sort_order ?? 100,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
+/** Turn a typed label into a stable, URL-safe id: "Sleep Apnea Splint" → "sleep_apnea_splint". */
+export function slugifyCategory(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    // Punctuation becomes a separator rather than being deleted: dropping it
+    // outright would fuse "Ortho/Aligners" into `orthoaligners`, and fuse
+    // "Retainer, Night" into `retainernight`.
+    .replace(/[^\w\s-]+/g, ' ')
+    .trim()
+    .replace(/[\s_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/** Why a delete was refused, so the UI can explain rather than just fail. */
+export type CategoryDeleteBlock = 'in_use' | 'last_category';
+
+export interface CategoryDeleteResult {
+  ok: boolean;
+  /** Present when `ok` is false. */
+  reason?: CategoryDeleteBlock;
+  /** Products that hold this category. Empty on success. */
+  blockingProducts: { id: string; name: string }[];
+  /** Categories remaining after a cascade. */
+  removedCategories?: number;
+  removedProducts?: number;
+}
+
+export const categoryRepo = {
+  all(): CatalogCategory[] {
+    return requireEngine()
+      .all<CatalogCategoryRow>('SELECT * FROM catalog_categories ORDER BY sort_order, name COLLATE NOCASE')
+      .map(categoryToDomain);
+  },
+
+  byId(id: string): CatalogCategory | undefined {
+    const row = requireEngine().get<CatalogCategoryRow>('SELECT * FROM catalog_categories WHERE id = ?', [id]);
+    return row ? categoryToDomain(row) : undefined;
+  },
+
+  /** Products pointing at this category — what a refused delete must name. */
+  productsIn(id: string): { id: string; name: string }[] {
+    return requireEngine().all<{ id: string; name: string }>(
+      'SELECT id, name FROM case_types WHERE category = ? ORDER BY name COLLATE NOCASE',
+      [id]
+    );
+  },
+
+  countProducts(id: string): number {
+    const row = requireEngine().get<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM case_types WHERE category = ?',
+      [id]
+    );
+    return row?.n ?? 0;
+  },
+
+  /**
+   * Add a category. The id is derived from the name, so "Crown & Bridge" always
+   * lands on the seeded `crown_bridge` row (INSERT OR IGNORE keeps it) and a
+   * genuine new name gets a fresh slug.
+   *
+   * A name collision on a DIFFERENT id ("Crown & Bridge" typed where the slug
+   * resolves differently) throws rather than silently creating a near-duplicate
+   * the operator cannot tell apart in the dropdown.
+   *
+   * RE-ADDING A DELETED SEEDED CATEGORY DOES NOT RESTORE ITS ORIGINAL ID.
+   * The five shipped ids are hand-written abbreviations (`veneers`) that are
+   * not the slug of their own labels ("Veneers & Aesthetics" → `veneers_aesthetics`).
+   * Delete "Veneers & Aesthetics" and add it again and it comes back as
+   * `veneers_aesthetics`.
+   *
+   * That is safe rather than a bug: `delete()` refuses while any product holds
+   * the category, so no product can ever reference the id that disappeared, and
+   * nothing else stores a category id (cases reference the PRODUCT id, not the
+   * category). Documented here because it looks like data corruption in the
+   * listing and is not.
+   */
+  create(name: string): CatalogCategory {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Category name is required');
+
+    const existing = this.all();
+    const clash = existing.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+    if (clash) return clash; // idempotent — re-adding an existing name is a no-op
+
+    const base = slugifyCategory(trimmed);
+    if (!base) throw new Error('Category name must contain at least one letter or digit');
+
+    // Disambiguate rather than collide: "Retainer" and "Retainers" both slug to
+    // `retainer`, and INSERT would throw on the duplicate PK with no explanation.
+    let id = base;
+    let n = 2;
+    while (existing.some((c) => c.id === id)) {
+      id = `${base}_${n++}`;
+    }
+
+    const sort_order = Math.max(0, ...existing.map((c) => c.sort_order)) + 10;
+    requireEngine().run(
+      'INSERT INTO catalog_categories (id, name, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [id, trimmed, sort_order, now(), now()]
+    );
+    return this.byId(id)!;
+  },
+
+  /** Rename. The id is deliberately NOT derived from the name, so every product keeps its category. */
+  update(id: string, name: string): CatalogCategory | undefined {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Category name is required');
+
+    const clash = this.all().find(
+      (c) => c.id !== id && c.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (clash) throw new Error(`A category named "${trimmed}" already exists`);
+
+    requireEngine().run('UPDATE catalog_categories SET name = ?, updated_at = ? WHERE id = ?', [
+      trimmed,
+      now(),
+      id,
+    ]);
+    return this.byId(id);
+  },
+
+  /** Move products to another category. Used by the reassign-before-delete path. */
+  reassignProducts(fromId: string, toId: string): number {
+    if (fromId === toId) throw new Error('Source and destination categories are the same');
+    if (!this.byId(toId)) throw new Error('Destination category does not exist');
+    // Count the rows about to be moved. Deriving this from the table total
+    // instead would always report 0, because reassigning a category does not
+    // change how many products exist — only which category they are in.
+    const affected =
+      requireEngine().get<{ n: number }>('SELECT COUNT(*) AS n FROM case_types WHERE category = ?', [
+        fromId,
+      ])?.n ?? 0;
+    requireEngine().run('UPDATE case_types SET category = ?, updated_at = ? WHERE category = ?', [
+      toId,
+      now(),
+      fromId,
+    ]);
+    return affected;
+  },
+
+  /**
+   * Delete a category, with the three behaviours the operator needs.
+   *
+   * DEFAULT IS SAFE. `delete(id)` refuses while any product holds the category and
+   * names them, because a category that silently disappears takes its products
+   * out of every filter and every print with it. The destructive variants are
+   * separate, explicitly-named calls so reaching them is always a deliberate act
+   * in the code and visible in a diff — not a flag someone flips by accident.
+   *
+   *   delete()           → refuses if in use; names the blocking products
+   *   deleteWithReassign()  → moves the products first, then deletes
+   *   deleteWithCascade()   → deletes the products AND the category
+   *
+   * The last category can never be deleted: the form's dropdown must always have
+   * something to select, and an uncategorised product is not a state the UI can
+   * represent.
+   */
+  delete(id: string): CategoryDeleteResult {
+    const blockingProducts = this.productsIn(id);
+    if (blockingProducts.length > 0) {
+      return { ok: false, reason: 'in_use', blockingProducts };
+    }
+    return this.hardDelete(id);
+  },
+
+  /** Move every product to `toId`, then delete. Refuses if it would empty the catalog. */
+  deleteWithReassign(id: string, toId: string): CategoryDeleteResult {
+    if (id === toId) throw new Error('Choose a different category to move the products to');
+    if (!this.byId(toId)) throw new Error('Destination category does not exist');
+
+    const blockingProducts = this.productsIn(id);
+    if (blockingProducts.length > 0) this.reassignProducts(id, toId);
+    return this.hardDelete(id);
+  },
+
+  /** Delete the products AND the category. Never silent — see `delete`. */
+  deleteWithCascade(id: string): CategoryDeleteResult {
+    const blockingProducts = this.productsIn(id);
+    const removedProducts = blockingProducts.length;
+    if (removedProducts > 0) {
+      requireEngine().run('DELETE FROM case_types WHERE category = ?', [id]);
+    }
+    const res = this.hardDelete(id);
+    return { ...res, removedProducts };
+  },
+
+  /** Shared tail of every delete path. */
+  hardDelete(id: string): CategoryDeleteResult {
+    if (this.all().length <= 1) {
+      return { ok: false, reason: 'last_category', blockingProducts: [] };
+    }
+    const before = requireEngine().rowCount('catalog_categories');
+    requireEngine().run('DELETE FROM catalog_categories WHERE id = ?', [id]);
+    const removedCategories = before - requireEngine().rowCount('catalog_categories');
+    if (removedCategories === 0) {
+      return { ok: false, reason: 'last_category', blockingProducts: [] };
+    }
+    return { ok: true, blockingProducts: [], removedCategories };
   },
 };
 

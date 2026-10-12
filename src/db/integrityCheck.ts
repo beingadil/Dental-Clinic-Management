@@ -31,6 +31,13 @@ const ORPHAN_QUERIES: { table: string; sql: string }[] = [
   { table: 'case_teeth', sql: "SELECT COUNT(*) AS n FROM case_teeth WHERE case_id NOT IN (SELECT id FROM cases)" },
   { table: 'payments', sql: "SELECT COUNT(*) AS n FROM payments WHERE invoice_id NOT IN (SELECT id FROM invoices)" },
   { table: 'case_notes', sql: "SELECT COUNT(*) AS n FROM case_notes WHERE case_id NOT IN (SELECT id FROM cases)" },
+  /* Migration 023 deliberately left `case_types.category` as plain TEXT rather
+     than a real FOREIGN KEY, so that a delete could be refused with a reason
+     the UI can explain instead of an opaque constraint error. The cost of that
+     choice is that `PRAGMA foreign_key_check` — the generic scan above — is
+     STRUCTURALLY BLIND to a material pointing at a category that no longer
+     exists. This targeted query is the only thing that can see it. */
+  { table: 'case_types', sql: "SELECT COUNT(*) AS n FROM case_types WHERE category IS NOT NULL AND trim(category) <> '' AND category NOT IN (SELECT id FROM catalog_categories)" },
 ];
 
 /** Ledger balance: every journal must sum debit == credit. */

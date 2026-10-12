@@ -238,8 +238,24 @@ export class SqliteEngine {
         continue;
       }
       try {
+        // A 12-step table rebuild cannot be done with foreign keys enforced:
+        // SQLite has no ALTER for a CHECK constraint, so the only way to widen
+        // one is create/copy/drop/rename, and `DROP TABLE` on a referenced parent
+        // fires the child's ON DELETE CASCADE. `PRAGMA foreign_keys` is a no-op
+        // inside a transaction, so it has to be suspended here, outside it.
+        if (m.rebuildsTable) this.run('PRAGMA foreign_keys = OFF;');
         this.transaction((tx) => {
           for (const stmt of m.statements) tx.run(stmt);
+          // Verify what the rebuild preserved BEFORE committing. Without this a
+          // rebuild that dropped a child table's rows would commit happily and
+          // the loss would only surface as missing data much later.
+          if (m.rebuildsTable) {
+            const violations = tx.all<{ table: string }>('PRAGMA foreign_key_check');
+            if (violations.length > 0) {
+              const tables = [...new Set(violations.map((v) => v.table))].join(', ');
+              throw new Error(`rebuild left dangling references in: ${tables}`);
+            }
+          }
           tx.run('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)', [
             m.version,
             m.name,
@@ -249,6 +265,13 @@ export class SqliteEngine {
         applied.push(m.version);
       } catch (err) {
         throw new DbError(`Migration ${m.version} (${m.name}) failed — database left at prior version`, 'MIGRATION', err);
+      } finally {
+        if (m.rebuildsTable) {
+          this.run('PRAGMA foreign_keys = ON;');
+          // The rebuild swapped a table's physical identity; any statement
+          // compiled against the old shape is now stale.
+          this.clearStatementCache();
+        }
       }
     }
 

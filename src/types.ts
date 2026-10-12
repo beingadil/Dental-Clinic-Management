@@ -441,11 +441,33 @@ export interface LabFinancialSummary {
   advance_count: number;
 }
 
+/**
+ * An operator-managed material category (migration 023).
+ *
+ * `id` is the stable key written to `case_types.category`; `name` is what the
+ * operator sees and is freely editable. Renaming therefore never touches a
+ * product row — the product keeps pointing at the same id.
+ */
+export interface CatalogCategory {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface CaseType {
   id: string;
   name: string;
   base_price: number; // PKR
-  category?: 'crown_bridge' | 'implant' | 'denture' | 'orthodontic' | 'veneers';
+  /* Foreign key to `catalog_categories.id` (migration 023).
+     Was a five-value union, which made a user-added category unrepresentable
+     without editing this file and rebuilding. The five seeded ids are unchanged
+     ('crown_bridge' | 'implant' | 'denture' | 'orthodontic' | 'veneers'), so
+     every existing row still satisfies its old type — but the set is now open.
+     Treat it as a plain string: the id must exist in `catalog_categories`, which
+     `categoryRepo` is what enforces (see `deleteBlockedReason`). */
+  category?: string;
   lead_time_days?: number;
   warranty_months?: number;
   description?: string;

@@ -6,6 +6,95 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Material categories are now operator-managed, in their own tab.**
+  `Price List & Catalog` gained a third tab beside *Materials & Pricing* and
+  *SLA & Priority*. Categories were a hardcoded five-element array inside
+  `CatalogView.tsx` with a TS union mirroring it, so adding one meant editing a
+  component and rebuilding, renaming was impossible, and the label existed in two
+  places that disagreed (`Implant Abutment` in the form dropdown vs
+  `Implant Prosthetics` on the filter pill). The saved list now feeds both, so
+  one row is the single source of the label.
+
+  **Migration 023** creates `catalog_categories` and **rebuilds `case_types`**.
+  The rebuild was unavoidable: `category` carried a SQL `CHECK` of the five
+  literal values, and SQLite has no `ALTER CONSTRAINT`. Left in place, a new
+  category would have appeared in the dropdown and then thrown
+  `CHECK constraint failed` on every material saved into it.
+
+  The rebuild is dangerous in a way that is easy to miss — `lab_pricing_overrides`
+  references `case_types(id) ON DELETE CASCADE`, and this engine sets
+  `foreign_keys = ON`, so a `DROP TABLE` would destroy negotiated pricing. A
+  migration that rebuilds a table now declares `rebuildsTable: true`; the runner
+  suspends FK enforcement for that migration only and runs
+  `PRAGMA foreign_key_check` before committing.
+
+  Deleting a category has **three paths**, all three reachable: free when unused;
+  **blocked and naming the blocking materials** when in use; **reassign** them to
+  another category first; or a type-to-confirm **cascade** that removes the
+  materials too. Block is the default and cascade is a separately-named repo call,
+  so the destructive path is visible in a diff rather than a flag someone can flip.
+
+- **SLA turnaround per priority is a global, editable setting.**
+  `PRIORITY_SLA_DAYS` was a frozen constant, so the turnaround a clinic quoted
+  could only be changed by editing and rebuilding the app. The *SLA & Priority*
+  tab persists the map (`settingsRepo`, `sla` namespace) and it governs every
+  case: the wizard's delivery date, the priority cards, and the Analytics
+  turnaround report. The export is now a live proxy — as a frozen object every
+  importer captured module-load values and kept them after a save, so a live edit
+  would have updated the form and nothing else.
+
+### Fixed
+- **A new case no longer starts with two teeth charted.** `[11, 21]` was
+  hardcoded in three places — the wizard, saved templates, and the clinic
+  quick-entry — so a brand-new case was born with two teeth nobody selected, and
+  they then reached the odontogram, `tooth_details`, the job slip, the invoice
+  and the billable-unit count. All three now start empty.
+- **A case price is now the base price × the charted units.** It used to copy the
+  catalog base price verbatim regardless of unit count, so a 3-unit bridge was
+  quoted at the single-unit rate. New cases only: re-deriving on a saved case
+  would restate a price a clinic may already have paid or been quoted.
+- **A shade picked once now applies to the whole selection.** `applyShade` wrote
+  to the inspected tooth alone, so one click on a 3-unit job produced three
+  different shades and the inspector then showed the shade that had *not* been
+  picked. A single-tooth case still allows a deliberate per-tooth override.
+- **`Unit Basis` is a dropdown.** It was a free-text box, so `'per unit'`,
+  `'Per-Unit'` and `'per  unit '` were four stored strings for one concept that
+  nothing downstream could rely on.
+- **`reassignProducts` reported the wrong count.** It derived the number moved
+  from the change in the *total* product count, which is always 0 on a reassign.
+- **Reassigning and cascading a category were undone by autosave.** Both wrote
+  only to SQLite, but `syncCollectionsToDb` rebuilds `case_types` from React
+  state on every autosave, so the products snapped back into the category that no
+  longer existed. Both now update the UI mirror in the same turn.
+- **The dark theme showed an invisible hover state on a new button.** `dark.css`
+  remaps `amber-900` to a pale cream (it is primarily a *text* colour on a
+  dark-amber surface), and `bg-amber-800` had a dark-mode override that
+  `bg-amber-900` did not. White text on that hover measured **1.06:1**; it is now
+  8.74:1. Caught by the CI contrast audit before release.
+- **The material form lost saved data on every rename.** Fields removed from the
+  form were still sent as empty strings, which erased whatever a seeded or
+  previously-edited product had on file the moment anyone touched its name. They
+  are now absent from the payload, and `caseTypesRepo.update` only writes keys
+  that are present.
+- **Dark mode was unreadable in the settings tabs.** Two root causes:
+  `applyBrandColor()` wrote `--brand-50/100/200` as inline styles on `<html>`,
+  which is the same element `theme.ts` toggles `.dark` on — inline outranks the
+  stylesheet, so the entire dark-mode brand remap was dead code and a chosen
+  accent sat at 1.03:1 on its own name field. Each swatch now carries its own
+  dark tint set, re-synced on theme change. Separately, `.dark .border-slate-200`
+  sat at ~1.18:1 against the input fill; `-200`/`-300` were raised. Light mode
+  was deliberately left alone — same ratio, but changing it restyles every card
+  and field app-wide.
+- **Three settings icons were invisible on saturated buttons** (1.58–1.70:1)
+  because they carried their own accent on a filled button. They now inherit
+  `text-white`.
+- **The batch statement's `Date` column now shows the received date**, falling
+  back to the invoice date when no case is linked, and its case block no longer
+  repeats shade and received date. A single invoice now renders the same
+  `CASE DETAILS` block — it had been using a separate inline lookup that
+  matched on `||` across unrelated fields, so it disagreed with batch print.
+
 ### Changed
 - **Reports & Statements now lives only under Analytics & Reports.**
   `Analytics & Reports` became a tabbed view

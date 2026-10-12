@@ -11,6 +11,23 @@ export interface Migration {
   version: number;
   name: string;
   statements: string[];
+  /**
+   * Set ONLY by a migration that rebuilds a table using SQLite's 12-step
+   * ALTER procedure (create new → copy → drop old → rename).
+   *
+   * It exists because `DROP TABLE` on a table that other tables reference is
+   * unsafe while foreign keys are enforced — SQLite attempts an implicit
+   * `DELETE FROM`, which either raises an immediate FK error or fires the
+   * child's `ON DELETE CASCADE` and destroys rows the rebuild was meant to
+   * preserve. This engine turns `foreign_keys` ON at open (engine.ts), and
+   * `PRAGMA foreign_keys` is a NO-OP inside a transaction, so it cannot be
+   * switched off by a statement in `statements`. The runner has to do it.
+   *
+   * When set, the runner suspends FK enforcement for this migration only and
+   * runs `PRAGMA foreign_key_check` before committing, so a rebuild that would
+   * have silently broken referential integrity fails loudly instead.
+   */
+  rebuildsTable?: boolean;
 }
 
 // ---------------------------------------------------------------- 001 — core schema
@@ -1158,6 +1175,124 @@ export const MIGRATION_022_DROP_LEDGER_ENTRIES: Migration = {
   ],
 };
 
+/**
+ * 023 — user-managed catalog categories.
+ *
+ * Material categories used to be a hardcoded five-element array inside
+ * `CatalogView.tsx`, with a TS union mirroring it. Adding a category meant
+ * editing a component and rebuilding; renaming one was impossible; the label
+ * existed in TWO places that disagreed (`Implant Prosthetics` on the filter pill
+ * vs `Implant Abutment` in the form dropdown), so the same category had two
+ * names depending on where you looked.
+ *
+ * THE BACKFILL IS THE PART THAT MATTERS
+ * The seeded category ids are deliberately IDENTICAL to the legacy strings
+ * (`crown_bridge`, `implant`, `denture`, `orthodontic`, `veneers`) rather than
+ * fresh generated ones. `case_types.category` already stores those exact
+ * strings, so every existing product is already pointing at a valid category row
+ * the moment the INSERT lands — there is no UPDATE, no id remapping, and no
+ * window in which a product could point at nothing.
+ *
+ * The second INSERT catches what the seed cannot: a category string in
+ * `case_types` that was never in the hardcoded array — a hand-edited database, or
+ * a row written by an older build with a value the UI no longer offered. Each
+ * becomes a real category row at sort_order 900 (sorted last) instead of an
+ * orphan that would silently vanish from the filter list.
+ *
+ * `case_types.category` stays a plain TEXT column rather than becoming a
+ * FOREIGN KEY. A FK would be tidier on paper but would make the delete path
+ * order-dependent in a way the UI has to honour; the repo enforces referential
+ * behaviour explicitly and can report *why* a delete was refused, which is what
+ * the operator actually needs to see.
+ */
+export const MIGRATION_023_CATALOG_CATEGORIES: Migration = {
+  version: 23,
+  name: 'catalog_categories',
+  // Rebuilds `case_types` (see below), so the runner suspends FK enforcement.
+  rebuildsTable: true,
+  statements: [
+    /* ── 1. Widen the category CHECK ───────────────────────────────────────
+       `case_types.category` carried
+         CHECK (category IN ('crown_bridge','implant','denture','orthodontic','veneers'))
+       at the SQL layer. Widening a CHECK needs SQLite's 12-step ALTER — there
+       is no ALTER CONSTRAINT — so the table is rebuilt.
+
+       Had this been missed, `categoryRepo.create()` would have succeeded and
+       then EVERY save of a material in that new category would have failed with
+       "CHECK constraint failed", with the category visible in the dropdown and
+       unusable in practice. The constraint, not the UI, was the real gate.
+
+       The rebuild preserves every column added by 010 and 021, the
+       `name ... UNIQUE COLLATE NOCASE`, and the `base_price >= 0` guard.
+       Only the category CHECK is relaxed. */
+    `DROP TABLE IF EXISTS case_types_023_rebuild`,
+    `CREATE TABLE case_types_023_rebuild (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      base_price REAL NOT NULL CHECK (base_price >= 0),
+      -- CHECK removed: the valid set now lives in catalog_categories.
+      category TEXT,
+      lead_time_days INTEGER,
+      warranty_months INTEGER,
+      description TEXT,
+      -- added by migration 010
+      material_system TEXT,
+      unit_basis TEXT,
+      shade_guide TEXT,
+      indications TEXT,
+      contraindications TEXT,
+      -- added by migration 021
+      needs_teeth INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )`,
+    `INSERT INTO case_types_023_rebuild
+       (id, name, base_price, category, lead_time_days, warranty_months, description,
+        material_system, unit_basis, shade_guide, indications, contraindications,
+        needs_teeth, created_at, updated_at)
+     SELECT
+       id, name, base_price, category, lead_time_days, warranty_months, description,
+       material_system, unit_basis, shade_guide, indications, contraindications,
+       needs_teeth, created_at, updated_at
+     FROM case_types`,
+    `DROP TABLE case_types`,
+    // With legacy_alter_table OFF (the default) this rewrites references to
+    // "case_types_023_rebuild" inside other tables' FK clauses back to the
+    // final name, so lab_pricing_overrides keeps pointing at the real table.
+    `ALTER TABLE case_types_023_rebuild RENAME TO case_types`,
+
+    `CREATE TABLE IF NOT EXISTS catalog_categories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 100,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT
+    )`,
+    // NO INDEX ON PURPOSE. `all()` orders by (sort_order, name) and runs once per
+    // catalog render over a table bounded by the number of categories a lab
+    // actually has — a handful to a few dozen rows. A full scan plus sort at
+    // that size is cheaper than maintaining the index on every create, rename
+    // and delete. `dbFootprint.test.ts` is a drift alarm for exactly this: a
+    // new index must earn its place, and migrations 017 and 022 both removed
+    // dead ones rather than relaxing the count.
+    // The five shipped categories. ids == the legacy strings (see note above).
+    `INSERT OR IGNORE INTO catalog_categories (id, name, sort_order) VALUES
+      ('crown_bridge',  'Crown & Bridge',            10),
+      ('implant',       'Implant Prosthetics',       20),
+      ('denture',       'Dentures & Removables',     30),
+      ('orthodontic',   'Orthodontic & Aligners',    40),
+      ('veneers',       'Veneers & Aesthetics',      50)`,
+    // Adopt any pre-existing category string so nothing is left orphaned.
+    `INSERT OR IGNORE INTO catalog_categories (id, name, sort_order)
+       SELECT lower(replace(replace(trim(category), ' ', '_'), '-', '_')),
+              replace(trim(category), '_', ' '),
+              900
+       FROM case_types
+       WHERE category IS NOT NULL AND trim(category) <> ''`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '23')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1181,6 +1316,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_020_BARE_DOCTOR_NAME,
   MIGRATION_021_CATALOG_NEEDS_TEETH,
   MIGRATION_022_DROP_LEDGER_ENTRIES,
+  MIGRATION_023_CATALOG_CATEGORIES,
 ];
 
 /**

@@ -31,6 +31,39 @@ const JOURNAL_LINE_SQL = (id: string, journalId: string, accountType: string, de
    VALUES ('${id}', '${journalId}', '1000', 'Test', '${accountType}', ${debit}, ${credit}, NULL)`;
 
 describe('runIntegrityCheck', () => {
+  it('catches a material pointing at a category that no longer exists', async () => {
+    // The reason migration 023 added this targeted query. `case_types.category`
+    // is plain TEXT, not a real FOREIGN KEY, so the generic
+    // `PRAGMA foreign_key_check` scan is structurally blind to this and would
+    // report a clean database while a material silently prints under a
+    // category that is gone.
+    const engine = await freshEngine();
+    engine.run(
+      `INSERT INTO case_types (id, name, base_price, category, created_at)
+       VALUES ('ct-orphan', 'Orphaned Crown', 1000, 'category_that_was_deleted', '2026-09-27')`
+    );
+
+    const finding = runIntegrityCheck(engine).findings.find(
+      (f) => f.check.toLowerCase().includes('orphan')
+    );
+    expect(finding).toBeDefined();
+    expect(finding!.ok).toBe(false);
+    expect(finding!.detail).toMatch(/case_types/);
+  });
+
+  it('reports no orphans when every material points at a saved category', async () => {
+    const engine = await freshEngine();
+    engine.run(
+      `INSERT INTO case_types (id, name, base_price, category, created_at)
+       VALUES ('ct-ok', 'Fine Crown', 1000, 'crown_bridge', '2026-09-27')`
+    );
+
+    const finding = runIntegrityCheck(engine).findings.find(
+      (f) => f.check.toLowerCase().includes('orphan')
+    );
+    expect(finding!.ok).toBe(true);
+  });
+
   it('reports ok on a healthy, migrated database', async () => {
     const engine = await freshEngine();
     engine.run(`INSERT INTO labs (id, name, created_at) VALUES ('lab-i', 'Probe Lab', '2026-01-01')`);
