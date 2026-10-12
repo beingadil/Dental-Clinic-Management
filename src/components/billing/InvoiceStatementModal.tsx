@@ -21,6 +21,13 @@ import '../print/printStyles.css';
 interface InvoiceStatementModalProps {
   invoice: Invoice;
   caseData?: DentalCase | null;
+  /**
+   * Every case, so the sheet can resolve the job behind the invoice with the
+   * shared `findCaseForInvoice` and print the same case block the batch
+   * statement prints. `caseData` alone is a pre-resolved guess by the caller and
+   * cannot be checked for a stale id.
+   */
+  cases?: DentalCase[] | null;
   onClose: () => void;
 }
 
@@ -29,6 +36,7 @@ const KIND: DocumentKind = 'invoice';
 export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   invoice,
   caseData,
+  cases,
   onClose,
 }) => {
   const { brandingSettings, saveVoucherToSystem } = useApp();
@@ -177,6 +185,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
                 branding={brandingSettings}
                 printSettings={printSettings}
                 caseData={caseData}
+                cases={cases}
                 invoice={invoice}
                 labName={invoice.lab_name}
               />

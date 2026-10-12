@@ -123,12 +123,23 @@ describe('A case with no teeth (a product that is not per-tooth work)', () => {
     expect(screen.getByText('Delivery Due')).toBeTruthy();
   });
 
-  it('reduces the ledger / invoice case block to who and what', () => {
+  it('drops only the teeth row from the ledger / invoice case block', () => {
     const labels = caseDetailLines(toothlessCase).map((l) => l.label);
-    // Nothing was charted, so there is no procedure detail to spell out, and
-    // the two bench dates describe a job rather than this money line. What is
-    // left is the identity of the row: who it was for and what the product is.
-    expect(labels).toEqual(['Patient', 'Procedure']);
+    // Only TEETH is gated on charting: a retainer genuinely has no tooth list,
+    // and a dash there would read as a charting failure. The two bench dates
+    // are real — the operator dates every case that reaches the bench — so
+    // hiding them with the tooth list dropped real data on exactly the rows a
+    // clinic most needs. `shade` is empty on this fixture and drops itself
+    // under the normal "omit a missing value" rule, not a charting gate.
+    expect(labels).toEqual(['Patient', 'Procedure', 'Received Date', 'Delivery Date']);
+  });
+
+  it('still prints a shade on an uncharted case when the operator recorded one', () => {
+    // Shade and teeth are independent: a lab can shade-match a single piece
+    // without charting an arch, and the value is real information.
+    const lines = caseDetailLines({ ...toothlessCase, shade: 'A3' });
+    expect(lines.find((l) => l.label === 'Shade')?.value).toBe('A3');
+    expect(lines.map((l) => l.label)).not.toContain('Teeth');
   });
 
   it('prints only who and what on the batch statement row', () => {
@@ -149,11 +160,15 @@ describe('A case with no teeth (a product that is not per-tooth work)', () => {
     // The row still identifies the job...
     expect(screen.getByText('Ali Raza')).toBeTruthy();
     expect(screen.getByText('Retainer')).toBeTruthy();
-    // ...and carries none of the four rows a charted case would.
+    // ...carries no tooth list, because a retainer has none...
     expect(screen.queryByText('Teeth')).toBeNull();
     expect(screen.queryByText('Shade')).toBeNull();
+    // ...keeps the promised day, which is real, and takes the received day into
+    // the `Received` column instead of repeating it as a row.
+    expect(screen.getByText('Delivery Date')).toBeTruthy();
     expect(screen.queryByText('Received Date')).toBeNull();
-    expect(screen.queryByText('Delivery Date')).toBeNull();
+    expect(screen.getByText('Received')).toBeTruthy();
+    expect(screen.getByText('Oct 3, 2026')).toBeTruthy();
   });
 
   it('prints no teeth table, no odontogram and no shade label on the job slip', () => {

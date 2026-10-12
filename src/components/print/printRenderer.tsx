@@ -4,7 +4,7 @@ import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { caseHasChartedTeeth, billableUnits } from '../../utils/catalogToothRequirement';
-import { caseDetailLines, findCaseForInvoice } from '../../services/ledgerCaseDetail';
+import { caseDetailLines, findCaseForInvoice, formatReceivedDate } from '../../services/ledgerCaseDetail';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
 
@@ -147,7 +147,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
     : kind === 'receipt' ? 'PAYMENT RECEIPT'
     : 'ACCOUNT STATEMENT';
 
-  const toothDetails = (caseData?.tooth_details || {}) as Record<number, any>;
+  const toothDetails = ((caseData ?? null)?.tooth_details || {}) as Record<number, any>;
 
   /* Every tooth-dependent block below is gated on the shared "did this case
      actually get charted?" rule, not on the catalog flag. A product flagged
@@ -172,6 +172,24 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
     ? [...invoicesProp]
     : (invoice ? [invoice] : []);
   const statementCases = casesProp ?? [];
+
+  /* The invoice sheet's own copy of the case behind the invoice.
+     Resolved with the SHARED `findCaseForInvoice`, never a local `find`: the
+     batch sheet walks invoices and resolves cases the same way, so printing one
+     invoice alone and printing it inside a batch must name the same job. The
+     inline version this replaces could match a case whose id happened to equal
+     this invoice's case number, which bound the sheet to the wrong patient. */
+  const invoiceCase = invoice ? findCaseForInvoice(invoice, casesProp ?? []) : null;
+  /* Same rows as the statement's case block and the invoice drawer's case card,
+     from the same formatter — so the single invoice, the batch statement and
+     the screen cannot drift apart. */
+  const invoiceCaseDetail = invoiceCase ? caseDetailLines(invoiceCase) : [];
+
+  /* Prefer the case the caller resolved; fall back to the one we looked up, so
+     a caller that passes only `cases` still gets teeth, units and the case
+     block instead of a silently emptier invoice. */
+  const resolvedCase = caseData ?? invoiceCase;
+  const resolvedHasTeeth = caseHasChartedTeeth(resolvedCase);
 
   /* The balance block must total the whole run even when the table is split
      across sheets, so it sums `balanceInvoices` when the caller supplies it. */
@@ -346,6 +364,29 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               )}
             </div>
           )}
+          {/* The job behind the money — the SAME block the batch statement
+              prints per row and the invoice drawer shows on screen, from the
+              same formatter. Without it a single-invoice print named the
+              patient and the product but not the teeth, shade or the two bench
+              dates, so the two print paths disagreed about the same invoice.
+              Lives under `billTo` rather than a new section id on purpose:
+              `loadDocumentSections` keeps only ids already stored, so a new
+              section would stay invisible to anyone who saved a section list. */}
+          {on(sections, 'billTo') && invoiceCaseDetail.length > 0 && (
+            <div className="mb-4 border border-slate-300 p-3">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Case Details
+              </div>
+              <dl className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px]">
+                {invoiceCaseDetail.map((d) => (
+                  <div key={d.label}>
+                    <dt className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{d.label}</dt>
+                    <dd className="font-semibold">{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
           {on(sections, 'lineItems') && (
             <table className="w-full border-collapse text-[11px] mb-4">
               <thead>
@@ -360,16 +401,16 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   <td className="border border-slate-300 px-2 py-1.5">
                     <span className="font-semibold">{invoice.case_type_name}</span>
                     {invoice.case_number && <span className="text-slate-500"> · Case {invoice.case_number}</span>}
-                    {caseData?.selected_teeth && hasTeeth && (
-                      <div className="text-slate-500">Teeth: {caseData.selected_teeth!.map((t) => `#${t}`).join(', ')}</div>
+                    {resolvedCase?.selected_teeth && resolvedHasTeeth && (
+                      <div className="text-slate-500">Teeth: {resolvedCase.selected_teeth!.map((t) => `#${t}`).join(', ')}</div>
                     )}
-                    {(caseData?.material || caseData?.shade) && (
-                      <div className="text-slate-500">
-                        {[caseData?.material, caseData?.shade && `Shade ${caseData.shade}`].filter(Boolean).join(' · ')}
-                      </div>
+                    {/* Material stays on the line item. Shade moved DOWN into the
+                        case block below, so the same shade is not printed twice. */}
+                    {resolvedCase?.material && (
+                      <div className="text-slate-500">Material: {resolvedCase.material}</div>
                     )}
                   </td>
-                  <td className="border border-slate-300 px-2 py-1.5">{billableUnits(caseData)}</td>
+                  <td className="border border-slate-300 px-2 py-1.5">{billableUnits(resolvedCase)}</td>
                   <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
                   <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
                 </tr>
@@ -524,7 +565,14 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
             <table className="w-full border-collapse text-[11px] mb-4">
               <thead>
                 <tr>
-                  {['Invoice #', 'Date', 'Case', 'Amount', 'Paid', 'Balance', 'Status'].map((h) => (
+                  {/* `Received` is the day the lab took the job in, which is
+                      what a clinic reconciles against. It used to print the
+                      invoice's own issue date, so a statement mixed two
+                      different clocks in one row. Falls back to the invoice date
+                      only when the invoice has no resolvable case at all —
+                      otherwise the column would be blank for exactly the rows a
+                      clinic most needs to chase. */}
+                  {['Invoice #', 'Received', 'Case', 'Amount', 'Paid', 'Balance', 'Status'].map((h) => (
                     <th key={h} className="border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold">{h}</th>
                   ))}
                 </tr>
@@ -532,15 +580,24 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               <tbody>
                 {statementInvoices.map((inv) => {
                   const linkedCase = findCaseForInvoice(inv, statementCases);
-                  const detail = linkedCase ? caseDetailLines(linkedCase) : [];
+                  // Shade moves OUT of this block entirely and the received
+                  // date moves UP into the `Received` column, so both are
+                  // suppressed here rather than printed twice on one row.
+                  const detail = linkedCase
+                    ? caseDetailLines(linkedCase, { omit: ['Shade', 'Received Date'] })
+                    : [];
+                  const received = linkedCase ? formatReceivedDate(linkedCase) : '';
                   return (
                   <tr key={inv.id}>
                     <td className="border border-slate-400 px-2 py-1 align-top font-bold">{inv.invoice_number}</td>
-                    <td className="border border-slate-400 px-2 py-1 align-top">{inv.issue_date || inv.created_at?.slice(0, 10) || '—'}</td>
+                    <td className="border border-slate-400 px-2 py-1 align-top">
+                      {received || inv.issue_date || inv.created_at?.slice(0, 10) || '—'}
+                    </td>
                     {/* The job the invoice is against — patient, procedure,
-                        teeth, shade and the two dates that bracket it — so a
-                        clinic can match the line to the work without opening
-                        the app. Same formatter as the on-screen statement. */}
+                        teeth and the promised day. The received date is NOT
+                        repeated here: the `Received` column above already
+                        carries it, and printing the same date twice on one row
+                        reads as two different facts. */}
                     <td className="border border-slate-400 px-2 py-1 align-top">
                       <span className="font-semibold">{inv.case_number || '—'}</span>
                       {detail.length > 0 && (

@@ -8,12 +8,15 @@
  * day it is promised back. Anything else about the job (doctor, material,
  * units) belongs to the case record, not the money line.
  *
- * A case with no charting is a product that is not per-tooth work, and it has
- * no procedure-specific detail to spell out — see `caseDetailLines` below.
+ * A case with no charting is a product that is not per-tooth work, so it has no
+ * tooth list — but it still has a shade and both bench dates. See
+ * `caseDetailLines` for why only the teeth row is gated on charting.
  *
  * One formatter, every consumer (general ledger screen, its CSV, its PDF, the
- * clinic statement, and the invoice drawer's case card) so the on-screen
- * statement, the printed one and the invoice can never drift apart.
+ * clinic statement, the invoice drawer's case card and both printed sheets) so
+ * the on-screen statement, the printed one and the invoice can never drift
+ * apart. A consumer that already prints one of these facts elsewhere passes
+ * `omit` rather than re-deriving the row.
  */
 
 import { formatDate, receivedDateFor } from '../utils/dateUtils';
@@ -23,6 +26,31 @@ import type { DentalCase, Invoice, LedgerEntry } from '../types';
 export interface CaseDetailLine {
   label: string;
   value: string;
+}
+
+/** The rows `caseDetailLines` can emit, in reading order. */
+export type CaseDetailLabel =
+  | 'Patient'
+  | 'Procedure'
+  | 'Teeth'
+  | 'Shade'
+  | 'Received Date'
+  | 'Delivery Date';
+
+export interface CaseDetailOptions {
+  /**
+   * Rows to suppress, for a consumer that already shows that fact somewhere
+   * better.
+   *
+   * The printed statement is the case in point: its `Received` column carries
+   * the day the lab took the job in, so repeating it as a row inside the case
+   * block printed the same date twice on one line. Suppressing by label keeps
+   * ONE formatter in charge of the row order and the formatting, so the ledger,
+   * the CSV, the PDF, the clinic statement, the invoice drawer and the print
+   * still cannot drift — the difference is which rows a given sheet chooses to
+   * print, not how a row is built.
+   */
+  omit?: readonly CaseDetailLabel[];
 }
 
 /**
@@ -69,31 +97,38 @@ export const formatDeliveryDate = (c: DentalCase): string => {
  * rows — a missing value is simply omitted, so the block stays as short as the
  * case actually is.
  */
-export const caseDetailLines = (c: DentalCase): CaseDetailLine[] => {
-  const identity: CaseDetailLine[] = [
+export const caseDetailLines = (
+  c: DentalCase,
+  { omit = [] }: CaseDetailOptions = {},
+): CaseDetailLine[] => {
+  const hidden = new Set<CaseDetailLabel>(omit);
+
+  const lines: CaseDetailLine[] = [
     { label: 'Patient', value: c.patient_name || '' },
     { label: 'Procedure', value: c.case_type_name || c.case_type || '' },
   ];
 
-  // Work that is not per-tooth (a retainer, an aligner, a healing post) commits
-  // no charting, and none of the four rows below is part of its identity: teeth
-  // and shade were never entered, and the two bench dates describe a job rather
-  // than the money line. What the clinic reads on that row is who the case was
-  // for and what the product was — so that is all it gets, on the invoice
-  // drawer and the printed statement alike.
+  // Teeth alone are gated on the case being charted: work that is not per-tooth
+  // (a retainer, an aligner, a healing post) commits no charting, so there is
+  // genuinely no tooth list to print and an em dash would read as a charting
+  // failure rather than a deliberate "this does not apply".
   //
-  // Keyed off the CASE, never the catalog flag, so every consumer reaches the
-  // same answer for the same row and none can drift from the others.
-  if (!caseHasChartedTeeth(c)) return identity.filter((l) => !!l.value);
-
-  const lines: CaseDetailLine[] = [
-    ...identity,
-    { label: 'Teeth', value: formatTeeth(c) },
+  // Shade and the two bench dates are NOT gated on it. A retainer is still a
+  // shade-matched, dated piece of work at the bench — the operator records a
+  // received date on every case regardless of product — so dropping them
+  // because no teeth were charted hid real data on exactly the rows a clinic
+  // most needs. Keyed off the CASE, never the catalog flag, so every consumer
+  // reaches the same answer for the same row and none can drift.
+  if (caseHasChartedTeeth(c)) {
+    lines.push({ label: 'Teeth', value: formatTeeth(c) });
+  }
+  lines.push(
     { label: 'Shade', value: c.shade || '' },
     { label: 'Received Date', value: formatReceivedDate(c) },
     { label: 'Delivery Date', value: formatDeliveryDate(c) },
-  ];
-  return lines.filter((l) => !!l.value);
+  );
+
+  return lines.filter((l) => !!l.value && !hidden.has(l.label as CaseDetailLabel));
 };
 
 /** `Patient: Ali · Procedure: Zirconia · …` — the one-line CSV/PDF form. */

@@ -20,6 +20,7 @@ import { BILLING_TABS, labelOf, type BillingTab } from '../common/financeTabs';
 import { todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
+import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
 import { 
   Wallet, 
   FileCheck2, 
@@ -872,7 +873,8 @@ export const BillingView: React.FC = () => {
       {printModalInvoice && (
         <InvoiceStatementModal
           invoice={printModalInvoice}
-          caseData={cases.find((c) => c.id === printModalInvoice.case_id || c.case_number === printModalInvoice.case_number)}
+          caseData={findCaseForInvoice(printModalInvoice, cases)}
+          cases={cases}
           onClose={() => setPrintModalInvoice(null)}
         />
       )}

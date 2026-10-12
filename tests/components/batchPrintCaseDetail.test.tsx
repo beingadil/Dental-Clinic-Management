@@ -116,12 +116,27 @@ describe('BatchInvoicePrintModal case detail', () => {
     expect(screen.getByText('Zirconia Crown')).toBeTruthy();
     expect(screen.getByText('Teeth')).toBeTruthy();
     expect(screen.getByText('#11, #21')).toBeTruthy();
-    expect(screen.getByText('Shade')).toBeTruthy();
-    // Both dates, kept apart: one is history, the other a promise.
-    expect(screen.getByText('Received Date')).toBeTruthy();
-    expect(screen.getByText('Oct 3, 2026')).toBeTruthy();
+    // The promised day stays a row of its own — it is a commitment about the
+    // future, and folding it in with the received day is what let the two be
+    // read as the same fact.
     expect(screen.getByText('Delivery Date')).toBeTruthy();
     expect(screen.getByText('Dec 20, 2026')).toBeTruthy();
+  });
+
+  it('shows the received date in the Received column, not inside the case block', () => {
+    render(<BatchInvoicePrintModal onClose={() => {}} />);
+
+    // The date a clinic reconciles against is the day the lab took the job in,
+    // so it owns the column next to the invoice number. It used to print the
+    // invoice's issue date there and repeat the received date as a row in the
+    // case block, putting two different clocks on one line.
+    expect(screen.getByText('Received')).toBeTruthy();
+    expect(screen.getByText('Oct 3, 2026')).toBeTruthy();
+
+    // …and the block must not repeat it, nor carry a shade the column area
+    // already speaks for.
+    expect(screen.queryByText('Received Date')).toBeNull();
+    expect(screen.queryByText('Shade')).toBeNull();
   });
 
   it('names the patient and procedure in the selection list', () => {
