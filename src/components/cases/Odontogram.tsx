@@ -288,7 +288,11 @@ function visualFor(
    ========================================================================= */
 
 function Odontogram({
-  initialSelected = [11, 21],
+  /* Empty by default. The previous [11, 21] default meant a brand-new case was
+     born with two teeth charted that nobody selected — they reached the
+     odontogram, tooth_details, the job slip and the billable-unit count. A
+     caller that genuinely wants a pre-filled chart passes `initialSelected`. */
+  initialSelected = [],
   initialRestorations = {},
   initialShades = {},
   initialMaterials = {},
@@ -430,11 +434,27 @@ function Odontogram({
     emitChange(nextSelected, nextRestorations, nextShades, nextMaterials);
   }
 
+  /**
+   * A shade applies to the WHOLE selection, not just the inspected tooth.
+   *
+   * The operator picks a shade once for the job: a bridge's abutments and
+   * pontics are matched to each other, so per-tooth shade entry is only a
+   * last-resort override. Writing to `selectedToothId` alone left a 3-unit case
+   * with 3 different shades from one click, and the inspector showed the shade
+   * the operator did NOT just pick.
+   *
+   * One tooth keeps the old behaviour exactly, so a deliberate per-tooth
+   * override on a single tooth still works.
+   */
   function applyShade(shadeVal: string) {
     setActiveShade(shadeVal);
     if (!selectedToothId) return;
 
-    const nextShades = { ...shades, [selectedToothId]: shadeVal };
+    const targets = selected.length > 1 ? selected : [selectedToothId];
+    const nextShades = { ...shades };
+    targets.forEach((t) => {
+      nextShades[t] = shadeVal;
+    });
     setShades(nextShades);
     emitChange(selected, restorations, nextShades, materials);
   }

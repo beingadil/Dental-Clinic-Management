@@ -122,10 +122,18 @@ async function reachChartStep(caseTypeId: string) {
   await waitFor(() => expect(screen.getAllByText(/FDI Charting/i).length).toBeGreaterThan(0));
 }
 
-/** The chart seeds #11 and #21 so a crown is never accidentally empty. */
-async function clearChart() {
-  fireEvent.click(screen.getByRole('button', { name: /^clear \(\d+\)$/i }));
-  await waitFor(() => expect(screen.queryByRole('button', { name: /^clear/i })).toBeNull());
+/**
+ * The chart starts EMPTY on a new case.
+ *
+ * This helper used to press "Clear (2)" because the wizard pre-seeded #11 and
+ * #21. That default is gone — it silently charted two teeth nobody chose, which
+ * then reached the odontogram, tooth_details, the job slip and the billable-unit
+ * count behind the auto-price. A new case now begins at zero, so the tests that
+ * want an EMPTY chart must not clear anything, and the tests that want a charted
+ * case must select teeth explicitly.
+ */
+async function expectChartAlreadyEmpty() {
+  expect(screen.queryByRole('button', { name: /^clear \(\d+\)$/i })).toBeNull();
 }
 
 /** From the schedule step, press the commit button and wait for the write. */
@@ -188,7 +196,8 @@ describe('CaseDetailModal — a per-tooth product is unchanged', () => {
     await reachChartStep('ct-tooth');
     // Charting is on screen and selectable.
     expect(screen.getByRole('button', { name: /upper arch/i })).toBeTruthy();
-    await clearChart();
+    // The chart arrives EMPTY — no tooth is pre-selected for the operator.
+    await expectChartAlreadyEmpty();
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     // Blocked, with the error on the step.
@@ -196,12 +205,20 @@ describe('CaseDetailModal — a per-tooth product is unchanged', () => {
     expect(addCase).not.toHaveBeenCalled();
   });
 
+  it('starts a new case with no teeth pre-selected', async () => {
+    // The regression this pins: the wizard used to open with #11 and #21 already
+    // charted, so an operator who forgot to chart still got a two-unit case on
+    // the slip, the invoice and the price.
+    await reachChartStep('ct-tooth');
+    await expectChartAlreadyEmpty();
+  });
+
   it('still requires teeth when the catalog row predates the flag', async () => {
     // Written to SQL with no needs_teeth column value at all — the migration's
     // DEFAULT must read as "required", not "unknown, so skip it". Every product
     // saved before migration 021 looks like this on disk.
     await reachChartStep('ct-legacy');
-    await clearChart();
+    await expectChartAlreadyEmpty();
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     await waitFor(() => expect(screen.getByText(/At least one tooth must be selected/i)).toBeTruthy());

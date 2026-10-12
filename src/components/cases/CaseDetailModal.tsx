@@ -9,7 +9,7 @@ import { openFileInBrowser } from '../../utils/fileUtils';
 import { useDialogBehavior } from '../common/ui/useDialogBehavior';
 import { LAB_DEPARTMENTS } from '../../utils/labDepartments';
 import { stripDoctorHonorific } from '../../utils/doctorName';
-import { catalogNeedsTeeth } from '../../utils/catalogToothRequirement';
+import { catalogNeedsTeeth, billableUnits } from '../../utils/catalogToothRequirement';
 import {
   X,
   Check,
@@ -163,8 +163,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   );
   const [doctorName, setDoctorName] = useState(initialCase?.doctor_name || '');
   const [pendingAttachments, setPendingAttachments] = useState<Omit<CaseAttachment, 'id' | 'case_id' | 'uploaded_at'>[]>([]);
+  /* Charting starts EMPTY on a new case.
+     This used to default to [11, 21], which silently charted two teeth the
+     operator never selected — they appeared on the odontogram, in the saved
+     tooth_details, on the job slip, and in the unit count behind the auto-price,
+     all from one unasked-for default. A case must start at what was actually
+     chosen. An existing case or a template still restores its own teeth. */
   const [selectedTeeth, setSelectedTeeth] = useState<number[]>(
-    initialCase?.selected_teeth || appliedTemplate?.selected_teeth || [11, 21]
+    initialCase?.selected_teeth || appliedTemplate?.selected_teeth || []
   );
   const [toothDetails, setToothDetails] = useState<Record<number, ToothDetail>>(
     initialCase?.tooth_details || {}
@@ -406,18 +412,37 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     if (!selectedCT) return;
 
     const override = pricingOverrides.find((po) => po.lab_id === labId && po.case_type_id === caseTypeId);
-    if (override) {
-      setPrice(override.custom_price);
-      if (override.discount_percentage) {
-        setDiscount((override.custom_price * override.discount_percentage) / 100);
-      } else {
-        setDiscount(0);
-      }
+    const unitPrice = override ? override.custom_price : selectedCT.base_price;
+
+    if (override?.discount_percentage) {
+      setDiscount((unitPrice * override.discount_percentage) / 100);
     } else {
-      setPrice(selectedCT.base_price);
       setDiscount(0);
     }
+
+    /* The unit count at the moment the product is chosen is whatever is already
+       charted — normally zero on a fresh case, since charting starts empty. The
+       separate effect below re-prices as teeth come in, so multiplying here too
+       would count the same teeth twice. */
+    setPrice(unitPrice * Math.max(1, billableUnits({ selected_teeth: selectedTeeth })));
+    // `selectedTeeth` is intentionally NOT a dependency: it is read only as the
+    // starting value. The effect that watches charting owns every later update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labId, caseTypeId, isEdit]);
+
+  /* Base price × units, for NEW cases only.
+     A saved case keeps the figure it was billed at: re-deriving it on open would
+     silently restate a price a clinic may already have paid or been quoted. */
+  useEffect(() => {
+    if (isEdit) return;
+    const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
+    if (!selectedCT) return;
+
+    const override = pricingOverrides.find((po) => po.lab_id === labId && po.case_type_id === caseTypeId);
+    const unitPrice = override ? override.custom_price : selectedCT.base_price;
+
+    setPrice(unitPrice * billableUnits({ selected_teeth: selectedTeeth }));
+  }, [selectedTeeth, caseTypeId, labId, isEdit, caseTypes, pricingOverrides]);
 
   const handleApplyPreferredLab = () => {
     if (preferredLab) {

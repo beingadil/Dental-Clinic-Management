@@ -810,7 +810,11 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             doctor_name: lab.contact_person,
             case_type_id: '',
             case_type_name: '',
-            selected_teeth: [11, 21],
+            /* No pre-charted teeth — the operator picks them on the odontogram. This
+               was [11, 21], which handed every new case two teeth nobody chose,
+               and those teeth then reached the slip, the invoice and the unit
+               count behind the auto-price. */
+            selected_teeth: [],
             tooth_details: {},
             shade: 'A2',
             // Local calendar day, not toISOString(): at 01:30 PKT the UTC day

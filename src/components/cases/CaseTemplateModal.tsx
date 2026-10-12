@@ -55,7 +55,14 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
         case_type_id: caseTypeId,
         case_type_name: selectedCT ? selectedCT.name : 'Zirconia Crown',
         doctor_name: '',
-        selected_teeth: [11, 21],
+        /* The template records NO preset teeth.
+           This was hardcoded to [11, 21], so every saved template stamped two
+           teeth the operator never chose — and applying that template charted
+           them on the real case, which then drove the odontogram, the job slip
+           and the billable-unit count. A template should carry what the operator
+           set, not a standing default. An empty chart is also what the wizard
+           itself now starts with, so the two agree. */
+        selected_teeth: [],
         shade,
         delivery_date: '',
         priority,
