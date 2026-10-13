@@ -124,7 +124,13 @@ interface CaseDetailModalProps {
    fourth "review" step: step 3 is the last one and it ends with Create. */
 type StepKey = 'basics' | 'chart' | 'schedule';
 
-const STEPS: { key: StepKey; numeral: string; label: string; caption: string }[] = [
+/* The footer carries a `Step N of M - Name` line at `sm:block md:hidden`, and
+     that breakpoint pair is deliberate rather than accidental: this full nav is
+     on screen from `md:` up, so at desktop the step was being named twice on
+     one screen - here, and again in the footer. Below `md` this collapses to a
+     bare dot strip that carries no label, which is the only place the footer
+     line earns its keep. */
+  const STEPS: { key: StepKey; numeral: string; label: string; caption: string }[] = [
   { key: 'basics', numeral: '01', label: 'Procedure', caption: 'Clinic, doctor & case type' },
   { key: 'chart', numeral: '02', label: 'Teeth & Shade', caption: 'FDI charting & aesthetics' },
   { key: 'schedule', numeral: '03', label: 'Schedule & Price', caption: 'SLA, delivery, billing & review' },
@@ -652,8 +658,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
   const finalComputedPrice = Math.max(0, price - discount);
 
-  const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
-
   /* Tracks when the wizard landed on the current step so the final submit can
      ignore a click that was really aimed at the "Continue" button. */
   useEffect(() => {
@@ -683,12 +687,20 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   /* ================================================================== */
 
   const renderBasicsSection = () => (
-    <div className={bezelCard}>
-      <div className={bezelCardInner}>
-        <div className="mb-5 flex items-center justify-between">
+    /* No bezel card. This block used to be a bordered, filled surface with its
+       own eyebrow row, INSIDE the modal's own surface - three nested planes for
+       four fields, which is why the step read far bigger than the work in it.
+       The modal's padding is the boundary now and the section needs one label.
+
+       It also used to carry TWO labels for the same thing: `Referral` and, in
+       mono caps, `WHO & WHAT`. One is enough; the second was decoration. */
+    <div>
+        <div className="mb-4">
           <Eyebrow>Referral</Eyebrow>
-            <span className="font-mono text-[10px] tracking-widest text-ink-muted">WHO & WHAT</span>
-          </div>
+          <p className="mt-1 text-[11.5px] text-ink-muted">
+            The clinic this case came from, and what they have sent.
+          </p>
+        </div>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <FieldLabel htmlFor="case-patient-name">Patient Name / ID</FieldLabel>
@@ -697,7 +709,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 type="text"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
-                placeholder="e.g. Sarah Jenkins (optional)"
+                placeholder="e.g. Sarah Jenkins"
                 className={inputCls}
               />
             </div>
@@ -786,15 +798,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   </option>
                 ))}
               </select>
-              {selectedCT && (
-                <p className="mt-1.5 font-mono text-[11px] tracking-wide text-ink-muted">
-                  BASE PKR {selectedCT.base_price.toLocaleString()}
-                </p>
-              )}
             </div>
           </div>
-        </div>
-      </div>
+    </div>
   );
 
   /* Odontogram is the single most expensive subtree on this surface — one
@@ -1614,7 +1620,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Delete Case
                 </button>
               ) : (
-                <span className="hidden text-[11px] font-medium text-ink-muted sm:block">
+                <span className="hidden text-[11px] font-medium text-ink-muted sm:block md:hidden">
                   Step {step + 1} of {STEPS.length} · {STEPS[step].label}
                 </span>
               )}
