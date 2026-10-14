@@ -6,6 +6,78 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-10-14
+
+A production-readiness audit of the 2.23.0 build (18 phases) found four
+reachable defects and several packaging gaps. All were fixed and verified
+against a real release build, a real install, and a real upgrade.
+
+### Security
+- **`db_load` no longer accepts a path.** It took `path: Option<String>` and
+  `resolve_db_path` returned it unchecked; because `Connection::open` creates a
+  missing file, that was a primitive for creating or overwriting any path the
+  process can write. Removed rather than validated — nothing ever passed one.
+- **`db_backup_file` no longer accepts a destination.** Same shape:
+  `fs::copy` straight into a caller-chosen path. Also unused — `BackupTab`
+  exports through `save_file_bytes` and the native save dialog.
+- **Patient data no longer written to the console.** `triggerAgentWorkflow`
+  logged `(event, payload)` and callers passed whole case records, so every
+  `CASE_CREATED` wrote a `patient_name` into a sink with no user-facing way to
+  clear it. Fixed at the single funnel; the event name is kept.
+- **Removed `core:webview:allow-internal-toggle-devtools`.** Zero call sites,
+  no documented reason — it only let injected script open devtools against a
+  database of patient records.
+- **Cleared 5 dependency advisories.** `source-map-js` 1.2.1 → 1.2.2
+  (build-time only, absent from `dist`) and four rustls advisories in 0.23.45
+  — the TLS library used to download updates — fixed by 0.23.46.
+
+### Added
+- **Single-instance protection.** Nothing stopped a second copy of the app from
+  starting; I launched it twice and both ran. Because persistence is
+  whole-file read-modify-write, two instances are last-writer-wins: a
+  double-click on the shortcut could silently drop a case, invoice or payment.
+  The second launch now focuses the running window.
+- **CI scans dependencies.** A `security` job audits npm *and* cargo, and the
+  release job now depends on it. Previously no audit of any kind ran, which is
+  why the advisories above needed a human to find them.
+- **`THIRD_PARTY_NOTICES.md` ships with the installer.** Every bundled
+  dependency is MIT/ISC/Apache-2.0, which carries an attribution obligation
+  that the installer did not previously meet.
+
+### Changed
+- **The Create Case wizard's first step was restructured.** Its four fields sat
+  in a bordered card inside the modal's own surface — three nested planes for
+  very little work. The inner card is gone, the section carried two labels
+  (`Referral` and `WHO & WHAT`) for one thing and now has one, the step name
+  appeared twice on desktop and no longer does, and the patient placeholder no
+  longer repeats the required marker.
+- **Create Case and the odontogram obey the operator's brand colour.** Both
+  carried hardcoded `indigo-*` values, so a white-label install rendered the
+  vendor's purple instead of the lab's own colour.
+- Six Vite warnings eliminated: modules dynamically imported in one file and
+  statically in another, so the lazy-load boundary never existed. Six to zero.
+- `src-tauri/gen/` (330 KB of generated schemas) is no longer tracked.
+
+### Fixed
+- The odontogram could clip its mandibular arch at short window heights.
+- `STATIC_VCRUNTIME` is set through `tauri_build::WindowsAttributes` instead of
+  a config key this project's CLI rejects. The shipped binary continues to
+  import none of `VCRUNTIME140.dll` / `MSVCP140.dll`, so a clinic PC without
+  the Visual C++ Redistributable can still launch it.
+
+### Verified
+Release build, PE import table, clean-machine first launch from an empty
+profile, and a 2.23.0 → 2.24.0 upgrade over an existing install with the clinic
+database byte-identical afterwards. 908 tests.
+
+### Known
+- The installer is **unsigned**, so Windows SmartScreen warns on first run.
+- The installer downloads the WebView2 Runtime at install time, so an offline
+  machine cannot install. Embedding it would fix that at the cost of taking the
+  installer from 3.75 MB to 210 MB — a deliberate trade, pinned by a test.
+- The bundle identifier keeps its `.app` suffix. Changing it would break the
+  registry uninstall key, the update channel, and `%APPDATA%\pk.dentalsolutions.app`.
+
 ### Added
 - **Material categories are now operator-managed, in their own tab.**
   `Price List & Catalog` gained a third tab beside *Materials & Pricing* and
