@@ -1,6 +1,6 @@
 [package]
 name = "dental-solutions"
-version = "2.23.0"
+version = "2.24.0"
 edition = "2021"
 
 [lib]
@@ -22,6 +22,10 @@ hex = "0.4"
 # the Windows build toolchain-free). "stream" gives access to Response::bytes_stream.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 tauri-plugin-dialog = "2.8.0"
+# Second launch of the desktop shortcut must focus the running window instead of
+# starting a rival engine: persistence is whole-file read-modify-write, so two
+# instances silently drop each other's writes (see the registration in lib.rs).
+tauri-plugin-single-instance = "2"
 windows-core = "0.62"
 # Windows registry read (HKCU InstallLocation) for the update relaunch target.
 [target.'cfg(windows)'.dependencies]
