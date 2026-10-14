@@ -13,8 +13,20 @@
  * Downloading and verifying is automatic; closing the app is always a click.
  */
 import { settingsRepo } from '../db/repos';
-import { checkForUpdates, UpdateStatus, currentVersion } from './updateService';
+import { checkForUpdates, downloadUpdate, UpdateStatus, currentVersion } from './updateService';
 import { recordUpdateHistory, getUpdateHistory } from './updateHistory';
+import { listen } from '@tauri-apps/api/event';
+import { flushNow } from '../db/persistence';
+
+/*
+ * The three imports above were `await import(...)` inside the functions below,
+ * which read as a lazy-load boundary that never existed: this module already
+ * imported `updateService` statically, `persistence` arrives via
+ * `../db/repos -> ../db/index`, and `@tauri-apps/api/event` is in the entry
+ * chunk because `window.js` statically re-exports it. A dynamic import of a
+ * module the graph already loads eagerly just buys a microtask, so it is
+ * spelled as the static edge it always was. Evaluation order is unchanged —
+ * all three modules already finished evaluating before these functions ran. */
 
 export type AutoUpdatePhase =
   | { state: 'idle' }
@@ -214,7 +226,6 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
 
     if (!isDesktopShell()) {
       // Web build: hand off to the system browser (the user completes it).
-      const { downloadUpdate } = await import('./updateService');
       await downloadUpdate(downloadUrl);
       const phase: AutoUpdatePhase = {
         state: 'failed',
@@ -233,7 +244,6 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
       // must run in Rust — a webview fetch of the installer throws and the
       // update silently dies (seen on v2.3.1).
       const api = tauri()!;
-      const { listen } = await import('@tauri-apps/api/event');
       const unlisten = await listen<{
         version?: string;
         received?: number;
@@ -258,7 +268,6 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
         // exit mid-write would lose the newest clinic data. Flush is awaited,
         // not fire-and-forget.
         try {
-          const { flushNow } = await import('../db/persistence');
           await flushNow();
         } catch { /* non-fatal — the pre-update backup still protects data */ }
 
@@ -319,7 +328,6 @@ export function applyStagedUpdate(): Promise<AutoUpdatePhase> {
     try {
       // Last flush: the installer replaces the app on the very next tick.
       try {
-        const { flushNow } = await import('../db/persistence');
         await flushNow();
       } catch { /* non-fatal — the pre-update backup still protects data */ }
       await tauri()!.invoke('update_apply');

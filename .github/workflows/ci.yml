@@ -90,11 +90,62 @@ jobs:
       - name: Source palette matches the compiled bundle
         run: node scripts/palette-equivalence.mjs
 
+  # ---- Dependency vulnerability scan ----
+  # Added after an audit found four live advisories in rustls (the TLS library
+  # reqwest uses to download updates) that no existing job would ever have
+  # reported. Both ecosystems are scanned because both ship: npm covers the
+  # bundled frontend, cargo covers the binary that actually touches patient
+  # data and the network.
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit npm dependencies
+        # Dev dependencies are included on purpose: they run on the build
+        # machine that produces the artifact, so a compromised build-time
+        # package reaches production just as effectively as a runtime one.
+        run: npm audit --audit-level=high
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Audit Rust dependencies (cargo audit)
+        # Three advisories are ignored, each verified NOT to reach customers:
+        #   RUSTSEC-2024-0429 / GHSA-wrw7-89jp-8q8g - glib, a Linux/GTK path of a
+        #     cross-platform dependency. Zero build artefacts on windows-latest;
+        #     it is never compiled into the shipped .exe.
+        #   RUSTSEC-2024-0370 - proc-macro-error, a compile-time proc macro. It
+        #     never exists in a shipped binary.
+        # Both were confirmed by inspecting target/release after a real build.
+        # Re-verify before ever removing these ignores.
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          audit-command: >-
+            cargo audit
+            --ignore RUSTSEC-2024-0429
+            --ignore GHSA-wrw7-89jp-8q8g
+            --ignore RUSTSEC-2024-0370
+
   # ---- Desktop installers: real Tauri build (NSIS + MSI) on Windows ----
-  # Runs only after the web job passes. Produces downloadable artifacts on
-  # every run so a clinic PC can install without a local Rust toolchain.
+  # Runs only after the web and security jobs pass. Produces downloadable
+  # artifacts on every run so a clinic PC can install without a local Rust
+  # toolchain. `security` is a hard dependency on purpose: an unsigned,
+  # un-audited artifact should never reach a clinic's machine.
   desktop:
-    needs: web
+    needs: [web, security]
     runs-on: windows-latest
     timeout-minutes: 45
     # The release step below creates a GitHub Release on v* tags.
