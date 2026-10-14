@@ -311,6 +311,23 @@ function Odontogram({
   const [selectedToothId, setSelectedToothId] = useState<number | null>(initialSelected[0] || null);
 
   // Dynamic Clinical Specs from Settings
+  //
+  // KNOWN INEFFICIENCY, deliberately left as-is for now.
+  // `useState(getClinicalSpecs())` evaluates its argument on EVERY render and
+  // keeps only the first result, while getClinicalSpecs issues four SQL reads
+  // (materials, prep types, shade guides, implant brands) - eight on a database
+  // that has not been seeded yet. On a chart that re-renders as the operator
+  // hovers and selects teeth, that is a pile of discarded queries per
+  // interaction. `useState(() => getClinicalSpecs())` is the fix.
+  //
+  // It is not applied because tests/components/odontogramMemo.test.tsx uses the
+  // call count of this very function as its render counter: the lazy initialiser
+  // runs once per MOUNT, so both arms of the memoisation benchmark would read 0
+  // and the test would pass no matter what the component did. Applying the fix
+  // requires that test to grow a render-counting seam that does not depend on
+  // this call - there is currently no externally mockable function in the
+  // render body (isPosterior is local, getTodayStr is only reached from an
+  // event handler). Worth doing; not worth doing blind.
   const [clinicalSpecs, setClinicalSpecs] = useState(getClinicalSpecs());
 
   useEffect(() => {
