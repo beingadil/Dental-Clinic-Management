@@ -1,6 +1,13 @@
 import { SqliteEngine } from './engine';
 import { getDatabase } from './core';
 import { recordFailure, recordSuccess, type FailureCause } from './failureLog';
+// Static, not `await import(...)`: `@tauri-apps/api/core` is already in the
+// entry chunk (window.js and the dialog plugin re-export it statically), so it
+// evaluates at startup either way. Deferring the binding bought nothing and
+// only warned. Both APIs are inert outside Tauri — `invoke` touches
+// `window.__TAURI_INTERNALS__` when *called*, not at import time.
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /**
  * Local persistence for the SQLite database.
@@ -158,17 +165,26 @@ export function getDesktopDatabasePath(): string | null {
 
 /** Desktop IPC bindings (only callable when isDesktop()). */
 async function desktopDb(): Promise<{
-  db_load: (args: { path?: string }) => Promise<{ path: string; existed: boolean }>;
+  // db_load takes no arguments. The Rust command used to accept a `path` override
+// that bypassed every containment check - and because `Connection::open`
+// CREATES a missing file, that was an arbitrary-file-write primitive handed to
+// the webview. Nothing in src/ ever passed one (restore goes through
+// db_save_bytes), so the parameter was removed rather than validated.
+  db_load: () => Promise<{ path: string; existed: boolean }>;
   db_read_bytes: () => Promise<string>;
   db_save_bytes: (args: { bytesB64: string }) => Promise<{ path: string; bytes: number }>;
-  db_backup_file: (args: { dest?: string }) => Promise<string>;
+  // db_backup_file takes no arguments either. The Rust side used to take a
+  // caller-supplied `dest` and `fs::copy` straight into it, overwriting
+  // whatever sat there with the clinic's database. BackupTab exports via
+  // save_file_bytes + the native save dialog instead, which is where a
+  // user-chosen destination actually belongs.
+  db_backup_file: () => Promise<string>;
 }> {
-  const { invoke } = await import('@tauri-apps/api/core');
   return {
-    db_load: (args) => invoke('db_load', args),
+    db_load: () => invoke('db_load'),
     db_read_bytes: () => invoke('db_read_bytes'),
     db_save_bytes: (args) => invoke('db_save_bytes', args),
-    db_backup_file: (args) => invoke('db_backup_file', args),
+    db_backup_file: () => invoke('db_backup_file'),
   };
 }
 
@@ -312,7 +328,7 @@ export async function loadSnapshot(): Promise<Uint8Array | null> {
   if (isDesktop()) {
     try {
       const tauri = await desktopDb();
-      const info = await tauri.db_load({});
+      const info = await tauri.db_load();
       desktopDbPath = info.path;
       // eslint-disable-next-line no-console
       console.info(`[db] desktop database file: ${info.path} (${info.existed ? 'existing' : 'new'})`);
@@ -643,7 +659,6 @@ function installLifecycleHooks(): void {
   if (isDesktop()) {
     void (async () => {
       try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
         await win.onCloseRequested(async (event) => {
           if (!dirty) return; // nothing pending — close proceeds normally

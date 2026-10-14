@@ -809,8 +809,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [invoices, todayStr, notifConfigRev]);
 
   // Agent workflow listener trigger simulation
-  const triggerAgentWorkflow = (event: string, payload: any) => {
-    console.log(`[Agent Workflow Triggered] ${event}`, payload);
+  //
+  // The payload is deliberately dropped rather than logged. Callers hand this a
+  // whole record — a full case (patient_name, doctor, notes), a voucher, an
+  // attachment — and the other 39 console calls in src/ only ever pass an Error
+  // or a counter. This one leaked patient data on every CASE_CREATED, into a
+  // sink with no user-facing way to clear it. The event name is the part worth
+  // keeping: it is the whole diagnostic value of a stub whose only consumer was
+  // this log line.
+  const triggerAgentWorkflow = (event: string, _payload: any) => {
+    console.log(`[Agent Workflow Triggered] ${event}`);
   };
 
   // Document number generators (pure ledger domain)
