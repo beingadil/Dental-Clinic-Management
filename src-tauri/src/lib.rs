@@ -500,21 +500,14 @@ async fn update_install(
         return Err("Refusing to install: invalid version string".into());
     }
 
-    // `timeout` here is the TOTAL budget for the request including streaming
-    // the body, so it has to cover the whole installer download.
-    //
-    // It was 600s when the NSIS bundle was 3.75 MB, which needed only 0.05
-    // Mbps. The installer now embeds the WebView2 runtime (offlineInstaller)
-    // and is ~210 MB, so 600s demands a sustained 2.81 Mbps - a clinic on a 2
-    // Mbps line could update before this change and now times out mid-download.
-    //
-    // 3600s covers 210 MB down to ~0.47 Mbps. The wait is tolerable because
-    // the download emits update://progress with byte counts, so the user sees
-    // it advancing rather than a frozen dialog; connect_timeout stays short so
-    // a genuinely unreachable host still fails fast instead of hanging.
+    // 600s covers the installer with enormous headroom: the bundle is ~4 MB, so
+    // even a 100 kbps link finishes in well under a minute. This used to be
+    // raised to an hour, which was only needed when the installer briefly
+    // embedded the WebView2 runtime (~210 MB) and demanded 2.81 Mbps to
+    // finish inside the budget. That variant was reverted to keep the
+    // installer small; the timeout went back with it.
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3600))
-        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| e.to_string())?;
 
