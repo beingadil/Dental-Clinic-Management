@@ -621,8 +621,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
           <button
             type="button"
             onClick={handleExportPDF}
-            title="Download ledger statement as PDF (selectable text, real pages)" aria-label="Download ledger statement as PDF"
-            className="shrink-0 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+            disabled={!selectedClinic}
+            title={
+              selectedClinic
+                ? 'Download ledger statement as PDF (selectable text, real pages)'
+                : 'Select a clinic first'
+            }
+            aria-label="Download ledger statement as PDF"
+            className="shrink-0 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
           >
             <FileDown className="w-4 h-4" />
             <span>Export PDF</span>
