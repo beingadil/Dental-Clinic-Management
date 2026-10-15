@@ -140,6 +140,19 @@ const invoices = () =>
 
 const invoiceByNumber = new Map(invoices().map((inv) => [inv.invoice_number, inv]));
 
+/*
+ * Every cell of every printed row, in document order.
+ *
+ * Found by CONTENT, not by column index: the statement leads with Date, so
+ * `td:first-child` is the date. Column order is a presentation choice the
+ * operator makes, and a paging test that breaks when a column moves is
+ * testing layout rather than paging.
+ */
+const rowCells = (root: ParentNode) =>
+  Array.from(root.querySelectorAll('tbody tr')).map((tr) =>
+    Array.from(tr.querySelectorAll('td')).map((c) => c.textContent!.trim()),
+  );
+
 /** The printed sheets, excluding the operator's on-screen selection table. */
 const sheets = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('.print-doc-page')) as HTMLElement[];
@@ -162,9 +175,7 @@ describe('BatchInvoicePrintModal sheet splitting', () => {
         continued: i > 0,
         withBalance: i === pages.length - 1,
       });
-      const printed = Array.from(p.querySelectorAll('tbody tr td:first-child'))
-        .map((c) => c.textContent!.trim())
-        .filter((t) => /^INV-/.test(t));
+      const printed = rowCells(p).flat().filter((t) => /^INV-/.test(t));
       const height = printed.reduce(
         (sum, number) => sum + rowHeightPx(invoiceByNumber.get(number)!, allCases),
         0,
@@ -177,13 +188,7 @@ describe('BatchInvoicePrintModal sheet splitting', () => {
     const { container } = renderModal();
     // Scoped to invoice-number cells: the balance block below the table is
     // laid out with `td`s too, and would otherwise be counted as rows.
-    const printed = sheets(container)
-      .map((p) =>
-        Array.from(p.querySelectorAll('tbody tr td:first-child'))
-          .map((c) => c.textContent!.trim())
-          .filter((t) => /^INV-/.test(t)),
-      )
-      .flat();
+    const printed = sheets(container).flatMap(rowCells).flat().filter((t) => /^INV-/.test(t));
 
     expect(printed).toEqual(Array.from({ length: COUNT }, (_, i) => `INV-${2000 + i}`));
   });

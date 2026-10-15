@@ -1,5 +1,9 @@
 import { Invoice, DentalCase } from '../types';
-import { caseDetailLines, findCaseForInvoice } from './ledgerCaseDetail';
+import {
+  caseDetailLines,
+  findCaseForInvoice,
+  INVOICE_DETAIL_OMIT,
+} from './ledgerCaseDetail';
 
 /**
  * Pagination for the batch account statement.
@@ -45,12 +49,20 @@ const CONTINUED_LINE_PX = 29;
  */
 export const BALANCE_BLOCK_PX = 84;
 
-/** A row with no detail block and a single-line date: one text line + padding. */
+/** A row with no detail line and a single-line date: one text line + padding. */
 export const ROW_PX_BARE = 34;
 
-/** One line of the detail block's two-column grid, plus its padding and border. */
-const DETAIL_GRID_LINE_PX = 20;
-const DETAIL_BLOCK_CHROME_PX = 10;
+/**
+ * The detail line, when present, is the extra text line under the case number.
+ *
+ * It was a two-column `<dl>` costing ceil(n / 2) grid lines at 20px each plus
+ * 10px of block chrome, so a case with seven detail rows was priced at 124px —
+ * four lines tall — while only ONE line actually prints. The model then
+ * over-charged every sheet and pushed runs onto extra pages the paper did not
+ * need, which is the exact problem the compact invoice was meant to solve.
+ * The row is now the bare line plus one 11px line, whatever the fact count.
+ */
+const DETAIL_LINE_PX = 11;
 
 /** The zoom applied by `.print-fs-*`; a zoomed-out sheet fits more rows. */
 const FONT_SCALE: Record<string, number> = {
@@ -62,14 +74,17 @@ const FONT_SCALE: Record<string, number> = {
 /**
  * Rendered height of one invoice row, in CSS pixels at 100% zoom.
  *
- * The detail block is a two-column grid, so `n` pairs cost ceil(n / 2) lines.
+ * The `omit` list MUST match the one the statement renderer passes. They were
+ * silently divergent: the renderer suppressed Shade, Received Date, Teeth and
+ * Delivery Date while this priced all seven rows. A model that disagrees with
+ * the thing it models cannot predict the paper, so the list is shared rather
+ * than written twice — see INVOICE_DETAIL_OMIT.
  */
 export const rowHeightPx = (inv: Invoice, cases: DentalCase[]): number => {
   const linked = findCaseForInvoice(inv, cases);
-  const pairs = linked ? caseDetailLines(linked).length : 0;
-  if (pairs === 0) return ROW_PX_BARE;
-  const gridLines = Math.ceil(pairs / 2);
-  return ROW_PX_BARE + gridLines * DETAIL_GRID_LINE_PX + DETAIL_BLOCK_CHROME_PX;
+  const lines = linked ? caseDetailLines(linked, { omit: INVOICE_DETAIL_OMIT }).length : 0;
+  if (lines === 0) return ROW_PX_BARE;
+  return ROW_PX_BARE + DETAIL_LINE_PX;
 };
 
 /** Zoom factor for a font-scale setting. */

@@ -132,7 +132,7 @@ void [EVERY_BILLING_ID_IS_DECLARED, EVERY_REPORTS_ID_IS_DECLARED];
 describe('finance tab ownership', () => {
   it('pins the finance surface to the tabs each view is supposed to own', () => {
     const expected: Record<string, string[]> = {
-      BillingView: ['invoices', 'transactions'],
+      BillingView: ['invoices'],
       ReportsView: ['overview', 'clinic_accounts', 'general_ledger', 'audit_log', 'statements'],
     };
 
@@ -205,6 +205,13 @@ describe('finance tab ownership', () => {
     // Catches the leftover half of an incomplete migration: a render block for a
     // tab that is no longer in the strip (dead code that still ships), or a tab
     // in the strip that switches to nothing (a blank panel).
+    //
+    // A view with ONE tab has no strip and no switch — that is Billing now, one
+    // surface of invoices with the payment register beneath it (see
+    // financeTabs.ts). Its invariant is the mirror image: nothing may branch on
+    // a tab id at all, because there is nothing left to branch between. So the
+    // expected branch set is the declared set for a strip, and EMPTY for a view
+    // that has outgrown one.
     const findings: string[] = [];
     for (const [view, tabs] of Object.entries(FINANCE_TABS)) {
       const file = VIEW_FILES[view];
@@ -218,8 +225,9 @@ describe('finance tab ownership', () => {
       ]
         .sort()
         .join(',');
+      const expected = tabs.length === 1 ? '' : declared;
 
-      if (declared !== rendered) {
+      if (expected !== rendered) {
         findings.push(`${view} declares [${declared}] but renders [${rendered}]`);
       }
     }

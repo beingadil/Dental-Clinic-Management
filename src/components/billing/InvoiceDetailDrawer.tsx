@@ -14,11 +14,10 @@ import {
   Scale, 
   Printer, 
   Plus, 
-  ArrowDownLeft, 
-  ShieldCheck, 
+  ArrowDownLeft,  ShieldCheck,
   ChevronRight,
   Receipt,
-  ArrowLeftRight,
+  Trash2,
   Wallet
 } from 'lucide-react';
 
@@ -27,11 +26,11 @@ interface InvoiceDetailDrawerProps {
   onClose: () => void;
   invoice: Invoice | null;
   onOpenPaymentModal: (invoice: Invoice) => void;
-  onOpenCreditNoteModal: (invoice: Invoice) => void;
   onOpenJournalModal: (referenceId: string) => void;
   onPrintInvoice: (invoice: Invoice) => void;
   onViewReceipt: (payment: PaymentRecord) => void;
-  onReversePayment: (payment: PaymentRecord) => void;
+  /** Delete a payment entry (its whole receipt). Never the invoice itself. */
+  onDeletePayment: (payment: PaymentRecord) => void;
 }
 
 export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
@@ -39,18 +38,17 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   onClose,
   invoice,
   onOpenPaymentModal,
-  onOpenCreditNoteModal,
   onOpenJournalModal,
   onPrintInvoice,
   onViewReceipt,
-  onReversePayment
+  onDeletePayment
 }) => {
   const { cases, accountAdjustments, journalEntries, advancePayments, applyAdvanceCreditV2 } = useApp();
   const [jvOpen, setJvOpen] = useState(false);
 
   /* B7: quick-apply of unallocated clinic advance credit (folded in from the
      retired AccountsFinancialHome). Inline errors + synchronous latch, same
-     discipline as ReversalModal / RecordTransactionModal. */
+     discipline as RecordTransactionModal. */
   const [applyOpen, setApplyOpen] = useState(false);
   const [applyAmount, setApplyAmount] = useState('');
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -410,11 +408,11 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                         {!pmt.is_reversed && (
                           <button
                             type="button"
-                            onClick={() => onReversePayment(pmt)}
+                            onClick={() => onDeletePayment(pmt)}
                             className="p-1.5 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
-                            title="Reverse Payment (Audit Correction)" aria-label="Reverse payment (audit correction)"
+                            title="Delete Payment Entry" aria-label={`Delete payment ${pmt.payment_number || ''}`}
                           >
-                            <ArrowLeftRight className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
@@ -498,18 +496,12 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-ink-warning" />
-                Credit Notes & Write-Offs ({creditNotes.length})
+                Credit Notes &amp; Write-Offs ({creditNotes.length})
               </h3>
-              {netDue > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onOpenCreditNoteModal(invoice)}
-                  className="px-2.5 py-1 text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-md border border-amber-200 flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Issue Credit Note
-                </button>
-              )}
+              {/* The "Issue Credit Note" button is gone. Issuing a credit note is a
+                  write-off decision, not a collection, and the operator removed it
+                  from the recorder. Notes already issued still list here and still
+                  net off the balance. */}
             </div>
 
             {creditNotes.length === 0 ? (

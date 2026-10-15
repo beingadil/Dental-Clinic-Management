@@ -98,10 +98,14 @@ describe('ledgerCaseDetail', () => {
 
   describe('caseDetailLines', () => {
     it('includes only the case identity rows, in reading order', () => {
+      // `Units` is new here: the compact-invoice change added it, and it is
+      // pushed immediately after `Teeth` — alongside the tooth list, not
+      // instead of it, so a job slip keeps both.
       expect(caseDetailLines(baseCase).map((l) => l.label)).toEqual([
         'Patient',
         'Procedure',
         'Teeth',
+        'Units',
         'Shade',
         'Received Date',
         'Delivery Date',
@@ -114,12 +118,28 @@ describe('ledgerCaseDetail', () => {
       expect(lines.find((l) => l.label === 'Delivery Date')?.value).toBe('Oct 20, 2026');
     });
 
-    it('leaves doctor, material and units to the case record', () => {
-      const labels = caseDetailLines(baseCase).map((l) => l.label);
+    it('leaves doctor, material and status to the case record', () => {
+      const lines = caseDetailLines(baseCase);
+      const labels = lines.map((l) => l.label);
       expect(labels).not.toContain('Doctor');
       expect(labels).not.toContain('Material');
-      expect(labels).not.toContain('Units');
       expect(labels).not.toContain('Status');
+
+      // CHANGED (compact invoice): `Units` used to be asserted ABSENT by this
+      // test — "units belong to the case record, not the money line". That is
+      // now the opposite of the intent: a printed invoice must say "3 units"
+      // rather than print a tooth list the reader cannot act on. baseCase
+      // charts three teeth, so the row is "3 units".
+      expect(labels).toContain('Units');
+      expect(lines.find((l) => l.label === 'Units')?.value).toBe('3 units');
+    });
+
+    it('counts the unit row in the singular for a single tooth', () => {
+      // The row is built with `unit${units === 1 ? '' : 's'}`, so "1 units"
+      // would print on every retainer and single-crown invoice. Pinned here
+      // because the invoice is where the reader reconciles a count.
+      const lines = caseDetailLines({ ...baseCase, selected_teeth: [21] });
+      expect(lines.find((l) => l.label === 'Units')?.value).toBe('1 unit');
     });
 
     it('omits rows whose value is missing instead of printing a blank', () => {
@@ -134,7 +154,10 @@ describe('ledgerCaseDetail', () => {
         created_at: '',
       });
       // Teeth survive here because baseCase has them; everything else drops out.
-      expect(lines.map((l) => l.label)).toEqual(['Teeth']);
+      // CHANGED (compact invoice): `Units` now survives alongside them — the
+      // unit count is derived from the teeth, so it cannot be blank while the
+      // teeth row is present.
+      expect(lines.map((l) => l.label)).toEqual(['Teeth', 'Units']);
       expect(lines.every((l) => !!l.value)).toBe(true);
     });
 
@@ -158,11 +181,15 @@ describe('ledgerCaseDetail', () => {
       expect(text).toContain('Patient: Ayesha Khan');
       expect(text).toContain('Procedure: Zirconia Crown');
       expect(text).toContain('Teeth: #11, #12, #21');
+      // CHANGED (compact invoice): the narration used to assert `Units:` was
+      // ABSENT, because the block deliberately left units to the case record.
+      // The row is emitted now, so the PDF/CSV narration carries the same
+      // count the printed invoice shows on its line.
+      expect(text).toContain('Units: 3 units');
       expect(text).toContain('Shade: A2');
       expect(text).toContain('Received Date: Sep 30, 2026');
       expect(text).toContain('Delivery Date: Oct 20, 2026');
       expect(text).not.toContain('Doctor:');
-      expect(text).not.toContain('Units:');
       expect(text.split(' • ').length).toBe(caseDetailLines(baseCase).length);
     });
   });

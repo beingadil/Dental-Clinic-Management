@@ -5,17 +5,13 @@ import { PaymentAttachment } from '../../types';
 ;
 import { validateFile } from '../../services/fileValidation';
 import { canPost } from '../../services/permissions';
-import { 
-  DollarSign, 
-  Wallet, 
-  ArrowDownLeft, 
-  CheckCircle2, 
-  AlertCircle, 
-  Upload, 
-  Scale, 
-  Split, 
-  ShieldCheck,
-  Percent
+import {
+  CheckCircle2,
+  AlertCircle,
+  Upload,
+  Scale,
+  Split,
+  ShieldCheck
 } from 'lucide-react';
 import { Modal } from '../common/ui';
 import { getTodayStr, getNowStamp } from '../../utils/dateUtils';
@@ -23,7 +19,16 @@ import { getTodayStr, getNowStamp } from '../../utils/dateUtils';
 interface RecordTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialMode?: 'payment' | 'advance' | 'credit_note' | 'advance_deposit' | 'refund';
+  /**
+   * `payment`  - money against one or more open invoices.
+   * `advance`  - money held on account, later drawn down against invoices.
+   *
+   * Credit notes and refunds are gone. A credit note reduces what a clinic
+   * owes; issuing one is a write-off decision, not a collection, and the
+   * operator removed it from this form deliberately. One that has already been
+   * issued still shows on the invoice drawer and still nets off the balance.
+   */
+  initialMode?: 'payment' | 'advance' | 'advance_deposit';
   initialClinicId?: string;
   initialLabId?: string;
   initialInvoiceId?: string;
@@ -40,20 +45,22 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   onSuccess
 }) => {
   const effectiveClinicId = initialClinicId || initialLabId;
-  const { 
-    labs, 
-    invoices, 
-    advancePayments, 
-    recordTransactionV2, 
-    recordAdvanceDepositV2, 
-    issueCreditNoteV2,
-    recordAccountAdjustment,
+  const {
+    labs,
+    invoices,
+    advancePayments,
+    recordTransactionV2,
+    recordAdvanceDepositV2,
     user
   } = useApp();
 
-  const [mode, setMode] = useState<'payment' | 'advance' | 'credit_note' | 'refund'>(
-    initialMode === 'advance_deposit' ? 'advance' : initialMode
-  );
+  /* One of two things, never switched mid-form: `advance_deposit` is the name
+     the callers use for a button labelled "Advance Deposit", and `advance` is
+     what it means. Normalised once, here, so no caller has to know both.
+     Derived rather than held in state because a state copy could disagree with
+     the prop after the form is reopened in a different mode. */
+  const mode: 'payment' | 'advance' =
+    initialMode === 'advance' || initialMode === 'advance_deposit' ? 'advance' : 'payment';
   const [clinicId, setClinicId] = useState<string>(effectiveClinicId || (labs[0]?.id || ''));
   const [amount, setAmount] = useState<number>(0);
   const [method, setMethod] = useState<'cash' | 'bank' | 'cheque' | 'advance'>('cash');
@@ -79,29 +86,27 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
      as a UNIQUE failure once the SQLite sync runs. */
   const submitLatchRef = useRef(false);
 
-  // Credit Note specific
-  const [creditReasonCode, setCreditReasonCode] = useState<string>('remake');
-  const [creditReasonText, setCreditReasonText] = useState<string>('');
+  /* Pre-set when the form is opened from a specific invoice row, and settable
+     by clicking a row in the allocation list. */
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>(initialInvoiceId || '');
 
   // Split allocations for multi-invoice payment
   const [allocations, setAllocations] = useState<{ [invoiceId: string]: number }>({});
 
   /* Inline validation/POST errors (B6): alert() was blocking, non-aria and
-     inconsistent with ReversalModal's inline-error voice. One error slot,
-     cleared on the next submit attempt, tied to the footer banner. */
+     inconsistent with the rest of the module's inline-error voice. One error
+     slot, cleared on the next submit attempt, tied to the footer banner. */
   const [formError, setFormError] = useState<string>('');
 
   // Reset when opening
   useEffect(() => {
     if (isOpen) {
       submitLatchRef.current = false;
-      setMode(initialMode === 'advance_deposit' ? 'advance' : initialMode);
+      setFormError('');
       /* `effectiveClinicId`, not `initialClinicId`.
        *
-       * BillingView, ReportsView and LabDetailModal all open this modal with
-       * `initialLabId`; only the dashboard's payment tile passes `initialClinicId`.
-       * The reset therefore fired for some callers and not others, and because
+       * BillingView opens this modal with `initialLabId`; only a caller that
+       * passes `initialClinicId` would drive the reset from that prop. Because
        * `if (!isOpen) return null` keeps the component mounted, the `useState`
        * initialiser never re-ran — so reopening the modal from a different
        * clinic silently kept the PREVIOUS clinic selected. The cashier saw one
@@ -109,7 +114,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       setClinicId(effectiveClinicId || (labs[0]?.id || ''));
       if (initialInvoiceId) setSelectedInvoiceId(initialInvoiceId);
     }
-  }, [isOpen, initialMode, effectiveClinicId, initialInvoiceId, labs]);
+  }, [isOpen, effectiveClinicId, initialInvoiceId, labs]);
 
   // Outstanding invoices for the selected clinic
   const clinicInvoices = useMemo(() => {
@@ -238,15 +243,12 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     if (submitLatchRef.current) return;
     setFormError('');
     // B3 enforcement at the action layer — hiding the buttons is not enough.
-    const postingAction = mode === 'payment' ? 'payment:record'
-      : mode === 'advance' ? 'advance:deposit'
-      : mode === 'credit_note' ? 'credit:issue'
-      : 'refund:issue';
+    const postingAction = mode === 'payment' ? 'payment:record' : 'advance:deposit';
     if (!canPost(user, postingAction)) {
       setFormError(`Your role (${user?.role || 'signed out'}) is not permitted to post this transaction type.`);
       return;
     }
-    if (amount <= 0 && mode !== 'credit_note') {
+    if (amount <= 0) {
       setFormError('Please enter a valid amount greater than 0.');
       return;
     }
@@ -265,11 +267,6 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         );
         return;
       }
-    }
-
-    if (mode === 'credit_note' && !selectedInvoiceId) {
-      setFormError('Please select a target invoice for this credit note.');
-      return;
     }
 
     // Every validation passed — latch before the first write.
@@ -321,38 +318,6 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
 
         onClose();
         if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
-      } else if (mode === 'credit_note') {
-        issueCreditNoteV2({
-          clinicId,
-          invoiceId: selectedInvoiceId,
-          amount,
-          date,
-          reasonCode: creditReasonCode,
-          reasonText: creditReasonText || `Adjustment for ${creditReasonCode}`,
-          /* These three were collected by this form in credit-note mode and
-             silently thrown away — the reference, the note and the uploaded
-             proof all went nowhere, so a credit note was issued with no
-             justification attached even though the cashier filled every field
-             to do so. */
-          referenceNumber,
-          notes,
-          attachments
-        });
-
-        onClose();
-        if (onSuccess) onSuccess({});
-      } else if (mode === 'refund') {
-        recordAccountAdjustment(
-          clinicId,
-          'refund',
-          amount,
-          notes || 'Client advance refund',
-          referenceNumber,
-          attachments,
-          date
-        );
-        onClose();
-        if (onSuccess) onSuccess({});
       }
     } catch (err) {
       // A thrown command must not leave the latch armed (audit F12): the
@@ -366,7 +331,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     <Modal
       open
       onClose={onClose}
-      label="Record transaction"
+      label={mode === 'advance' ? 'Record advance deposit' : 'Receive payment'}
       maxWidth="max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl"
       backdropClassName="p-2 sm:p-4 md:p-6"
       cardClassName="max-h-[94vh] flex flex-col"
@@ -374,107 +339,27 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       header={
         <div>
           <h3 className="text-base font-semibold text-slate-900">
-            Record Financial Transaction
+            {mode === 'advance' ? 'Advance Deposit' : 'Receive Payment'}
           </h3>
           <p className="text-xs text-slate-500">
-            Unified double-entry transaction manager & automated allocation engine
+            {mode === 'advance'
+              ? 'Money held on account for this clinic, drawn down against later invoices.'
+              : 'Money received against one or more open invoices.'}
           </p>
         </div>
       }
     >
 
-        {/* Mode Selector Tabs */}
-        <div className="px-6 border-b border-slate-200 bg-white flex items-center gap-1 pt-2">
-          <button
-            type="button"
-            onClick={() => setMode('payment')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
-              mode === 'payment'
-                ? 'border-slate-900 text-slate-900 bg-slate-50/60'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <ArrowDownLeft className="w-4 h-4" />
-            Collect Payment
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('advance')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
-              mode === 'advance'
-                ? 'border-slate-900 text-slate-900 bg-slate-50/60'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <Wallet className="w-4 h-4" />
-            Advance Deposit
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('credit_note')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
-              mode === 'credit_note'
-                ? 'border-slate-900 text-slate-900 bg-slate-50/60'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <Percent className="w-4 h-4" />
-            Credit Note / Write-Off
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('refund')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
-              mode === 'refund'
-                ? 'border-slate-900 text-slate-900 bg-slate-50/60'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <DollarSign className="w-4 h-4" />
-            Refund
-          </button>
-        </div>
-
+        {/* No mode selector. What this form records — a payment against an
+            invoice, or money held on account — is decided by which button
+            opened it and shown in the title. A tab strip over two options, one
+            of which used to be Credit Note, spent a third of the form's height
+            choosing something the caller had already chosen. */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1">
-          {/* Clinic Selector & Quick Health Strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Dental Clinic / Doctor Account *
-              </label>
-              <div className="relative">
-                <select
-                  value={clinicId}
-                  onChange={(e) => {
-                    setClinicId(e.target.value);
-                    setSelectedInvoiceId('');
-                  }}
-                  className="w-full text-xs px-3 py-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-800 font-medium"
-                >
-                  {labs.map((lab) => (
-                    <option key={lab.id} value={lab.id}>
-                      {lab.name} ({lab.city || 'Clinic'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Account Quick Health Box */}
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs flex flex-col justify-center">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span>Net Outstanding:</span>
-                <span className="font-bold text-slate-900 font-mono">{formatPKR(clinicTotalDue)}</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-500">
-                <span>Advance Credit:</span>
-                <span className="font-semibold text-emerald-700 font-mono">{formatPKR(clinicAdvanceWallet)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Amount & Date & Method */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* The two fields typed on EVERY entry, first. A cashier types an
+              amount and picks a channel; everything below is context,
+              allocation or optional detail. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Amount (PKR) *
@@ -492,19 +377,6 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                   required
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Transaction Date *
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-                required
-              />
             </div>
 
             <div>
@@ -528,7 +400,74 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
             </div>
           </div>
 
-          {/* Mode-Specific Body */}
+          {/* Reference was the third field on the form and sat behind a collapsed
+              <details> labelled "Optional", so a cheque or transfer number had to
+              be hunted for. It now sits with the two above it. */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Reference / Cheque # / Deposit Slip ID
+            </label>
+            <input
+              type="text"
+              value={referenceNumber}
+              onChange={(e) => setReferenceNumber(e.target.value)}
+              placeholder="e.g. TR-998234 or CHQ-0021"
+              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+            />
+          </div>
+
+          {/* Context, not input. The date decides which day's ledger this lands
+              on; the clinic decides which invoices are on offer and what the
+              advance wallet holds. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Transaction Date *
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                required
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Dental Clinic / Doctor Account *
+              </label>
+              <div className="relative">
+                <select
+                  value={clinicId}
+                  onChange={(e) => {
+                    setClinicId(e.target.value);
+                    setSelectedInvoiceId('');
+                  }}
+                  className="w-full text-xs px-3 py-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-800 font-medium"
+                >
+                  {labs.map((lab) => (
+                    <option key={lab.id} value={lab.id}>
+                      {lab.name} ({lab.city || 'Clinic'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Account Quick Health Box */}
+            <div className="sm:col-span-3 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs flex flex-wrap items-center gap-x-8 gap-y-1">
+              <span className="flex items-center gap-2 text-slate-500">
+                <span>Net Outstanding:</span>
+                <span className="font-bold text-slate-900 font-mono">{formatPKR(clinicTotalDue)}</span>
+              </span>
+              <span className="flex items-center gap-2 text-slate-500">
+                <span>Advance Credit:</span>
+                <span className="font-semibold text-emerald-700 font-mono">{formatPKR(clinicAdvanceWallet)}</span>
+              </span>
+            </div>
+          </div>
+
           {mode === 'payment' && (
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
               <div className="flex items-center justify-between">
@@ -646,142 +585,65 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
             </div>
           )}
 
-          {mode === 'credit_note' && (
-            <div className="p-4 rounded-lg bg-amber-50/60 border border-amber-200 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-                <Percent className="w-4 h-4 text-ink-warning" />
-                <span>Credit Note & Write-off Details</span>
+          {/* Everything below the allocation is genuinely optional, so it stays
+              folded. Reference is NOT here any more — see above. */}
+          <details className="rounded-lg border border-slate-200 bg-white">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-xs font-bold text-slate-700">
+              <span>Reconciliation, proof &amp; notes</span>
+              <span className="text-[11px] font-semibold text-slate-500">Optional</span>
+            </summary>
+            <div className="space-y-5 border-t border-slate-200 p-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Bank Statement Reconciliation Status
+                </label>
+                <label className="flex items-center gap-2 pt-1 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isVerified}
+                    onChange={(e) => setIsVerified(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                  />
+                  <span>Mark as verified / settled immediately</span>
+                </label>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Target Invoice *
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Deposit Slip / Cheque Image Attachment
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg cursor-pointer flex items-center gap-2 transition-colors">
+                    <Upload className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{proofName ? 'Change Slip' : 'Upload Transfer Slip'}</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
                   </label>
-                  <select
-                    value={selectedInvoiceId}
-                    onChange={(e) => setSelectedInvoiceId(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800"
-                    required
-                  >
-                    <option value="">Select Invoice to Credit...</option>
-                    {clinicInvoices.map((inv) => (
-                      <option key={inv.id} value={inv.id}>
-                        {inv.invoice_number} - {inv.patient_name || 'Case'} (Due: {formatPKR(invoiceBalanceDue(inv))})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Standard Reason Code *
-                  </label>
-                  <select
-                    value={creditReasonCode}
-                    onChange={(e) => setCreditReasonCode(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800"
-                  >
-                    <option value="remake">Lab Remake / Clinical Fit Warranty (100% Free)</option>
-                    <option value="shade_redo">Shade Discrepancy Correction</option>
-                    <option value="volume_discount">Monthly Volume Retainer Discount</option>
-                    <option value="damage">Transit Damage / Breakage Allowance</option>
-                    <option value="bad_debt">Bad Debt Write-Off (Authorized)</option>
-                  </select>
+                  {proofName && (
+                    <span className="text-xs text-ink-success font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {proofName}
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Justification / Clinical Defect Description
+                  Transaction Notes / Narration
                 </label>
-                <input
-                  type="text"
-                  value={creditReasonText}
-                  onChange={(e) => setCreditReasonText(e.target.value)}
-                  placeholder="e.g. Doctor reported margin opening on tooth #21; full remake authorized by Lab Manager."
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800"
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add optional notes for the clinic statement or accountant..."
+                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
                 />
               </div>
-            </div>
-          )}
-
-          {/* Secondary fields stay folded away, so the form leads with the
-              transaction itself instead of five stacked sections. */}
-          <details className="rounded-lg border border-slate-200 bg-white">
-            <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-xs font-bold text-slate-700">
-              <span>Reference, reconciliation, proof &amp; notes</span>
-              <span className="text-[11px] font-semibold text-slate-500">Optional</span>
-            </summary>
-            <div className="space-y-5 border-t border-slate-200 p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Reference / Cheque # / Deposit Slip ID
-                  </label>
-                  <input
-                    type="text"
-                    value={referenceNumber}
-                    onChange={(e) => setReferenceNumber(e.target.value)}
-                    placeholder="e.g. TR-998234 or CHQ-0021"
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Bank Statement Reconciliation Status
-                  </label>
-                  <label className="flex items-center gap-2 pt-1 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isVerified}
-                      onChange={(e) => setIsVerified(e.target.checked)}
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                    />
-                    <span>Mark as verified / settled immediately</span>
-                  </label>
-                </div>
-              </div>
-
-          {/* Payment Proof Uploader */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Deposit Slip / Cheque Image Attachment
-            </label>
-            <div className="flex items-center gap-3">
-              <label className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg cursor-pointer flex items-center gap-2 transition-colors">
-                <Upload className="w-3.5 h-3.5 text-slate-500" />
-                <span>{proofName ? 'Change Slip' : 'Upload Transfer Slip'}</span>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-              {proofName && (
-                <span className="text-xs text-ink-success font-medium flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {proofName}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Notes / Internal Comments */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Transaction Notes / Narration
-            </label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add optional notes for the clinic statement or accountant..."
-              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-            />
-          </div>
             </div>
           </details>
 
@@ -793,9 +655,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               <strong className="text-slate-800">
                 {mode === 'payment'
                   ? `Debit Cash/Bank (${formatPKR(amount)}) • Credit A/R (${formatPKR(totalAllocated)})`
-                  : mode === 'advance'
-                  ? `Debit Cash/Bank (${formatPKR(amount)}) • Credit Advance Liability (${formatPKR(amount)})`
-                  : `Debit Sales Returns / Write-offs (${formatPKR(amount)}) • Credit A/R (${formatPKR(amount)})`}
+                  : `Debit Cash/Bank (${formatPKR(amount)}) • Credit Advance Liability (${formatPKR(amount)})`}
               </strong>
             </div>
             <span className="text-ink-success font-semibold flex items-center gap-1">
@@ -825,7 +685,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               className="px-5 py-2.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              Post Transaction & Issue Receipt
+              {mode === 'advance' ? 'Post Deposit & Issue Receipt' : 'Post Payment & Issue Receipt'}
             </button>
           </div>
         </form>

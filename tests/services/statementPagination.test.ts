@@ -20,14 +20,19 @@ const invoice = (id: string, over: Partial<Invoice> = {}): Invoice =>
   }) as Invoice;
 
 /**
- * A case whose detail block renders the full six-pair grid.
+ * A case whose detail block renders every row `caseDetailLines` can emit.
  *
  * The field is `selected_teeth`, the ARRAY the formatter reads. This fixture
  * used to carry a `teeth` STRING that no reader looks at, which made the
  * "detail-heavy" row only as tall as a case with no charting at all — and
  * charting becomes meaningful the moment `caseDetailLines` shortens the
- * uncharted case to two rows. Chart it for real so this row stays the tall one
- * the paging assertions below are about.
+ * uncharted case to a single row. Chart it for real so this row stays the
+ * tall one the paging assertions below are about.
+ *
+ * Seven rows now, not six: the compact-invoice change added `Units`, and this
+ * case charts two teeth, so it is the tallest row the paginator can see.
+ * `rowHeightPx` still prices a row as a two-column grid, so seven rows cost
+ * ceil(7 / 2) = 4 grid lines.
  */
 const detailedCase = (id: string): DentalCase =>
   ({
@@ -41,7 +46,14 @@ const detailedCase = (id: string): DentalCase =>
     delivery_date: 'Oct 15, 2026',
   }) as unknown as DentalCase;
 
-/** A case with no detail lines at all. */
+/**
+ * The emptiest case the store can hold: no patient, no product, no shade, no
+ * charting and no dates.
+ *
+ * It is NOT a zero-detail case any more. `Units` is emitted whenever
+ * `billableUnits` > 0, and that helper floors at 1 for uncharted work, so a
+ * linked case always has at least the one row to print.
+ */
 const bareCase = (id: string): DentalCase =>
   ({ id, case_number: `C-${id}`, patient_name: '', case_type_name: '', shade: '' }) as unknown as DentalCase;
 
@@ -50,16 +62,35 @@ describe('rowHeightPx', () => {
     expect(rowHeightPx(invoice('a'), [])).toBe(ROW_PX_BARE);
   });
 
-  it('falls back to the bare height when the linked case has no detail lines', () => {
-    expect(rowHeightPx(invoice('a', { case_id: 'c1' }), [bareCase('c1')])).toBe(ROW_PX_BARE);
+  it('charges a linked case exactly one detail line, whatever it carries', () => {
+    // CHANGED (compact invoice). This asserted ROW_PX_BARE for `bareCase` on
+    // the premise that a linked case could produce zero detail lines, and a
+    // 124px cost for a seven-row case on the premise the block was a
+    // two-column grid. Both premises died when the block became a single
+    // inline line: it is one line whenever a case resolves, no matter how many
+    // facts are in it.
+    //
+    // The load-bearing property is that CONSTANT-ness. A case with one fact and
+    // a case with seven must price identically, because that is precisely what
+    // stops a fortnightly batch spilling onto sheets the paper does not need.
+    // Written relative to ROW_PX_BARE so the measured bare height stays visible.
+    expect(rowHeightPx(invoice('a', { case_id: 'c1' }), [bareCase('c1')])).toBe(
+      ROW_PX_BARE + 11,
+    );
   });
 
-  it('adds grid lines for a case that carries detail', () => {
-    const bare = rowHeightPx(invoice('a'), []);
+  it('prices a fact-heavy case the same as a near-empty one', () => {
+    // The regression this guards: the old grid model charged ceil(n / 2)
+    // lines, so a case with more facts cost more height and pushed a run onto
+    // extra pages even though the printed cell was the same single line.
+    const bare = rowHeightPx(invoice('a', { case_id: 'c1' }), [bareCase('c1')]);
     const tall = rowHeightPx(invoice('a', { case_id: 'c1' }), [detailedCase('c1')]);
-    expect(tall).toBeGreaterThan(bare);
+    expect(tall).toBe(bare);
+    // And still more than an invoice with no resolvable case at all.
+    expect(tall).toBeGreaterThan(rowHeightPx(invoice('a'), []));
   });
-});
+
+  });
 
 describe('sheetBudgetPx', () => {
   it('gives letter less room than a4', () => {
@@ -133,7 +164,13 @@ describe('paginateStatementInvoices', () => {
     const pages = paginateStatementInvoices(invoices, cases, settings);
 
     expect(fits(pages, settings)).toBe(true);
-    expect(pages.length).toBeGreaterThan(1);
+    // CHANGED (compact invoice): eight detail-heavy rows are 45px each now,
+    // where the old grid model priced them at 124px and split them over two
+    // sheets. They fit one. The invariant this guards — every row lands inside
+    // its own sheet's budget — is unchanged and still asserted by `fits`; the
+    // multi-page path is covered by the longer runs below, which genuinely
+    // exceed one sheet. Losing the `> 1` assertion here is the point of the
+    // change, not a weakening: eight rows on one sheet is the desired result.
     expect(pages.flatMap((p) => p.rows).map((i) => i.id)).toEqual(invoices.map((i) => i.id));
   });
 

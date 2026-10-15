@@ -41,7 +41,6 @@ import { PanelLayoutBar } from './PanelLayoutBar';
 import { UpdatePill } from './UpdatePill';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
-import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { ShadeGuideModal } from './ShadeGuideModal';
 import { DeliveryCalendarModal } from './DeliveryCalendarModal';
 import { CaseQueueModal, type QueueId } from './CaseQueueModal';
@@ -69,7 +68,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
    case behaves identically wherever it is clicked. The full CaseDetailModal
    is reserved for editing. */
   const [slipCase, setSlipCase] = React.useState<DentalCase | null>(null);
-const [showPaymentModal, setShowPaymentModal] = React.useState(false);
 const [showShadeGuide, setShowShadeGuide] = React.useState(false);
 const [showCalendar, setShowCalendar] = React.useState(false);
 const [queue, setQueue] = React.useState<QueueId | null>(null);
@@ -139,9 +137,10 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
       hint: 'Allocate to invoices',
       icon: CreditCard,
       tone: 'pos',
-      onClick: () => {
-        setShowPaymentModal(true);
-      },
+      /* Payments are recorded in Billing & Invoices only. This tile navigates
+         there instead of opening its own copy of the recorder — see the note
+         where the modal used to be mounted. */
+      onClick: () => setCurrentView('billing'),
     },
     {
       key: 'invoices',
@@ -381,15 +380,9 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
         onClose={() => setQueue(null)}
       />
 
-      {/* Payment and Shade Guide are the two tiles that needed a real modal
-          rather than a navigation hop. */}
-      {showPaymentModal && (
-        <RecordTransactionModal
-          isOpen
-          initialMode="payment"
-          onClose={() => setShowPaymentModal(false)}
-        />
-      )}
+      {/* Shade Guide needs a real modal. Payment no longer does: it is a
+          navigation hop to Billing & Invoices, which is the only place a
+          payment is recorded. */}
 
       {showShadeGuide && (
         <ShadeGuideModal
