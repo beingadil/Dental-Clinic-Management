@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ACCOUNT_CODES, formatPKR } from '../../services/financeDomain';
+import { ACCOUNT_CODES, formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
 import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
@@ -47,7 +47,7 @@ interface NarrationDetails {
 }
 
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
-  const { labs, getLedgerEntries, brandingSettings, cases } = useApp();
+  const { labs, getLedgerEntries, brandingSettings, cases, invoices } = useApp();
 
   // Case drill-down state: which case's record is open from a ledger row.
   const [selectedCaseForModal, setSelectedCaseForModalLocal] = useState<DentalCase | null>(null);
@@ -321,6 +321,52 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   }, [visibleLedgerItems, openingBalance, startDate]);
 
   // Helper to format narration and determine entry category
+  /**
+   * A Paid / Partial / Unpaid badge for an invoice ledger row, or null for
+   * every other entry type.
+   *
+   * Derived from `invoiceBalanceDue`, the same number the invoice table and the
+   * printed invoice use, so the three surfaces cannot disagree - including after
+   * a credit note, where the stored `payment_status` is the one that drifts.
+   *
+   * Nothing renders for payment rows: a payment IS the act of settling, so
+   * labelling it "Paid" would be circular.
+   */
+  const settlementBadge = (entry: LedgerEntry) => {
+    if (entry.entry_type !== 'invoice') return null;
+    // `reference_id` carries the source document's id (the invoice id for an
+    // invoice row); `reference_number` is its human reference (INV-0056).
+    const inv = invoices.find(
+      (i) => i.id === entry.reference_id || i.invoice_number === entry.reference_number,
+    );
+    // An invoice row whose invoice is no longer in the store cannot be judged.
+    // Saying "Unpaid" would be a guess dressed as a fact.
+    if (!inv) return null;
+
+    const balance = invoiceBalanceDue(inv);
+    const partlyPaid = (inv.amount_paid || 0) > 0;
+    const label = balance <= 0 ? 'Paid' : partlyPaid ? 'Partial' : 'Unpaid';
+    const tone =
+      balance <= 0
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        : partlyPaid
+          ? 'bg-amber-50 text-amber-700 border-amber-200'
+          : 'bg-rose-50 text-rose-700 border-rose-200';
+    const title =
+      balance <= 0
+        ? `Settled in full${(inv.credit_notes_total || 0) > 0 ? ' (net of credit notes)' : ''}`
+        : `Outstanding ${formatPKR(balance)}`;
+
+    return (
+      <span
+        className={`inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${tone}`}
+        title={title}
+      >
+        {label}
+      </span>
+    );
+  };
+
   const getNarrationDetails = (entry: LedgerEntry): NarrationDetails => {
     if (!entry) {
       return {
@@ -917,6 +963,17 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
                             <Icon className="w-3 h-3" />
                             {details.typeLabel}
                           </span>
+                          {/* Settlement of the INVOICE this row bills.
+                              A ledger row says what was DEBITED, never whether it
+                              was later settled, so an operator reconciling a
+                              clinic could not tell from this pane whether the
+                              invoice they were looking at was still owed. The
+                              badge is derived from the balance, not from
+                              `payment_status`, which disagrees after a credit
+                              note. Nothing renders for payment rows - a payment
+                              is the act of settling, so labelling it "paid"
+                              would be circular. */}
+                          {settlementBadge(row.entry)}
                           <span className="font-semibold text-slate-800 text-xs">
                             {details.narration}
                           </span>

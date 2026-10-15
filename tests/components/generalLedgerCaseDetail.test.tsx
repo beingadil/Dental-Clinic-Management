@@ -2,7 +2,12 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
-const downloadPdf = vi.fn((_name: unknown, _bytes: unknown) => {});
+/* Returns a real result shape. The production `downloadPdf` is awaited now and
+   its outcome inspected, so a mock returning undefined made the success path
+   look like a failure and fired the error alert. */
+const downloadPdf = vi.fn((_name: unknown, _bytes: unknown) =>
+  Promise.resolve({ status: 'saved' as const, path: 'ledger.pdf', bytes: 8 }),
+);
 const buildLedgerPdf = vi.fn((_entries: unknown, _meta: unknown) => ({ pdf: new Uint8Array([1]) }));
 // Intercept the PDF builder itself so we can assert on the exact narration
 // rows that reach the printed document, not just that a file was downloaded.
@@ -71,10 +76,37 @@ const { CASE, LEDGER } = vi.hoisted(() => {
 
 // The general ledger needs a clinic picked before it renders rows; the stub
 // supplies one lab and its ledger so the test drives the real dropdown.
+/* The invoice the ledger bills. The preview derives a Paid / Partial /
+   Unpaid badge per invoice row from the live invoice list, so the mock has
+   to supply it. 30,000 with 10,000 received leaves 20,000 outstanding, so
+   the badge reads 'Partial'. */
+const INVOICE = {
+  id: 'inv-0042',
+  invoice_number: 'INV-0042',
+  case_id: 'case-2001',
+  case_number: 'DS-2001',
+  lab_id: 'lab-1',
+  lab_name: 'Cases Clinic',
+  case_type_name: 'Zirconia Crown',
+  doctor_name: 'Dr. Ali',
+  patient_name: 'Ali Raza',
+  amount: 30000,
+  discount: 0,
+  final_amount: 30000,
+  amount_paid: 10000,
+  credit_notes_total: 0,
+  payment_status: 'partial',
+  issue_date: '2026-10-03',
+  due_date: '2026-10-17',
+  created_at: '2026-10-03T00:00:00Z',
+  payments: [],
+};
+
 vi.mock('../../src/context/AppContext', () => ({
   useApp: () => ({
     labs: [{ id: 'lab-1', name: 'Cases Clinic' }],
     cases: [CASE],
+    invoices: [INVOICE],
     brandingSettings: { appName: 'DENTAL SOLUTIONS', lab_name: 'DENTAL SOLUTIONS' },
     getLedgerEntries: () => LEDGER,
     setSelectedCaseForModal: () => {},

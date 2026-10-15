@@ -520,6 +520,30 @@ export const BillingView: React.FC = () => {
                 ),
               },
               {
+                /* Patient, so a search by name lands on a row that says whose it
+                   is. The search haystack already matched patient_name, but the
+                   result came back as an invoice number with the name nowhere on
+                   the screen - the operator had to open the drawer to learn they
+                   had found the right row. Payment Status sits three columns to
+                   the right, so one glance now answers both "whose" and "paid?".
+
+                   Truncated rather than wrapped: the value is frequently a short
+                   numeric patient id ("3178") but is sometimes a full name, and a
+                   long one must not make the row three lines tall. */
+                header: 'Patient',
+                className: 'whitespace-nowrap',
+                render: (inv: Invoice) => {
+                  const name = (inv.patient_name || '').trim();
+                  if (!name) return <span className="text-slate-300">-</span>;
+                  const short = name.length > 18 ? `${name.slice(0, 17)}…` : name;
+                  return (
+                    <span className="text-slate-700" title={name}>
+                      {short}
+                    </span>
+                  );
+                },
+              },
+              {
                 header: 'Dental Clinic',
                 className: 'text-slate-900 font-semibold whitespace-nowrap',
                 render: (inv: Invoice) => {
