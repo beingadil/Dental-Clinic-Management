@@ -6,6 +6,75 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-10-15
+
+The nav rail, header bar and dashboard had each grown their own palette, meeting
+at a seam that showed in dark mode. This release unifies them and fixes the
+defects found while doing it.
+
+### Correctness
+- **Invoice balance had two live definitions.** The same figure was computed in
+  33 places; 16 of them omitted credit notes. The register, the Outstanding KPI,
+  the CSV export and every printed statement overstated what was owed, and
+  "bulk mark paid" posted a different number from the row it was clicked on.
+  All 33 now call one `invoiceBalanceDue()`, which clamps so an over-credit
+  cannot self-mark an invoice paid and drop it off the cashier's queue.
+- **Credit notes discarded the reference, notes and proof the cashier typed.**
+  All three were on the type and never assigned.
+- **`isVerified` was accepted on both payment commands and never read**, so
+  every bank and cheque payment sat permanently unreconciled.
+- **`RecordTransactionModal` reset on the wrong id.** Three of its four callers
+  pass `initialLabId`; reopening for another clinic kept the previous one.
+- **Pricing overrides ignored `effective_date`**, so an override dated for next
+  month repriced today's cases immediately.
+- **`warning_threshold_hours` was labelled but never compared.** Set it to 48
+  and the screen said "due within 48 hours" and flagged nothing.
+- **Three preferences were written and read by nothing** —
+  `default_turnaround_days`, `default_priority` and
+  `auto_print_job_slips`. All three now drive something.
+- **Escalation settings were saved, audited and read by nothing.** The third
+  sweep is implemented; the shipped default is off, because honouring a
+  never-observed `true` + `daily` would switch a daily nag on for every lab.
+- **The password rule existed three times with two answers** — creating a user
+  needed 8 characters, an admin reset accepted "a". One shared rule.
+- **The QC subsystem was built and unreachable.** The panel now renders it.
+- **The billing currency setting promised multi-currency** across 53 hardcoded
+  PKR sites it never read. The control and its permission are gone.
+- **`ReportsView`'s journal inspector could never open** — now wired from the
+  voucher row.
+- **`CatalogView` validated `leadDays` but never rendered the message**, so Save
+  did nothing with no field marked.
+
+### Design
+- `src/theme/shell.css`: one component layer for the nav rail, header and dock,
+  reading the same tokens the dashboard panels already use. Repointing a token
+  now moves all three together.
+- Header and sidebar rebuilt on it. Search results became real buttons (they
+  were clickable divs, unreachable by keyboard), the popover lost three
+  competing hover hues, a skip link was added, and the active nav row carries
+  one signal instead of a pill plus a bar.
+- Five hand-rolled modal overlays moved onto a shared modal primitive. Each
+  gains Escape, a focus trap and `role="dialog"` / `aria-modal`, none of which
+  they had.
+
+### Consolidation
+- `DataTable` went from 1 call site to 18 — every screen table. It used to draw
+  its own card, which made adopting it produce card-in-card, so it now renders a
+  bare table and each view keeps the card it already had. Added a `tfoot` slot,
+  which three callers had been faking with a second `<table>`.
+- 11 drifted `<thead>` variants folded into one shared header style; 23 PKR
+  sites now format through one helper (display only — persisted audit text is
+  byte-identical, so existing clinics' records read the same).
+- Fourteen hand-rolled toast timers replaced by one `useTransient` primitive;
+  their `setTimeout`s were never cleared on unmount.
+- Dropped the unused `tsx` dependency and its pinned esbuild binary. The binary
+  guard now runs in the Windows CI job instead of silently skipping on ubuntu.
+
+### Gates
+113 test files / 959 tests, tsc, lint + binary-guard, 153 colour pairings clear
+WCAG AA in both themes across all five interaction states, 0 ink-on-dark-bar
+sites, 0 inline hardcoded surfaces, production build.
+
 ## [2.24.0] - 2026-10-14
 
 A production-readiness audit of the 2.23.0 build (18 phases) found four
