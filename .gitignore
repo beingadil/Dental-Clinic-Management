@@ -9,6 +9,14 @@ coverage/
 # Tauri / Rust build artifacts (regenerated from src-tauri/)
 src-tauri/target/
 
+# Tauri-generated capability schemas (src-tauri/gen/, ~330 KB of JSON).
+# tauri-build regenerates all four files on every `tauri build` / `tauri dev`,
+# so tracking them only produces merge noise. The "$schema" line in
+# capabilities/default.json points at desktop-schema.json purely so editors
+# autocomplete the permission names; if the file is absent the build recreates
+# it and only IDE hints are lost.
+src-tauri/gen/
+
 # Runtime application data — NEVER commit clinic data
 *.sqlite
 *.sqlite3

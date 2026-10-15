@@ -100,10 +100,17 @@ fn backup_delete(state: State<DbState>, name: String) -> Result<(), String> {
     fs::remove_file(dir.join(&name)).map_err(|e| format!("delete failed: {e}"))
 }
 
-fn resolve_db_path(app: &AppHandle, override_path: Option<String>) -> Result<PathBuf, String> {
-    if let Some(p) = override_path {
-        return Ok(PathBuf::from(p));
-    }
+/// Resolves the one database file this app is allowed to touch.
+///
+/// There is deliberately no caller-supplied override. `Connection::open`
+/// CREATES a missing file, so a `path` argument was an arbitrary-file-write
+/// primitive handed to the webview, and nothing in `src/` ever passed one —
+/// `loadSnapshot` calls `db_load({})` and the restore flow reads the chosen
+/// `.dentalbackup` through the webview file input and writes the bytes back
+/// through `db_save_bytes`, which still targets this same path. Restoring a
+/// backup therefore never needed a path override, and re-introducing one
+/// would only widen the attack surface.
+fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -114,12 +121,8 @@ fn resolve_db_path(app: &AppHandle, override_path: Option<String>) -> Result<Pat
 
 /// Opens (creating if needed) the real SQLite file and remembers its path.
 #[tauri::command]
-fn db_load(
-    app: AppHandle,
-    state: State<DbState>,
-    path: Option<String>,
-) -> Result<DbLoadResult, String> {
-    let db_path = resolve_db_path(&app, path)?;
+fn db_load(app: AppHandle, state: State<DbState>) -> Result<DbLoadResult, String> {
+    let db_path = resolve_db_path(&app)?;
     let existed = db_path.exists();
     // Validate + normalize the file (creates it if missing, enables FK),
     // then close: the sql.js engine in the webview owns all SQL work.
@@ -187,7 +190,7 @@ fn db_save_bytes(state: State<DbState>, bytes_b64: String) -> Result<SaveResult,
 
 /// Copies the live database file to a timestamped backup next to it.
 #[tauri::command]
-fn db_backup_file(state: State<DbState>, dest: Option<String>) -> Result<String, String> {
+fn db_backup_file(state: State<DbState>) -> Result<String, String> {
     let path = {
         let path_lock = state.path.lock().unwrap();
         path_lock
@@ -196,13 +199,15 @@ fn db_backup_file(state: State<DbState>, dest: Option<String>) -> Result<String,
             .clone()
     };
 
-    let target = match dest {
-        Some(d) => PathBuf::from(d),
-        None => {
-            let stamp = chrono_like_stamp();
-            path.with_extension(format!("sqlite.{stamp}.bak"))
-        }
-    };
+    // The target is always beside the database, for the same reason
+    // `resolve_db_path` takes no caller path: this used to accept a `dest`
+    // that went straight into PathBuf, and `fs::copy` to an attacker-chosen
+    // path overwrites whatever is there with the clinic's database. Nothing in
+    // src/ ever passed one — the scheduler calls this bare, and BackupTab
+    // exports through `save_file_bytes` with the native save dialog, which is
+    // where a user-chosen destination belongs.
+    let stamp = chrono_like_stamp();
+    let target = path.with_extension(format!("sqlite.{stamp}.bak"));
     fs::copy(&path, &target).map_err(|e| format!("backup copy failed: {e}"))?;
     Ok(target.to_string_lossy().to_string())
 }
@@ -495,6 +500,12 @@ async fn update_install(
         return Err("Refusing to install: invalid version string".into());
     }
 
+    // 600s covers the installer with enormous headroom: the bundle is ~4 MB, so
+    // even a 100 kbps link finishes in well under a minute. This used to be
+    // raised to an hour, which was only needed when the installer briefly
+    // embedded the WebView2 runtime (~210 MB) and demanded 2.81 Mbps to
+    // finish inside the budget. That variant was reverted to keep the
+    // installer small; the timeout went back with it.
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(600))
         .build()
@@ -833,6 +844,30 @@ pub fn run() {
             pdf_save::save_webview_as_pdf,
             file_export::save_file_bytes
         ])
+        // MUST stay above every other plugin: the single-instance hook has to
+        // decide "am I the first process?" before any other plugin initialises
+        // against a database file the second process would then overwrite.
+        //
+        // Desktop persistence is whole-file read-modify-write (db_read_bytes →
+        // mutate in sql.js → db_save_bytes rewrites the entire file), so a
+        // second instance is not a harmless duplicate window: it loads the same
+        // file, diverges in memory, and its next save is last-writer-wins. A
+        // double-click on the shortcut could silently drop a case, an invoice
+        // or a payment. The second launch therefore focuses the first window
+        // and exits; argv/cwd are ignored because nothing in this app passes a
+        // file to the second process.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                // A window that is minimized or hidden to the tray reads as
+                // "the app did not start" — the operator clicks again and we
+                // are back to two engines. Errors are ignored deliberately:
+                // a window that is already focused can refuse set_focus on
+                // some window managers, and that must not panic the callback.
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

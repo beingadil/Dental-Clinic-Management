@@ -1,7 +1,7 @@
 {
   "name": "dental-solutions",
   "private": true,
-  "version": "2.23.0",
+  "version": "2.24.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/verify-binaries.mjs && npm run role:check && vite --port=3000 --host=0.0.0.0",
@@ -53,5 +53,8 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "source-map-js": "^1.2.2"
   }
 }

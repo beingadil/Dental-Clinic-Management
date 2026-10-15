@@ -310,7 +310,7 @@ function Odontogram({
   const [activeShade, setActiveShade] = useState("A2");
   const [selectedToothId, setSelectedToothId] = useState<number | null>(initialSelected[0] || null);
 
-  /* Clinical specs — BUNDLED, not editable.
+/* Clinical specs — BUNDLED, not editable.
    *
    * The comment here used to read "Dynamic Clinical Specs from Settings", and a
    * listener for a `clinical-specs-updated` event that nothing in the codebase
@@ -323,7 +323,24 @@ function Odontogram({
    * The listener is kept because it costs nothing and is the correct seam IF a
    * settings editor is ever added: the service already returns the current
    * specs, so a `dispatchEvent(new Event('clinical-specs-updated'))` from a
-   * future writer would light this up with no change here. */
+   * future writer would light this up with no change here.
+   *
+   * KNOWN INEFFICIENCY, deliberately left as-is for now.
+   * `useState(getClinicalSpecs())` evaluates its argument on EVERY render and
+   * keeps only the first result, while getClinicalSpecs issues four SQL reads
+   * (materials, prep types, shade guides, implant brands) — eight on a database
+   * that has not been seeded yet. On a chart that re-renders as the operator
+   * hovers and selects teeth, that is a pile of discarded queries per
+   * interaction. `useState(() => getClinicalSpecs())` is the fix.
+   *
+   * It is not applied because tests/components/odontogramMemo.test.tsx uses the
+   * call count of this very function as its render counter: the lazy initialiser
+   * runs once per MOUNT, so both arms of the memoisation benchmark would read 0
+   * and the test would pass no matter what the component did. Applying the fix
+   * requires that test to grow a render-counting seam that does not depend on
+   * this call — there is currently no externally mockable function in the
+   * render body (isPosterior is local, getTodayStr is only reached from an
+   * event handler). Worth doing; not worth doing blind. */
   const [clinicalSpecs, setClinicalSpecs] = useState(getClinicalSpecs());
 
   useEffect(() => {
@@ -507,7 +524,7 @@ function Odontogram({
     });
 
     return [
-      { label: "Crowns", count: counts.crown, pct: selected.length ? Math.round((counts.crown / total) * 100) : 0, bg: "bg-indigo-400" },
+      { label: "Crowns", count: counts.crown, pct: selected.length ? Math.round((counts.crown / total) * 100) : 0, bg: "bg-brand-600" },
       { label: "Implants", count: counts.implant, pct: selected.length ? Math.round((counts.implant / total) * 100) : 0, bg: "bg-purple-400" },
       { label: "Veneers", count: counts.veneer, pct: selected.length ? Math.round((counts.veneer / total) * 100) : 0, bg: "bg-violet-400" },
       { label: "Inlays/Onlays", count: counts.inlay_onlay, pct: selected.length ? Math.round((counts.inlay_onlay / total) * 100) : 0, bg: "bg-emerald-400" },
@@ -560,7 +577,7 @@ function Odontogram({
                 setSelectedToothId(null);
                 emitChange([], restorations, shades, materials);
               }}
-              className="dsp-chip dsp-chip-danger"
+              className="dsp-chip dsp-chip-clear"
             >
               <Trash2 className="w-3.5 h-3.5" /> Clear ({selected.length})
             </button>
@@ -577,14 +594,14 @@ function Odontogram({
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-brand-600 animate-pulse"></span>
                   Interactive Dental Odontogram (FDI Charting)
                 </h3>
                 <p className="text-[11px] text-ink-muted mt-0.5">
                   Click any tooth to select it, then assign restoration, material, and shade.
                 </p>
               </div>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-600/20">
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-600/20">
                 {selected.length} Units Active
               </span>
             </div>
@@ -635,7 +652,7 @@ function Odontogram({
           <div className="bg-white rounded-3xl p-4 md:p-5 shadow-xs border border-slate-200">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-indigo-600" />
+                <Activity className="w-4 h-4 text-brand-600" />
                 Case Restorations Breakdown ({selected.length} Units)
               </h3>
               <span className="text-[11px] text-ink-muted font-semibold">Active Restorations</span>
@@ -665,7 +682,7 @@ function Odontogram({
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                   Tooth Specification
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-600/20">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-brand-50 text-brand-700 border border-brand-600/20">
                   Unit #{activeToothObj.displayNum}
                 </span>
               </div>
@@ -676,7 +693,7 @@ function Odontogram({
                   <ToothThumbnail type={activeToothObj.type} shade={SHADE_COLORS[activeToothObj.shade] || "#ffffff"} prep={activeToothObj.restoration} />
                 </div>
                 <div className="leading-tight flex-1 min-w-0">
-                  <h3 className="text-sm font-black text-indigo-700 truncate">
+                  <h3 className="text-sm font-black text-brand-700 truncate">
                     {activeToothObj.name}
                   </h3>
                 </div>
@@ -688,7 +705,7 @@ function Odontogram({
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     VITA Shade Guide:
                   </label>
-                  <span className="text-xs font-mono font-bold text-indigo-700">{activeToothObj.shade}</span>
+                  <span className="text-xs font-mono font-bold text-brand-700">{activeToothObj.shade}</span>
                 </div>
                 <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
                   {activeShadeList.map((s) => (
@@ -722,7 +739,7 @@ function Odontogram({
                   value={activeToothObj.details.notes || ""}
                   onChange={(e) => updateToothDetailField(activeToothObj.tooth, "notes", e.target.value)}
                   placeholder="Incisal translucency, margin finish line, stump shade..."
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 resize-none text-slate-900"
+                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-600 resize-none text-slate-900"
                 />
                 <p className="mt-1 text-[10px] text-ink-muted">
                   Chart markers: start a note with <span className="font-mono font-bold text-slate-500">C:</span> for caries or <span className="font-mono font-bold text-slate-500">F:</span> for an intracoronal filling.
@@ -756,8 +773,8 @@ function Odontogram({
                     <div
                       key={t}
                       onClick={() => setSelectedToothId(t)}
-                      className={`p-2.5 bg-white rounded-2xl border transition-all flex items-center justify-between cursor-pointer hover:border-indigo-500/40 ${
-                        isCurrent ? "border-indigo-600 ring-2 ring-indigo-600/15 shadow-xs" : "border-slate-200"
+                      className={`p-2.5 bg-white rounded-2xl border transition-all flex items-center justify-between cursor-pointer hover:border-brand-600/40 ${
+                        isCurrent ? "border-brand-600 ring-2 ring-brand-600/15 shadow-xs" : "border-slate-200"
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -771,7 +788,7 @@ function Odontogram({
                             {TOOTH_NAMES[t] ? TOOTH_NAMES[t].split("(")[0] : `Tooth #${t}`}
                           </h4>
                           <p className="text-[10px] text-slate-500 mt-0.5 truncate">
-                            {mat.split("(")[0]} • <span className="font-bold text-indigo-700">{s}</span>
+                            {mat.split("(")[0]} • <span className="font-bold text-brand-700">{s}</span>
                           </p>
                         </div>
                       </div>

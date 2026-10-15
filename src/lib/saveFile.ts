@@ -16,6 +16,10 @@
  * Mirrors `saveAsPdf`: same dialog, same Tauri API loading, same result shape.
  */
 import { isDesktop } from '../db/persistence';
+// Static, unlike the dialog below: `@tauri-apps/api/core` is already in the
+// entry chunk because window.js re-exports it statically, so the dynamic form
+// deferred nothing. The dialog plugin stays lazy — it is a genuine split point.
+import { invoke } from '@tauri-apps/api/core';
 
 export type SaveFileResult =
   | { status: 'saved'; path: string; bytes: number }
@@ -34,12 +38,8 @@ async function loadTauriApis(): Promise<boolean> {
   if (loadAttempted && !invokeFn) return false;
   loadAttempted = true;
   try {
-    const [core, dialog] = await Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/plugin-dialog'),
-    ]);
-    invokeFn = core.invoke;
-    dialogApi = dialog;
+    dialogApi = await import('@tauri-apps/plugin-dialog');
+    invokeFn = invoke;
     return true;
   } catch {
     return false;

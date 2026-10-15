@@ -11,6 +11,10 @@
  * the helper reports `unsupported` and callers keep their print button.
  */
 import { isDesktop } from '../db/persistence';
+// Static, unlike the dialog below: `@tauri-apps/api/core` is already in the
+// entry chunk because window.js re-exports it statically, so the dynamic form
+// deferred nothing. The dialog plugin stays lazy — it is a genuine split point.
+import { invoke } from '@tauri-apps/api/core';
 
 let dialogApi: typeof import('@tauri-apps/plugin-dialog') | null = null;
 let invokeFn: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
@@ -19,12 +23,8 @@ async function loadTauriApis(): Promise<boolean> {
   if (!isDesktop()) return false;
   if (dialogApi && invokeFn) return true;
   try {
-    const [core, dialog] = await Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/plugin-dialog'),
-    ]);
-    invokeFn = core.invoke;
-    dialogApi = dialog;
+    dialogApi = await import('@tauri-apps/plugin-dialog');
+    invokeFn = invoke;
     return true;
   } catch {
     return false;

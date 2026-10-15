@@ -103,4 +103,50 @@ describe('Tauri window permission contract', () => {
     // would silently hide the window controls instead of erroring loudly.
     expect(granted.has('core:window:default') || granted.has('core:default')).toBe(true);
   });
+
+  /* ---------------------------------------------------------------------
+   * Least privilege, enforced in the direction that actually bites.
+   *
+   * The test above proves a called API is granted. It cannot prove the
+   * reverse, and the reverse is where risk accumulates: a capability that
+   * nothing calls still widens what an injected script can reach, and it
+   * looks like a deliberate security decision in review.
+   *
+   * `core:webview:allow-internal-toggle-devtools` sat in the shipped 2.23.0
+   * capability file for exactly that reason - zero call sites in src/, no
+   * entry in the CHANGELOG, no comment explaining it. Every added
+   * permission must now name the code that needs it.
+   */
+  const JUSTIFIED: Record<string, string> = {
+    'core:default': 'baseline Tauri core set',
+    'core:event:default': 'listen/emit for update://progress and window events',
+    'core:window:default': 'isMaximized()/onResized() in WindowControls',
+    'core:window:allow-close': 'WindowControls close button',
+    'core:window:allow-destroy': 'close-request flush in persistence.ts',
+    'core:window:allow-minimize': 'WindowControls minimize button',
+    'core:window:allow-toggle-maximize': 'WindowControls maximize/restore button',
+    'dialog:default': 'native save dialog behind save_file_bytes and PDF export',
+  };
+
+  it('grants no permission that has no named justification', () => {
+    const unjustified = [...granted]
+      .filter((p) => !(p in JUSTIFIED))
+      .sort();
+    expect(unjustified).toEqual([]);
+  });
+
+  it('keeps the justification table honest (no stale entries)', () => {
+    // Guards the guard: if a permission is revoked above but left in JUSTIFIED,
+    // this table would quietly stop describing the real capability file.
+    const stale = Object.keys(JUSTIFIED)
+      .filter((p) => !granted.has(p))
+      .sort();
+    expect(stale).toEqual([]);
+  });
+
+  it('does not ship webview devtools access', () => {
+    // Spelled out separately from the generic check so the failure names the
+    // actual risk rather than just printing the permission string.
+    expect(granted.has('core:webview:allow-internal-toggle-devtools')).toBe(false);
+  });
 });

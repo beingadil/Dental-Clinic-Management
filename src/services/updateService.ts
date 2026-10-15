@@ -1,4 +1,8 @@
 import { APP_VERSION } from './backupService';
+// Static, not `await import('../db/crypto')`: `./backupService` below already
+// pulls crypto into the graph statically, so the dynamic form deferred nothing
+// and only cost Vite a "will not move module into another chunk" warning.
+import { sha256Hex } from '../db/crypto';
 
 /**
  * Phase 9 — application update service.
@@ -202,7 +206,6 @@ export async function parseOfflineUpdate(text: string): Promise<
     }
     if (manifest.payload_b64 && manifest.payload_checksum) {
       // integrity check is performed at install time by the host shell
-      const { sha256Hex } = await import('../db/crypto');
       const bytes = Uint8Array.from(atob(manifest.payload_b64), (c) => c.charCodeAt(0));
       const digest = 'sha256:' + (await sha256Hex(bytes));
       if (digest !== manifest.payload_checksum) {

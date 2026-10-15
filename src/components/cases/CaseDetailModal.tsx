@@ -71,7 +71,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean; html
   const content = (
     <>
       {children}
-      {required && <span className="ml-1 text-indigo-600" aria-hidden="true">*</span>}
+      {required && <span className="ml-1 text-brand-600" aria-hidden="true">*</span>}
     </>
   );
   return htmlFor ? (
@@ -83,7 +83,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean; html
 
 const inputCls = `w-full rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 ring-1 ring-slate-200
   placeholder:text-ink-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${EASE}
-  hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/40`;
+  hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-600/40`;
 
 const bezelCard = `rounded-[1.5rem] bg-slate-900/[0.035] p-1.5 ring-1 ring-slate-900/10 shadow-[0_1px_2px_rgba(15,23,42,0.06)]`;
 const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-white p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)]`;
@@ -128,7 +128,13 @@ interface CaseDetailModalProps {
    fourth "review" step: step 3 is the last one and it ends with Create. */
 type StepKey = 'basics' | 'chart' | 'schedule';
 
-const STEPS: { key: StepKey; numeral: string; label: string; caption: string }[] = [
+/* The footer carries a `Step N of M - Name` line at `sm:block md:hidden`, and
+     that breakpoint pair is deliberate rather than accidental: this full nav is
+     on screen from `md:` up, so at desktop the step was being named twice on
+     one screen - here, and again in the footer. Below `md` this collapses to a
+     bare dot strip that carries no label, which is the only place the footer
+     line earns its keep. */
+  const STEPS: { key: StepKey; numeral: string; label: string; caption: string }[] = [
   { key: 'basics', numeral: '01', label: 'Procedure', caption: 'Clinic, doctor & case type' },
   { key: 'chart', numeral: '02', label: 'Teeth & Shade', caption: 'FDI charting & aesthetics' },
   { key: 'schedule', numeral: '03', label: 'Schedule & Price', caption: 'SLA, delivery, billing & review' },
@@ -343,7 +349,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     if (['stl', 'ply', 'obj', 'cad'].includes(ext) || safeType.includes('sla') || safeType.includes('model')) {
       return {
         category: '3D Dental Scan / CAD Model',
-        badge: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20',
+        badge: 'bg-brand-50 text-brand-700 ring-1 ring-brand-600/20',
         kind: 'cad'
       };
     }
@@ -677,8 +683,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
   const finalComputedPrice = Math.max(0, price - discount);
 
-  const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
-
   /* Tracks when the wizard landed on the current step so the final submit can
      ignore a click that was really aimed at the "Continue" button. */
   useEffect(() => {
@@ -692,13 +696,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   /* Priority visual mapping */
   const priorityDot: Record<PriorityLevel, string> = {
     low: 'bg-sky-500',
-    normal: 'bg-indigo-500',
+    normal: 'bg-brand-600',
     high: 'bg-fill-warning',
     urgent: 'bg-fill-danger',
   };
   const priorityHeaderBadge: Record<PriorityLevel, string> = {
     low: 'bg-sky-400/10 text-sky-300 ring-1 ring-sky-400/30',
-    normal: 'bg-indigo-400/10 text-indigo-300 ring-1 ring-indigo-400/30',
+    normal: 'bg-brand-50 text-brand-700 ring-1 ring-brand-200',
     high: 'bg-amber-400/10 text-amber-300 ring-1 ring-amber-400/30',
     urgent: 'bg-rose-400/10 text-rose-300 ring-1 ring-rose-400/30',
   };
@@ -708,12 +712,20 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   /* ================================================================== */
 
   const renderBasicsSection = () => (
-    <div className={bezelCard}>
-      <div className={bezelCardInner}>
-        <div className="mb-5 flex items-center justify-between">
+    /* No bezel card. This block used to be a bordered, filled surface with its
+       own eyebrow row, INSIDE the modal's own surface - three nested planes for
+       four fields, which is why the step read far bigger than the work in it.
+       The modal's padding is the boundary now and the section needs one label.
+
+       It also used to carry TWO labels for the same thing: `Referral` and, in
+       mono caps, `WHO & WHAT`. One is enough; the second was decoration. */
+    <div>
+        <div className="mb-4">
           <Eyebrow>Referral</Eyebrow>
-            <span className="font-mono text-[10px] tracking-widest text-ink-muted">WHO & WHAT</span>
-          </div>
+          <p className="mt-1 text-[11.5px] text-ink-muted">
+            The clinic this case came from, and what they have sent.
+          </p>
+        </div>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <FieldLabel htmlFor="case-patient-name">Patient Name / ID</FieldLabel>
@@ -722,7 +734,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 type="text"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
-                placeholder="e.g. Sarah Jenkins (optional)"
+                placeholder="e.g. Sarah Jenkins"
                 className={inputCls}
               />
             </div>
@@ -754,7 +766,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={handleSetDoctorPreference}
-                    className={`mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-700 transition-colors hover:text-indigo-500 ${EASE}`}
+                    className={`mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-brand-700 transition-colors hover:text-brand-600 ${EASE}`}
                   >
                     Set preferred
                   </button>
@@ -781,7 +793,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <p id="case-lab-id-error" className="mt-1 text-[11px] font-medium text-ink-danger">{errors.labId}</p>
               )}
               {preferredLab && (
-                <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-indigo-50/70 px-3 py-2 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-brand-50/70 px-3 py-2 text-xs text-brand-700 ring-1 ring-brand-600/15">
                   <span className="truncate">
                     Preferred lab: <strong className="font-semibold">{preferredLab.lab_name}</strong>
                   </span>
@@ -789,7 +801,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={handleApplyPreferredLab}
-                      className={`shrink-0 rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}
+                      className={`shrink-0 rounded-full bg-brand-600 px-3 py-1 text-[10px] font-bold text-white transition-all duration-500 hover:bg-brand-700 active:scale-[0.97] ${EASE}`}
                     >
                       Auto-select
                     </button>
@@ -811,15 +823,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   </option>
                 ))}
               </select>
-              {selectedCT && (
-                <p className="mt-1.5 font-mono text-[11px] tracking-wide text-ink-muted">
-                  BASE {formatPKR(selectedCT.base_price)}
-                </p>
-              )}
             </div>
           </div>
-        </div>
-      </div>
+    </div>
   );
 
   /* Odontogram is the single most expensive subtree on this surface — one
@@ -903,11 +909,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           )}
           {needsTeeth && (
             <>
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+              {/* The count used to appear TWICE: as a heavy black pill out here
+                  and again as the chart's own `N Units Active` badge, sitting
+                  right beside the teeth it counts. One number, one place. The
+                  chart's badge is the one kept - it is adjacent to the teeth and
+                  moves with them. */}
+              <div className="mb-4">
                 <Eyebrow>FDI Charting</Eyebrow>
-                <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3.5 py-1.5 font-mono text-[11px] font-bold tracking-wider text-white">
-                  {selectedTeeth.length} UNIT{selectedTeeth.length === 1 ? '' : 'S'} ACTIVE
-                </span>
               </div>
               <Odontogram
                 initialSelected={selectedTeeth}
@@ -936,7 +944,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           <div className={bezelCardInner}>
             <Eyebrow>Scans &amp; photos</Eyebrow>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
+              <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-brand-700 active:scale-[0.97] ${EASE}`}>
                 <Upload className="h-3.5 w-3.5" />
                 Add files
                 <input
@@ -953,7 +961,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               </span>
             </div>
             {uploadNotice && (
-              <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-brand-50 px-3 py-2.5 text-xs text-brand-700 ring-1 ring-brand-600/15">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span className="font-semibold">{uploadNotice?.text}</span>
               </div>
@@ -1026,7 +1034,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               })}
             </div>
             {priorityFeedback && (
-              <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-800 ring-1 ring-indigo-600/20 animate-fadeIn`}>
+              <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-600/20 animate-fadeIn`}>
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 {priorityFeedback?.text}
               </div>
@@ -1121,7 +1129,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               htmlFor="case-instructions"
               className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600"
             >
-              <FileText className="h-4 w-4 text-indigo-700" />
+              <FileText className="h-4 w-4 text-brand-700" />
               Technician Special Instructions
             </label>
             <textarea
@@ -1186,7 +1194,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   {formatPKR(finalComputedPrice)}
                 </div>
                 {discount > 0 && (
-                  <div className="mt-1 font-mono text-[11px] text-indigo-300">
+                  /* This plate is permanently dark — `bg-slate-900`, not a themed surface — so it
+                   must NOT take a brand token. brand-700 is a dark ink meant for light
+                   surfaces and would be invisible here, and the brand tint set is solved
+                   against the app's own backgrounds, not an arbitrary dark one. Neutral
+                   ink is the only honest choice on a fixed plate. */
+                  <div className="mt-1 font-mono text-[11px] text-slate-300">
                     −{formatPKR(discount)} applied
                   </div>
                 )}
@@ -1321,7 +1334,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   return (
                     <React.Fragment key={s.key}>
                       {i > 0 && (
-                        <div className={`mx-1 h-px flex-1 transition-all duration-700 ${EASE} ${i <= step ? 'bg-indigo-600/50' : 'bg-slate-200'}`} />
+                        <div className={`mx-1 h-px flex-1 transition-all duration-700 ${EASE} ${i <= step ? 'bg-brand-600/50' : 'bg-slate-200'}`} />
                       )}
                       <button
                         type="button"
@@ -1336,14 +1349,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                             active
                               ? 'bg-slate-900 text-white shadow-[0_8px_20px_-6px_rgba(15,23,42,0.55)]'
                               : done
-                              ? 'bg-indigo-600/10 text-indigo-800 ring-1 ring-indigo-600/30'
+                              ? 'bg-brand-600/10 text-brand-700 ring-1 ring-brand-600/30'
                               : 'bg-white text-ink-muted ring-1 ring-slate-200'
                           }`}
                         >
                           {done ? <Check className="h-4 w-4" /> : s.numeral}
                         </span>
                         <span className="text-left">
-                          <span className={`block text-xs font-bold leading-tight ${active ? 'text-slate-900' : done ? 'text-indigo-800' : 'text-ink-muted'}`}>
+                          <span className={`block text-xs font-bold leading-tight ${active ? 'text-slate-900' : done ? 'text-brand-700' : 'text-ink-muted'}`}>
                             {s.label}
                           </span>
                           <span className="hidden text-[10px] leading-tight text-ink-muted lg:block">{s.caption}</span>
@@ -1363,7 +1376,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     <span
                       key={s.key}
                       className={`h-1.5 rounded-full transition-all duration-500 ${EASE} ${
-                        i === step ? 'w-6 bg-slate-900' : i < step ? 'w-1.5 bg-indigo-600/60' : 'w-1.5 bg-slate-300'
+                        i === step ? 'w-6 bg-slate-900' : i < step ? 'w-1.5 bg-brand-600/60' : 'w-1.5 bg-slate-300'
                       }`}
                     />
                   ))}
@@ -1375,7 +1388,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
         {/* ---------------------------- Body ---------------------------- */}
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 md:px-10 md:py-10">
+            
+{/* Padding was `py-8 md:py-10` - 40px of dead air top and bottom on EVERY step.
+            On a 768px screen that left the odontogram roughly 450px of usable
+            height, which is what sliced the mandibular arch in half behind the
+            footer. The chart is the work; the air around it was not. */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 md:px-8 md:py-6">
               {isEdit ? (
                 <div className="space-y-6">
                   {/* Step 3 · live stage control (editing only) */}
@@ -1464,7 +1482,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <Eyebrow>Scans & photos ({attachmentsForCase.length})</Eyebrow>
                           <div className="flex items-center gap-2">
-                            <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
+                            <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-brand-700 active:scale-[0.97] ${EASE}`}>
                               <Upload className="h-3.5 w-3.5" />
                               Upload
                               <input
@@ -1478,7 +1496,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                         </div>
 
                         {uploadNotice && (
-                          <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
+                          <div className="mt-3 flex items-center gap-2 rounded-xl bg-brand-50 px-3 py-2.5 text-xs text-brand-700 ring-1 ring-brand-600/15">
                             <CheckCircle2 className="h-4 w-4 shrink-0" />
                             <span className="font-semibold">{uploadNotice?.text}</span>
                           </div>
@@ -1495,7 +1513,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                 <div
                                   key={att.id}
                                   className={`flex flex-col justify-between gap-2.5 rounded-xl bg-white p-3 ring-1 transition-all duration-500 ${EASE} ${
-                                    isMainPhoto ? 'ring-2 ring-indigo-500/50' : 'ring-slate-200 hover:ring-slate-300'
+                                    isMainPhoto ? 'ring-2 ring-brand-600/50' : 'ring-slate-200 hover:ring-slate-300'
                                   }`}
                                 >
                                   <div className="flex items-start gap-3">
@@ -1507,7 +1525,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                       {isImage ? (
                                         <img src={att.file_url} alt={att.filename} className="h-full w-full object-cover" />
                                       ) : cat.kind === 'cad' ? (
-                                        <Box className="h-7 w-7 text-indigo-700" />
+                                        <Box className="h-7 w-7 text-brand-700" />
                                       ) : cat.kind === 'dicom' ? (
                                         <Layers className="h-7 w-7 text-violet-700" />
                                       ) : (
@@ -1521,7 +1539,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                           {cat.category}
                                         </span>
                                         {isMainPhoto && (
-                                          <span className="flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold text-white">
+                                          <span className="flex items-center gap-1 rounded-full bg-brand-600 px-2 py-0.5 text-[9px] font-bold text-white">
                                             <Check className="h-2.5 w-2.5" /> Main
                                           </span>
                                         )}
@@ -1543,7 +1561,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => openFileInBrowser(att.file_url, att.filename, att.file_type)}
-                                        className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-indigo-800 transition-colors hover:bg-indigo-50"
+                                        className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-700 transition-colors hover:bg-brand-50"
                                         title="Open file in browser tab"
                                       >
                                         Open
@@ -1563,7 +1581,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                             setPhotoUrl(att.file_url);
                                             updateCase(initialCase.id, { photo_url: att.file_url }, 'Updated main case photo');
                                           }}
-                                          className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-indigo-800 transition-colors hover:bg-indigo-50"
+                                          className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-700 transition-colors hover:bg-brand-50"
                                           title="Set as primary reference photo"
                                         >
                                           Set main
@@ -1574,7 +1592,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                                       <a
                                         href={att.file_url}
                                         download={att.filename}
-                                        className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                                        className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-brand-50 hover:text-brand-700"
                                         title="Download to local computer"
                                       >
                                         <Download className="h-3.5 w-3.5" />
@@ -1604,7 +1622,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                             <p className="mt-0.5 text-[11px] text-ink-muted">
                               Upload STL scans, intraoral photos or clinical documents.
                             </p>
-                            <label className={`mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}>
+                            <label className={`mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-brand-700 active:scale-[0.97] ${EASE}`}>
                               <Upload className="h-3.5 w-3.5" />
                               Browse local files
                               <input
@@ -1644,7 +1662,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   Delete Case
                 </button>
               ) : (
-                <span className="hidden text-[11px] font-medium text-ink-muted sm:block">
+                <span className="hidden text-[11px] font-medium text-ink-muted sm:block md:hidden">
                   Step {step + 1} of {STEPS.length} · {STEPS[step].label}
                 </span>
               )}
@@ -1672,7 +1690,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={goNext}
-                    className={`group inline-flex items-center gap-2 rounded-full bg-slate-900 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(15,23,42,0.55)] transition-all duration-500 hover:bg-indigo-600 active:scale-[0.98] ${EASE}`}
+                    className={`group inline-flex items-center gap-2 rounded-full bg-slate-900 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(15,23,42,0.55)] transition-all duration-500 hover:bg-brand-600 active:scale-[0.98] ${EASE}`}
                   >
                     <span>Continue</span>
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
@@ -1683,7 +1701,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={commitCase}
-                    className={`group inline-flex items-center gap-2 rounded-full bg-indigo-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-indigo-700 active:scale-[0.98] ${EASE}`}
+                    className={`group inline-flex items-center gap-2 rounded-full bg-brand-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-brand-700 active:scale-[0.98] ${EASE}`}
                   >
                     <span>{isEdit ? 'Save Changes' : 'Create Dental Case'}</span>
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
@@ -1730,7 +1748,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   />
                 ) : getAttachmentCategory(previewModalAttachment.filename, previewModalAttachment.file_type).kind === 'cad' ? (
                   <div className="space-y-3 p-6 text-center">
-                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06] text-indigo-300 ring-1 ring-indigo-400/20">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06] text-slate-300 ring-1 ring-white/15">
                       <Box className="h-8 w-8" />
                     </div>
                     <h4 className="text-sm font-bold text-white">3D CAD / STL Surface Mesh</h4>
@@ -1779,7 +1797,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => openFileInBrowser(previewModalAttachment.file_url, previewModalAttachment.filename, previewModalAttachment.file_type)}
-                  className={`inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-600 active:scale-[0.97] ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-brand-600 active:scale-[0.97] ${EASE}`}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open in browser
@@ -1797,7 +1815,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             <div className="space-y-4 rounded-[calc(1.5rem-0.5rem)] bg-white p-5">
               <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                  <Bookmark className="h-4 w-4 text-indigo-700" /> Save as Preset Template
+                  <Bookmark className="h-4 w-4 text-brand-700" /> Save as Preset Template
                 </h3>
                 <button
                   type="button"
@@ -1832,7 +1850,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveAsTemplate}
-                  className={`inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-5 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-indigo-700 active:scale-[0.97] ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-5 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-brand-700 active:scale-[0.97] ${EASE}`}
                 >
                   <Bookmark className="h-3.5 w-3.5" />
                   Save Preset
@@ -1850,3 +1868,4 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     </div>
   );
 };
+
