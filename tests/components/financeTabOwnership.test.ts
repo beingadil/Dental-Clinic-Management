@@ -54,7 +54,19 @@ const VIEW_FILES: Record<string, string[]> = {
 };
 
 /** The tabs that were migrated out of Billing. Each must have exactly one home. */
-const MIGRATED = ['clinic_accounts', 'general_ledger', 'audit_log'];
+const MIGRATED = ['general_ledger'];
+
+/**
+ * Read-only tabs the operator RETIRED.
+ *
+ * They are kept in this file deliberately, and asserted to have NO owner,
+ * rather than simply forgotten. Shrinking MIGRATED to the survivors would have
+ * made this suite green while quietly dropping the one property it exists to
+ * protect: that a retired read-only tab cannot be quietly re-adopted by
+ * Billing under a new label. A test that is edited until it passes has stopped
+ * testing anything.
+ */
+const RETIRED = ['overview', 'clinic_accounts', 'audit_log'];
 
 /** Every .ts/.tsx under src, so a stray declaration is caught wherever it lands. */
 function sourceFiles(dir: string, acc: string[] = []): string[] {
@@ -133,7 +145,7 @@ describe('finance tab ownership', () => {
   it('pins the finance surface to the tabs each view is supposed to own', () => {
     const expected: Record<string, string[]> = {
       BillingView: ['invoices'],
-      ReportsView: ['overview', 'clinic_accounts', 'general_ledger', 'audit_log', 'statements'],
+      ReportsView: ['general_ledger', 'statements'],
     };
 
     const findings: string[] = [];
@@ -173,6 +185,25 @@ describe('finance tab ownership', () => {
       }
     }
     expect(findings, `Migrated tabs regrew a second owner:\n  ${findings.join('\n  ')}`).toEqual([]);
+  });
+
+  it('gives no retired tab an owner again', () => {
+    // Overview, Clinic Accounts and Audit Trail were removed by the operator.
+    // Nothing should re-adopt them: not Billing under a new label, not Reports
+    // under the old one. This is why RETIRED is kept in this file at all.
+    const findings: string[] = [];
+    for (const id of RETIRED) {
+      const owners = Object.entries(FINANCE_TABS)
+        .filter(([, tabs]) => tabs.some((tab) => tab.id === id))
+        .map(([view]) => view);
+      if (owners.length > 0) {
+        findings.push(`'${id}' is owned by [${owners.join(', ')}] but was retired`);
+      }
+    }
+    expect(
+      findings,
+      `Retired tabs were re-adopted:\n  ${findings.join('\n  ')}`,
+    ).toEqual([]);
   });
 
   it('declares the migrated tabs in no other file in the tree', () => {

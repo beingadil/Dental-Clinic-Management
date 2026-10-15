@@ -31,12 +31,9 @@
  * always legal, which is the opposite of the guarantee wanted here.
  */
 import {
-  BarChart3,
   BookOpen,
-  Building2,
   FileSpreadsheet,
   FileText,
-  ShieldCheck,
 } from 'lucide-react';
 import type { TabItem } from './ui';
 
@@ -56,12 +53,18 @@ import type { TabItem } from './ui';
 export type BillingTab = 'invoices';
 
 /** Money out, looked back on: business intelligence and the read-only books. */
-export type ReportsTab =
-  | 'overview'
-  | 'clinic_accounts'
-  | 'general_ledger'
-  | 'audit_log'
-  | 'statements';
+/**
+ * The read-only books that remain.
+ *
+ * Overview, Clinic Accounts and Audit Trail were removed by the operator. The
+ * union narrows with the array, and tests/components/financeTabOwnership.test.ts
+ * pins the two together, so neither can be half-updated - which is exactly what
+ * caught this removal on its first attempt.
+ *
+ * The audit trail is not lost data: audit events are still recorded and still
+ * reachable through the journal inspector. It is no longer a separate screen.
+ */
+export type ReportsTab = 'general_ledger' | 'statements';
 
 /**
  * `as const` is load-bearing, not cosmetic.
@@ -79,10 +82,7 @@ export const BILLING_TABS = [
 ] as const satisfies readonly TabItem<BillingTab>[];
 
 export const REPORTS_TABS = [
-  { id: 'overview', label: 'Overview', icon: BarChart3 },
-  { id: 'clinic_accounts', label: 'Clinic Accounts', icon: Building2 },
   { id: 'general_ledger', label: 'General Ledger', icon: BookOpen },
-  { id: 'audit_log', label: 'Audit Trail', icon: ShieldCheck },
   { id: 'statements', label: 'Reports & Statements', icon: FileSpreadsheet },
 ] as const satisfies readonly TabItem<ReportsTab>[];
 

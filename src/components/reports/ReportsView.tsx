@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getTodayStr } from '../../utils/dateUtils';
 import { Invoice } from '../../types';
 import { PageHeader, TabsNav } from '../common/ui';
 import { REPORTS_TABS, labelOf, type ReportsTab } from '../common/financeTabs';
-import { AnalyticsView } from '../analytics/AnalyticsView';
-import { ClinicAccountsTable } from '../billing/ClinicAccountsTable';
 import { GeneralLedgerView } from '../billing/GeneralLedgerView';
-import { AuditLogView } from '../billing/AuditLogView';
 import { BillingReportsView } from '../billing/BillingReportsView';
 import { JournalEntryModal } from '../billing/JournalEntryModal';
-import { ClinicStatementModal } from '../billing/ClinicStatementModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 
@@ -21,10 +16,11 @@ import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
  * This view is money out, looked back on.
  */
 export const ReportsView: React.FC = () => {
-  const { labs, invoices, cases, setCurrentView } = useApp();
+  const { cases } = useApp();
 
-  const [activeTab, setActiveTab] = useState<ReportsTab>('overview');
-  const [clinicStatementId, setClinicStatementId] = useState<string | null>(null);
+  // General Ledger leads, not Overview: it is the first tab that still exists,
+  // and defaulting to a deleted tab left the view blank.
+  const [activeTab, setActiveTab] = useState<ReportsTab>('general_ledger');
   const [journalRefId, setJournalRefId] = useState<string | null>(null);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [viewSlipCase, setViewSlipCase] = useState<any>(null);
@@ -45,27 +41,9 @@ export const ReportsView: React.FC = () => {
         tabs={[...REPORTS_TABS]}
       />
 
-      {activeTab === 'overview' && <AnalyticsView />}
-
-      {activeTab === 'clinic_accounts' && (
-        <ClinicAccountsTable
-          labs={labs}
-          invoices={invoices}
-          cases={cases}
-          todayStr={getTodayStr()}
-          /* Billing & Invoices is the only place a payment is recorded, so the
-             accounts table links there rather than opening a second recorder. */
-          onCollect={() => setCurrentView('billing')}
-          onStatement={(clinicId) => setClinicStatementId(clinicId)}
-          onOpenClinics={() => setCurrentView('labs')}
-        />
-      )}
-
       {activeTab === 'general_ledger' && (
         <GeneralLedgerView />
       )}
-
-      {activeTab === 'audit_log' && <AuditLogView />}
 
       {activeTab === 'statements' && (
         <BillingReportsView
@@ -92,14 +70,10 @@ export const ReportsView: React.FC = () => {
         referenceId={journalRefId || ''}
       />
 
-      {/* Official Clinic Statement of Account Modal */}
-      {clinicStatementId && (
-        <ClinicStatementModal
-          isOpen={!!clinicStatementId}
-          onClose={() => setClinicStatementId(null)}
-          clinicId={clinicStatementId}
-        />
-      )}
+      {/* The Clinic Statement modal that used to live here was opened only by
+          the Clinic Accounts table's "Statement" button. That table is gone, so
+          this modal could never open from this page. The statement itself is
+          still reachable from Billing & Invoices. */}
 
       {/* Invoice Statement Printable Modal */}
       {printInvoice && (
