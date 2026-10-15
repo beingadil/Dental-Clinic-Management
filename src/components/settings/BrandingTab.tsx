@@ -1,3 +1,4 @@
+import { useTransientFlag } from '../common/useTransient';
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { validateFile } from '../../services/fileValidation';
@@ -17,7 +18,7 @@ export const BrandingTab: React.FC = () => {
   const { brandingSettings, updateBrandingSettings } = useApp();
 
   const [brandingForm, setBrandingForm] = useState(brandingSettings);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveSuccess, flashSaveSuccess] = useTransientFlag(3000);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const logo2InputRef = useRef<HTMLInputElement>(null);
 
@@ -60,8 +61,7 @@ export const BrandingTab: React.FC = () => {
   const handleSaveBranding = (e: React.FormEvent) => {
     e.preventDefault();
     updateBrandingSettings(brandingForm);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    flashSaveSuccess();
   };
 
   return (

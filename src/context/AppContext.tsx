@@ -62,7 +62,7 @@ import {
 } from '../services/ledgerDomain';
 import { nextReservedInvoiceNumber } from '../services/invoiceNumbering';
 import { applyBrandColor } from '../services/brandingTheme';
-import { readNotificationCadence, NOTIFICATION_CONFIG_CHANGED } from '../services/notificationSettings';
+import { readNotificationCadence, readEscalationRule, NOTIFICATION_CONFIG_CHANGED } from '../services/notificationSettings';
 import { useTransactionCommands } from './hooks/useTransactionCommands';
 import { useAuthDomain } from './hooks/useAuthDomain';
 import { buildInvoiceAllocation } from '../services/paymentDomain';
@@ -74,6 +74,7 @@ import {
   buildQcFailedNotification,
   buildOverdueAlerts,
   buildUnpaidInvoiceAlerts,
+  buildEscalationAlerts,
   buildAdjustmentNotification,
   prependUniqueNotifications,
 } from '../services/notificationDomain';
@@ -96,11 +97,6 @@ import type { UserRow } from '../db/repos';
 
 // Shared hydration helpers (mirror, dbRows, groupers) live in ./hooks/domainState
 // so every domain hook and this context share ONE dbMirror instance.
-let dbReflected = false;
-export function getDbReflected(): boolean {
-  return dbReflected;
-}
-
 export const DEFAULT_BRANDING = DEFAULT_BRANDING_SETTINGS;
 
 interface AppContextType {
@@ -150,6 +146,10 @@ interface AppContextType {
   journalEntries: JournalEntry[];
   auditEvents: AuditEvent[];
   reconciliationItems: ReconciliationItem[];
+  /** Mark a bank/cheque payment as reconciled against the bank statement. */
+  reconcileItemV2: (id: string, matchNotes?: string) => void;
+  /** Raise a reconciliation exception (unmatched amount, wrong reference…). */
+  flagReconciliationExceptionV2: (id: string, reason: string) => void;
 
   // Computed metrics
   unreadCount: number;
@@ -258,6 +258,11 @@ interface AppContextType {
     reasonCode: string;
     reasonText: string;
     approvedBy?: string;
+    /** Kept in step with the hook's own signature — the form was collecting
+     *  these and the context type here is what made them un-passable. */
+    referenceNumber?: string;
+    notes?: string;
+    attachments?: PaymentAttachment[];
     date?: string;
   }) => AccountAdjustment;
   reverseTransactionV2: (command: {
@@ -290,17 +295,13 @@ interface AppContextType {
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   hideToast: () => void;
 
-  // Global In-App Confirmation Modal
-  confirmModal: {
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    isDanger?: boolean;
-    onConfirm: () => void;
-  } | null;
-  closeConfirmModal: () => void;
+  // NOTE: a context-driven global confirmation modal used to live here
+  // (confirmModal / closeConfirmModal). It was PERMANENTLY INERT: the only
+  // writer of that state was closeConfirmModal itself, which sets it to null,
+  // so no call site could ever open one and the component always rendered
+  // null. Two confirm dialogs shipped for the same job — this dead one and
+  // `common/ui/ConfirmDialog`, which 16 call sites actually use. The working
+  // one is kept; this slice and its component are gone.
 
   // Settings
   updateUserPreferences: (prefs: Partial<UserPreferences>) => void;
@@ -697,21 +698,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [toast]);
 
-  // Global Confirmation Modal
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    isDanger?: boolean;
-    onConfirm: () => void;
-  } | null>(null);
-
-  const closeConfirmModal = () => {
-    setConfirmModal(null);
-  };
-
   // Auth, user management, and backup/restore/wipe orchestration live in
   // useAuthDomain (audit F2 continuation) - same surface as before.
   const {
@@ -802,6 +788,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       todayStr,
       (inv) => `notif-unpaid-${inv.id}`,
       readNotificationCadence('pending_payment'),
+    );
+    if (alerts.length > 0) {
+      setNotifications((prev) => prependUniqueNotifications(prev, alerts));
+    }
+  }, [invoices, todayStr, notifConfigRev]);
+
+  // Third sweep: ESCALATION. Settings → Notifications has always offered
+  // "Escalate unresolved reminders", "escalate after N days" and a repeat
+  // interval; all three were saved and audited and read by nothing, so the
+  // `escalation` notification kind could never be produced. This is what makes
+  // those three controls mean something. Ids are invoice+interval-bucket, so a
+  // re-run on the same day is a no-op.
+  useEffect(() => {
+    const alerts = buildEscalationAlerts(
+      invoices || [],
+      todayStr,
+      (inv, bucket) => `notif-escalation-${inv.id}-${bucket}`,
+      readEscalationRule(),
     );
     if (alerts.length > 0) {
       setNotifications((prev) => prependUniqueNotifications(prev, alerts));
@@ -1588,6 +1592,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const {
     recordTransactionV2,
     recordAdvanceDepositV2,
+    /* Exposed so the reconciliation panel can actually reconcile. Both were
+       built, returned by the hook and then never surfaced: they were not on
+       this context type and not destructured here, so no component could call
+       them and the Bank Statement Reconciliation report stayed permanently
+       empty even though every payment created an item to reconcile. */
+    reconcileItemV2,
+    flagReconciliationExceptionV2,
     applyAdvanceCreditV2,
     issueCreditNoteV2,
     reverseTransactionV2,
@@ -1712,6 +1723,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         journalEntries,
         auditEvents,
         reconciliationItems,
+        reconcileItemV2,
+        flagReconciliationExceptionV2,
         recordAccountAdjustment,
 
         // Payments & Receivables 2.0
@@ -1741,8 +1754,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast,
         showToast,
         hideToast,
-        confirmModal,
-        closeConfirmModal,
 
         updateUserPreferences,
 

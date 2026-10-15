@@ -7,7 +7,6 @@ import { SaveFailureBanner } from './components/common/SaveFailureBanner';
 import { Sidebar } from './components/common/Sidebar';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
-import { ConfirmationModal } from './components/common/ConfirmationModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // View modules are code-split: each mounts only when its tab is opened. The
@@ -44,21 +43,58 @@ const CatalogView = lazy(() =>
 );
 
 const MainAppContent: React.FC = () => {
-  const { user, currentView, selectedCaseForModal, setSelectedCaseForModal } = useApp();
+  // The whole context object is kept (not just the fields the shell needs)
+  // because the dev fixture handle below has to call the SAME setters the UI
+  // calls. A ref is used rather than a dependency so the handle survives every
+  // re-render and always sees the current state — `addCase` numbers cases from
+  // the render closure it was created in, so a stale handle books duplicates.
+  const app = useApp();
+  const { user, currentView, selectedCaseForModal, setSelectedCaseForModal } = app;
   const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
+  const appRef = React.useRef(app);
+  appRef.current = app;
+
+  React.useEffect(() => {
+    // Dev-only demo fixtures. The guard is written POSITIVELY on purpose:
+    // `import.meta.env.DEV` is substituted with `false` at build time, so the
+    // whole `if` block — and therefore the only reference to
+    // src/dev/demoFixtures — is removed before Rollup decides what to emit. The
+    // negative form (`if (!DEV) return;` followed by the import) relies on
+    // Rollup inferring unreachable code after an unconditional return, which is
+    // a much weaker guarantee for the one thing this file must never do: ship.
+    //
+    // Do NOT hoist this into a module-level `lazy(() => import(...))` either —
+    // that call is real, Rollup keeps it, and the fixture ships.
+    // tests/dev/demoFixturesDevOnly.test.ts guards this arrangement.
+    if (import.meta.env.DEV) {
+      let uninstall: (() => void) | undefined;
+      void import('./dev/demoFixtures').then((m) => {
+        uninstall = m.installDemoFixtures(() => appRef.current);
+      });
+      return () => uninstall?.();
+    }
+  }, []);
 
   if (!user) {
     return (
       <>
         <LoginPage />
         <GlobalToast />
-        <ConfirmationModal />
       </>
     );
   }
 
   return (
-    <div className="h-screen bg-slate-50 flex font-sans text-slate-900 antialiased selection:bg-indigo-600 selection:text-white overflow-hidden">
+    <div className="app-atmos h-screen bg-ds-sunken flex font-sans text-ds-ink antialiased selection:bg-ds-accent selection:text-white overflow-hidden">
+      {/* Keyboard users land here first. Without it, reaching the dashboard
+          means tabbing through the whole rail and then every header control on
+          every page load — the rail comes first in DOM order because it is
+          rendered first, so this link is the only way past it. `href` targets
+          the <main> below, which is the first element that is actually content. */}
+      <a href="#main-content" className="ds-skip-link">
+        Skip to dashboard
+      </a>
+
       {/* Responsive Left Sidebar */}
       <Sidebar />
 
@@ -90,7 +126,11 @@ const MainAppContent: React.FC = () => {
             final row of every view sat underneath the navigation and could not
             be read or tapped. Axis utilities only (px/pt/pb, never p-*) so no
             shorthand can fight the bottom value at a breakpoint. */}
-        <main className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 lg:pb-5 overflow-y-auto dental-grid-bg">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 lg:pb-5 overflow-y-auto dental-grid-bg focus-visible:outline-none"
+        >
           <div className="w-full max-w-[1880px] 2xl:max-w-[2100px] mx-auto space-y-6">
             <ErrorBoundary>
               <Suspense fallback={null}>
@@ -141,7 +181,6 @@ const MainAppContent: React.FC = () => {
 
       {/* Global In-App Toast & Confirmation Modal */}
       <GlobalToast />
-      <ConfirmationModal />
     </div>
   );
 };

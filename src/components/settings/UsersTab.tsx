@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Users,
-  CheckCircle2,
-  AlertCircle,
   Trash2,
   Key,
   UserPlus,
-  X,
 } from 'lucide-react';
+import { Modal, DataTable } from '../common/ui';
+import { useTransientMessage, TransientBanner } from '../common/useTransient';
 
 /** TAB: USER MANAGEMENT (ADMIN ONLY) — extracted verbatim from SettingsView (P3 split). */
 export const UsersTab: React.FC = () => {
@@ -22,7 +21,7 @@ export const UsersTab: React.FC = () => {
     role: 'Technician' as 'Lab Admin' | 'Technician' | 'Billing Manager',
     password: ''
   });
-  const [userMsg, setUserMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [userMsg, flashUserMsg, clearUserMsg] = useTransientMessage(4000);
   const [resetPwdUserId, setResetPwdUserId] = useState<string | null>(null);
   const [resetPwdValue, setResetPwdValue] = useState('');
 
@@ -47,7 +46,7 @@ export const UsersTab: React.FC = () => {
           <button
             onClick={() => {
               setShowAddUserModal(true);
-              setUserMsg(null);
+              clearUserMsg();
               setNewUserForm({ name: '', username: '', email: '', role: 'Technician', password: '' });
             }}
             className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 flex items-center gap-2 cursor-pointer self-start sm:self-auto"
@@ -57,116 +56,115 @@ export const UsersTab: React.FC = () => {
           </button>
         </div>
 
-        {userMsg && (
-          <div className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
-            userMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}>
-            {userMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-ink-success shrink-0" /> : <AlertCircle className="w-4 h-4 text-ink-danger shrink-0" />}
-            <span>{userMsg.text}</span>
-          </div>
-        )}
+        <TransientBanner message={userMsg} />
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold text-[10px] bg-slate-50/50">
-                <th className="p-3">User & Name</th>
-                <th className="p-3">Username</th>
-                <th className="p-3">Email</th>
-                <th className="p-3">System Role</th>
-                <th className="p-3">Joined Date</th>
-                <th className="p-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {visibleUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-ink-muted">
-                    No additional users registered. Click "Add New User" above to create one.
-                  </td>
-                </tr>
-              ) : (
-                visibleUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3 font-bold text-slate-900 flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-[10px]">
-                        {u.name ? u.name.substring(0, 2).toUpperCase() : 'US'}
-                      </div>
-                      {u.name}
-                    </td>
-                    <td className="p-3 font-mono font-semibold text-slate-700">{u.username}</td>
-                    <td className="p-3 text-slate-600">{u.email}</td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        u.role === 'Lab Admin' ? 'bg-indigo-100 text-indigo-700' :
-                        u.role === 'Technician' ? 'bg-amber-100 text-amber-800' :
-                        'bg-emerald-100 text-emerald-800'
-                      }`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="p-3 text-slate-500 text-[11px]">{u.created_at || '—'}</td>
-                    <td className="p-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => {
-                            setResetPwdUserId(u.id);
-                            setResetPwdValue('');
-                          }}
-                          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-indigo-600 text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                          title="Reset Password"
-                        >
-                          <Key className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline text-[11px]">Password</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to remove user "${u.name}"?`)) {
-                              deleteUser(u.id);
-                              setUserMsg({ type: 'success', text: `User account "${u.name}" deleted.` });
-                              setTimeout(() => setUserMsg(null), 4000);
-                            }
-                          }}
-                          className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-500 hover:text-rose-700 cursor-pointer"
-                          title="Delete User"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* DataTable owns the header row, the row hover, the divide and the
+            horizontal-scroll wrapper. It renders a BARE table on purpose — the card
+            around this table belongs to the view, so adopting it cannot double the
+            hairline. See common/ui/DataTable. */}
+        <DataTable<{ id: string; name: string; username: string; email: string; role: string; created_at?: string }>
+          data={visibleUsers}
+          rowKey={(u) => u.id}
+          emptyState={
+            <div className="p-8 text-center text-ink-muted text-xs">
+              No additional users registered. Click &quot;Add New User&quot; above to create one.
+            </div>
+          }
+          columns={[
+            {
+              header: 'User & Name',
+              render: (u) => (
+                <span className="font-bold text-slate-900 flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-[10px]">
+                    {u.name ? u.name.substring(0, 2).toUpperCase() : 'US'}
+                  </span>
+                  {u.name}
+                </span>
+              ),
+            },
+            { header: 'Username', render: (u) => <span className="font-mono font-semibold text-slate-700">{u.username}</span> },
+            { header: 'Email', render: (u) => <span className="text-slate-600">{u.email}</span> },
+            {
+              header: 'System Role',
+              render: (u) => (
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    u.role === 'Lab Admin'
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : u.role === 'Technician'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {u.role}
+                </span>
+              ),
+            },
+            { header: 'Joined Date', render: (u) => <span className="text-slate-500 text-[11px]">{u.created_at || '—'}</span> },
+            {
+              header: 'Actions',
+              align: 'right',
+              render: (u) => (
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    onClick={() => {
+                      setResetPwdUserId(u.id);
+                      setResetPwdValue('');
+                    }}
+                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-indigo-600 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    title="Reset Password"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline text-[11px]">Password</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Are you sure you want to remove user "${u.name}"?`)) {
+                        deleteUser(u.id);
+                        flashUserMsg('success', `User account "${u.name}" deleted.`);
+                      }
+                    }}
+                    className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-500 hover:text-rose-700 cursor-pointer"
+                    title="Delete User"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
 
-      {/* MODAL: ADD NEW USER */}
-      {showAddUserModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-5 animate-in zoom-in-95">
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                  <UserPlus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">Add New System User</h3>
-                  <p className="text-xs text-slate-500">Create login credentials for new staff member</p>
-                </div>
-              </div>
+      {/* MODAL: ADD NEW USER
+          Runs on `ui/Modal` rather than a hand-rolled overlay. This dialog was
+          one of five that drew their own backdrop and close button and so had
+          no Escape handling, no focus trap and no `role="dialog"` — meaning a
+          keyboard user could tab straight out of it into the page behind, and a
+          screen reader announced it as ordinary content.
 
-              <button
-                onClick={() => setShowAddUserModal(false)}
-                className="p-1 text-ink-muted hover:text-slate-600 rounded-lg cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+          The bespoke header is preserved verbatim through `header`; Modal only
+          takes over the backdrop, the card, the close button and the focus/Escape
+          behaviour. */}
+      <Modal
+        open={showAddUserModal}
+        onClose={() => setShowAddUserModal(false)}
+        label="Add New System User"
+        maxWidth="max-w-md"
+        headerClassName="px-6 py-4"
+        header={
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <UserPlus className="w-5 h-5" />
             </div>
-
-            <form
+            <div>
+              <h3 className="font-extrabold text-slate-900 text-base">Add New System User</h3>
+              <p className="text-xs text-slate-500">Create login credentials for new staff member</p>
+            </div>
+          </div>
+        }
+      >
+          <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!newUserForm.username.trim() || !newUserForm.name.trim() || !newUserForm.password) {
@@ -186,10 +184,9 @@ export const UsersTab: React.FC = () => {
                 });
 
                 setShowAddUserModal(false);
-                setUserMsg({ type: 'success', text: `User "${newUserForm.name}" created successfully!` });
-                setTimeout(() => setUserMsg(null), 4000);
+                flashUserMsg('success', `User "${newUserForm.name}" created successfully!`);
               }}
-              className="space-y-4 text-xs"
+              className="space-y-4 text-xs p-6 pt-4"
             >
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Full Name *</label>
@@ -267,24 +264,23 @@ export const UsersTab: React.FC = () => {
                 </button>
               </div>
             </form>
+      </Modal>
+
+      {/* MODAL: RESET USER PASSWORD — same conversion as above. */}
+      <Modal
+        open={Boolean(resetPwdUserId)}
+        onClose={() => setResetPwdUserId(null)}
+        label="Reset Password"
+        maxWidth="max-w-sm"
+        headerClassName="px-6 py-3"
+        header={
+          <div className="flex items-center gap-2">
+            <Key className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-extrabold text-slate-900 text-sm">Reset Password</h3>
           </div>
-        </div>
-      )}
-
-      {/* MODAL: RESET USER PASSWORD */}
-      {resetPwdUserId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 border border-slate-200 shadow-2xl space-y-4 animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Key className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-extrabold text-slate-900 text-sm">Reset Password</h3>
-              </div>
-              <button onClick={() => setResetPwdUserId(null)} className="p-1 text-ink-muted hover:text-slate-600 rounded-lg cursor-pointer">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
+        }
+      >
+          <div className="space-y-4 p-6 pt-4">
             <p className="text-xs text-slate-600">
               Set a new password for account <strong className="text-slate-900 font-mono">{users.find((u) => u.id === resetPwdUserId)?.username}</strong>:
             </p>
@@ -309,10 +305,10 @@ export const UsersTab: React.FC = () => {
                 type="button"
                 disabled={!resetPwdValue}
                 onClick={() => {
+                  if (!resetPwdUserId) return;
                   updateUser(resetPwdUserId, { password: resetPwdValue });
                   setResetPwdUserId(null);
-                  setUserMsg({ type: 'success', text: 'User password reset successfully!' });
-                  setTimeout(() => setUserMsg(null), 4000);
+                  flashUserMsg('success', 'User password reset successfully!');
                 }}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
               >
@@ -320,8 +316,7 @@ export const UsersTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
     </>
   );
 };

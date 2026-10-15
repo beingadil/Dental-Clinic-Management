@@ -1,7 +1,9 @@
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getTodayStr } from '../../utils/dateUtils';
 import { Plus, Trash2, Tag } from 'lucide-react';
+import { DataTable } from '../common/ui';
 
 interface LabPricingManagerProps {
   labId: string;
@@ -89,7 +91,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
               >
                 {caseTypes.map((ct) => (
                   <option key={ct.id} value={ct.id}>
-                    {ct.name} (Std PKR {ct.base_price.toLocaleString()})
+                    {ct.name} (Std {formatPKR(ct.base_price)})
                   </option>
                 ))}
               </select>
@@ -141,45 +143,60 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
         </form>
       )}
 
+      {/* DataTable renders a BARE table — it owns the thead/ds-th row, the
+          divide-y tbody, the hover row state and the horizontal-scroll wrapper.
+          The card above stays here, where it always was. */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-        {labOverrides.length === 0 ? (
-          <div className="p-6 text-center text-xs text-ink-muted">
-            No custom pricing overrides configured. Default case type prices will apply.
-          </div>
-        ) : (
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500">
-                <th className="py-2.5 px-3">Case Type</th>
-                <th className="py-2.5 px-3">Standard Base Price</th>
-                <th className="py-2.5 px-3">Lab Contract Price</th>
-                <th className="py-2.5 px-3">Auto Discount</th>
-                <th className="py-2.5 px-3">Effective Date</th>
-                <th className="py-2.5 px-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {labOverrides.map((po) => (
-                <tr key={po.id} className="hover:bg-slate-50">
-                  <td className="py-2.5 px-3 font-bold text-slate-900">{po.case_type_name}</td>
-                  <td className="py-2.5 px-3 text-slate-500 line-through">PKR {po.standard_price.toLocaleString()}</td>
-                  <td className="py-2.5 px-3 font-bold text-ink-success">PKR {po.custom_price.toLocaleString()}</td>
-                  <td className="py-2.5 px-3 text-purple-700 font-semibold">{po.discount_percentage || 0}% OFF</td>
-                  <td className="py-2.5 px-3 text-slate-500">{po.effective_date}</td>
-                  <td className="py-2.5 px-3 text-right">
-                    <button
-                      onClick={() => deletePricingOverride(po.id)}
-                      className="p-1 text-ink-muted hover:text-ink-danger rounded"
-                      title="Remove Override"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          data={labOverrides}
+          rowKey={(po) => po.id}
+          emptyState={
+            <div className="p-6 text-center text-xs text-ink-muted">
+              No custom pricing overrides configured. Default case type prices will apply.
+            </div>
+          }
+          columns={[
+            {
+              header: 'Case Type',
+              className: 'py-2.5 font-bold text-slate-900',
+              render: (po) => po.case_type_name,
+            },
+            {
+              header: 'Standard Base Price',
+              className: 'py-2.5 text-slate-500 line-through',
+              render: (po) => formatPKR(po.standard_price),
+            },
+            {
+              header: 'Lab Contract Price',
+              className: 'py-2.5 font-bold text-ink-success',
+              render: (po) => formatPKR(po.custom_price),
+            },
+            {
+              header: 'Auto Discount',
+              className: 'py-2.5 text-purple-700 font-semibold',
+              render: (po) => `${po.discount_percentage || 0}% OFF`,
+            },
+            {
+              header: 'Effective Date',
+              className: 'py-2.5 text-slate-500',
+              render: (po) => po.effective_date,
+            },
+            {
+              header: 'Action',
+              align: 'right',
+              className: 'py-2.5',
+              render: (po) => (
+                <button
+                  onClick={() => deletePricingOverride(po.id)}
+                  className="p-1 text-ink-muted hover:text-ink-danger rounded"
+                  title="Remove Override"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              ),
+            },
+          ]}
+        />
       </div>
     </div>
   );

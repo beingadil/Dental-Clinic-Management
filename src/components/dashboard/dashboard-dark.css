@@ -60,5 +60,16 @@
 
     /* The meter track is a surface, not ink. */
     --p-slate-100: #16202f;
+
+    /* Ambient atmosphere on a near-black canvas needs a touch more presence
+       to read at all. Same rule as light: fallback first, brand-derived
+       second, static, behind content only. */
+    --ds-ambient-1: rgba(129, 140, 248, 0.10);
+    --ds-ambient-1: color-mix(in srgb, var(--brand-600) 16%, transparent);
+    --ds-ambient-2: rgba(34, 211, 238, 0.07);
+
+    /* A faint light rim, not a white one: at full strength it reads as a
+       glowing edge on dark. */
+    --ds-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.045);
   }
 }

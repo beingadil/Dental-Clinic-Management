@@ -1,9 +1,11 @@
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState, useMemo } from 'react';
 import { getDateStr, getTodayStr, getNowStamp } from '../../utils/dateUtils';
 import { useApp } from '../../context/AppContext';
 import { computeAnalyticsForPeriod } from '../../services/analyticsService';
 import { DatePickerRange } from '../common/DatePickerRange';
 import { prioritySlaLabel } from '../../services/prioritySla';
+import { DataTable } from '../common/ui';
 import { 
   BarChart, 
   Bar, 
@@ -109,8 +111,8 @@ const TrendTip: React.FC<any> = ({ active, payload, label }) => {
     <ChartTip
       heading={String(label ?? '')}
       rows={[
-        { label: 'Billed', value: `PKR ${billed.toLocaleString()}`, color: 'var(--chart-1)' },
-        { label: 'Collected', value: `PKR ${collected.toLocaleString()}`, color: 'var(--chart-4)' },
+        { label: 'Billed', value: formatPKR(billed), color: 'var(--chart-1)' },
+        { label: 'Collected', value: formatPKR(collected), color: 'var(--chart-4)' },
       ]}
       note={billed > 0 ? `${Math.round((collected / billed) * 100)}% collected` : undefined}
     />
@@ -125,7 +127,7 @@ const ClinicTip: React.FC<any> = ({ active, payload, total }) => {
     <ChartTip
       heading={String(payload[0]?.payload?.name ?? '')}
       rows={[
-        { label: 'Gross billing', value: `PKR ${value.toLocaleString()}`, color: 'var(--chart-2)' },
+        { label: 'Gross billing', value: formatPKR(value), color: 'var(--chart-2)' },
       ]}
       note={total > 0 ? `${Math.round((value / total) * 100)}% of clinic revenue` : undefined}
     />
@@ -137,7 +139,7 @@ const SliceTip: React.FC<any> = ({ active, payload, total, label, unit, format }
   if (!active || !payload?.length) return null;
   const row = payload[0];
   const value = Number(row?.value ?? 0);
-  const shown = format === 'count' ? `${value.toLocaleString()} invoices` : `PKR ${value.toLocaleString()}`;
+  const shown = format === 'count' ? `${value.toLocaleString()} invoices` : formatPKR(value);
   return (
     <ChartTip
       heading={String(row?.name ?? '')}
@@ -417,7 +419,7 @@ export const AnalyticsView: React.FC = () => {
             <span>Total Revenue</span>
             <DollarSign className="w-4 h-4 text-ink-success" />
           </div>
-          <div className="text-2xl font-extrabold text-slate-900">PKR {(totalRevenue || 0).toLocaleString()}</div>
+          <div className="text-2xl font-extrabold text-slate-900">{formatPKR(totalRevenue)}</div>
           <div className="text-[11px] text-slate-500 font-medium">Across {periodInvoices.length} invoices</div>
         </div>
 
@@ -426,7 +428,7 @@ export const AnalyticsView: React.FC = () => {
             <span>Outstanding Unpaid</span>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-extrabold text-ink-warning">PKR {(totalUnpaid || 0).toLocaleString()}</div>
+          <div className="text-2xl font-extrabold text-ink-warning">{formatPKR(totalUnpaid)}</div>
           <div className="text-[11px] text-slate-500 font-medium">From {unpaidCount + partialCount} pending invoices</div>
         </div>
 
@@ -641,70 +643,129 @@ export const AnalyticsView: React.FC = () => {
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs">
           <h3 className="text-sm font-bold text-slate-900">Turnaround by Priority (delivered in period)</h3>
         <p className="text-xs text-slate-500 mt-0.5">Average days from case creation to delivery, and on-time rate against each priority's SLA.</p>
-        <div className="overflow-x-auto mt-3 scrollbar-thin">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+        <DataTable
+          data={analytics.turnaround}
+          rowKey={(r) => r.priority}
+          rowClassName={() => 'border-t border-slate-100'}
+          /* `analytics.turnaround` is one row per priority and never empty, so
+             this line is not DataTable's `emptyState` (that only replaces the
+             table when `data` is empty). `tfoot` is the one slot that keeps it
+             a row OF this table; before it existed there was nowhere to put it.
+             It used to sit above the rows as a `<tbody>` row — it now sits
+             below them. */
+          tfoot={
+            analytics.turnaround.every((r) => r.sample === 0) ? (
               <tr>
-                <th className="px-4 py-2">Priority</th>
-                <th className="px-4 py-2 text-right">Avg Days to Deliver</th>
-                <th className="px-4 py-2 text-right">On-Time (SLA)</th>
-                <th className="px-4 py-2 text-right">Sample Size</th>
+                <td colSpan={4} className="px-4 py-6 text-center text-ink-muted">
+                  No deliveries in this period yet.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {analytics.turnaround.every((r) => r.sample === 0) && (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-ink-muted">No deliveries in this period yet.</td></tr>
-              )}
-              {analytics.turnaround.map((r) => (
-                <tr key={r.priority} className="border-t border-slate-100">
-                  <td className="px-4 py-2.5 font-bold text-slate-800">{prioritySlaLabel(r.priority)}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{r.avgDays === null ? '—' : `${r.avgDays} days`}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${r.onTimePct === null ? 'text-ink-muted' : r.onTimePct >= 90 ? 'text-ink-success' : r.onTimePct >= 70 ? 'text-ink-warning' : 'text-ink-danger'}`}>
-                    {r.onTimePct === null ? '—' : `${r.onTimePct}%`}
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-slate-500">{r.sample}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ) : undefined
+          }
+          columns={[
+            {
+              header: 'Priority',
+              className: 'px-4 py-2.5 font-bold text-slate-800',
+              render: (r) => prioritySlaLabel(r.priority),
+            },
+            {
+              header: 'Avg Days to Deliver',
+              align: 'right',
+              className: 'px-4 py-2.5 font-semibold text-slate-900',
+              render: (r) => (r.avgDays === null ? '—' : `${r.avgDays} days`),
+            },
+            {
+              header: 'On-Time (SLA)',
+              align: 'right',
+              /* The colour is decided per row, so it cannot live on the column
+                 and has to ride on the cell's own content. */
+              className: 'px-4 py-2.5 font-semibold',
+              render: (r) => (
+                <span
+                  className={`font-semibold ${r.onTimePct === null ? 'text-ink-muted' : r.onTimePct >= 90 ? 'text-ink-success' : r.onTimePct >= 70 ? 'text-ink-warning' : 'text-ink-danger'}`}
+                >
+                  {r.onTimePct === null ? '—' : `${r.onTimePct}%`}
+                </span>
+              ),
+            },
+            {
+              header: 'Sample Size',
+              align: 'right',
+              className: 'px-4 py-2.5 text-slate-500',
+              /* `font-normal` is not decoration: DataTable's `<tbody>` is
+                 `font-medium` and this is the one cell in the table that never
+                 set a weight of its own. It rides on the content because the
+                 column class would also strip the bold off the `<th>`. */
+              render: (r) => <span className="font-normal">{r.sample}</span>,
+            },
+          ]}
+        />
         </div>
 
         {/* Payment Behavior per Clinic — computed from invoices + payments in SQLite */}
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs">
         <h3 className="text-sm font-bold text-slate-900">Payment Behavior by Dental Clinic</h3>
         <p className="text-xs text-slate-500 mt-0.5">Billed vs collected (by invoice date), outstanding balance, average days-to-pay, and advance credit held.</p>
-        <div className="overflow-x-auto mt-3 scrollbar-thin">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-2">Dental Clinic</th>
-                <th className="px-4 py-2 text-right">Invoices</th>
-                <th className="px-4 py-2 text-right">Billed (PKR)</th>
-                <th className="px-4 py-2 text-right">Collected (PKR)</th>
-                <th className="px-4 py-2 text-right">Outstanding (PKR)</th>
-                <th className="px-4 py-2 text-right">Avg Days to Pay</th>
-                <th className="px-4 py-2 text-right">Advance Credit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {analytics.paymentBehavior.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-ink-muted">No invoices in this period — behavior appears as billing begins.</td></tr>
-              )}
-              {analytics.paymentBehavior.map((r) => (
-                <tr key={r.labId} className="border-t border-slate-100">
-                  <td className="px-4 py-2.5 font-bold text-slate-800">{r.labName}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-600">{r.invoices}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{r.billed.toLocaleString()}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-ink-success">{r.collected.toLocaleString()}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${r.outstanding > 0 ? 'text-ink-warning' : 'text-ink-muted'}`}>{r.outstanding.toLocaleString()}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-600">{r.avgDaysToPay === null ? '—' : `${r.avgDaysToPay} days`}</td>
-                  <td className="px-4 py-2.5 text-right text-indigo-600 font-semibold">{r.advances.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={analytics.paymentBehavior}
+          rowKey={(r) => r.labId}
+          emptyState={
+            <div className="px-4 py-6 text-center text-ink-muted">
+              No invoices in this period — behavior appears as billing begins.
+            </div>
+          }
+          columns={[
+            {
+              header: 'Dental Clinic',
+              className: 'px-4 py-2.5 font-bold text-slate-800',
+              render: (r) => r.labName,
+            },
+            {
+              header: 'Invoices',
+              align: 'right',
+              className: 'px-4 py-2.5 text-slate-600',
+              render: (r) => r.invoices,
+            },
+            {
+              header: 'Billed (PKR)',
+              align: 'right',
+              className: 'px-4 py-2.5 font-semibold text-slate-900',
+              render: (r) => r.billed.toLocaleString(),
+            },
+            {
+              header: 'Collected (PKR)',
+              align: 'right',
+              className: 'px-4 py-2.5 font-semibold text-ink-success',
+              render: (r) => r.collected.toLocaleString(),
+            },
+            {
+              header: 'Outstanding (PKR)',
+              align: 'right',
+              /* The tone depends on the row, so it cannot live in `className`
+                 (which is applied to the <th> too, where it would bold the
+                 header). It rides on a span instead. */
+              render: (r) => (
+                <span
+                  className={`font-semibold ${r.outstanding > 0 ? 'text-ink-warning' : 'text-ink-muted'}`}
+                >
+                  {r.outstanding.toLocaleString()}
+                </span>
+              ),
+            },
+            {
+              header: 'Avg Days to Pay',
+              align: 'right',
+              className: 'px-4 py-2.5 text-slate-600',
+              render: (r) => (r.avgDaysToPay === null ? '—' : `${r.avgDaysToPay} days`),
+            },
+            {
+              header: 'Advance Credit',
+              align: 'right',
+              className: 'px-4 py-2.5 text-indigo-600 font-semibold',
+              render: (r) => r.advances.toLocaleString(),
+            },
+          ]}
+        />
         </div>
       </div>
     </div>

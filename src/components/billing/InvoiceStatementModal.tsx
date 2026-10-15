@@ -1,3 +1,5 @@
+import { useTransientFlag } from '../common/useTransient';
+import { invoiceBalanceDue } from '../../services/financeDomain';
 import React, { useMemo, useState } from 'react';
 import { Invoice, DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -39,8 +41,8 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   cases,
   onClose,
 }) => {
-  const { brandingSettings, saveVoucherToSystem } = useApp();
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const { brandingSettings, saveVoucherToSystem, userPreferences } = useApp();
+  const [savedSuccess, flashSavedSuccess] = useTransientFlag(4000);
   const [printSettings] = useState(() => loadPrintSettings());
   const [showSections, setShowSections] = useState(false);
   /* The invoice content list is a stored setting, not dialog-local state: the
@@ -49,7 +51,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
     loadDocumentSections(KIND, DEFAULT_ENABLED[KIND])
   );
 
-  const remainingBalance = Math.max(0, invoice.final_amount - invoice.amount_paid);
+  const remainingBalance = invoiceBalanceDue(invoice);
 
   const applySections = (next: string[]) => {
     setEnabled(next);
@@ -57,22 +59,34 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   };
 
   const handleSaveAndPrint = () => {
-    // Log voucher in system database (audit of every printed billing document)
-    saveVoucherToSystem({
-      voucher_number: invoice.invoice_number,
-      voucher_type: 'invoice',
-      case_id: invoice.case_id,
-      case_number: invoice.case_number,
-      lab_name: invoice.lab_name,
-      doctor_name: invoice.doctor_name,
-      patient_name: caseData?.patient_name || 'Clinical Patient',
-      case_type_name: invoice.case_type_name,
-      amount: invoice.final_amount,
-      notes: `Printed invoice — Paid: PKR ${invoice.amount_paid.toLocaleString()} | Balance: PKR ${remainingBalance.toLocaleString()} | Status: ${invoice.payment_status}`
-    });
+    /* Log voucher in system database (audit of every printed billing document).
 
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 4000);
+       `auto_print_job_slips` (Settings → Preferences, "Auto-log to voucher
+       registry on print") was a live checkbox that controlled nothing: this call
+       was hard-wired, so an operator who turned it OFF kept getting vouchers
+       logged anyway and could not make the audit trail match their intent.
+
+       Defaults to TRUE, which is the behaviour that shipped before the flag was
+       added — a lab upgrading must not silently lose its voucher audit trail
+       just because the preference is undefined. */
+    const autoLog = userPreferences?.auto_print_job_slips !== false;
+
+    if (autoLog) {
+      saveVoucherToSystem({
+        voucher_number: invoice.invoice_number,
+        voucher_type: 'invoice',
+        case_id: invoice.case_id,
+        case_number: invoice.case_number,
+        lab_name: invoice.lab_name,
+        doctor_name: invoice.doctor_name,
+        patient_name: caseData?.patient_name || 'Clinical Patient',
+        case_type_name: invoice.case_type_name,
+        amount: invoice.final_amount,
+        notes: `Printed invoice — Paid: PKR ${invoice.amount_paid.toLocaleString()} | Balance: PKR ${remainingBalance.toLocaleString()} | Status: ${invoice.payment_status}`
+      });
+    }
+
+    flashSavedSuccess();
     setTimeout(() => window.print(), 100);
   };
 

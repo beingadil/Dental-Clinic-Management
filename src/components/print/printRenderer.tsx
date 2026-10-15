@@ -1,3 +1,4 @@
+import { invoiceBalanceDue } from '../../services/financeDomain';
 import React from 'react';
 import { DentalCase, Invoice, BrandingSettings, PaymentRecord } from '../../types';
 import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
@@ -159,7 +160,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   /* Honest settlement label — read from the invoice itself, never guessed. */
   const invStatus = (() => {
     if (!invoice) return null;
-    const due = Math.max(0, invoice.final_amount - (invoice.amount_paid || 0));
+    const due = invoiceBalanceDue(invoice);
     if (due <= 0) return { label: 'PAID IN FULL', tone: 'paid' as const };
     if ((invoice.amount_paid || 0) > 0) return { label: 'PARTIALLY PAID', tone: 'partial' as const };
     return { label: 'PAYMENT DUE', tone: 'due' as const };
@@ -450,7 +451,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   <tr className="border-2 border-slate-900 bg-slate-100">
                     <td className="px-3 py-2 font-bold uppercase tracking-wider">Balance Due</td>
                     <td className="px-3 py-2 text-right text-sm font-bold">
-                      {money(Math.max(0, invoice.final_amount - (invoice.amount_paid || 0)))}
+                      {money(invoiceBalanceDue(invoice))}
                     </td>
                   </tr>
                 </tbody>
@@ -528,7 +529,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
             <div className="grid grid-cols-3 gap-4 mb-4 text-[11px]">
               <Field label="Applies to Invoice" value={invoice.invoice_number} />
               <Field label="Case" value={invoice.case_number || '—'} />
-              <Field label="Balance After Payment" value={money(invoice.final_amount - (invoice.amount_paid || 0))} />
+              <Field label="Balance After Payment" value={money(invoiceBalanceDue(invoice))} />
             </div>
           )}
           {on(sections, 'signature') && (
@@ -615,7 +616,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     </td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.final_amount)}</td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.amount_paid || 0)}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.final_amount - (inv.amount_paid || 0))}</td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(invoiceBalanceDue(inv))}</td>
                     <td className="border border-slate-400 px-2 py-1 align-top capitalize">{inv.payment_status}</td>
                   </tr>
                   );
@@ -632,7 +633,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                 <tbody>
                   <tr><td className="py-0.5 text-slate-600">Total Billed</td><td className="py-0.5 text-right font-bold">{money(balanceRows.reduce((s, i) => s + i.final_amount, 0))}</td></tr>
                   <tr><td className="py-0.5 text-slate-600">Total Paid</td><td className="py-0.5 text-right">{money(balanceRows.reduce((s, i) => s + (i.amount_paid || 0), 0))}</td></tr>
-                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Outstanding</td><td className="py-1 text-right font-bold">{money(balanceRows.reduce((s, i) => s + (i.final_amount - (i.amount_paid || 0)), 0))}</td></tr>
+                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Outstanding</td><td className="py-1 text-right font-bold">{money(balanceRows.reduce((s, i) => s + invoiceBalanceDue(i), 0))}</td></tr>
                 </tbody>
               </table>
             </div>

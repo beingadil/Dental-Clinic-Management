@@ -1,3 +1,4 @@
+import { useTransientFlag } from '../common/useTransient';
 import React, { useState } from 'react';
 import { DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -44,7 +45,7 @@ function buildVoucherNotes(c: DentalCase): string {
  */
 export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, onClose }) => {
   const { saveVoucherToSystem, brandingSettings } = useApp();
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [savedSuccess, flashSavedSuccess] = useTransientFlag(4000);
   const slipRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
   /* V-19: registers on the shared dialog stack so Escape closes the slip (the
@@ -102,8 +103,7 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
       notes: buildVoucherNotes(caseData)
     });
 
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 4000);
+    flashSavedSuccess();
 
     if (shouldDownloadFile) {
       // Serialize the exact on-screen slip. Styles are INLINED from

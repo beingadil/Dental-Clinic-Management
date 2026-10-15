@@ -1,7 +1,7 @@
 /**
  * The shared user_preferences row.
  *
- * One JSON blob per user holds BOTH `UserPreferences` (currency, channels,
+ * One JSON blob per user holds BOTH `UserPreferences` (theme, channels,
  * quiet hours, the dashboard drag lock) AND the dashboard layout keys. That
  * sharing is the root of three separate data-loss bugs: two writers replaced
  * the whole row and each wiped the other's half. The merge is now a pure
@@ -18,14 +18,14 @@ const prefs = (over: Partial<UserPreferences> = {}): UserPreferences =>
 describe('mergePreferencesIntoRow', () => {
   it('keeps saved dashboard layouts when an unrelated preference changes', () => {
     const row = {
-      currency: 'USD',
+      theme_mode: 'dark',
       'dashboard.layouts': { Morning: { name: 'Morning' } },
       'dashboard.order': ['revenue', 'workflow'],
     };
-    const merged = mergePreferencesIntoRow(row, prefs({ currency: 'EUR' }));
+    const merged = mergePreferencesIntoRow(row, prefs({ theme_mode: 'light' }));
     expect(merged['dashboard.layouts']).toEqual({ Morning: { name: 'Morning' } });
     expect(merged['dashboard.order']).toEqual(['revenue', 'workflow']);
-    expect(merged.currency).toBe('EUR');
+    expect(merged.theme_mode).toBe('light');
   });
 
   it('keeps panel pin/hide state when density changes', () => {
@@ -45,7 +45,7 @@ describe('mergePreferencesIntoRow', () => {
   });
 
   it('does not invent a dashboard key that was never saved', () => {
-    const merged = mergePreferencesIntoRow({ currency: 'USD' }, prefs());
+    const merged = mergePreferencesIntoRow({ theme_mode: 'dark' }, prefs());
     for (const k of DASHBOARD_ROW_KEYS) expect(k in merged).toBe(false);
   });
 

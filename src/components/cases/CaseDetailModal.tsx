@@ -1,8 +1,11 @@
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useTransientMessage } from '../common/useTransient';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, ToothDetail, CaseAttachment } from '../../types';
 import Odontogram, { type OdontogramData } from './Odontogram';
 import { CaseNotesPanel } from './CaseNotesPanel';
+import { CaseQcPanel } from './CaseQcPanel';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
 import { openFileInBrowser } from '../../utils/fileUtils';
@@ -32,6 +35,7 @@ import {
   CalendarDays
 } from 'lucide-react';
 import { PRIORITY_SLA_DAYS, prioritySlaLabel, computeSlaDueDate } from '../../services/prioritySla';
+import { resolveOverrideForCase } from '../../services/pricingOverride';
 import { DatePickerSingle } from '../common/DatePickerSingle';
 import { todayISO } from '../common/DatePickerRange';
 
@@ -149,8 +153,21 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     caseAttachments,
     addCaseAttachment,
     deleteCaseAttachment,
-    user
+    user,
+    userPreferences
   } = useApp();
+
+  /* The `normal`-priority turnaround fallback from Settings → Preferences. That
+   * preference is a real control with real input, and for years nothing read
+   * it — the SLA table ignored it and the promise came from the table alone. */
+  const normalFallbackDays = userPreferences?.default_turnaround_days;
+
+  /** The lab-wide default priority, when it is one of the four real levels. */
+  const defaultPriority =
+    userPreferences?.default_priority &&
+    ['low', 'normal', 'high', 'urgent'].includes(userPreferences.default_priority)
+      ? userPreferences.default_priority
+      : undefined;
 
   const isEdit = Boolean(initialCase?.id);
   const attachmentsForCase = isEdit && initialCase ? (caseAttachments[initialCase.id] || []) : [];
@@ -183,11 +200,17 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [department, setDepartment] = useState<string>(initialCase?.department || '');
   const [shade, setShade] = useState(initialCase?.shade || appliedTemplate?.shade || initialShade || 'A2');
 
-  const [priority, setPriority] = useState<PriorityLevel>(
-    initialCase?.priority || appliedTemplate?.default_priority || 'normal'
-  );
+  /* Priority seed, in precedence order: an existing case keeps what it has, a
+   * template may carry its own default, and otherwise the LAB's default applies.
+   * `UserPreferences.default_priority` is a real Settings control that nothing
+   * read — every new case silently started at 'normal' regardless of it — so a
+   * lab that set "urgent" for a rush-only workflow got 'normal' instead. */
+  const seedPriority: PriorityLevel =
+    initialCase?.priority || appliedTemplate?.default_priority || defaultPriority || 'normal';
+
+  const [priority, setPriority] = useState<PriorityLevel>(seedPriority);
   const [deliveryDate, setDeliveryDate] = useState(
-    initialCase?.delivery_date || computeSlaDueDate(initialCase?.priority || appliedTemplate?.default_priority || 'normal')
+    initialCase?.delivery_date || computeSlaDueDate(seedPriority, new Date(), normalFallbackDays)
   );
   /* Day the lab received the job — what the slip prints. Optional and
      pre-filled with today: a job normally arrives today, and an operator
@@ -195,7 +218,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [receivedDate, setReceivedDate] = useState(
     initialCase?.received_date || todayISO()
   );
-  const [priorityFeedback, setPriorityFeedback] = useState<string | null>(null);
+  /* Both are transient notices owned by the hook now, so the timer is cleared on
+     unmount and re-armed per trigger. They previously used bare setTimeouts —
+     changing priority twice inside 2.5s stacked two timers and cleared the
+     feedback early, and closing the modal mid-window left a timer writing to a
+     state with no component behind it. */
+  const [priorityFeedback, flashPriorityFeedback] = useTransientMessage(2500);
   const [previewModalAttachment, setPreviewModalAttachment] = useState<{
     filename: string;
     file_type: string;
@@ -205,7 +233,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     file_size?: string;
     id?: string;
   } | null>(null);
-  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [uploadNotice, flashUploadNotice] = useTransientMessage(3000);
 
   const [price, setPrice] = useState<number>(
     initialCase?.price || caseTypes.find((ct) => ct.id === (initialCase?.case_type_id || appliedTemplate?.case_type_id))?.base_price || caseTypes[0]?.base_price || 0
@@ -352,12 +380,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     const label = prioritySlaLabel(newP);
     if (isEdit && initialCase) {
       updateCase(initialCase.id, { priority: newP }, `Priority set (${label})`);
-      setPriorityFeedback(`Priority set: ${label}`);
-      setTimeout(() => setPriorityFeedback(null), 2500);
+      flashPriorityFeedback('success', `Priority set: ${label}`);
     } else {
-      setDeliveryDate(computeSlaDueDate(newP));
-      setPriorityFeedback(`Priority set: ${label} — delivery auto-set`);
-      setTimeout(() => setPriorityFeedback(null), 2500);
+      setDeliveryDate(computeSlaDueDate(newP, new Date(), normalFallbackDays));
+      flashPriorityFeedback('success', `Priority set: ${label} — delivery auto-set`);
     }
   };
 
@@ -394,8 +420,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
         loadedCount++;
         if (loadedCount === files.length) {
-          setUploadNotice(`Added ${files.length} file(s) from local storage!`);
-          setTimeout(() => setUploadNotice(null), 3000);
+          flashUploadNotice('success', `Added ${files.length} file(s) from local storage!`);
         }
       };
       reader.readAsDataURL(file);
@@ -411,7 +436,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
     if (!selectedCT) return;
 
-    const override = pricingOverrides.find((po) => po.lab_id === labId && po.case_type_id === caseTypeId);
+    const override = resolveOverrideForCase(pricingOverrides, labId, caseTypeId);
     const unitPrice = override ? override.custom_price : selectedCT.base_price;
 
     if (override?.discount_percentage) {
@@ -438,7 +463,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     const selectedCT = caseTypes.find((ct) => ct.id === caseTypeId);
     if (!selectedCT) return;
 
-    const override = pricingOverrides.find((po) => po.lab_id === labId && po.case_type_id === caseTypeId);
+    const override = resolveOverrideForCase(pricingOverrides, labId, caseTypeId);
     const unitPrice = override ? override.custom_price : selectedCT.base_price;
 
     setPrice(unitPrice * billableUnits({ selected_teeth: selectedTeeth }));
@@ -782,13 +807,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               >
                 {caseTypes.map((ct) => (
                   <option key={ct.id} value={ct.id}>
-                    {ct.name} (PKR {ct.base_price.toLocaleString()})
+                    {ct.name} ({formatPKR(ct.base_price)})
                   </option>
                 ))}
               </select>
               {selectedCT && (
                 <p className="mt-1.5 font-mono text-[11px] tracking-wide text-ink-muted">
-                  BASE PKR {selectedCT.base_price.toLocaleString()}
+                  BASE {formatPKR(selectedCT.base_price)}
                 </p>
               )}
             </div>
@@ -930,7 +955,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             {uploadNotice && (
               <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span className="font-semibold">{uploadNotice}</span>
+                <span className="font-semibold">{uploadNotice?.text}</span>
               </div>
             )}
             {pendingAttachments.length > 0 && (
@@ -1003,7 +1028,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             {priorityFeedback && (
               <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-800 ring-1 ring-indigo-600/20 animate-fadeIn`}>
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {priorityFeedback}
+                {priorityFeedback?.text}
               </div>
             )}
 
@@ -1158,11 +1183,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <div className="rounded-2xl bg-slate-900 p-5">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">Final price — auto-computed</div>
                 <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-white">
-                  PKR {finalComputedPrice.toLocaleString()}
+                  {formatPKR(finalComputedPrice)}
                 </div>
                 {discount > 0 && (
                   <div className="mt-1 font-mono text-[11px] text-indigo-300">
-                    −PKR {discount.toLocaleString()} applied
+                    −{formatPKR(discount)} applied
                   </div>
                 )}
               </div>
@@ -1391,6 +1416,23 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     </div>
                   )}
 
+                  {/* Step 2 · quality control (editing only).
+                      The QC domain, its table and its derived state were all
+                      shipped and tested with no screen to render them; this is
+                      that screen. Editing only, because an inspection is an
+                      append-only event on a saved case. */}
+                  {step === 2 && initialCase && (
+                    <div className={bezelCard}>
+                      <div className={bezelCardInner}>
+                        <CaseQcPanel
+                          caseId={initialCase.id}
+                          caseNumber={initialCase.case_number}
+                          locked={status === 'delivered' || status === 'cancelled'}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Step 3 · history timeline (editing only) */}
                   {step === 2 && initialCase && initialCase.history.length > 0 && (
                     <div className={bezelCard}>
@@ -1438,7 +1480,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                         {uploadNotice && (
                           <div className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 ring-1 ring-indigo-600/15">
                             <CheckCircle2 className="h-4 w-4 shrink-0" />
-                            <span className="font-semibold">{uploadNotice}</span>
+                            <span className="font-semibold">{uploadNotice?.text}</span>
                           </div>
                         )}
 

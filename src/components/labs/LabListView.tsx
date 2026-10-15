@@ -4,6 +4,8 @@ import { DentalCase, DentalLab } from '../../types';
 import { LabDetailModal } from './LabDetailModal';
 import { formatDoctorName } from '../../utils/doctorName';
 import { usePagination } from '../common/ui/Pagination';
+import { Modal } from '../common/ui/Modal';
+import { DataTable } from '../common/ui';
 import { 
   Building2, 
   PlusCircle, 
@@ -12,8 +14,7 @@ import {
   Mail, 
   MapPin, 
   FolderOpen, 
-  ArrowUpDown, 
-  X, 
+  ArrowUpDown,
   ChevronRight,
   LayoutGrid,
   Table as TableIcon
@@ -330,75 +331,92 @@ export const LabListView: React.FC = () => {
           glance. Shares the search, sort and render cap with the card grid. */}
       {viewMode === 'list' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          {filteredLabs.length === 0 ? (
-            <div className="py-12 text-center text-ink-muted text-xs">
-              No dental clinics found matching search.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase text-[11px] tracking-wider">
-                    <th scope="col" className="py-2.5 px-4">Dental Clinic</th>
-                    <th scope="col" className="py-2.5 px-4">Doctor</th>
-                    <th scope="col" className="py-2.5 px-4">Phone</th>
-                    <th scope="col" className="py-2.5 px-4">Email</th>
-                    <th scope="col" className="py-2.5 px-4">Address</th>
-                    <th scope="col" className="py-2.5 px-4 text-center">Cases</th>
-                    <th scope="col" className="py-2.5 px-4">Latest Case</th>
-                    <th scope="col" className="py-2.5 px-4 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {visibleLabs.map((lab) => {
-                    const labCases = casesByLab.get(lab.id) || [];
-                    const recentCase = labCases[0];
-                    return (
-                      <tr
-                        key={lab.id}
-                        onClick={() => setSelectedLab(lab)}
-                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
-                      >
-                        <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
-                          <span className="flex items-center gap-1.5">
-                            <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
-                            <span>{lab.name}</span>
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-700 whitespace-nowrap">
-                          {lab.contact_person || '—'}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap font-mono text-[11px]">
-                          {lab.phone || '—'}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-600 truncate max-w-[220px]" title={lab.email || ''}>
-                          {lab.email || '—'}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-500 truncate max-w-[280px]" title={lab.address || ''}>
-                          {lab.address || '—'}
-                        </td>
-                        <td className="py-2.5 px-4 text-center font-bold text-indigo-700">
-                          {labCases.length}
-                        </td>
-                        <td className="py-2.5 px-4 whitespace-nowrap">
-                          {recentCase ? (
-                            <span className="font-mono font-bold text-indigo-700">{recentCase.case_number}</span>
-                          ) : (
-                            <span className="text-slate-300 italic font-normal">No cases</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap">
-                          <span className="text-slate-900 font-semibold inline-flex items-center gap-0.5">
-                            View <ChevronRight className="w-3.5 h-3.5" />
-                          </span>
-                        </td>
-                      </tr>
+          {/* DataTable owns the <tr>, so the "click a row to open the clinic"
+              behaviour rides a delegated click on the wrapper instead of an
+              onClick on the row itself. */}
+          <div
+            onClick={(e) => {
+              const tr = (e.target as HTMLElement).closest('tr');
+              if (!tr || tr.parentElement?.tagName !== 'TBODY') return;
+              const lab = visibleLabs[Array.from(tr.parentElement.children).indexOf(tr)];
+              if (lab) setSelectedLab(lab);
+            }}
+          >
+            <DataTable<DentalLab>
+              data={visibleLabs}
+              rowKey={(lab) => lab.id}
+              rowClassName={() => 'cursor-pointer'}
+              emptyState={
+                <div className="py-12 text-center text-ink-muted text-xs">
+                  No dental clinics found matching search.
+                </div>
+              }
+              columns={[
+                {
+                  header: 'Dental Clinic',
+                  className: 'py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap',
+                  render: (lab: DentalLab) => (
+                    <span className="flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
+                      <span>{lab.name}</span>
+                    </span>
+                  ),
+                },
+                {
+                  header: 'Doctor',
+                  className: 'py-2.5 px-4 text-slate-700 whitespace-nowrap',
+                  render: (lab: DentalLab) => lab.contact_person || '—',
+                },
+                {
+                  header: 'Phone',
+                  className: 'py-2.5 px-4 text-slate-600 whitespace-nowrap font-mono text-[11px]',
+                  render: (lab: DentalLab) => lab.phone || '—',
+                },
+                {
+                  header: 'Email',
+                  className: 'py-2.5 px-4 text-slate-600 truncate max-w-[220px]',
+                  render: (lab: DentalLab) => (
+                    <span title={lab.email || ''}>{lab.email || '—'}</span>
+                  ),
+                },
+                {
+                  header: 'Address',
+                  className: 'py-2.5 px-4 text-slate-500 truncate max-w-[280px]',
+                  render: (lab: DentalLab) => (
+                    <span title={lab.address || ''}>{lab.address || '—'}</span>
+                  ),
+                },
+                {
+                  header: 'Cases',
+                  align: 'center',
+                  className: 'py-2.5 px-4 font-bold text-indigo-700',
+                  render: (lab: DentalLab) => (casesByLab.get(lab.id) || []).length,
+                },
+                {
+                  header: 'Latest Case',
+                  className: 'py-2.5 px-4 whitespace-nowrap',
+                  render: (lab: DentalLab) => {
+                    const recentCase = (casesByLab.get(lab.id) || [])[0];
+                    return recentCase ? (
+                      <span className="font-mono font-bold text-indigo-700">{recentCase.case_number}</span>
+                    ) : (
+                      <span className="text-slate-300 italic font-normal">No cases</span>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  },
+                },
+                {
+                  header: 'Action',
+                  align: 'right',
+                  className: 'py-2.5 px-4 whitespace-nowrap',
+                  render: () => (
+                    <span className="text-slate-900 font-semibold inline-flex items-center gap-0.5">
+                      View <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          </div>
         </div>
       )}
 
@@ -410,21 +428,19 @@ export const LabListView: React.FC = () => {
       )}
 
       {/* Create New Lab Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl relative space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-indigo-600" /> Register New Dental Clinic
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="text-ink-muted hover:text-slate-700 p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        label="Register New Dental Clinic"
+        maxWidth="max-w-lg"
+        headerClassName="px-6 py-3"
+        header={
+          <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-indigo-600" /> Register New Dental Clinic
+          </h3>
+        }
+      >
+          <div className="space-y-4 p-6 pt-4">
 
             <p className="text-[11px] text-slate-500 -mt-1">
               Clinic name and doctor name are required — everything else can be filled in later.
@@ -520,8 +536,7 @@ export const LabListView: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 };

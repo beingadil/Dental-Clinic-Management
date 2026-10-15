@@ -85,9 +85,10 @@ export const LoginPage: React.FC = () => {
     !!setupName.trim() && !!setupUsername.trim() && setupPassword.length >= 8 && !setupBusy;
 
   return (
-    <div className="min-h-[100dvh] bg-white flex flex-col text-slate-900 selection:bg-indigo-600 selection:text-white">
+    <div className="app-atmos app-auth-hero min-h-[100dvh] bg-white flex flex-col text-slate-900 selection:bg-indigo-600 selection:text-white">
       <main className="flex-1 flex items-center justify-center p-6 sm:p-10">
-        <section className="w-full max-w-sm animate-step-in py-10">
+        <section className="login-tray w-full max-w-[26rem] animate-step-in rounded-[26px] p-2">
+          <div className="rounded-[20px] border border-slate-100 bg-white px-7 py-9 sm:px-8">
           {/* Brand header */}
           <div className="flex items-center gap-3 mb-10">
             {brandingSettings.logoUrl ? (
@@ -304,6 +305,7 @@ export const LoginPage: React.FC = () => {
               </p>
             </>
           )}
+          </div>
         </section>
       </main>
 

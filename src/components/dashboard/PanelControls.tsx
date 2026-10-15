@@ -12,17 +12,26 @@
  */
 import React from 'react';
 import { Pin, PinOff, Maximize2, Minimize2, EyeOff, ChevronDown } from 'lucide-react';
+import type { PanelRank } from './panelRegistry';
 
-const MENU_W = 'absolute right-3 top-3 z-20 w-44 rounded-xl border border-ds-line bg-white p-1 shadow-lg';
+const MENU_W =
+  'ds-glass absolute right-3 top-3 z-20 w-44 rounded-xl border border-ds-line bg-ds-surface/90 p-1 shadow-ds-lift';
 
 export const PanelControls: React.FC<{
   label: string;
+  /**
+   * Lead panels are the page's axis: already full width, already first, so
+   * `Pin to top` and `Make wide` are menu items that could not do anything.
+   * They are omitted rather than shown-and-inert — a control that silently
+   * does nothing is worse than a missing one.
+   */
+  rank?: PanelRank;
   pinned: boolean;
   wide: boolean;
   onPin: () => void;
   onWide: () => void;
   onHide: () => void;
-}> = ({ label, pinned, wide, onPin, onWide, onHide }) => {
+}> = ({ label, rank = 'primary', pinned, wide, onPin, onWide, onHide }) => {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
 
@@ -57,7 +66,7 @@ export const PanelControls: React.FC<{
         onClick={() => setOpen((v) => !v)}
         aria-label={`${label} panel options`}
         aria-expanded={open}
-        className="ds-tap ds-hit flex items-center gap-1 rounded-lg border border-ds-line bg-white/90 px-1.5 py-1 text-ds-muted opacity-0 transition-opacity hover:text-ds-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent cursor-pointer group-hover:opacity-100 focus:opacity-100"
+        className="ds-tap ds-hit flex items-center gap-1 rounded-lg border border-ds-line bg-ds-surface/90 px-1.5 py-1 text-ds-muted opacity-0 transition-opacity hover:text-ds-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent cursor-pointer group-hover:opacity-100 focus:opacity-100"
       >
         {pinned ? <Pin className="w-3.5 h-3.5 text-ds-accent" /> : null}
         <span className="text-[10px] font-bold tracking-wide">•••</span>
@@ -66,14 +75,18 @@ export const PanelControls: React.FC<{
 
       {open && (
         <div className={MENU_W} role="menu">
-          <button type="button" role="menuitem" className={item} onClick={run(onPin)}>
-            {pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
-            {pinned ? 'Unpin from top' : 'Pin to top'}
-          </button>
-          <button type="button" role="menuitem" className={item} onClick={run(onWide)}>
-            {wide ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            {wide ? 'Make narrow' : 'Make wide'}
-          </button>
+          {rank !== 'lead' ? (
+            <>
+              <button type="button" role="menuitem" className={item} onClick={run(onPin)}>
+                {pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                {pinned ? 'Unpin from top' : 'Pin to top'}
+              </button>
+              <button type="button" role="menuitem" className={item} onClick={run(onWide)}>
+                {wide ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                {wide ? 'Make narrow' : 'Make wide'}
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             role="menuitem"
@@ -95,15 +108,16 @@ export const PanelControls: React.FC<{
  */
 export const PanelShell: React.FC<{
   label: string;
+  rank?: PanelRank;
   pinned: boolean;
   wide: boolean;
   onPin: () => void;
   onWide: () => void;
   onHide: () => void;
   children: React.ReactNode;
-}> = ({ children, ...controls }) => (
-  <div className="relative group">
-    <PanelControls {...controls} />
+}> = ({ children, rank = 'primary', ...controls }) => (
+  <div className={`relative group ds-rank-${rank}`}>
+    <PanelControls rank={rank} {...controls} />
     {children}
   </div>
 );

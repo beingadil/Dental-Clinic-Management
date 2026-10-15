@@ -1,3 +1,5 @@
+import { useTransientFlag } from '../common/useTransient';
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CaseType, PriorityLevel, CatalogCategory } from '../../types';
@@ -17,8 +19,8 @@ import {
   Layers,
   Tags,
   AlertTriangle,
-  X
 } from 'lucide-react';
+import { Modal } from '../common/ui';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { getTodayStr } from '../../utils/dateUtils';
 import { catalogNeedsTeeth } from '../../utils/catalogToothRequirement';
@@ -107,7 +109,7 @@ export const CatalogView: React.FC = () => {
      so the form is never blank. `reloadSlaSettings()` inside `save` refreshes the
      module-level copy every other surface reads. */
   const [slaDays, setSlaDays] = useState<Record<PriorityLevel, number>>(() => loadSlaSettings());
-  const [slaSaved, setSlaSaved] = useState(false);
+  const [slaSaved, flashSlaSaved] = useTransientFlag(3000);
 
   // Form State
   const [name, setName] = useState('');
@@ -331,8 +333,7 @@ export const CatalogView: React.FC = () => {
   const handleSaveSla = () => {
     saveSlaSettings(slaDays);
     setSlaDays(loadSlaSettings());
-    setSlaSaved(true);
-    setTimeout(() => setSlaSaved(false), 3000);
+    flashSlaSaved();
   };
 
   const handleResetSla = () => {
@@ -898,7 +899,7 @@ export const CatalogView: React.FC = () => {
             <div className="pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center bg-slate-50 p-2.5 rounded-lg">
               <div>
                 <span className="text-[10px] text-ink-muted font-bold block uppercase tracking-wider">Base Price</span>
-                <span className="font-bold text-slate-900 text-xs">PKR {item.base_price.toLocaleString()}</span>
+                <span className="font-bold text-slate-900 text-xs">{formatPKR(item.base_price)}</span>
               </div>
               <div>
                 <span className="text-[10px] text-ink-muted font-bold block uppercase tracking-wider">Turnaround</span>
@@ -930,29 +931,29 @@ export const CatalogView: React.FC = () => {
       )}
 
       {/* Add / Edit Material Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-5 border border-slate-200 shadow-xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-slate-100 text-slate-700 rounded-lg">
-                  <BookOpen className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">
-                    {editingItem ? 'Edit Restorative Material' : 'Add New Restorative Option'}
-                  </h3>
-                  <p className="text-xs text-ink-muted">Configure technical specifications & standard clinic rate</p>
-                </div>
-              </div>
-              <button
-                onClick={resetForm}
-                className="text-ink-muted hover:text-slate-800 p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      {/* Add / Edit Material Modal — on `ui/Modal`: this overlay had no Escape
+          handling, no focus trap and no `role="dialog"`. Bespoke header kept. */}
+      <Modal
+        open={showAddModal}
+        onClose={resetForm}
+        label={editingItem ? 'Edit Restorative Material' : 'Add New Restorative Option'}
+        maxWidth="max-w-lg"
+        headerClassName="px-5 py-3"
+        header={
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-slate-100 text-slate-700 rounded-lg">
+              <BookOpen className="w-4 h-4" />
             </div>
-
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm">
+                {editingItem ? 'Edit Restorative Material' : 'Add New Restorative Option'}
+              </h3>
+              <p className="text-xs text-ink-muted">Configure technical specifications &amp; standard clinic rate</p>
+            </div>
+          </div>
+        }
+      >
+          <div className="space-y-4 p-5 pt-4">
             <form onSubmit={handleCreateOrUpdate} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Material / Option Name *</label>
@@ -1006,10 +1007,20 @@ export const CatalogView: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">SLA Turnaround (Days)</label>
                   <input
                     type="number"
+                    min={1}
                     value={leadDays}
                     onChange={(e) => setLeadDays(Number(e.target.value))}
-                    className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
+                    aria-invalid={!!errors.leadDays}
+                    className={`w-full p-2 text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none text-slate-900 ${
+                      errors.leadDays ? 'border-rose-400' : 'border-slate-200 focus:border-slate-400'
+                    }`}
                   />
+                  {/* `validate()` has always set this message — it was just never
+                      rendered. So a material with a 0 or negative SLA hit Save,
+                      the submit silently did nothing, no field was marked and no
+                      reason was given: the form looked broken rather than
+                      invalid. The other two validated fields render theirs. */}
+                  {errors.leadDays && <p className="text-[10px] text-rose-500 mt-1">{errors.leadDays}</p>}
                 </div>
 
                 <div>
@@ -1095,8 +1106,7 @@ export const CatalogView: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
-      )}
+      </Modal>
         </>
       )}
     </div>

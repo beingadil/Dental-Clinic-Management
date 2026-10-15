@@ -75,6 +75,14 @@ export const ReportsView: React.FC = () => {
         <BillingReportsView
           onPrintInvoice={(inv) => setPrintInvoice(inv)}
           onViewCaseSlip={(caseItem) => setViewSlipCase(caseItem)}
+          /* `journalRefId` was initialised to null and rendered into a modal
+             gated on it, but NOTHING ever called `setJournalRefId` — so the
+             Double-Entry Journal Inspector on this page could never open, even
+             though the identical inspector works from Billing. The statements
+             tab is the only tab that lists saved vouchers, which is exactly
+             where an auditor wants to trace one to its journal lines, so this
+             is wired rather than deleted. */
+          onOpenJournalModal={(refId) => setJournalRefId(refId)}
         />
       )}
 

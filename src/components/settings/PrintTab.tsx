@@ -1,3 +1,4 @@
+import { useTransientFlag } from '../common/useTransient';
 import React, { useState } from 'react';
 import {
   loadPrintSettings,
@@ -24,7 +25,7 @@ const PAPER_ASPECT: Record<PrintSettings['paper'], string> = { a4: '210 / 297', 
 export const PrintTab: React.FC = () => {
   const { brandingSettings } = useApp();
   const [printSettingsForm, setPrintSettingsForm] = useState<PrintSettings>(() => loadPrintSettings());
-  const [printSaved, setPrintSaved] = useState(false);
+  const [printSaved, flashPrintSaved] = useTransientFlag(3000);
 
   /* "What prints" per document kind — stored immediately (no Save needed), and
      read by the invoice dialog and batch printing, so paper always matches. */
@@ -44,8 +45,7 @@ export const PrintTab: React.FC = () => {
   const handleSavePrintSettings = (e: React.FormEvent) => {
     e.preventDefault();
     savePrintSettings(printSettingsForm);
-    setPrintSaved(true);
-    setTimeout(() => setPrintSaved(false), 3000);
+    flashPrintSaved();
   };
 
   return (

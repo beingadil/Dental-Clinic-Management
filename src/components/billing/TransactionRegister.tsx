@@ -1,8 +1,10 @@
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState, useMemo } from 'react';
 import { getTodayStr } from '../../utils/dateUtils';
 import { useApp } from '../../context/AppContext';
 import { PaymentRecord, AdvancePayment, AccountAdjustment, Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
+import { DataTable } from '../common/ui';
 import { 
   DollarSign, 
   Wallet, 
@@ -127,7 +129,7 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
         labId: adv.lab_id,
         labName: adv.lab_name,
         category: 'Advance Deposit',
-        detail: `Remaining Credit: PKR ${(adv.remaining_amount || 0).toLocaleString()}`,
+        detail: `Remaining Credit: ${formatPKR(adv.remaining_amount)}`,
         referenceNumber: adv.reference_number,
         method: adv.payment_method,
         amount: adv.amount,
@@ -350,241 +352,247 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
       </div>
 
       {/* Unified Transactions Table */}
+      {/* DataTable renders a BARE table — it no longer draws its own card,
+          because this view already owns one and adopting it card-in-card
+          doubled the hairline. The card stays here. */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-        {filteredTransactions.length === 0 ? (
-          <div className="p-12 text-center text-xs text-ink-muted">
-            No transactions found for the selected date range and filters — rewind
-            the date picker to view previous entries.
-          </div>
-        ) : (
-          <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[11px] text-slate-500 tracking-wider">
-                  <th scope="col" className="py-2 px-3">Txn / Receipt #</th>
-                  <th scope="col" className="py-2 px-3">Date</th>
-                  <th scope="col" className="py-2 px-3">Dental Clinic</th>
-                  <th scope="col" className="py-2 px-3">Category</th>
-                  <th scope="col" className="py-2 px-3">Detail & Notes</th>
-                  <th scope="col" className="py-2 px-3">Method & Ref #</th>
-                  <th scope="col" className="py-2 px-3 text-right">Amount (PKR)</th>
-                  <th scope="col" className="py-2 px-3 text-center">Proof Slip</th>
-                  <th scope="col" className="py-2 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredTransactions.map((txn) => {
-                  const isPayment = txn.sourceType === 'payment';
-                  const isAdvance = txn.sourceType === 'advance';
-                  const isAdjustment = txn.sourceType === 'adjustment';
+        <DataTable<UnifiedTransaction>
+          data={filteredTransactions}
+          rowKey={(txn) => `${txn.sourceType}-${txn.id}`}
+          rowClassName={(txn) => (txn.isReversed ? 'bg-rose-50/40 opacity-75' : '')}
+          emptyState={
+            <div className="p-12 text-center text-xs text-ink-muted">
+              No transactions found for the selected date range and filters — rewind
+              the date picker to view previous entries.
+            </div>
+          }
+          columns={[
+            {
+              header: 'Txn / Receipt #',
+              className: 'font-mono font-bold text-slate-900 whitespace-nowrap',
+              render: (txn) => (
+                <div className="flex items-center gap-1.5">
+                  <span>{txn.txnNumber}</span>
+                  {txn.isReversed && (
+                    <span className="px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 text-rose-700 uppercase tracking-tight">
+                      REVERSED
+                    </span>
+                  )}
+                </div>
+              ),
+            },
+            {
+              header: 'Date',
+              className: 'text-slate-600 whitespace-nowrap',
+              render: (txn) => txn.date,
+            },
+            {
+              header: 'Dental Clinic',
+              className: 'font-semibold text-slate-900',
+              render: (txn) => txn.labName,
+            },
+            {
+              header: 'Category',
+              className: 'whitespace-nowrap',
+              render: (txn) => {
+                const isPayment = txn.sourceType === 'payment';
+                const isAdvance = txn.sourceType === 'advance';
+                const isAdjustment = txn.sourceType === 'adjustment';
+                return (
+                  <>
+                    {isPayment && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <DollarSign className="w-3 h-3" />
+                        <span>{txn.category}</span>
+                      </span>
+                    )}
+                    {isAdvance && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        <Wallet className="w-3 h-3" />
+                        <span>Advance Deposit</span>
+                      </span>
+                    )}
+                    {isAdjustment && (
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        txn.direction === 'credit'
+                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                          : txn.direction === 'debit'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}>
+                        <FileCheck2 className="w-3 h-3" />
+                        <span>{txn.category}</span>
+                      </span>
+                    )}
+                  </>
+                );
+              },
+            },
+            {
+              header: 'Detail & Notes',
+              className: 'text-slate-600 max-w-xs',
+              render: (txn) => (
+                <>
+                  <p className="font-medium text-slate-800 line-clamp-1">{txn.detail}</p>
+                  <p className="text-[11px] text-slate-500">By {txn.recordedBy}</p>
+                </>
+              ),
+            },
+            {
+              header: 'Method & Ref #',
+              className: 'whitespace-nowrap',
+              render: (txn) => (
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
+                    txn.method === 'cash'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : txn.method === 'bank'
+                      ? 'bg-blue-100 text-blue-800'
+                      : txn.method === 'cheque'
+                      ? 'bg-slate-100 text-slate-800'
+                      : txn.method === 'advance'
+                      ? 'bg-indigo-100 text-indigo-800'
+                      : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {txn.method || '—'}
+                  </span>
+                  {txn.referenceNumber && (
+                    <span className="font-mono text-[11px] text-slate-500">
+                      #{txn.referenceNumber}
+                    </span>
+                  )}
+                </div>
+              ),
+            },
+            {
+              header: 'Amount (PKR)',
+              align: 'right',
+              className: 'font-bold whitespace-nowrap',
+              render: (txn) => (
+                <span className={
+                  txn.direction === 'inflow'
+                    ? 'text-ink-success'
+                    : txn.direction === 'credit'
+                    ? 'text-purple-700'
+                    : txn.direction === 'debit'
+                    ? 'text-amber-700'
+                    : 'text-ink-danger'
+                }>
+                  <span className="tabular-nums">{formatPKR(txn.amount)}</span>
+                </span>
+              ),
+            },
+            {
+              header: 'Proof Slip',
+              align: 'center',
+              className: 'whitespace-nowrap',
+              render: (txn) => txn.hasAttachments ? (
+                <button
+                  onClick={() => {
+                    if (txn.rawPayment) {
+                      onViewProof(txn.rawPayment);
+                    } else if (txn.rawAdvance) {
+                      onViewProof({
+                        id: txn.rawAdvance.id,
+                        payment_number: txn.rawAdvance.payment_number,
+                        invoice_id: '',
+                        lab_id: txn.rawAdvance.lab_id,
+                        lab_name: txn.rawAdvance.lab_name,
+                        amount: txn.rawAdvance.amount,
+                        payment_method: txn.rawAdvance.payment_method,
+                        payment_date: txn.rawAdvance.payment_date,
+                        reference_number: txn.rawAdvance.reference_number,
+                        notes: txn.rawAdvance.notes,
+                        attachments: txn.rawAdvance.attachments,
+                        recorded_by: txn.rawAdvance.recorded_by
+                      });
+                    } else if (txn.rawAdjustment) {
+                      onViewProof({
+                        id: txn.rawAdjustment.id,
+                        payment_number: txn.rawAdjustment.adjustment_number,
+                        invoice_id: '',
+                        lab_id: txn.rawAdjustment.lab_id,
+                        lab_name: txn.rawAdjustment.lab_name,
+                        amount: txn.rawAdjustment.amount,
+                        payment_method: 'cash',
+                        payment_date: txn.rawAdjustment.date,
+                        reference_number: txn.rawAdjustment.reference_number,
+                        notes: txn.rawAdjustment.reason,
+                        attachments: txn.rawAdjustment.attachments,
+                        recorded_by: txn.rawAdjustment.recorded_by
+                      });
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded text-[11px] transition-colors cursor-pointer"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>{txn.attachmentsCount} Slip{txn.attachmentsCount > 1 ? 's' : ''}</span>
+                </button>
+              ) : (
+                <span className="text-slate-300 text-[11px]">—</span>
+              ),
+            },
+            {
+              header: 'Actions',
+              align: 'right',
+              className: 'whitespace-nowrap',
+              render: (txn) => {
+                const isPayment = txn.sourceType === 'payment';
+                return (
+                  <div className="flex items-center justify-end gap-1.5">
+                    {isPayment && txn.rawPayment && (
+                      <button
+                        onClick={() => {
+                          const matchedInv = invoices.find(i => i.id === txn.invoiceId || i.invoice_number === txn.invoiceNumber);
+                          onPrintReceipt(txn.rawPayment!, matchedInv);
+                        }}
+                        className="px-2 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1 transition-all cursor-pointer"
+                        title="Print Official Payment Slip" aria-label="Print official payment slip"
+                      >
+                        <Printer className="w-3 h-3 text-slate-500" />
+                        <span>Receipt</span>
+                      </button>
+                    )}
 
-                  return (
-                    <tr key={`${txn.sourceType}-${txn.id}`} className={`hover:bg-slate-50/80 transition-colors ${txn.isReversed ? 'bg-rose-50/40 opacity-75' : ''}`}>
-                      
-                      {/* Transaction # */}
-                      <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span>{txn.txnNumber}</span>
-                          {txn.isReversed && (
-                            <span className="px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 text-rose-700 uppercase tracking-tight">
-                              REVERSED
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                    {/* Inspect Double-Entry Journal */}
+                    {onOpenJournalModal && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenJournalModal(txn.txnNumber || txn.referenceNumber || '')}
+                        className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="Inspect Double-Entry Journal Records" aria-label="Inspect double-entry journal records"
+                      >
+                        <Scale className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
-                      {/* Date */}
-                      <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
-                        {txn.date}
-                      </td>
-
-                      {/* Clinic Name */}
-                      <td className="py-2 px-3 font-semibold text-slate-900">
-                        {txn.labName}
-                      </td>
-
-                      {/* Category Badge */}
-                      <td className="py-2 px-3 whitespace-nowrap">
-                        {isPayment && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <DollarSign className="w-3 h-3" />
-                            <span>{txn.category}</span>
-                          </span>
-                        )}
-                        {isAdvance && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            <Wallet className="w-3 h-3" />
-                            <span>Advance Deposit</span>
-                          </span>
-                        )}
-                        {isAdjustment && (
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                            txn.direction === 'credit'
-                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                              : txn.direction === 'debit'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}>
-                            <FileCheck2 className="w-3 h-3" />
-                            <span>{txn.category}</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Detail & Staff */}
-                      <td className="py-2 px-3 text-slate-600 max-w-xs">
-                        <p className="font-medium text-slate-800 line-clamp-1">{txn.detail}</p>
-                        <p className="text-[11px] text-slate-500">By {txn.recordedBy}</p>
-                      </td>
-
-                      {/* Method & Ref */}
-                      <td className="py-2 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
-                            txn.method === 'cash'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : txn.method === 'bank'
-                              ? 'bg-blue-100 text-blue-800'
-                              : txn.method === 'cheque'
-                              ? 'bg-slate-100 text-slate-800'
-                              : txn.method === 'advance'
-                              ? 'bg-indigo-100 text-indigo-800'
-                              : 'bg-purple-100 text-purple-800'
-                          }`}>
-                            {txn.method || '—'}
-                          </span>
-                          {txn.referenceNumber && (
-                            <span className="font-mono text-[11px] text-slate-500">
-                              #{txn.referenceNumber}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Amount */}
-                      <td className="py-2 px-3 text-right font-bold whitespace-nowrap">
-                        <span className={
-                          txn.direction === 'inflow'
-                            ? 'text-ink-success'
-                            : txn.direction === 'credit'
-                            ? 'text-purple-700'
-                            : txn.direction === 'debit'
-                            ? 'text-amber-700'
-                            : 'text-ink-danger'
-                        }>
-                          PKR <span className="tabular-nums">{(txn.amount || 0).toLocaleString()}</span>
-                        </span>
-                      </td>
-
-                      {/* Proof Slip Attachment */}
-                      <td className="py-2 px-3 text-center whitespace-nowrap">
-                        {txn.hasAttachments ? (
-                          <button
-                            onClick={() => {
-                              if (txn.rawPayment) {
-                                onViewProof(txn.rawPayment);
-                              } else if (txn.rawAdvance) {
-                                onViewProof({
-                                  id: txn.rawAdvance.id,
-                                  payment_number: txn.rawAdvance.payment_number,
-                                  invoice_id: '',
-                                  lab_id: txn.rawAdvance.lab_id,
-                                  lab_name: txn.rawAdvance.lab_name,
-                                  amount: txn.rawAdvance.amount,
-                                  payment_method: txn.rawAdvance.payment_method,
-                                  payment_date: txn.rawAdvance.payment_date,
-                                  reference_number: txn.rawAdvance.reference_number,
-                                  notes: txn.rawAdvance.notes,
-                                  attachments: txn.rawAdvance.attachments,
-                                  recorded_by: txn.rawAdvance.recorded_by
-                                });
-                              } else if (txn.rawAdjustment) {
-                                onViewProof({
-                                  id: txn.rawAdjustment.id,
-                                  payment_number: txn.rawAdjustment.adjustment_number,
-                                  invoice_id: '',
-                                  lab_id: txn.rawAdjustment.lab_id,
-                                  lab_name: txn.rawAdjustment.lab_name,
-                                  amount: txn.rawAdjustment.amount,
-                                  payment_method: 'cash',
-                                  payment_date: txn.rawAdjustment.date,
-                                  reference_number: txn.rawAdjustment.reference_number,
-                                  notes: txn.rawAdjustment.reason,
-                                  attachments: txn.rawAdjustment.attachments,
-                                  recorded_by: txn.rawAdjustment.recorded_by
-                                });
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded text-[11px] transition-colors cursor-pointer"
-                          >
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            <span>{txn.attachmentsCount} Slip{txn.attachmentsCount > 1 ? 's' : ''}</span>
-                          </button>
-                        ) : (
-                          <span className="text-slate-300 text-[11px]">—</span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-2 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {isPayment && txn.rawPayment && (
-                            <button
-                              onClick={() => {
-                                const matchedInv = invoices.find(i => i.id === txn.invoiceId || i.invoice_number === txn.invoiceNumber);
-                                onPrintReceipt(txn.rawPayment!, matchedInv);
-                              }}
-                              className="px-2 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1 transition-all cursor-pointer"
-                              title="Print Official Payment Slip" aria-label="Print official payment slip"
-                            >
-                              <Printer className="w-3 h-3 text-slate-500" />
-                              <span>Receipt</span>
-                            </button>
-                          )}
-
-                          {/* Inspect Double-Entry Journal */}
-                          {onOpenJournalModal && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenJournalModal(txn.txnNumber || txn.referenceNumber || '')}
-                              className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                              title="Inspect Double-Entry Journal Records" aria-label="Inspect double-entry journal records"
-                            >
-                              <Scale className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          {/* Audit-Compliant Reversal (the only removal path — no silent deletes) */}
-                          {!txn.isReversed && onReverseTransaction ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onReverseTransaction({
-                                  referenceType: txn.sourceType === 'payment' ? 'payment' : txn.sourceType === 'advance' ? 'advance_payment' : 'adjustment',
-                                  referenceId: txn.id,
-                                  referenceNumber: txn.txnNumber,
-                                  amount: txn.amount,
-                                  labName: txn.labName,
-                                  date: txn.date,
-                                  details: txn.detail
-                                });
-                              }}
-                              className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Reverse Transaction (Compensating Journal)" aria-label="Reverse transaction (compensating journal)"
-                            >
-                              <ArrowLeftRight className="w-3.5 h-3.5" />
-                            </button>
-                          ) : null}
-                        </div>
-                      </td>
-
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                    {/* Audit-Compliant Reversal (the only removal path — no silent deletes) */}
+                    {!txn.isReversed && onReverseTransaction ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onReverseTransaction({
+                            referenceType: txn.sourceType === 'payment' ? 'payment' : txn.sourceType === 'advance' ? 'advance_payment' : 'adjustment',
+                            referenceId: txn.id,
+                            referenceNumber: txn.txnNumber,
+                            amount: txn.amount,
+                            labName: txn.labName,
+                            date: txn.date,
+                            details: txn.detail
+                          });
+                        }}
+                        className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="Reverse Transaction (Compensating Journal)" aria-label="Reverse transaction (compensating journal)"
+                      >
+                        <ArrowLeftRight className="w-3.5 h-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              },
+            },
+          ]}
+        />
       </div>
 
     </div>

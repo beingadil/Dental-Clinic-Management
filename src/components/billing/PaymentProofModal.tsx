@@ -1,3 +1,4 @@
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState } from 'react';
 import { PaymentRecord, PaymentAttachment } from '../../types';
 import { Download, Image as ImageIcon, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
@@ -49,7 +50,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({ payment, o
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Invoice {payment.invoice_number} • {payment.lab_name} • PKR {payment.amount.toLocaleString()}
+              Invoice {payment.invoice_number} • {payment.lab_name} • {formatPKR(payment.amount)}
             </p>
           </div>
           <button

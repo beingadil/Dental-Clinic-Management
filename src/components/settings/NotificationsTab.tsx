@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useTransientMessage } from '../common/useTransient';
 import { useApp } from '../../context/AppContext';
 import { getTodayStr } from '../../utils/dateUtils';
 import { auditRepo } from '../../db/repos';
@@ -37,7 +38,7 @@ export const NotificationsTab: React.FC = () => {
   const [config, setConfig] = useState<NotificationConfig>(() => loadNotificationConfig());
   const [templates, setTemplates] = useState<EmailTemplate[]>(() => loadEmailTemplates());
   const [activeKey, setActiveKey] = useState<EmailTemplate['key']>('overdue_case');
-  const [savedNote, setSavedNote] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savedNote, flashSavedNote] = useTransientMessage(3500);
 
   const active = templates.find((t) => t.key === activeKey) || templates[0];
   const accent = resolveBrandSwatch(brandingSettings?.primaryColor);
@@ -57,10 +58,11 @@ export const NotificationsTab: React.FC = () => {
     };
   }, [brandingSettings?.lab_name, brandingSettings?.appName, config.escalation_threshold_days]);
 
-  const flash = (text: string, type: 'success' | 'error' = 'success') => {
-    setSavedNote({ type, text });
-    setTimeout(() => setSavedNote(null), 3500);
-  };
+  /* The hand-rolled `flash` and its bare `setTimeout` are gone: the hook's timer
+     is cleared on unmount and re-armed per call, so a second save inside the
+     3.5s window extends it instead of racing it. Kept as a named alias because
+     every call site in this file already reads `flash(text, type)`. */
+  const flash = (text: string, type: 'success' | 'error' = 'success') => flashSavedNote(type, text);
 
   const toggleFrequency = (key: 'overdue_frequencies' | 'payment_frequencies', id: string) => {
     setConfig((prev) => {
@@ -132,6 +134,52 @@ export const NotificationsTab: React.FC = () => {
       flash('Rendered message copied — paste it into your mail client.');
     } catch {
       flash('Clipboard unavailable; select the preview text and copy manually.', 'error');
+    }
+  };
+
+  /**
+   * Open a real draft instead of only offering clipboard text.
+   *
+   * The templates were editable, previewable and copyable — and the only way to
+   * use one was to copy it by hand, because nothing here sends mail. That is a
+   * reasonable constraint for an offline lab workstation with no mail server, so
+   * the honest fix is a `mailto:` composer rather than pretending to deliver:
+   * it hands the rendered message to whatever mail client the operator already
+   * uses, which is where they would have pasted it anyway.
+   *
+   * Two details that matter and are easy to get wrong:
+   *
+   *   - the address is OPTIONAL. A template with no recipient still opens a
+   *     draft, because the operator usually wants the clinic contact of the case
+   *     in front of them, not the one hard-coded here.
+   *   - RFC 6068 forbids raw newlines in `mailto:`. Browsers usually cope, but
+   *     `encodeURIComponent` is the contract, so it is used rather than a
+   *     hand-rolled `.replace(/\n/g, '%0A')`.
+   */
+  const handleCompose = () => {
+    if (!active) return;
+    const to = (brandingSettings?.email || '').trim();
+    const subject = renderTemplatePreview(active.subject, sampleValues);
+    const body = [
+      renderTemplatePreview(active.body_text, sampleValues),
+      '',
+      active.button_text ? `[${active.button_text}]` : '',
+      active.footer_text || '',
+    ].filter(Boolean).join('\n');
+
+    const mailto = `mailto:${encodeURIComponent(to)}${
+      to ? '?' : ''
+    }subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    try {
+      window.location.href = mailto;
+      flash(
+        to
+          ? 'Opened a draft in your mail client. Nothing is sent until you press send there.'
+          : 'Opened a draft with no recipient — add the clinic contact, then send.',
+      );
+    } catch {
+      flash('This system has no mail client registered for mailto:. Use Copy instead.', 'error');
     }
   };
 
@@ -216,6 +264,10 @@ export const NotificationsTab: React.FC = () => {
             />
             <span className="text-xs font-bold text-slate-800">Escalate unresolved reminders</span>
           </label>
+          <p className="md:col-span-3 -mt-2 text-[11px] text-slate-500">
+            When on, an unpaid invoice that passes the threshold below raises an escalation in the System
+            Inbox and repeats on the interval until the money arrives. Off by default.
+          </p>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Escalate after (days unpaid)</label>
             <input
@@ -373,13 +425,23 @@ export const NotificationsTab: React.FC = () => {
               hint={`Accent: ${accent.name}`}
               bodyClassName="p-4 bg-slate-50"
               actions={
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  <Copy className="w-3 h-3" /> Copy message
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCompose}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700 hover:bg-brand-100 cursor-pointer"
+                    title="Open this message as a draft in your mail client"
+                  >
+                    <Mail className="w-3 h-3" /> Open draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" /> Copy message
+                  </button>
+                </>
               }
             >
               <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">

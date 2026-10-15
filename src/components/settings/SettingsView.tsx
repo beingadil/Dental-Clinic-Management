@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useTransientMessage, TransientBanner } from '../common/useTransient';
 import { initBackupScheduler } from '../../services/backupScheduler';
 import { getDatabase } from '../../db';
 import {
@@ -7,8 +8,6 @@ import {
   ShieldCheck,
   Database,
   HardDrive,
-  CheckCircle2,
-  AlertCircle,
   Palette,
   Trash2,
   Sliders,
@@ -41,7 +40,25 @@ export const SettingsView: React.FC = () => {
   const may = (a: SystemAction) => canManageSystem(user, a) || (isAdmin && a !== 'users:manage');
 
   const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates' | 'notifications'>('branding');
-  const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  /* Shared by BackupTab and TestingTab, so it lives here rather than in either
+     tab. `useTransientMessage` owns the timer: the old version set it with a
+     bare `setTimeout(() => setBackupMessage(null), N)` inside two async
+     handlers, which was never cleared — a tab unmounted inside the window left
+     a live timer writing to a state that no longer had a component, and a
+     second export inside the window stacked timers so the first banner cleared
+     early. Children pass a per-call duration because backup uses 6s for
+     "export in progress" and 5s for a failure. */
+  const [backupMessage, flashBackupMessage, clearBackupMessage] = useTransientMessage(5000);
+  const setBackupMessage = useCallback(
+    (m: { type: 'success' | 'error'; text: string } | null, durationMs?: number) => {
+      if (m === null) {
+        clearBackupMessage();
+        return;
+      }
+      flashBackupMessage(m.type, m.text, durationMs);
+    },
+    [flashBackupMessage, clearBackupMessage],
+  );
 
   useEffect(() => {
     initBackupScheduler();
@@ -170,17 +187,7 @@ export const SettingsView: React.FC = () => {
             />
           </div>
 
-      {/* Global Message Alert */}
-      {backupMessage && (
-        <div className={`p-3.5 rounded-xl text-xs font-medium flex items-center gap-2.5 shadow-2xs ${
-          backupMessage.type === 'success' 
-            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-            : 'bg-rose-50 text-rose-800 border border-rose-200'
-        }`}>
-          {backupMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-ink-success shrink-0" /> : <AlertCircle className="w-4 h-4 text-ink-danger shrink-0" />}
-          <span>{backupMessage.text}</span>
-        </div>
-      )}
+      <TransientBanner message={backupMessage} />
 
       {activeTab === 'branding' && may('branding:edit') && <BrandingTab />}
       {activeTab === 'account' && <AccountTab />}

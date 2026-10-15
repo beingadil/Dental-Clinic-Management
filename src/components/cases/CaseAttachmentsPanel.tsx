@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTransientMessage, TransientBanner } from '../common/useTransient';
 import { useApp } from '../../context/AppContext';
 import { CaseAttachment } from '../../types';
 import { openFileInBrowser } from '../../utils/fileUtils';
@@ -7,8 +8,7 @@ import {
   Download, 
   Trash2, 
   Eye, 
-  X, 
-  CheckCircle2, 
+  X,
   Box, 
   Layers, 
   FileText,
@@ -25,7 +25,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
 
   const [previewItem, setPreviewItem] = useState<CaseAttachment | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [uploadedMsg, setUploadedMsg] = useState('');
+  const [uploadedNotice, flashUploadedMsg] = useTransientMessage(3000);
 
   const getAttachmentCategory = (filename?: string, file_type?: string) => {
     const lowerName = (filename || '').toLowerCase();
@@ -83,8 +83,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
           uploaded_by: user ? user.name : 'Lab Staff',
           file_size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`
         });
-        setUploadedMsg(`Uploaded ${file.name} successfully!`);
-        setTimeout(() => setUploadedMsg(''), 3000);
+        flashUploadedMsg('success', `Uploaded ${file.name} successfully!`);
       };
       reader.readAsDataURL(file);
     });
@@ -142,12 +141,7 @@ export const CaseAttachmentsPanel: React.FC<CaseAttachmentsPanelProps> = ({ case
         </label>
       </div>
 
-      {uploadedMsg && (
-        <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-lg flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-ink-success" />
-          <span>{uploadedMsg}</span>
-        </div>
-      )}
+      <TransientBanner message={uploadedNotice} className="p-2.5 rounded-lg" />
 
       {/* Attachments List */}
       <div className="space-y-2">

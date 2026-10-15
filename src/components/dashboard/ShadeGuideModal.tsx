@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTransientFlag } from '../common/useTransient';
 import { X, Sparkles, Check, Copy, CheckCircle2 } from 'lucide-react';
 
 interface ShadeGuideModalProps {
@@ -52,7 +53,7 @@ const SHADES: ShadeItem[] = [
 export const ShadeGuideModal: React.FC<ShadeGuideModalProps> = ({ onClose, onSelectShade }) => {
   const [selectedGroup, setSelectedGroup] = useState<'ALL' | 'A' | 'B' | 'C' | 'D' | 'BL'>('ALL');
   const [activeShade, setActiveShade] = useState<ShadeItem>(SHADES[5]); // Default A2
-  const [copied, setCopied] = useState(false);
+  const [copied, flashCopied] = useTransientFlag(2000);
 
   const filteredShades = selectedGroup === 'ALL' 
     ? SHADES 
@@ -60,8 +61,7 @@ export const ShadeGuideModal: React.FC<ShadeGuideModalProps> = ({ onClose, onSel
 
   const handleCopy = (code: string) => {
     navigator.clipboard?.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    flashCopied();
   };
 
   return (

@@ -1,0 +1,489 @@
+/*
+ * App shell — the navigation rail, the header bar and the mobile dock.
+ *
+ * WHY THIS FILE EXISTS
+ * The dashboard reads its colour through the `ds-*` semantic layer, but the
+ * shell did not: `Sidebar.tsx` had been converted while `Header.tsx` still spoke
+ * raw `slate-*` / `indigo-*` / `purple-*`. Two palette systems therefore met
+ * at the seam — the rail's canvas came from `--ds-surface` (#ffffff / #0f1826)
+ * and the header bar directly beside it from `bg-white/95` remapped to
+ * #0f1826 by `theme/dark.css`, while the app canvas under them was `bg-slate-50`
+ * remapped to #0b1220. Three near-identical darks, none of them the same one.
+ * That is the "different product bolted onto the left" read, and it is a colour
+ * bug before it is a taste bug.
+ *
+ * So the shell gets its OWN component classes, in the same three-layer shape as
+ * the dashboard, and it consumes the SAME semantic tokens. Repointing
+ * `--ds-surface` or `--ds-line` in one place now moves the rail, the header and
+ * every panel together, which is the property the token layer exists for.
+ *
+ * The audit note that matters most here: `--ds-surface` is a CARD plate and
+ * `--ds-surface-sunken` is the CANVAS. The shell deliberately wears the canvas,
+ * and every surface that sits on it is one step above — so elevation is read as
+ * a step in the ramp rather than as a shadow, and the shadow is left to the
+ * floating layers (popovers, the dock) that genuinely detach from the page.
+ */
+
+/* ── Layer 3 · COMPONENT ───────────────────────────────────────────────── */
+
+:root {
+  /* Widths are tokens because three different elements have to agree on them:
+     the aside, the mobile dock's safe-area padding and the collapsed rail's
+     icon centring. Hard-coding 256px in three files is how they drift. */
+  --ds-rail-w: 248px;
+  --ds-rail-w-collapsed: 76px;
+  --ds-header-h: 64px;
+}
+
+@layer components {
+  /*
+   * ── Skip link ─────────────────────────────────────────────────────────
+   * Keyboard users land here first on every page load. It is off-screen until
+   * focused, then pins itself to the top-left of the viewport — above the
+   * rail, because a skip link the operator has to scroll to find is not a skip
+   * link. `transform` keeps it off the layout entirely rather than hiding it
+   * with `display`, so it stays focusable.
+   */
+  .ds-skip-link {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 60;
+    transform: translateY(calc(-100% - 16px));
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: var(--ds-accent);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: var(--ds-shadow-lift);
+    transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ds-skip-link:focus-visible {
+    transform: translateY(0);
+    outline: 2px solid var(--ds-accent-ring);
+    outline-offset: 2px;
+  }
+
+  /*
+   * ── Table header row ──────────────────────────────────────────────────
+   * The `<thead>` row was hand-written eleven times across the app and had
+   * already drifted into four variants (`text-[10px]` here, `text-[11px]`
+   * there, `/80` on the background in one, reordered classes in another), so
+   * "make the table headers match" was a ten-file edit rather than a one-line
+   * change. One class now owns it.
+   *
+   * Applied to the <tr>, not the <th>, because every call site also styles its
+   * own cells for alignment (text-right for money columns), and that per-column
+   * alignment must keep winning.
+   */
+  .ds-th {
+    background: var(--ds-surface-sunken);
+    border-bottom: 1px solid var(--ds-line);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ds-muted);
+  }
+
+  /*
+   * ── Rail ───────────────────────────────────────────────────────────────
+   * The rail is the canvas, not a card: no shadow, no radius, one hairline on
+   * its trailing edge. A vertical surface does not need elevation because there
+   * is nothing above it to cast one.
+   */
+  .ds-rail {
+    background: var(--ds-surface-sunken);
+    border-right: 1px solid var(--ds-line);
+    color: var(--ds-ink-soft);
+  }
+
+  /* ── Brand lockup ────────────────────────────────────────────────────────
+     The mark is a squircle with a single inner rim rather than a flat fill: at
+     40px on a tinted canvas a flat block reads as a sticker, and the rim is
+     what makes it read as an applied badge. Deliberately NOT a gradient — the
+     palette bans a gradient identity, and a gradient logo is the loudest way
+     to spend the one accent.
+     `rounded-xl` is the app's container radius; the mark sits in a container,
+     so it inherits that scale rather than inventing a fourth value. */
+  .ds-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: var(--ds-accent);
+    color: #ffffff;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.28);
+  }
+
+  .ds-brand-name {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--ds-ink);
+    line-height: 1.15;
+  }
+
+  .ds-brand-tagline {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ds-muted);
+    line-height: 1.3;
+  }
+
+  /* ── Group label ──────────────────────────────────────────────────────────
+     A rule plus a label reads as a section divider; a label alone floats. The
+     hairline is the only thing separating one group from the next once the
+     labels stop competing, so it carries the structure. */
+  .ds-nav-group-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ds-muted);
+  }
+  .ds-nav-group-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--ds-line);
+  }
+
+  /*
+   * ── Nav row ────────────────────────────────────────────────────────────
+   * ONE active treatment, not two. The previous row carried both an
+   * accent-soft pill AND a 3px accent bar, which meant the loudest thing on
+   * screen was whichever the eye resolved first and the other one was
+   * redundant weight.
+   *
+   * Now: the ACTIVE ITEM is the filled rail (a saturated accent plate at 3px,
+   * full row height) and everything else about it recedes — the row takes the
+   * sunken step, the label goes to accent-strong, the icon stays accent. The
+   * inactive row is transparent with a sunken hover. So "where am I" is one
+   * shape, not a shape plus a colour wash.
+   *
+   * The plate sits at `left: 0` and the row's own padding starts after it, so
+   * the icon column is identical in both states and nothing shifts on click.
+   */
+  .ds-nav-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ds-ink-soft);
+    cursor: pointer;
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+  .ds-nav-row:hover {
+    background: var(--ds-surface);
+    color: var(--ds-ink);
+  }
+  .ds-nav-row[data-active='true'] {
+    background: var(--ds-surface);
+    color: var(--ds-accent-strong);
+    font-weight: 600;
+  }
+  /* The filled plate. Hidden (not just transparent-width) when inactive so it
+     cannot be reached by a screen reader as a stray accent block. */
+  .ds-nav-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 18px;
+    width: 3px;
+    margin-top: -9px;
+    border-radius: 0 3px 3px 0;
+    background: transparent;
+    transition: background-color 160ms ease;
+  }
+  .ds-nav-row[data-active='true']::before {
+    background: var(--ds-accent);
+  }
+  .ds-nav-row:focus-visible {
+    outline: 2px solid var(--ds-accent);
+    outline-offset: -2px;
+  }
+
+  /* ── Nav badge ───────────────────────────────────────────────────────────
+     A count, not a sticker. `rounded-full` on every number is the pill-badge
+     tell the redesign checklist calls out, and here it is actively worse: a
+     circular count is harder to scan down a column than a square one, because
+     the digits have no straight edge to align to. 6px radius, tabular figures,
+     one hairline, and the badge borrows the tone of the thing it counts. */
+  .ds-nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    margin-left: auto;
+    border-radius: 6px;
+    font-family: var(--ds-numeric);
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    border: 1px solid transparent;
+  }
+  .ds-nav-badge[data-tone='warn'] {
+    background: var(--ds-warn-soft);
+    color: var(--ds-warn-ink);
+    border-color: var(--ds-warn);
+  }
+  .ds-nav-badge[data-tone='risk'] {
+    background: var(--ds-risk-soft);
+    color: var(--ds-risk-ink);
+    border-color: var(--ds-risk);
+  }
+  .ds-nav-badge[data-tone='neutral'] {
+    background: var(--ds-surface-sunken);
+    color: var(--ds-ink-soft);
+    border-color: var(--ds-line);
+  }
+
+  /*
+   * ── Header bar ─────────────────────────────────────────────────────────
+   * Glass, not blur-for-its-own-sake. A 1px inner rim along the bottom is what
+   * separates a translucent bar from the canvas it floats over; without it the
+   * blur reads as a smudge. Height is a token because the sidebar's brand row
+   * has to line up with it or the two chrome bars read as two different apps.
+   */
+  .ds-headerbar {
+    height: var(--ds-header-h);
+    background: color-mix(in srgb, var(--ds-surface) 86%, transparent);
+    border-bottom: 1px solid var(--ds-line);
+    box-shadow: 0 1px 0 0 var(--ds-line);
+  }
+  /* Fallback for a browser without color-mix: a plain opaque bar is wrong in
+     neither theme, it simply loses the translucency. */
+  @supports not (background: color-mix(in srgb, red 50%, transparent)) {
+    .ds-headerbar {
+      background: var(--ds-surface);
+    }
+  }
+
+  /* ── Command bar ────────────────────────────────────────────────────────
+     The search field is the app's single highest-traffic control, so it is the
+     one place that gets a real focus ring rather than a border-colour swap. The
+     ring is the ACCENT token at low alpha, so it is the same hue as the rail
+     plate rather than a third colour. */
+  .ds-command {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--ds-surface-sunken);
+    border: 1px solid var(--ds-line);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+  }
+  .ds-command:hover {
+    border-color: var(--ds-accent-ring);
+  }
+  .ds-command:focus-within {
+    background: var(--ds-surface);
+    border-color: var(--ds-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-accent) 18%, transparent);
+  }
+
+  .ds-command-input {
+    width: 100%;
+    height: 100%;
+    padding-left: 38px;
+    padding-right: 72px;
+    border: 0;
+    background: transparent;
+    outline: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ds-ink);
+  }
+  .ds-command-input::placeholder {
+    color: var(--ds-muted);
+  }
+
+  /* ── Popover ────────────────────────────────────────────────────────────
+     The one layer that genuinely floats, so it is the one layer that gets
+     elevation. `--ds-shadow-lift` is hue-tinted and, in dark, is a light rim
+     plus depth rather than a black drop — a pure-black shadow on a near-black
+     canvas is invisible, which is the old `shadow-xl` failure. */
+  .ds-popover {
+    background: var(--ds-surface);
+    border: 1px solid var(--ds-line);
+    border-radius: 12px;
+    box-shadow: var(--ds-shadow-lift);
+  }
+
+  /* ── Popover row ────────────────────────────────────────────────────────
+     Destructive rows borrow the risk ink; everything else is ink-soft on a
+     sunken hover. One rule, so a menu cannot drift into four hover colours. */
+  .ds-popover-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    color: var(--ds-ink-soft);
+    cursor: pointer;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .ds-popover-row:hover {
+    background: var(--ds-surface-sunken);
+    color: var(--ds-ink);
+  }
+  .ds-popover-row[data-tone='risk'] {
+    color: var(--ds-risk-ink);
+  }
+  .ds-popover-row[data-tone='risk']:hover {
+    background: var(--ds-risk-soft);
+  }
+
+  /*
+   * ── Avatar ─────────────────────────────────────────────────────────────
+   * A squircle, not a circle. The redesign checklist calls avatar circles out
+   * as the most generic avatar form there is, and it is not a matter of taste
+   * here: the mark in the rail above it is a 12px-radius squircle, so a round
+   * avatar directly under a square brand mark makes the header read as
+   * borrowed from a different product.
+   */
+  .ds-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent-strong);
+    border: 1px solid var(--ds-accent-ring);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  /*
+   * ── Icon button ────────────────────────────────────────────────────────
+   * The header's global switches. `--ds-hit` supplies the 44px pointer target
+   * without inflating the glyph, which is what lets these stay 36px and still
+   * meet WCAG 2.5.8.
+   */
+  .ds-iconbtn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    color: var(--ds-ink-soft);
+    cursor: pointer;
+    transition: background-color 140ms ease, color 140ms ease, transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ds-iconbtn:hover {
+    background: var(--ds-surface-sunken);
+    color: var(--ds-ink);
+  }
+  .ds-iconbtn:active {
+    transform: scale(0.94);
+  }
+  .ds-iconbtn:focus-visible {
+    outline: 2px solid var(--ds-accent);
+    outline-offset: 2px;
+  }
+
+  /*
+   * ── Count bubble ───────────────────────────────────────────────────────
+   * Same argument as `.ds-nav-badge`: a count is a number, so it gets a square
+   * chip and tabular figures. Sitting on a 36px icon it overlaps the corner
+   * rather than sitting inside it, so it can never push the icon off centre.
+   */
+  .ds-count {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 6px;
+    background: var(--ds-risk);
+    color: #ffffff;
+    border: 2px solid var(--ds-surface);
+    font-family: var(--ds-numeric);
+    font-size: 9px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+
+  /*
+   * ── Mobile dock ────────────────────────────────────────────────────────
+   * The active tab wears an accent TINT rather than a top rule. The rail's
+   * active treatment is a filled plate, so repeating a plate here would be
+   * consistent — but the dock is a fixed strip with a safe-area inset, and a
+   * plate per item at 5-across reads as five buttons rather than five tabs.
+   * A tint plus an accent icon is the tab idiom; the plate stays the rail's
+   * signature.
+   */
+  .ds-dock-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 48px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ds-muted);
+    cursor: pointer;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .ds-dock-item[data-active='true'] {
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent-strong);
+    font-weight: 700;
+  }
+  .ds-dock-item:focus-visible {
+    outline: 2px solid var(--ds-accent);
+    outline-offset: -2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-skip-link,
+  .ds-nav-row,
+  .ds-nav-row::before,
+  .ds-command,
+  .ds-iconbtn,
+  .ds-popover-row,
+  .ds-dock-item {
+    transition: none !important;
+  }
+  .ds-iconbtn:active {
+    transform: none;
+  }
+}

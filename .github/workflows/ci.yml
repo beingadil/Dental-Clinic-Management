@@ -111,6 +111,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The binary guard anchors to win32/x64 and SKIPS on any other host, so
+      # the `web` job's `npm run lint` never actually verified anything — it
+      # printed "SKIPPED" and exited 0. This job is the only place the guard can
+      # do its job, so it runs here, explicitly, and fails the build if a
+      # shipped native binary does not match the hash captured from the official
+      # npm tarball. Without this the guard is decorative in CI and only ever
+      # enforced on one developer's machine.
+      - name: Binary integrity guard (win32/x64 anchor)
+        run: npm run verify:binaries
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache (src-tauri)

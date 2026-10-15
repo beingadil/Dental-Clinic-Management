@@ -556,6 +556,26 @@
     background-image: radial-gradient(circle, rgb(148 163 184 / 0.28) 1px, transparent 1px);
   }
 
+  /* The generated atmosphere, re-read for a near-black canvas. The aurora is
+     lifted because the same alpha over #f6f7f9 is a tint and over #0b1220 is
+     nothing; the grain is lifted for the same reason, then capped — noise
+     against black reads far stronger than noise against white. */
+  .dark .app-atmos::before {
+    opacity: 0.85;
+  }
+  .dark .app-atmos::after {
+    opacity: 0.05;
+  }
+
+  /* The sign-in tray inverts the other way: on white the tray is a hair DARKER
+     than the core, on dark it must be a hair LIGHTER, and its shadow has to
+     become depth rather than darkness. */
+  .dark .login-tray {
+    background: rgb(148 163 184 / 0.05);
+    border-color: rgb(148 163 184 / 0.16);
+    box-shadow: 0 24px 60px -28px rgb(0 0 0 / 0.7);
+  }
+
   /* Scrollbars are pure rgba() here. The light thumb is slate-300 at 80%;
      on dark it must lift, not just tint. */
   .dark ::-webkit-scrollbar-thumb {

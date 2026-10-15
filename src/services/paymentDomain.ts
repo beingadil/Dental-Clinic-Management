@@ -1,4 +1,4 @@
-import type { Invoice, PaymentRecord, PaymentAllocation, SavedVoucher, JournalEntry, AppNotification } from '../types';
+import type { Invoice, PaymentRecord, PaymentAllocation, SavedVoucher, JournalEntry } from '../types';
 import { buildPaymentJournal } from './financeDomain';
 import { getNowStamp } from '../utils/dateUtils';
 
@@ -8,12 +8,8 @@ import { getNowStamp } from '../utils/dateUtils';
  * near-identical record-payment flows). Pure functions only: no React, no DB.
  */
 
-/** Authoritative payment-status derivation from amounts (used by every write path). */
-export const deriveSimpleStatus = (
-  amountPaid: number,
-  finalAmount: number,
-): 'unpaid' | 'partial' | 'paid' => (amountPaid >= finalAmount ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid');
-
+/** Authoritative payment-status derivation is inlined in each write path and
+ *  was duplicated here; see the note above. */
 export interface BuildPaymentSideEffectsInput {
   payment: PaymentRecord;
   invoice: Invoice;
@@ -61,16 +57,3 @@ export const buildPaymentSideEffects = (input: BuildPaymentSideEffectsInput): { 
 
   return { journal, voucher };
 };
-
-/** Paid-in-full notification (shared wording across all payment entry points). */
-export const buildPaidInFullNotification = (payment: PaymentRecord, invoice: Invoice): AppNotification => ({
-  id: `notif-paid-${invoice.id}-${payment.id}`,
-  type: 'system',
-  title: `Invoice ${invoice.invoice_number} Paid in Full`,
-  message: `Payment of PKR ${Math.round(payment.amount).toLocaleString()} received for ${invoice.lab_name}. Invoice is fully settled.`,
-  invoice_id: invoice.id,
-  lab_id: invoice.lab_id,
-  is_read: false,
-  is_archived: false,
-  created_at: getNowStamp(),
-});

@@ -1,3 +1,5 @@
+import { formatPKR } from '../../services/financeDomain';
+import { invoiceBalanceDue } from '../../services/financeDomain';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord } from '../../types';
@@ -85,7 +87,7 @@ export const BillingView: React.FC = () => {
 
   // Helper to determine if an invoice is overdue
   const isInvoiceOverdue = (inv: Invoice): { isOverdue: boolean; diffDays: number } => {
-    const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+    const remaining = invoiceBalanceDue(inv);
     if (inv.payment_status === 'paid' || remaining <= 0) {
       return { isOverdue: false, diffDays: 0 };
     }
@@ -246,7 +248,7 @@ export const BillingView: React.FC = () => {
       inv.case_type_name,
       inv.final_amount,
       inv.amount_paid || 0,
-      Math.max(0, inv.final_amount - (inv.amount_paid || 0)),
+      invoiceBalanceDue(inv),
       inv.payment_status.toUpperCase(),
       inv.due_date
     ]);
@@ -254,7 +256,7 @@ export const BillingView: React.FC = () => {
   };
 
   const getStatusBadge = (inv: Invoice) => {
-    const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+    const remaining = invoiceBalanceDue(inv);
     if (inv.payment_status === 'paid' || remaining <= 0) {
       return (
         <div className="inline-flex flex-col items-center">
@@ -290,7 +292,7 @@ export const BillingView: React.FC = () => {
             <span>Partial</span>
           </span>
           <span className="text-[11px] font-semibold text-ink-info mt-0.5 whitespace-nowrap">
-            PKR {(inv.amount_paid || 0).toLocaleString()} paid
+            {formatPKR(inv.amount_paid || 0)} paid
           </span>
         </div>
       );
@@ -349,7 +351,7 @@ export const BillingView: React.FC = () => {
                 title="Lab holds advance credit for this clinic. Pay refund or apply debit adjustment"
               >
                 <ArrowUpRight className="w-4 h-4 shrink-0" />
-                <span>Pay / Refund Clinic (PKR {(selectedLabSummary.advance_balance || 0).toLocaleString()})</span>
+                <span>Pay / Refund Clinic ({formatPKR(selectedLabSummary.advance_balance || 0)})</span>
               </button>
             ) : (
               <button
@@ -365,7 +367,7 @@ export const BillingView: React.FC = () => {
                 <ArrowDownLeft className="w-4 h-4 shrink-0" />
                 <span>
                   {selectedLabSummary && (selectedLabSummary.outstanding_balance || 0) > 0
-                    ? `Receive Payment (PKR ${(selectedLabSummary.outstanding_balance || 0).toLocaleString()})`
+                    ? `Receive Payment (${formatPKR(selectedLabSummary.outstanding_balance || 0)})`
                     : 'Receive Payment'}
                 </span>
               </button>
@@ -499,11 +501,16 @@ export const BillingView: React.FC = () => {
           />
 
           {/* Invoices Table */}
+          {/* DataTable renders a BARE table — it no longer draws its own card,
+              because every other table in the app already sits inside a card its
+              view owns and adopting it card-in-card doubled the hairline, the shadow
+              and fought the radius. The card stays here, where it always was. */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
           <DataTable<Invoice>
             data={visibleInvoices}
             rowKey={(inv) => inv.id}
             rowClassName={(inv) => {
-              const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+              const remaining = invoiceBalanceDue(inv);
               const isPaid = inv.payment_status === 'paid' || remaining <= 0;
               const { isOverdue } = isInvoiceOverdue(inv);
               // Visual status border on row
@@ -580,7 +587,7 @@ export const BillingView: React.FC = () => {
                       {(clinicSummary?.advance_balance || 0) > 0 && (
                         <span
                           className="text-[11px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded"
-                          title={`Clinic holds PKR ${(clinicSummary.advance_balance || 0).toLocaleString()} unallocated advance deposit`}
+                          title={`Clinic holds ${formatPKR(clinicSummary.advance_balance || 0)} unallocated advance deposit`}
                         >
                           Adv Avail
                         </span>
@@ -603,26 +610,26 @@ export const BillingView: React.FC = () => {
                 header: 'Final Amount',
                 align: 'right',
                 className: 'font-mono font-bold text-slate-900 whitespace-nowrap tabular-nums',
-                render: (inv: Invoice) => `PKR ${(inv.final_amount || 0).toLocaleString()}`,
+                render: (inv: Invoice) => formatPKR(inv.final_amount || 0),
               },
               {
                 header: 'Paid',
                 align: 'right',
                 className: 'font-mono font-semibold text-ink-success whitespace-nowrap tabular-nums',
-                render: (inv: Invoice) => `PKR ${(inv.amount_paid || 0).toLocaleString()}`,
+                render: (inv: Invoice) => formatPKR(inv.amount_paid || 0),
               },
               {
                 header: 'Remaining Due',
                 align: 'right',
                 className: 'whitespace-nowrap',
                 render: (inv: Invoice) => {
-                  const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+                  const remaining = invoiceBalanceDue(inv);
                   const { isOverdue } = isInvoiceOverdue(inv);
                   return (
                     <span className={`font-mono font-bold tabular-nums ${
                       remaining > 0 ? (isOverdue ? 'text-ink-danger font-bold' : 'text-ink-warning') : 'text-ink-muted'
                     }`}>
-                      PKR {(remaining || 0).toLocaleString()}
+                      {formatPKR(remaining)}
                     </span>
                   );
                 },
@@ -632,7 +639,7 @@ export const BillingView: React.FC = () => {
                 align: 'center',
                 className: 'whitespace-nowrap',
                 render: (inv: Invoice) => {
-                  const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+                  const remaining = invoiceBalanceDue(inv);
                   const isPaid = inv.payment_status === 'paid' || remaining <= 0;
                   const { isOverdue, diffDays } = isInvoiceOverdue(inv);
                   if (isPaid) {
@@ -677,7 +684,7 @@ export const BillingView: React.FC = () => {
                 align: 'right',
                 className: 'whitespace-nowrap',
                 render: (inv: Invoice) => {
-                  const remaining = Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+                  const remaining = invoiceBalanceDue(inv);
                   const isPaid = inv.payment_status === 'paid' || remaining <= 0;
                   const { isOverdue } = isInvoiceOverdue(inv);
                   const clinicSummary = getLabFinancialSummary(inv.lab_id);
@@ -757,6 +764,7 @@ export const BillingView: React.FC = () => {
               },
             ]}
           />
+          </div>
 
         </div>
       )}
@@ -892,7 +900,7 @@ export const BillingView: React.FC = () => {
         open={!!voidTarget}
         title={`Void invoice ${voidTarget?.invoice_number || ''}`}
         consequences={[
-          `${voidTarget?.lab_name || 'The clinic'} will owe ${voidTarget ? voidTarget.final_amount - (voidTarget.amount_paid || 0) : 0} PKR again once the issuance journal is reversed.`,
+          `${voidTarget?.lab_name || 'The clinic'} will owe ${voidTarget ? invoiceBalanceDue(voidTarget) : 0} PKR again once the issuance journal is reversed.`,
           `Invoice ${voidTarget?.invoice_number || ''} leaves the register; its number is retired and never re-issued.`,
           'An INVOICE_VOIDED audit entry records who voided it and why.',
         ]}

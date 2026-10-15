@@ -1,20 +1,22 @@
-import type {
-  Invoice,
-  AdvancePayment,
-  AccountAdjustment,
-  PaymentRecord,
-  JournalEntry,
-  ReconciliationItem,
-} from '../../types';
-import { formatPKR } from '../../services/financeDomain';
-import { getNowStamp } from '../../utils/dateUtils';
 import {
+  formatPKR,
+  invoiceBalanceDue,
   buildPaymentJournal,
   buildAdvanceDepositJournal,
   buildApplyAdvanceJournal,
   buildAdjustmentJournal,
   buildReversalJournal,
 } from '../../services/financeDomain';
+import type {
+  Invoice,
+  AdvancePayment,
+  AccountAdjustment,
+  PaymentRecord,
+  JournalEntry,
+  PaymentAttachment,
+  ReconciliationItem,
+} from '../../types';
+import { getNowStamp } from '../../utils/dateUtils';
 import {
   prepareTransaction,
   applyPaymentToInvoice,
@@ -145,7 +147,42 @@ export function useTransactionCommands(deps: {
 
     // 5. Reconciliation item for bank/cheque
     if (prepared.reconciliationItem) {
-      setReconciliationItems((prev) => [prepared.reconciliationItem as ReconciliationItem, ...prev]);
+      const item = prepared.reconciliationItem as ReconciliationItem;
+      setReconciliationItems((prev) => [item, ...prev]);
+
+      /* The cashier's "Mark as verified / settled immediately" tick.
+       *
+       * `isVerified` was accepted on this command for its whole life and never
+       * read: the reconciliation item was created and then left at `unmatched`
+       * forever, so the Bank Statement Reconciliation panel showed every bank
+       * and cheque payment as unreconciled no matter what the cashier asserted,
+       * and the reconciliation report was permanently empty.
+       *
+       * Verified at POST time rather than as a separate step afterwards,
+       * because that is what the checkbox says ("settled immediately") and
+       * because a cashier confirming a deposit slip at the counter is the only
+       * moment anyone has the slip in front of them. An UNticked box leaves the
+       * item `unmatched`, which is the honest state for a payment that still
+       * has to be checked against the statement.
+       */
+      if (command.isVerified) {
+        setReconciliationItems((prev) =>
+          prev.map((r) => (r.id === item.id ? { ...r, ...buildReconciliationUpdate(r, 'Verified at point of entry', actorName || 'Staff', nowStr) } : r)),
+        );
+        setAuditEvents((prev) => [
+          {
+            id: `aud-${Date.now()}`,
+            timestamp: nowStr,
+            actor: actorName || 'Staff',
+            action: 'RECONCILIATION_VERIFIED',
+            entity_type: 'reconciliation',
+            entity_id: item.id,
+            entity_ref: item.reference_number || item.id,
+            notes: `Reconciliation verified at payment entry for ${item.payment_id}.`,
+          },
+          ...prev,
+        ]);
+      }
     }
 
     // 6. In-app notification
@@ -213,7 +250,30 @@ export function useTransactionCommands(deps: {
     setAuditEvents((prev) => [prepared.auditEvent, ...prev]);
 
     if (prepared.reconciliationItem) {
-      setReconciliationItems((prev) => [prepared.reconciliationItem as ReconciliationItem, ...prev]);
+      const item = prepared.reconciliationItem as ReconciliationItem;
+      setReconciliationItems((prev) => [item, ...prev]);
+
+      // Same reasoning as recordTransactionV2: `isVerified` was accepted and
+      // never read here either, so an advance deposit paid by bank or cheque
+      // also sat permanently unreconciled.
+      if (command.isVerified) {
+        setReconciliationItems((prev) =>
+          prev.map((r) => (r.id === item.id ? { ...r, ...buildReconciliationUpdate(r, 'Verified at point of entry', actorName || 'Cashier', nowStr) } : r)),
+        );
+        setAuditEvents((prev) => [
+          {
+            id: `aud-${Date.now()}`,
+            timestamp: nowStr,
+            actor: actorName || 'Cashier',
+            action: 'RECONCILIATION_VERIFIED',
+            entity_type: 'reconciliation',
+            entity_id: item.id,
+            entity_ref: item.reference_number || item.id,
+            notes: `Reconciliation verified at advance-deposit entry for ${item.payment_id}.`,
+          },
+          ...prev,
+        ]);
+      }
     }
 
     pushNotifications(
@@ -242,7 +302,7 @@ export function useTransactionCommands(deps: {
     const inv = invoices.find((i) => i.id === command.invoiceId);
     if (!inv) return false;
 
-    const remainingDue = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+    const remainingDue = invoiceBalanceDue(inv);
     if (remainingDue <= 0) return false;
 
     const totalAvailable = availableAdvanceCredit(advancePayments, command.clinicId);
@@ -298,15 +358,40 @@ export function useTransactionCommands(deps: {
     reasonCode: string;
     reasonText: string;
     approvedBy?: string;
+    referenceNumber?: string;
+    notes?: string;
+    attachments?: PaymentAttachment[];
     date?: string;
   }): AccountAdjustment => {
     const lab = labs.find((l) => l.id === command.clinicId);
     const labName = lab ? lab.name : 'Dental Clinic';
     const inv = invoices.find((i) => i.id === command.invoiceId);
+
+    /* A credit note can never exceed what the clinic still owes.
+     *
+     * There was no cap here, so a cashier could credit more than the invoice
+     * was worth. That drove `final_amount - credit_notes_total` negative, and
+     * `applyCreditNoteToInvoice` then force-set the invoice to `paid`. Because
+     * every open-invoice list filters on `due > 0`, the invoice vanished from
+     * the cashier's own queue — the money went out, the case closed itself, and
+     * nothing on screen said either had happened.
+     *
+     * The cap is `min(requested, still owed)`, matching `applyAdvanceCreditV2`
+     * directly above, so the two money paths behave the same way. The CLAMPED
+     * amount is what gets written to the adjustment, the invoice, the journal
+     * and the voucher — clamping only the invoice would leave the three other
+     * records disagreeing about how much was credited. */
+    const cappedAmount = inv ? Math.min(command.amount, invoiceBalanceDue(inv)) : command.amount;
+    if (cappedAmount <= 0 || isNaN(cappedAmount)) {
+      throw new Error('This invoice has nothing left to credit.');
+    }
+    const amount = cappedAmount;
+    const effectiveCommand = { ...command, amount };
+
     const adjustmentId = `adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const prepared = buildCreditNoteAdjustment({
-      command,
+      command: effectiveCommand,
       invoice: inv,
       existingAdjustmentNumbers: accountAdjustments.map((a) => a.adjustment_number),
       labName,
@@ -316,7 +401,7 @@ export function useTransactionCommands(deps: {
 
     // Update target invoice
     if (inv) {
-      setInvoices((prev) => prev.map((item) => (item.id === inv.id ? applyCreditNoteToInvoice(item, command.amount) : item)));
+      setInvoices((prev) => prev.map((item) => (item.id === inv.id ? applyCreditNoteToInvoice(item, amount) : item)));
     }
 
     // Journal — carry the invoice's case into the adjustment + journal
@@ -340,7 +425,7 @@ export function useTransactionCommands(deps: {
       doctor_name: inv?.doctor_name || '',
       patient_name: inv?.patient_name || '',
       case_type_name: inv?.case_type_name || '',
-      amount: command.amount,
+      amount: amount,
       notes: command.reasonText || `Credit note issued on ${inv?.invoice_number || 'invoice'}`,
     });
 

@@ -53,8 +53,6 @@ export interface NamedLayout {
 const PANELS_KEY = 'dashboard.panels';
 const LAYOUTS_KEY = 'dashboard.layouts';
 const ORDER_KEY = 'dashboard.order';
-/** Legacy export name kept so existing imports/tests keep working. */
-const PREF_KEY = PANELS_KEY;
 
 const EMPTY_PANELS: PanelPrefs = { pinned: [], hidden: [], wide: [] };
 
@@ -313,5 +311,3 @@ export const useDashboardLayout = (userId: string | undefined, allKeys: string[]
     stamp: getNowStamp,
   };
 };
-
-export const PANEL_PREF_KEY = PREF_KEY;

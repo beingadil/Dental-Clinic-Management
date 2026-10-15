@@ -142,6 +142,94 @@ export const buildUnpaidInvoiceAlerts = (
     }));
 
 /**
+ * ESCALATION — the third reminder sweep.
+ *
+ * `NotificationConfig.enable_escalation`, `escalation_threshold_days` and
+ * `recurring_interval` were all rendered in Settings → Notifications, saved,
+ * and audited — and read by nothing. The two existing sweeps only ever looked at
+ * the `overdue_frequencies` / `payment_frequencies` arrays, and
+ * `escalation_threshold_days` appeared solely as a sample value in the email
+ * preview. The `escalation` notification kind was declared and never produced.
+ *
+ * So the settings were a promise with no implementation. This is the
+ * implementation.
+ *
+ * The rule an operator expects from "Escalate unresolved reminders / after N
+ * days / repeat every M":
+ *
+ *   1. an unpaid invoice that is at least `escalation_threshold_days` past due
+ *      becomes an escalation, and
+ *   2. it STAYS escalated, re-notifying on the configured interval, until the
+ *      money arrives.
+ *
+ * Point 2 is the whole point of the setting and the reason it needs an interval
+ * at all: a case that has been ignored for a month should not produce one row
+ * forever, nor forty rows in a week.
+ *
+ * Deterministic ids carry the interval bucket (`…-esc-7`), so re-running the
+ * sweep on the same day is a no-op — the same discipline the other two sweeps
+ * use, because a duplicate id aborts the whole SQLite sync transaction.
+ */
+
+/** Days → how many days of the interval have elapsed. */
+const daysBetween = (from: string, to: string): number =>
+  Math.round(
+    (new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime()) / 86_400_000,
+  );
+
+const INTERVAL_DAYS: Record<string, number> = {
+  daily: 1,
+  every_3_days: 3,
+  weekly: 7,
+};
+
+export interface EscalationRule {
+  enabled: boolean;
+  thresholdDays: number;
+  /** 'daily' | 'every_3_days' | 'weekly'; anything unknown is treated as weekly. */
+  interval: string;
+}
+
+export const buildEscalationAlerts = (
+  invoices: Invoice[],
+  today: string,
+  idOf: (inv: Invoice, intervalBucket: number) => string,
+  rule: EscalationRule,
+): AppNotification[] => {
+  if (!rule?.enabled) return [];
+
+  const threshold = Number.isFinite(rule.thresholdDays) ? Math.max(1, Math.round(rule.thresholdDays)) : 7;
+  const step = INTERVAL_DAYS[rule.interval] ?? INTERVAL_DAYS.weekly;
+
+  return (invoices || [])
+    .filter((inv) => {
+      if (!inv || inv.payment_status === 'paid' || inv.status_v2 === 'voided' || !inv.due_date) return false;
+      return daysBetween(inv.due_date, today) >= threshold;
+    })
+    .map((inv) => {
+      const overdueDays = daysBetween(inv.due_date, today);
+      // Bucket 0 = first escalation; each further `step` days is another one.
+      const bucket = Math.floor(overdueDays / step);
+      const outstanding = Math.max(0, (inv.final_amount || 0) - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+      return {
+        id: idOf(inv, bucket),
+        type: 'escalation' as const,
+        title: `Escalated — Invoice ${inv.invoice_number} unpaid ${overdueDays} days`,
+        message:
+          `${outstanding.toLocaleString()} PKR outstanding for ${inv.patient_name || inv.lab_name}. ` +
+          `Due ${inv.due_date}. Unresolved after ${overdueDays} days — escalate to management.`,
+        invoice_id: inv.id,
+        case_number: inv.case_number,
+        lab_id: inv.lab_id,
+        is_read: false,
+        read: false,
+        is_archived: false,
+        created_at: getNowStamp(),
+      };
+    });
+};
+
+/**
  * Append-only prepending helper shared by every caller: keeps the existing
  * dedupe-inside-the-updater discipline (a duplicate id aborts the whole SQLite
  * sync transaction) while collapsing the repeated `setNotifications` shapes.
@@ -166,20 +254,6 @@ export const buildGenericNotification = (
   is_read: false,
   read: false,
   is_archived: false,
-});
-
-/** Advance deposit recorded against a clinic credit wallet. */
-export const buildAdvanceDepositNotification = (
-  input: BaseInput & { labId: string; labName: string; amount: number; method: string; advNum: string },
-): AppNotification => ({
-  id: input.id,
-  type: 'system',
-  title: `Advance Deposit Received: ${input.advNum}`,
-  message: `Advance deposit of PKR ${(input.amount || 0).toLocaleString()} received from ${input.labName} via ${input.method.toUpperCase()}. Added to clinic credit balance.`,
-  lab_id: input.labId,
-  is_read: false,
-  is_archived: false,
-  created_at: input.at ?? nowStamp(),
 });
 
 /** Credit note / debit adjustment / refund posted. */

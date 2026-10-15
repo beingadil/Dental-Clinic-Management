@@ -43,13 +43,13 @@ export const PanelLayoutBar: React.FC<{
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-white px-2.5 py-1 text-[11px] font-semibold text-ds-ink-soft hover:border-ds-accent-ring hover:text-ds-accent cursor-pointer"
+            className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-surface px-2.5 py-1 text-[11px] font-semibold text-ds-ink-soft hover:border-ds-accent-ring hover:text-ds-accent cursor-pointer"
           >
             <EyeOff className="w-3.5 h-3.5" />
             {hiddenCount} hidden
           </button>
           {open && (
-            <div className="absolute right-0 top-full mt-1.5 z-20 w-56 rounded-xl border border-ds-line bg-white p-1.5 shadow-lg">
+            <div className="ds-glass absolute right-0 top-full mt-1.5 z-20 w-56 rounded-xl border border-ds-line bg-ds-surface/90 p-1.5 shadow-ds-lift">
               <p className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ds-muted">
                 Restore panel
               </p>
@@ -83,7 +83,7 @@ export const PanelLayoutBar: React.FC<{
         type="button"
         onClick={onReset}
         title="Reset the dashboard layout"
-        className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-white px-2.5 py-1 text-[11px] font-semibold text-ds-muted hover:text-ds-ink cursor-pointer"
+        className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-surface px-2.5 py-1 text-[11px] font-semibold text-ds-muted hover:text-ds-ink cursor-pointer"
       >
         <RotateCcw className="w-3.5 h-3.5" />
         Reset layout

@@ -1,69 +1,63 @@
 {
-  "_comment": "SHA-256 of every native binary shipped by a registry dependency, captured from the official npm tarball. Regenerate with the documented procedure if dependencies change; scripts/verify-binaries.mjs checks installed files against these hashes.",
-  "platform": {
-    "os": "win32",
-    "cpu": "x64"
-  },
-  "binaries": [
-    {
-      "package": "@esbuild/win32-x64",
-      "version": "0.25.12",
-      "file": "@esbuild/win32-x64/esbuild.exe",
-      "sha256": "cae1bbc86f4df800b01d99e28aea0a154b02243de6797e98f48a9b88a64a7be0"
-    },
-    {
-      "package": "@esbuild/win32-x64",
-      "version": "0.28.2",
-      "file": "tsx/node_modules/@esbuild/win32-x64/esbuild.exe",
-      "sha256": "c7bee37877d0aa6a046e52783fa0a2cf1a9ce5579d68bb3083bda99d4bff18ef"
-    },
-    {
-      "package": "@img/sharp-win32-x64",
-      "version": "0.35.5",
-      "file": "@img/sharp-win32-x64/lib/libvips-42.dll",
-      "sha256": "06dab07cc386748513337a31672b1d5269fbc770a14ff403080575665bf0813f"
-    },
-    {
-      "package": "@img/sharp-win32-x64",
-      "version": "0.35.5",
-      "file": "@img/sharp-win32-x64/lib/libvips-cpp-8.18.7.dll",
-      "sha256": "25001dbd05305a0a29119ab49933622c70b4a20ea12ef1d5d20ca40181db53bf"
-    },
-    {
-      "package": "@img/sharp-win32-x64",
-      "version": "0.35.5",
-      "file": "@img/sharp-win32-x64/lib/sharp-win32-x64-0.35.5.node",
-      "sha256": "971048779f9c8598df14641dfc03c625885c93f473a788e65ca2deb50d0b083e"
-    },
-    {
-      "package": "@rollup/rollup-win32-x64-gnu",
-      "version": "4.63.3",
-      "file": "@rollup/rollup-win32-x64-gnu/rollup.win32-x64-gnu.node",
-      "sha256": "4ae9b9d3c6add1617ce24f2ee8c08d2ab50f2145fd87eb0e2ea2265e58287b70"
-    },
-    {
-      "package": "@rollup/rollup-win32-x64-msvc",
-      "version": "4.63.3",
-      "file": "@rollup/rollup-win32-x64-msvc/rollup.win32-x64-msvc.node",
-      "sha256": "3f7da86abaeb6d8188e3afb2a5ef780b460fa88f47b84b60a4aea7397c4743f0"
-    },
-    {
-      "package": "@tailwindcss/oxide-win32-x64-msvc",
-      "version": "4.3.3",
-      "file": "@tailwindcss/oxide-win32-x64-msvc/tailwindcss-oxide.win32-x64-msvc.node",
-      "sha256": "abdc655d7f9f413e2da0c97c90852fa476bcac3f2659e9ad51901cf58cb7eac4"
-    },
-    {
-      "package": "@tauri-apps/cli-win32-x64-msvc",
-      "version": "2.11.4",
-      "file": "@tauri-apps/cli-win32-x64-msvc/cli.win32-x64-msvc.node",
-      "sha256": "37c4d79256120893f2c12c1385bce5f7510b5063afdeb09b40a9effec28d0208"
-    },
-    {
-      "package": "lightningcss-win32-x64-msvc",
-      "version": "1.32.0",
-      "file": "lightningcss-win32-x64-msvc/lightningcss.win32-x64-msvc.node",
-      "sha256": "83e7e838ef1bbf5454c651103574fec31a1cec0b453b999d1173365cbc6c7841"
-    }
-  ]
+    "_comment":  "SHA-256 of every native binary shipped by a registry dependency, captured from the official npm tarball. Regenerate with the documented procedure if dependencies change; scripts/verify-binaries.mjs checks installed files against these hashes.",
+    "platform":  {
+                     "os":  "win32",
+                     "cpu":  "x64"
+                 },
+    "binaries":  [
+                     {
+                         "package":  "@esbuild/win32-x64",
+                         "version":  "0.25.12",
+                         "file":  "@esbuild/win32-x64/esbuild.exe",
+                         "sha256":  "cae1bbc86f4df800b01d99e28aea0a154b02243de6797e98f48a9b88a64a7be0"
+                     },
+                     {
+                         "package":  "@img/sharp-win32-x64",
+                         "version":  "0.35.5",
+                         "file":  "@img/sharp-win32-x64/lib/libvips-42.dll",
+                         "sha256":  "06dab07cc386748513337a31672b1d5269fbc770a14ff403080575665bf0813f"
+                     },
+                     {
+                         "package":  "@img/sharp-win32-x64",
+                         "version":  "0.35.5",
+                         "file":  "@img/sharp-win32-x64/lib/libvips-cpp-8.18.7.dll",
+                         "sha256":  "25001dbd05305a0a29119ab49933622c70b4a20ea12ef1d5d20ca40181db53bf"
+                     },
+                     {
+                         "package":  "@img/sharp-win32-x64",
+                         "version":  "0.35.5",
+                         "file":  "@img/sharp-win32-x64/lib/sharp-win32-x64-0.35.5.node",
+                         "sha256":  "971048779f9c8598df14641dfc03c625885c93f473a788e65ca2deb50d0b083e"
+                     },
+                     {
+                         "package":  "@rollup/rollup-win32-x64-gnu",
+                         "version":  "4.63.3",
+                         "file":  "@rollup/rollup-win32-x64-gnu/rollup.win32-x64-gnu.node",
+                         "sha256":  "4ae9b9d3c6add1617ce24f2ee8c08d2ab50f2145fd87eb0e2ea2265e58287b70"
+                     },
+                     {
+                         "package":  "@rollup/rollup-win32-x64-msvc",
+                         "version":  "4.63.3",
+                         "file":  "@rollup/rollup-win32-x64-msvc/rollup.win32-x64-msvc.node",
+                         "sha256":  "3f7da86abaeb6d8188e3afb2a5ef780b460fa88f47b84b60a4aea7397c4743f0"
+                     },
+                     {
+                         "package":  "@tailwindcss/oxide-win32-x64-msvc",
+                         "version":  "4.3.3",
+                         "file":  "@tailwindcss/oxide-win32-x64-msvc/tailwindcss-oxide.win32-x64-msvc.node",
+                         "sha256":  "abdc655d7f9f413e2da0c97c90852fa476bcac3f2659e9ad51901cf58cb7eac4"
+                     },
+                     {
+                         "package":  "@tauri-apps/cli-win32-x64-msvc",
+                         "version":  "2.11.4",
+                         "file":  "@tauri-apps/cli-win32-x64-msvc/cli.win32-x64-msvc.node",
+                         "sha256":  "37c4d79256120893f2c12c1385bce5f7510b5063afdeb09b40a9effec28d0208"
+                     },
+                     {
+                         "package":  "lightningcss-win32-x64-msvc",
+                         "version":  "1.32.0",
+                         "file":  "lightningcss-win32-x64-msvc/lightningcss.win32-x64-msvc.node",
+                         "sha256":  "83e7e838ef1bbf5454c651103574fec31a1cec0b453b999d1173365cbc6c7841"
+                     }
+                 ]
 }

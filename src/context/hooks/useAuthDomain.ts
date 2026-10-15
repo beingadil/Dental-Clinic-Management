@@ -12,6 +12,7 @@ import { getTodayStr } from '../../utils/dateUtils';
 import { hashPassword, verifyPassword } from '../../db/crypto';
 import { INITIAL_USER_PREFERENCES, INITIAL_CASE_TYPES } from '../../data/initialData';
 import { getClinicalSpecs } from '../../services/clinicalSpecsService';
+import { nextBackoff, passwordProblem } from './loginBackoff';
 import { DEFAULT_BRANDING_SETTINGS } from '../../db/defaults';
 
 /**
@@ -226,10 +227,16 @@ export function useAuthDomain(deps: {
 
     const failed = loginBackoffState.current.get(cleanInput);
     const nowMs = Date.now();
-    const attempt = failed && nowMs - failed.lastFail < 60_000 ? failed.count + 1 : 1;
-    const until = attempt >= 5 ? nowMs + Math.min(30_000 * 2 ** (attempt - 5), 300_000) : 0;
-    loginBackoffState.current.set(cleanInput, { count: attempt, lastFail: nowMs, until });
-    if (until) showToast(`Too many failed attempts — locked for ${Math.ceil((until - nowMs) / 1000)}s`, 'error');
+    // The policy lives in ./loginBackoff, not inline. It used to be copied
+    // here line for line, which meant the 8 unit tests in loginBackoff.test.ts
+    // were validating a copy of the policy that never ran — the copy could
+    // drift from the tested one without a single test noticing. One
+    // implementation, one test target.
+    const next = nextBackoff(failed ?? { count: 0, lastFail: 0, until: 0 }, nowMs);
+    loginBackoffState.current.set(cleanInput, next);
+    if (next.until) {
+      showToast(`Too many failed attempts — locked for ${Math.ceil((next.until - nowMs) / 1000)}s`, 'error');
+    }
     return false;
   };
 
@@ -240,13 +247,14 @@ export function useAuthDomain(deps: {
   };
 
   const addUser = async (newUser: Omit<UserProfile, 'id' | 'created_at'>) => {
-    if (!newUser.password || newUser.password.length < 8) {
-      showToast('A password of at least 8 characters is required to create a user', 'error');
+    const pwProblem = passwordProblem(newUser.password);
+    if (pwProblem) {
+      showToast(`${pwProblem} to create a user`, 'error');
       return;
     }
     const created_at = getTodayStr();
     const id = genId('usr');
-    const hash = await hashPassword(newUser.password);
+    const hash = await hashPassword(newUser.password!);
 
     dbWrite(() =>
       usersRepo.insert({
@@ -267,6 +275,17 @@ export function useAuthDomain(deps: {
   };
 
   const updateUser = async (id: string, updates: Partial<UserProfile>) => {
+    /* An admin password reset is a password SET, so it obeys the same rule as
+       creating an account. It did not: the reset dialog only disabled its
+       button on an empty string, so `updateUser(id, { password: 'a' })` was
+       accepted and immediately hashed. */
+    if (updates.password !== undefined) {
+      const pwProblem = passwordProblem(updates.password);
+      if (pwProblem) {
+        showToast(pwProblem, 'error');
+        return;
+      }
+    }
     // Revoke before the state update: a role / super-admin / password change
     // makes every existing token stale.
     if (updates.role !== undefined || updates.isSuperAdmin !== undefined || !!updates.password) {
@@ -311,6 +330,13 @@ export function useAuthDomain(deps: {
     const targetUser = users.find((u) => u.id === userId);
     if (!targetUser) {
       return { success: false, message: 'User account not found.' };
+    }
+
+    /* Self-service had no length rule at all — only "the two new fields match".
+       Same hole as the admin reset, closed by the same shared rule. */
+    const pwProblem = passwordProblem(newPassword);
+    if (pwProblem) {
+      return { success: false, message: pwProblem };
     }
 
     const hash = await hashPassword(newPassword);

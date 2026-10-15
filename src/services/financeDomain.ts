@@ -25,6 +25,40 @@ export const formatPKR = (amount: number): string => {
   return `PKR ${safe.toLocaleString('en-US')}`;
 };
 
+/**
+ * WHAT A CLINIC STILL OWES ON AN INVOICE.
+ *
+ * One function, because this used to be written out at seventeen sites in two
+ * incompatible forms and the two forms had already drifted apart:
+ *
+ *     final_amount - amount_paid                          (16 sites)
+ *     final_amount - amount_paid - credit_notes_total     (17 sites)
+ *
+ * Both were live. The credit-netting form was right — it is what
+ * `useTransactionCommands` charges against, so it is the number the payment
+ * engine will actually accept. The plain form is what the invoice register,
+ * the dashboard's Outstanding KPI and the printed statement showed, so after a
+ * credit note was issued the register overstated what was owed, the KPI
+ * overstated it, the CSV export overstated it, and "Bulk mark paid" posted a
+ * DIFFERENT amount from the row it was clicked on.
+ *
+ * A credit note is money the lab gave back. Leaving it out of the balance is
+ * not a display inconsistency; it is a wrong number in the one place an
+ * operator decides who to chase for money.
+ *
+ * Clamped at zero: an over-credited invoice owes nothing, not a negative
+ * amount that would read as a payable in the operator's favour.
+ */
+export const invoiceBalanceDue = (invoice: {
+  final_amount?: number;
+  amount_paid?: number;
+  credit_notes_total?: number;
+}): number =>
+  Math.max(
+    0,
+    (invoice.final_amount || 0) - (invoice.amount_paid || 0) - (invoice.credit_notes_total || 0),
+  );
+
 export const generateId = (prefix: string): string => {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
 };
@@ -80,26 +114,6 @@ export const deriveInvoiceStatus = (
   }
 
   return 'open';
-};
-
-/**
- * Aging Bucket Calculation
- */
-export const getAgingBucket = (dueDate: string): { bucket: 'current' | '1-30' | '31-60' | '61-90' | '90+'; daysOverdue: number } => {
-  if (!dueDate) return { bucket: 'current', daysOverdue: 0 };
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate);
-  due.setHours(0, 0, 0, 0);
-
-  const diffMs = today.getTime() - due.getTime();
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (days <= 0) return { bucket: 'current', daysOverdue: 0 };
-  if (days <= 30) return { bucket: '1-30', daysOverdue: days };
-  if (days <= 60) return { bucket: '31-60', daysOverdue: days };
-  if (days <= 90) return { bucket: '61-90', daysOverdue: days };
-  return { bucket: '90+', daysOverdue: days };
 };
 
 /**

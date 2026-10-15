@@ -117,17 +117,39 @@
 
   /* Numbers must align in columns — the whole point of tabular figures here. */
   --ds-numeric: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Ambient atmosphere: two very low-alpha washes painted behind every
+     dashboard panel. Static, never animated — DESIGN.md bans an animated
+     mesh, and this is depth, not motion. The first declaration is the
+     fallback; the second derives from the operator's brand accent (set by
+     applyBrandColor), so a rebrand tints the room instead of tinting it
+     blue. A browser without color-mix drops the second and keeps the first. */
+  --ds-ambient-1: rgba(37, 99, 235, 0.055);
+  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 6%, transparent);
+  --ds-ambient-2: rgba(6, 182, 212, 0.04);
+  --ds-ambient-3: rgba(203, 232, 255, 0.04);
+  /* A touch warmer than ambient-2 so the 'light from above' read can breathe
+     without borrowing the accent's identity. Used only behind solid surfaces.
+     */
+  --ds-ambient-3: rgba(203, 232, 255, 0.05);
 }
 
 /* ── Layer 3 · COMPONENT ──────────────────────────────────────────────── */
 :root {
   --ds-radius-card: 16px;
   --ds-radius-pill: 9999px;
+  /* A 1px inner highlight along the top edge. This is what makes a card read
+     as machined rather than flat: lit from above, like a tray in a rack.
+     It sits ON the panel surface, never behind text, so no contrast pairing
+     changes. Dark overrides it to a much fainter light rim. */
+  --ds-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.75);
 
   /* Wide, low-opacity, hue-tinted — depth without a hard edge. */
   --ds-shadow-card: 0 1px 2px rgba(20, 28, 43, 0.04), 0 1px 3px rgba(20, 28, 43, 0.03);
   --ds-shadow-lift: 0 4px 12px -2px rgba(20, 28, 43, 0.08);
 
+  /* Vertical rhythm: generous ambient padding in the lead slot so the spine
+     has breathing room before the packer begins. */
   --ds-pad-card: 20px;
   --ds-gap-grid: 16px;
   --ds-font-scale: 1;
@@ -202,7 +224,7 @@
     background: var(--ds-surface);
     border: 1px solid var(--ds-line);
     border-radius: var(--ds-radius-card);
-    box-shadow: var(--ds-shadow-card);
+    box-shadow: var(--ds-rim), var(--ds-shadow-card);
     /* Density: padding + font scale follow the mode tokens. */
     padding: var(--ds-pad-card);
     font-size: calc(13px * var(--ds-font-scale));
@@ -262,7 +284,7 @@
      shimmering as they change, which is the classic dashboard tell. */
   .ds-figure {
     font-family: var(--ds-numeric);
-    font-variant-numeric: tabular-nums;
+    font-variant-numeric: tabular-nums slashed-zero;
     letter-spacing: -0.02em;
     color: var(--ds-ink);
     font-weight: 700;
@@ -366,6 +388,79 @@
   @keyframes ds-panel-in {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Ambient wash canvas ────────────────────────────────────────────
+     The dashboard root. `isolation: isolate` opens a stacking context so the
+     negative-z pseudo-element paints behind this element's CONTENT but stays
+     inside it — without the isolation the wash would escape behind the app
+     shell. `pointer-events: none` keeps it out of hit-testing entirely.
+
+     Deliberately NOT on cards: the wash must never sit behind text, or the
+     contrast audit's bg>text grading would no longer describe what is on
+     screen. Depth goes behind the instruments, never under the readings.
+
+     The wash is now layered in two stacked passes: a soft radial mesh (the
+     warmer, lower layer) and a far crisper, brighter pin of light above it
+     low enough to read as atmosphere rather than a second tint. Both remain
+     far-low-alpha, so the same bg>text grading that grades the solid surface
+     still describes what is actually on screen.
+     */
+  .ds-ambient {
+    position: relative;
+    isolation: isolate;
+  }
+  .ds-ambient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+background-image:
+      radial-gradient(58rem 32rem at 8% -12%, var(--ds-ambient-1), transparent 68%),
+      radial-gradient(46rem 28rem at 96% 2%, var(--ds-ambient-2), transparent 70%);
+  }
+
+  /* Blur is deliberately confined to surfaces that do not scroll: a
+     backdrop-filter on scrolling content forces a per-frame repaint. */
+  .ds-glass {
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    backdrop-filter: blur(14px) saturate(150%);
+  }
+
+  /* ── Rank: a card is not the only container ─────────────────────────
+     Rank decides whether a panel is a card at all, and it is the whole
+     reason the board reads as an instrument instead of ten equal boxes.
+
+     Descendant selectors rather than a modifier ON .ds-panel, because every
+     panel component renders its own <section class="ds-panel"> — so the rank
+     rides on the wrapper the dashboard already owns and overrides the shell
+     from outside. Specificity (0,2,0) beats .ds-panel's (0,1,0): no
+     !important, and no edit to any of the ten panel components. */
+
+  /* Lead: not a card. It sits on the canvas, which is also what makes the
+     ambient wash visible at all — behind an opaque card it never would be.
+     Full-bleed is the point: this is the page's axis, not a tile. */
+  .ds-rank-lead .ds-panel {
+    background: transparent;
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* Reference: a rule, not a container. `border` is reset before `border-top`
+     deliberately — the shorthand would otherwise re-add all four edges. */
+  .ds-rank-reference .ds-panel {
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--ds-line);
+    border-radius: 0;
+    box-shadow: none;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: calc(var(--ds-pad-card) * 0.7);
   }
 }
 

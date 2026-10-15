@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTransientFlag } from '../common/useTransient';
 import { AlertTriangle, CheckCircle2, ClipboardCopy, Eraser, HardDrive, RefreshCw } from 'lucide-react';
 import {
   clearFailureLog,
@@ -7,10 +8,10 @@ import {
   type FailureCause,
   type FailureKind,
   type FailureSummary,
-  type PersistenceFailure,
 } from '../../db/failureLog';
 import { getDesktopDatabasePath, getLastSaveAt, getLastSaveBackend, getLastSnapshotBytes } from '../../db/persistence';
 import { getLastSyncSuccessAt } from '../../db/syncCore';
+import { DataTable } from '../common/ui';
 
 /**
  * Save & sync health panel (Settings > Database & Backup).
@@ -78,7 +79,7 @@ function lastOk(fromJournal: string | null, fromSession: string | null): string 
 
 export function PersistenceHealthPanel() {
   const [summary, setSummary] = useState<FailureSummary>(() => getFailureSummary());
-  const [copied, setCopied] = useState(false);
+  const [copied, flashCopied] = useTransientFlag(2500);
 
   const refresh = useCallback(() => setSummary(getFailureSummary()), []);
 
@@ -104,8 +105,7 @@ export function PersistenceHealthPanel() {
     const text = exportFailureDiagnostics();
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      flashCopied();
     } catch {
       // Clipboard is permission-gated; a download is the reliable fallback.
       const blob = new Blob([text], { type: 'text/plain' });
@@ -220,46 +220,60 @@ export function PersistenceHealthPanel() {
             </p>
           )}
 
+          {/* DataTable renders a BARE table, so the scroll container the journal
+              is capped in stays here. The per-row `font-mono text-[10px]` and
+              `align-top` ride on rowClassName — inherited by every td without
+              leaking onto the ds-th header row, which supplies its own type.
+              These cells are tighter than DataTable's default `py-2 px-3`, and
+              appending a plain `py-1.5 px-2` to className would NOT win: both
+              utilities share one specificity layer, so the one emitted later in
+              the stylesheet wins, and Tailwind emits `.py-2`/`.px-3` after
+              `.py-1.5`/`.px-2`. The trailing `!` is what makes the override real. */}
           <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white/70">
-            <table className="w-full text-left">
-              <thead className="sticky top-0 bg-slate-50 text-slate-500">
-                <tr>
-                  <th className="px-2 py-1.5 font-bold">When</th>
-                  <th className="px-2 py-1.5 font-bold">Operation</th>
-                  <th className="px-2 py-1.5 font-bold">Cause</th>
-                  <th className="px-2 py-1.5 font-bold">Message</th>
-                </tr>
-              </thead>
-              <tbody className="font-mono text-[10px]">
-                {summary.recent.map((f: PersistenceFailure) => (
-                  <tr key={f.id} className="border-t border-slate-100 align-top">
-                    <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">
-                      {new Date(f.at).toLocaleString()}
-                    </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap font-bold text-slate-700">
-                      {KIND_LABEL[f.kind]}
-                    </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">
-                      <span
-                        className={`px-1.5 py-0.5 rounded font-bold ${
-                          URGENT.includes(f.cause)
-                            ? 'bg-rose-100 text-rose-700'
-                            : f.cause === 'data-constraint'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        {CAUSE_LABEL[f.cause]}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5 text-slate-600 break-words" title={`${f.message}${f.detail ? ` | ${f.detail}` : ''}`}>
+            <DataTable
+              data={summary.recent}
+              rowKey={(f) => f.id}
+              rowClassName={() => 'font-mono text-[10px] border-t border-slate-100 align-top'}
+              columns={[
+                {
+                  header: 'When',
+                  className: 'px-2! py-1.5! whitespace-nowrap text-slate-500',
+                  render: (f) => new Date(f.at).toLocaleString(),
+                },
+                {
+                  header: 'Operation',
+                  className: 'px-2! py-1.5! whitespace-nowrap font-bold text-slate-700',
+                  render: (f) => KIND_LABEL[f.kind],
+                },
+                {
+                  header: 'Cause',
+                  className: 'px-2! py-1.5! whitespace-nowrap',
+                  render: (f) => (
+                    <span
+                      className={`px-1.5 py-0.5 rounded font-bold ${
+                        URGENT.includes(f.cause)
+                          ? 'bg-rose-100 text-rose-700'
+                          : f.cause === 'data-constraint'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {CAUSE_LABEL[f.cause]}
+                    </span>
+                  ),
+                },
+                {
+                  header: 'Message',
+                  className: 'px-2! py-1.5! text-slate-600 break-words',
+                  render: (f) => (
+                    <div title={`${f.message}${f.detail ? ` | ${f.detail}` : ''}`}>
                       {f.message}
                       {f.detail && <span className="block text-ink-muted">{f.detail}</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </div>
           <p className="text-slate-500">
             Showing the newest {summary.recent.length} of {totalFailures} recorded failures. The log is kept in browser

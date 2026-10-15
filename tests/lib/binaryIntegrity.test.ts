@@ -63,9 +63,24 @@ describe('binary integrity wiring', () => {
 
   // The original symptom was a hang in `npm test` / `npm run dev`; every entry
   // point that spawns esbuild has to run the guard first.
+  //
+  // Two shapes are accepted: the script names `verify-binaries.mjs` directly, or
+  // it delegates through `npm run verify:binaries`. The indirection exists so CI
+  // can run the guard on its own step — it anchors to win32/x64 and SKIPS
+  // anywhere else, so the ubuntu `web` job's `npm run lint` never actually
+  // verified anything, and only the windows job can enforce it.
+  const runsGuard = (script: string) =>
+    pkg.scripts[script].includes('verify-binaries.mjs') || pkg.scripts[script].includes('npm run verify:binaries');
+
   for (const script of ['dev', 'build', 'test', 'lint']) {
     it(`${script} verifies binaries before running`, () => {
-      expect(pkg.scripts[script], `scripts.${script}`).toContain('verify-binaries.mjs');
+      expect(runsGuard(script), `scripts.${script} → ${pkg.scripts[script]}`).toBe(true);
     });
   }
+
+  it('exposes the guard as a named script so CI can invoke it alone', () => {
+    // Without this, the windows job has no way to run the guard as its own step
+    // and the check is decorative in CI.
+    expect(pkg.scripts['verify:binaries']).toContain('verify-binaries.mjs');
+  });
 });

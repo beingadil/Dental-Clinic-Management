@@ -1,9 +1,9 @@
 import React from 'react';
-import { JournalEntry } from '../../types';
+import { JournalEntry, JournalLine } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatPKR, assertJournalBalanced } from '../../services/financeDomain';
 import { Scale, FileText, Calendar, Building2, User, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { Modal } from '../common/ui';
+import { Modal, DataTable } from '../common/ui';
 
 interface JournalEntryModalProps {
   isOpen: boolean;
@@ -105,62 +105,73 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
         {/* Journal Lines Table */}
         <div className="p-6">
           <div className="rounded-lg border border-slate-200 overflow-hidden">
-            <table className="w-full text-xs text-left">
-              <thead>
-                <tr className="bg-slate-100/80 text-slate-600 border-b border-slate-200">
-                  <th scope="col" className="px-3.5 py-2.5 font-semibold">Account Code & Title</th>
-                  <th scope="col" className="px-3 py-2.5 font-semibold text-center w-24">Type</th>
-                  <th scope="col" className="px-3.5 py-2.5 font-semibold text-right w-32">Debit (PKR)</th>
-                  <th scope="col" className="px-3.5 py-2.5 font-semibold text-right w-32">Credit (PKR)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
-                {journal.lines.map((line) => (
-                  <tr key={line.id} className="hover:bg-slate-50/60">
-                    <td className="px-3.5 py-2.5">
+            {/* Shared primitive owns the header row, the row hover and the scroll
+                wrapper; the card above stays here. The `font-mono` this table
+                carried on its <tbody> moves onto the columns, and the totals row
+                travels through `footer` (DataTable has no <tfoot> slot). */}
+            <DataTable<JournalLine>
+              data={journal.lines}
+              rowKey={(line) => line.id}
+              footer={
+                <div className="bg-slate-50 border-t-2 border-slate-200 font-mono font-semibold text-slate-900 flex">
+                  <div className="flex-1 px-3.5 py-2.5 text-right font-sans text-xs">
+                    Entry Totals:
+                  </div>
+                  <div className="w-32 px-3.5 py-2.5 text-right text-indigo-700 font-bold">
+                    {formatPKR(totalDebit).replace('PKR ', '')}
+                  </div>
+                  <div className="w-32 px-3.5 py-2.5 text-right text-indigo-700 font-bold">
+                    {formatPKR(totalCredit).replace('PKR ', '')}
+                  </div>
+                </div>
+              }
+              columns={[
+                {
+                  header: 'Account Code & Title',
+                  className: 'px-3.5 py-2.5 font-mono',
+                  render: (line) => (
+                    <>
                       <div className="font-sans font-medium text-slate-800">
                         {line.account_name}
                       </div>
                       <div className="text-[11px] text-slate-500">
                         Acc: {line.account_code}
                       </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-center">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-sans uppercase font-medium ${
-                        line.account_type === 'asset'
-                          ? 'bg-blue-50 text-blue-700'
-                          : line.account_type === 'liability'
-                          ? 'bg-amber-50 text-amber-700'
-                          : line.account_type === 'revenue'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-purple-50 text-purple-700'
-                      }`}>
-                        {line.account_type}
-                      </span>
-                    </td>
-                    <td className="px-3.5 py-2.5 text-right font-medium text-slate-900">
-                      {line.debit > 0 ? formatPKR(line.debit).replace('PKR ', '') : '—'}
-                    </td>
-                    <td className="px-3.5 py-2.5 text-right font-medium text-slate-900">
-                      {line.credit > 0 ? formatPKR(line.credit).replace('PKR ', '') : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-slate-50 border-t-2 border-slate-200 font-mono font-semibold text-slate-900">
-                  <td colSpan={2} className="px-3.5 py-2.5 text-right font-sans text-xs">
-                    Entry Totals:
-                  </td>
-                  <td className="px-3.5 py-2.5 text-right text-indigo-700 font-bold">
-                    {formatPKR(totalDebit).replace('PKR ', '')}
-                  </td>
-                  <td className="px-3.5 py-2.5 text-right text-indigo-700 font-bold">
-                    {formatPKR(totalCredit).replace('PKR ', '')}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                    </>
+                  ),
+                },
+                {
+                  header: 'Type',
+                  align: 'center',
+                  className: 'px-3 py-2.5 font-mono w-24',
+                  render: (line) => (
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-sans uppercase font-medium ${
+                      line.account_type === 'asset'
+                        ? 'bg-blue-50 text-blue-700'
+                        : line.account_type === 'liability'
+                        ? 'bg-amber-50 text-amber-700'
+                        : line.account_type === 'revenue'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-purple-50 text-purple-700'
+                    }`}>
+                      {line.account_type}
+                    </span>
+                  ),
+                },
+                {
+                  header: 'Debit (PKR)',
+                  align: 'right',
+                  className: 'px-3.5 py-2.5 font-mono font-medium text-slate-900 w-32',
+                  render: (line) => <>{line.debit > 0 ? formatPKR(line.debit).replace('PKR ', '') : '—'}</>,
+                },
+                {
+                  header: 'Credit (PKR)',
+                  align: 'right',
+                  className: 'px-3.5 py-2.5 font-mono font-medium text-slate-900 w-32',
+                  render: (line) => <>{line.credit > 0 ? formatPKR(line.credit).replace('PKR ', '') : '—'}</>,
+                },
+              ]}
+            />
           </div>
 
           {/* Balance status banner — states the real difference, in whichever

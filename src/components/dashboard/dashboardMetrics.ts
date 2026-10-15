@@ -1,3 +1,5 @@
+import { formatPKR } from '../../services/financeDomain';
+import { invoiceBalanceDue } from '../../services/financeDomain';
 /**
  * Dashboard metric derivations.
  *
@@ -49,7 +51,7 @@ export const isBench = (c: DentalCase) =>
   c.status === 'in_progress' || c.status === 'qc' || c.status === 'ready';
 
 /** Remaining balance on an invoice, floored at zero (credits can overpay). */
-const balanceOf = (inv: Invoice) => Math.max(0, inv.final_amount - (inv.amount_paid || 0));
+const balanceOf = (inv: Invoice) => invoiceBalanceDue(inv);
 
 /** Local-day portion of a `YYYY-MM-DD HH:mm:ss` stamp. */
 const dayOf = (stamp?: string) => (stamp || '').slice(0, 10);
@@ -589,7 +591,7 @@ export function computeRecentActivity(input: MetricsInput, limit = 5): ActivityR
   for (const p of input.payments) {
     rows.push({
       id: `${p.id}-pay`,
-      text: `PKR ${Math.round(p.amount).toLocaleString()} payment received`,
+      text: `${formatPKR(p.amount)} payment received`,
       stamp: `${p.payment_date} 12:00`,
       tone: 'pos',
     });

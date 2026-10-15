@@ -1,7 +1,8 @@
+import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PaymentAttachment } from '../../types';
-import { formatPKR } from '../../services/financeDomain';
+;
 import { validateFile } from '../../services/fileValidation';
 import { canPost } from '../../services/permissions';
 import { 
@@ -96,16 +97,25 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     if (isOpen) {
       submitLatchRef.current = false;
       setMode(initialMode === 'advance_deposit' ? 'advance' : initialMode);
-      if (initialClinicId) setClinicId(initialClinicId);
+      /* `effectiveClinicId`, not `initialClinicId`.
+       *
+       * BillingView, ReportsView and LabDetailModal all open this modal with
+       * `initialLabId`; only the dashboard's payment tile passes `initialClinicId`.
+       * The reset therefore fired for some callers and not others, and because
+       * `if (!isOpen) return null` keeps the component mounted, the `useState`
+       * initialiser never re-ran — so reopening the modal from a different
+       * clinic silently kept the PREVIOUS clinic selected. The cashier saw one
+       * clinic's name on a form posting against another's invoices. */
+      setClinicId(effectiveClinicId || (labs[0]?.id || ''));
       if (initialInvoiceId) setSelectedInvoiceId(initialInvoiceId);
     }
-  }, [isOpen, initialMode, initialClinicId, initialInvoiceId]);
+  }, [isOpen, initialMode, effectiveClinicId, initialInvoiceId, labs]);
 
   // Outstanding invoices for the selected clinic
   const clinicInvoices = useMemo(() => {
     return invoices.filter((inv) => {
       if (inv.lab_id !== clinicId) return false;
-      const due = inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0);
+      const due = invoiceBalanceDue(inv);
       return due > 0;
     });
   }, [invoices, clinicId]);
@@ -120,7 +130,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   // Total outstanding receivables for the clinic
   const clinicTotalDue = useMemo(() => {
     return clinicInvoices.reduce((sum, inv) => {
-      const due = inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0);
+      const due = invoiceBalanceDue(inv);
       return sum + Math.max(0, due);
     }, 0);
   }, [clinicInvoices]);
@@ -139,7 +149,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     if (amount === 0) {
       // Nothing typed yet: opening from an invoice pre-fills its full balance.
       if (target) {
-        const due = Math.max(0, target.final_amount - (target.amount_paid || 0) - (target.credit_notes_total || 0));
+        const due = invoiceBalanceDue(target);
         setAmount(due);
         setAllocations({ [target.id]: due });
       }
@@ -152,7 +162,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
 
     for (const inv of ordered) {
       if (remaining <= 0) break;
-      const due = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+      const due = invoiceBalanceDue(inv);
       const take = Math.min(due, remaining);
       if (take > 0) {
         next[inv.id] = take;
@@ -175,7 +185,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     const newAlloc: { [id: string]: number } = {};
     for (const inv of clinicInvoices) {
       if (remaining <= 0) break;
-      const due = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+      const due = invoiceBalanceDue(inv);
       const take = Math.min(due, remaining);
       if (take > 0) {
         newAlloc[inv.id] = take;
@@ -189,7 +199,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const handleAllocationChange = (invId: string, val: number) => {
     const inv = clinicInvoices.find((i) => i.id === invId);
     const due = inv
-      ? Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0))
+      ? invoiceBalanceDue(inv)
       : 0;
     const cap = Math.min(due, amount);
     setAllocations((prev) => ({
@@ -318,7 +328,15 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
           amount,
           date,
           reasonCode: creditReasonCode,
-          reasonText: creditReasonText || `Adjustment for ${creditReasonCode}`
+          reasonText: creditReasonText || `Adjustment for ${creditReasonCode}`,
+          /* These three were collected by this form in credit-note mode and
+             silently thrown away — the reference, the note and the uploaded
+             proof all went nowhere, so a credit note was issued with no
+             justification attached even though the cashier filled every field
+             to do so. */
+          referenceNumber,
+          notes,
+          attachments
         });
 
         onClose();
@@ -544,7 +562,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               ) : (
                 <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                   {clinicInvoices.map((inv) => {
-                    const due = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+                    const due = invoiceBalanceDue(inv);
                     const currentAlloc = allocations[inv.id] || 0;
                     const isTarget = selectedInvoiceId === inv.id;
                     return (
@@ -649,7 +667,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                     <option value="">Select Invoice to Credit...</option>
                     {clinicInvoices.map((inv) => (
                       <option key={inv.id} value={inv.id}>
-                        {inv.invoice_number} - {inv.patient_name || 'Case'} (Due: {formatPKR(inv.final_amount - (inv.amount_paid || 0))})
+                        {inv.invoice_number} - {inv.patient_name || 'Case'} (Due: {formatPKR(invoiceBalanceDue(inv))})
                       </option>
                     ))}
                   </select>

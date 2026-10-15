@@ -1,6 +1,7 @@
 import { notificationConfigRepo, emailTemplatesRepo } from '../db/repos';
 import { INITIAL_NOTIFICATION_CONFIG, INITIAL_EMAIL_TEMPLATES } from '../data/initialData';
 import type { EmailTemplate, NotificationConfig } from '../types';
+import type { EscalationRule } from './notificationDomain';
 
 /**
  * D1 — the single reader/writer for reminder settings.
@@ -74,6 +75,23 @@ export function readNotificationCadence(kind: 'overdue_cases' | 'pending_payment
   const config = loadNotificationConfig();
   const list = kind === 'pending_payment' ? config.payment_frequencies : config.overdue_frequencies;
   return Array.isArray(list) && list.length > 0 ? list : undefined;
+}
+
+/**
+ * The escalation rule the third sweep applies.
+ *
+ * Read straight from the repo, like the cadences above, so the sweep never
+ * depends on a render-scope snapshot going stale. These three settings were
+ * saved and audited for their whole life and read by nobody — this is the only
+ * thing that consults them.
+ */
+export function readEscalationRule(): EscalationRule {
+  const c = loadNotificationConfig();
+  return {
+    enabled: c.enable_escalation !== false,
+    thresholdDays: typeof c.escalation_threshold_days === 'number' ? c.escalation_threshold_days : 7,
+    interval: typeof c.recurring_interval === 'string' ? c.recurring_interval : 'weekly',
+  };
 }
 
 /** Every template row, backfilled with any shipped template the DB is missing. */

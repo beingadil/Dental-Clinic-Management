@@ -224,7 +224,15 @@ export interface LabPricingOverride {
   standard_price: number;
   custom_price: number;
   discount_percentage?: number;
-  effective_date: string;
+  /**
+   * Date this override starts applying, `YYYY-MM-DD`.
+   *
+   * Optional at runtime even though the field exists: `syncCore` writes
+   * `po.effective_date ?? null`, and every row that predates the column has no
+   * date at all. An undated override applies always — see
+   * `services/pricingOverride.ts`, which is the only thing allowed to decide.
+   */
+  effective_date?: string;
 }
 
 export interface LabReview {
@@ -534,7 +542,15 @@ export interface UserPreferences {
   quiet_hours_end: string;
   enabled_types: NotificationType[];
   unsubscribed_all: boolean;
-  currency?: string;
+  /**
+   * Fallback turnaround for the `normal` priority, in days.
+   *
+   * It used to be called "the default turnaround time" and nothing read it —
+   * the real mechanism is `services/prioritySla.ts`, which owns a per-priority
+   * table editable in Catalog → SLA. This field is now the fallback that table
+   * falls back to for `normal` when no row exists, so the control does
+   * something instead of pretending to.
+   */
   default_turnaround_days?: number;
   default_priority?: PriorityLevel;
   auto_print_job_slips?: boolean;

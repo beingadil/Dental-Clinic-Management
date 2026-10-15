@@ -1,3 +1,4 @@
+import { formatPKR } from '../../services/financeDomain';
 import React from 'react';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
@@ -122,7 +123,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({ caseData, onClos
             ...(c.selected_teeth.length > 0
               ? [{ icon: Palette, label: 'Teeth & Shade', value: c.selected_teeth.map((t) => `#${t}`).join(' '), sub: c.shade ? `Shade ${c.shade}` : undefined }]
               : []),
-            { icon: CircleDollarSign, label: 'Price', value: `PKR ${c.final_price.toLocaleString()}`, sub: c.discount > 0 ? `PKR ${c.price.toLocaleString()} − PKR ${c.discount.toLocaleString()} discount` : `List PKR ${c.price.toLocaleString()}` },
+            { icon: CircleDollarSign, label: 'Price', value: formatPKR(c.final_price), sub: c.discount > 0 ? `${formatPKR(c.price)} − ${formatPKR(c.discount)} discount` : `List ${formatPKR(c.price)}` },
             { icon: Calendar, label: 'Delivery Due', value: formatDate(c.delivery_date), sub: isOverdue ? 'Past due' : 'On schedule' },
             { icon: Hash, label: 'Registered', value: formatDate(c.created_at), sub: `Updated ${formatDate(c.updated_at)}` },
           ].map(({ icon: Icon, label, value, sub }) => (

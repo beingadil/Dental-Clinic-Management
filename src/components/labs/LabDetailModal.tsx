@@ -1,8 +1,9 @@
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getDaysOffsetStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
-import { DentalLab, DentalCase, PaymentRecord, Invoice } from '../../types';
+import { DentalLab, DentalCase, PaymentRecord, Invoice, LedgerEntry } from '../../types';
 import { LabContactsManager } from './LabContactsManager';
 import { LabPricingManager } from './LabPricingManager';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
@@ -11,6 +12,7 @@ import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { PaymentProofModal } from '../billing/PaymentProofModal';
 import { PaymentReceiptModal } from '../billing/PaymentReceiptModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
+import { DataTable } from '../common/ui';
 import { 
   Building2, 
   X, 
@@ -194,6 +196,22 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
     }
   };
 
+  /* Per-row payment/invoice match lookup for the ledger table. The rows used
+     to compute these once per <tr>; DataTable asks each column for its own
+     cell, so the same lookup became a helper the cells call. Every branch is
+     still an index hit, not a scan. */
+  const ledgerRowMeta = (entry: LedgerEntry) => {
+    const isDebit = entry.entry_type === 'invoice';
+    const isCredit = entry.entry_type === 'payment';
+    const matchedPayment = isCredit
+      ? paymentIndex.byId.get(entry.reference_id) ??
+        paymentIndex.byNumber.get(entry.reference_number) ??
+        paymentIndex.byBaseNumber.get(entry.reference_number)
+      : undefined;
+    const matchedInvoice = isDebit ? invoices.find(i => i.id === entry.reference_id || i.invoice_number === entry.reference_number) : undefined;
+    return { isDebit, isCredit, matchedPayment, matchedInvoice };
+  };
+
   return (
     <div className={`fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center ${isFullScreen ? 'p-0' : 'p-2 sm:p-4 md:p-6'} overflow-y-auto`}>
       <div className={`bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all duration-150 ${
@@ -241,7 +259,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               label: 'Account Ledger & Statements', 
               icon: BookOpen,
               badge: (labFinancials?.outstanding_balance || 0) > 0 
-                ? `Due PKR ${(labFinancials?.outstanding_balance || 0).toLocaleString()}` 
+                ? `Due ${formatPKR(labFinancials?.outstanding_balance || 0)}` 
                 : undefined 
             },
             { id: 'info', label: 'General Info', icon: Building2 },
@@ -364,7 +382,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                             <div className="text-left sm:text-right">
                               <div className="text-[10px] text-ink-muted font-bold uppercase">Case Fee</div>
                               <div className="text-sm font-bold text-slate-900 font-mono">
-                                PKR {(c.final_price || 0).toLocaleString()}
+                                {formatPKR(c.final_price || 0)}
                               </div>
                             </div>
 
@@ -405,7 +423,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wider block">Total Billed (Debits)</span>
                   <div className="text-lg font-bold font-mono text-slate-900 mt-0.5">
-                    PKR {(labFinancials?.total_invoiced || 0).toLocaleString()}
+                    {formatPKR(labFinancials?.total_invoiced || 0)}
                   </div>
                   <span className="text-[10px] text-slate-500">Gross clinic charges</span>
                 </div>
@@ -413,7 +431,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Total Collected</span>
                   <div className="text-lg font-bold font-mono text-emerald-700 mt-0.5">
-                    PKR {(labFinancials?.total_paid || 0).toLocaleString()}
+                    {formatPKR(labFinancials?.total_paid || 0)}
                   </div>
                   <span className="text-[10px] text-ink-success">Credits settled</span>
                 </div>
@@ -423,7 +441,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     Net Outstanding
                   </span>
                   <div className={`text-lg font-bold font-mono mt-0.5 ${(labFinancials?.outstanding_balance || 0) > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
-                    PKR {(labFinancials?.outstanding_balance || 0).toLocaleString()}
+                    {formatPKR(labFinancials?.outstanding_balance || 0)}
                   </div>
                   <span className="text-[10px] text-slate-500">
                     {(labFinancials?.outstanding_balance || 0) > 0 ? 'Due for collection' : 'Zero balance'}
@@ -459,7 +477,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                               <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-bold uppercase">{inv.payment_status}</span>
                             </div>
                             <p className="text-[11px] text-slate-500 mt-0.5">Case {inv.case_number} • {formatDoctorName(inv.doctor_name)}</p>
-                            <p className="text-xs font-bold text-amber-700 mt-0.5">Due: PKR {(rem || 0).toLocaleString()}</p>
+                            <p className="text-xs font-bold text-amber-700 mt-0.5">Due: {formatPKR(rem)}</p>
                           </div>
                           <button
                             onClick={() => setPaymentModalInvoice(inv)}
@@ -486,129 +504,158 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   </span>
                 </div>
 
-                {labLedger.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-ink-muted">
-                    No ledger transactions recorded for this clinic yet.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="bg-slate-50/50 border-b border-slate-200 font-bold text-slate-500 uppercase text-[10px] tracking-wider">
-                          <th className="py-2.5 px-3">Date</th>
-                          <th className="py-2.5 px-2.5">Type</th>
-                          <th className="py-2.5 px-2.5">Ref #</th>
-                          <th className="py-2.5 px-2.5">Case #</th>
-                          <th className="py-2.5 px-2.5">Description</th>
-                          <th className="py-2.5 px-2.5 text-right">Debit (PKR)</th>
-                          <th className="py-2.5 px-2.5 text-right">Credit (PKR)</th>
-                          <th className="py-2.5 px-3 text-right font-bold">Balance (PKR)</th>
-                          <th className="py-2.5 px-2 text-center">Proof</th>
-                          <th className="py-2.5 px-2 text-center">Voucher</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {labLedger.map((entry) => {
-                          const isDebit = entry.entry_type === 'invoice';
-                          const isCredit = entry.entry_type === 'payment';
-                          const matchedPayment = isCredit
-                            ? paymentIndex.byId.get(entry.reference_id) ??
-                              paymentIndex.byNumber.get(entry.reference_number) ??
-                              paymentIndex.byBaseNumber.get(entry.reference_number)
-                            : undefined;
-                          const matchedInvoice = isDebit ? invoices.find(i => i.id === entry.reference_id || i.invoice_number === entry.reference_number) : undefined;
-
-                          return (
-                            <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
-                              <td className="py-2.5 px-3 text-slate-600 font-medium whitespace-nowrap">{entry.date}</td>
-                              <td className="py-2.5 px-2.5 whitespace-nowrap">
-                                {isDebit ? (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                    <ArrowUpRight className="w-2.5 h-2.5" /> Billed
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    <ArrowDownLeft className="w-2.5 h-2.5" /> {entry.payment_method || 'Payment'}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900 whitespace-nowrap">{entry.reference_number}</td>
-                              <td className="py-2.5 px-2.5 font-mono text-indigo-600 whitespace-nowrap">{entry.case_number || '—'}</td>
-                              <td className="py-2.5 px-2.5 text-slate-700 max-w-[200px] truncate">{entry.description}</td>
-                              <td className="py-2.5 px-2.5 text-right font-bold text-indigo-600 whitespace-nowrap">{entry.debit > 0 ? `PKR ${(entry.debit || 0).toLocaleString()}` : '—'}</td>
-                              <td className="py-2.5 px-2.5 text-right font-bold text-ink-success whitespace-nowrap">{entry.credit > 0 ? `PKR ${(entry.credit || 0).toLocaleString()}` : '—'}</td>
-                              <td className={`py-2.5 px-3 text-right font-bold font-mono whitespace-nowrap ${entry.running_balance > 0 ? 'text-slate-900' : 'text-ink-success'}`}>
-                                PKR {(entry.running_balance || 0).toLocaleString()}
-                              </td>
-                              <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                {(entry.attachments && entry.attachments.length > 0) || (matchedPayment?.attachments && matchedPayment.attachments.length > 0) ? (
-                                  <button
-                                    onClick={() => {
-                                      const payObj = matchedPayment || {
-                                        id: entry.reference_id,
-                                        payment_number: entry.reference_number,
-                                        invoice_id: '',
-                                        invoice_number: '',
-                                        amount: entry.credit,
-                                        payment_method: entry.payment_method || 'bank',
-                                        payment_date: entry.date,
-                                        recorded_by: entry.recorded_by || 'Staff',
-                                        attachments: entry.attachments || []
-                                      };
-                                      setSelectedProofPayment(payObj);
-                                    }}
-                                    className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
-                                    title="View Attached Proof"
-                                  >
-                                    <ImageIcon className="w-3.5 h-3.5" />
-                                  </button>
-                                ) : (
-                                  <span className="text-slate-300 text-[10px]">—</span>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                {isDebit && matchedInvoice && (
-                                  <button
-                                    onClick={() => setSelectedInvoiceModal(matchedInvoice)}
-                                    className="p-1 text-ink-muted hover:text-indigo-600 rounded"
-                                    title="View Invoice"
-                                  >
-                                    <FileText className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                                {isCredit && (
-                                  <button
-                                    onClick={() => {
-                                      const payObj = matchedPayment || {
-                                        id: entry.reference_id,
-                                        payment_number: entry.reference_number,
-                                        invoice_id: '',
-                                        invoice_number: '',
-                                        lab_id: lab.id,
-                                        lab_name: lab.name,
-                                        amount: entry.credit,
-                                        payment_method: entry.payment_method || 'cash',
-                                        payment_date: entry.date,
-                                        notes: entry.notes,
-                                        recorded_by: entry.recorded_by || 'Staff',
-                                        attachments: entry.attachments || []
-                                      };
-                                      setSelectedReceiptPayment({ payment: payObj, invoice: matchedInvoice });
-                                    }}
-                                    className="p-1 text-ink-muted hover:text-ink-success rounded"
-                                    title="View Receipt Slip"
-                                  >
-                                    <Receipt className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                {/* DataTable owns the <thead>, the ds-th header row and the
+                    horizontal-scroll wrapper; the card above stays put. The
+                    `!` on the narrow columns is Tailwind's important suffix —
+                    DataTable's default `px-3` is emitted later in the
+                    stylesheet, so without it it would beat `px-2.5`/`px-2`. */}
+                <DataTable<LedgerEntry>
+                  data={labLedger}
+                  rowKey={(entry) => entry.id}
+                  emptyState={
+                    <div className="p-8 text-center text-xs text-ink-muted">
+                      No ledger transactions recorded for this clinic yet.
+                    </div>
+                  }
+                  columns={[
+                    {
+                      header: 'Date',
+                      className: 'py-2.5 px-3 text-slate-600 font-medium whitespace-nowrap',
+                      render: (entry: LedgerEntry) => entry.date,
+                    },
+                    {
+                      header: 'Type',
+                      className: 'py-2.5 px-2.5! whitespace-nowrap',
+                      render: (entry: LedgerEntry) => {
+                        const isDebit = entry.entry_type === 'invoice';
+                        return isDebit ? (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            <ArrowUpRight className="w-2.5 h-2.5" /> Billed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <ArrowDownLeft className="w-2.5 h-2.5" /> {entry.payment_method || 'Payment'}
+                          </span>
+                        );
+                      },
+                    },
+                    {
+                      header: 'Ref #',
+                      className: 'py-2.5 px-2.5! font-mono font-bold text-slate-900 whitespace-nowrap',
+                      render: (entry: LedgerEntry) => entry.reference_number,
+                    },
+                    {
+                      header: 'Case #',
+                      className: 'py-2.5 px-2.5! font-mono text-indigo-600 whitespace-nowrap',
+                      render: (entry: LedgerEntry) => entry.case_number || '—',
+                    },
+                    {
+                      header: 'Description',
+                      className: 'py-2.5 px-2.5! text-slate-700 max-w-[200px] truncate',
+                      render: (entry: LedgerEntry) => entry.description,
+                    },
+                    {
+                      header: 'Debit (PKR)',
+                      align: 'right',
+                      className: 'py-2.5 px-2.5! font-bold text-indigo-600 whitespace-nowrap',
+                      render: (entry: LedgerEntry) => (entry.debit > 0 ? formatPKR(entry.debit) : '—'),
+                    },
+                    {
+                      header: 'Credit (PKR)',
+                      align: 'right',
+                      className: 'py-2.5 px-2.5! font-bold text-ink-success whitespace-nowrap',
+                      render: (entry: LedgerEntry) => (entry.credit > 0 ? formatPKR(entry.credit) : '—'),
+                    },
+                    {
+                      header: 'Balance (PKR)',
+                      align: 'right',
+                      className: 'py-2.5 px-3 font-bold font-mono whitespace-nowrap',
+                      render: (entry: LedgerEntry) => (
+                        <span className={entry.running_balance > 0 ? 'text-slate-900' : 'text-ink-success'}>
+                          {formatPKR(entry.running_balance || 0)}
+                        </span>
+                      ),
+                    },
+                    {
+                      header: 'Proof',
+                      align: 'center',
+                      className: 'py-2.5 px-2! whitespace-nowrap',
+                      render: (entry: LedgerEntry) => {
+                        const { matchedPayment } = ledgerRowMeta(entry);
+                        return (entry.attachments && entry.attachments.length > 0) || (matchedPayment?.attachments && matchedPayment.attachments.length > 0) ? (
+                          <button
+                            onClick={() => {
+                              const payObj = matchedPayment || {
+                                id: entry.reference_id,
+                                payment_number: entry.reference_number,
+                                invoice_id: '',
+                                invoice_number: '',
+                                amount: entry.credit,
+                                payment_method: entry.payment_method || 'bank',
+                                payment_date: entry.date,
+                                recorded_by: entry.recorded_by || 'Staff',
+                                attachments: entry.attachments || []
+                              };
+                              setSelectedProofPayment(payObj);
+                            }}
+                            className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                            title="View Attached Proof"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 text-[10px]">—</span>
+                        );
+                      },
+                    },
+                    {
+                      header: 'Voucher',
+                      align: 'center',
+                      className: 'py-2.5 px-2! whitespace-nowrap',
+                      render: (entry: LedgerEntry) => {
+                        const { isDebit, isCredit, matchedPayment, matchedInvoice } = ledgerRowMeta(entry);
+                        return (
+                          <>
+                            {isDebit && matchedInvoice && (
+                              <button
+                                onClick={() => setSelectedInvoiceModal(matchedInvoice)}
+                                className="p-1 text-ink-muted hover:text-indigo-600 rounded"
+                                title="View Invoice"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {isCredit && (
+                              <button
+                                onClick={() => {
+                                  const payObj = matchedPayment || {
+                                    id: entry.reference_id,
+                                    payment_number: entry.reference_number,
+                                    invoice_id: '',
+                                    invoice_number: '',
+                                    lab_id: lab.id,
+                                    lab_name: lab.name,
+                                    amount: entry.credit,
+                                    payment_method: entry.payment_method || 'cash',
+                                    payment_date: entry.date,
+                                    notes: entry.notes,
+                                    recorded_by: entry.recorded_by || 'Staff',
+                                    attachments: entry.attachments || []
+                                  };
+                                  setSelectedReceiptPayment({ payment: payObj, invoice: matchedInvoice });
+                                }}
+                                className="p-1 text-ink-muted hover:text-ink-success rounded"
+                                title="View Receipt Slip"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </>
+                        );
+                      },
+                    },
+                  ]}
+                />
               </div>
 
             </div>
@@ -625,11 +672,11 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 </div>
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <div className="text-xs text-emerald-700 font-semibold">Total Invoiced Revenue</div>
-                  <div className="text-xl font-bold text-emerald-700 mt-1">PKR {(totalBilled || 0).toLocaleString()}</div>
+                  <div className="text-xl font-bold text-emerald-700 mt-1">{formatPKR(totalBilled)}</div>
                 </div>
                 <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
                   <div className="text-xs text-indigo-700 font-semibold">Outstanding Balance</div>
-                  <div className="text-xl font-bold text-indigo-700 mt-1">PKR {(totalUnpaid || 0).toLocaleString()}</div>
+                  <div className="text-xl font-bold text-indigo-700 mt-1">{formatPKR(totalUnpaid)}</div>
                 </div>
               </div>
 

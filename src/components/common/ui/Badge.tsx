@@ -1,5 +1,5 @@
 import React from 'react';
-import { CaseStatus, InvoiceStatusV2, PriorityLevel, PaymentStatus } from '../../../types';
+import { CaseStatus, InvoiceStatusV2, PriorityLevel } from '../../../types';
 
 export interface BadgeProps {
   children?: React.ReactNode;
@@ -147,21 +147,4 @@ export const InvoiceStatusBadge: React.FC<{
       {entry.label}
     </Badge>
   );
-};
-
-export const PaymentStatusBadge: React.FC<{ status: PaymentStatus; size?: 'xs' | 'sm'; className?: string }> = ({
-  status,
-  size = 'xs',
-  className = ''
-}) => {
-  switch (status) {
-    case 'paid':
-      return <Badge variant="success" dot size={size} className={className}>Paid</Badge>;
-    case 'partial':
-      return <Badge variant="warning" dot size={size} className={className}>Partial</Badge>;
-    case 'unpaid':
-      return <Badge variant="danger" dot size={size} className={className}>Unpaid</Badge>;
-    default:
-      return <Badge variant="neutral" size={size} className={className}>{status}</Badge>;
-  }
 };

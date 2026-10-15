@@ -27,7 +27,22 @@ interface DataTableProps<T> {
   rowClassName?: (row: T) => string;
   selection?: DataTableSelection;
   emptyState?: React.ReactNode;
-  /** Rendered inside the card, below the table (e.g. "show more" bar). */
+  /**
+   * Rendered INSIDE the `<table>`, as its `<tfoot>` — totals rows that are part
+   * of the table rather than chrome below it.
+   *
+   * `footer` cannot do this job: it lands after `</table>`, so a `<tfoot>` put
+   * there is invalid markup and has to be faked by wrapping it in a second
+   * one-row `<table>`. That hack left the totals row's columns laid out
+   * independently of the columns above, so they drifted out of alignment. One
+   * monthly report's total row is also asserted by a test as
+   * `within(table).getByText(...)`, which `footer` can never satisfy — that
+   * table stayed hand-rolled for exactly this reason.
+   *
+   * Pass the `<tr>`s (or a whole `<tfoot>`); they render as given.
+   */
+  tfoot?: React.ReactNode;
+  /** Rendered below the table, outside it (e.g. "show more" bar). */
   footer?: React.ReactNode;
 }
 
@@ -38,10 +53,22 @@ const ALIGN = {
 } as const;
 
 /**
- * Shared list table for the billing views — styled header row,
- * horizontal-scroll wrapper, optional bulk-selection column, and
- * empty-state/footer slots. Cell content stays view-specific via
- * `columns[].render`.
+ /**
+ * Shared list table for the billing views — header row, horizontal-scroll
+ * wrapper, optional bulk-selection column, and empty-state/footer slots. Cell
+ * content stays view-specific via `columns[].render`.
+ *
+ * WHY THIS RENDERS A BARE TABLE AND NOT A CARD
+ * It used to draw its own `bg-white border rounded-2xl shadow` wrapper, which
+ * is why it was only usable in one place. Every other table in the app already
+ * sits inside a card its own view owns, so dropping this component in as-is
+ * produced a white card inside a white card — doubled hairline, doubled
+ * shadow, and a 16px radius fighting the view's 12px. That mismatch, plus the
+ * bespoke padding on each cell, is what kept it a 1-of-19 orphan.
+ *
+ * So the primitive now owns the TABLE and nothing else, and the one existing
+ * caller (`BillingView`) keeps its card where it already had one. That makes it
+ * safe to adopt anywhere without a visual decision to re-litigate per call.
  */
 export function DataTable<T>({
   columns,
@@ -50,79 +77,77 @@ export function DataTable<T>({
   rowClassName,
   selection,
   emptyState,
+  tfoot,
   footer,
 }: DataTableProps<T>) {
+  if (data.length === 0) return <>{emptyState ?? null}</>;
+
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
-      {data.length === 0 ? (
-        emptyState ?? null
-      ) : (
-        <>
-          <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200/80 font-bold uppercase text-[11px] text-slate-500 tracking-wider">
+    <>
+      <div className="overflow-x-auto no-scrollbar">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="ds-th">
+              {selection && (
+                <th scope="col" className="py-2 px-3 w-10">
+                  <button onClick={selection.onToggleAll} className="p-1 text-slate-500 cursor-pointer">
+                    {selection.allSelected ? (
+                      <CheckSquare className="w-4 h-4 text-indigo-600" />
+                    ) : (
+                      <Square className="w-4 h-4 text-slate-300" />
+                    )}
+                  </button>
+                </th>
+              )}
+              {columns.map((col, i) => (
+                <th
+                  key={i}
+                  scope="col"
+                  className={`py-2 px-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}
+                >
+                  {col.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 font-medium">
+            {data.map((row) => {
+              const id = rowKey(row);
+              const isSelected = selection ? selection.selectedIds.includes(id) : false;
+              return (
+                <tr
+                  key={id}
+                  className={`hover:bg-slate-50/80 transition-colors ${rowClassName?.(row) ?? ''} ${
+                    isSelected ? 'bg-indigo-50/40' : ''
+                  }`}
+                >
                   {selection && (
-                    <th scope="col" className="py-2 px-3 w-10">
-                      <button onClick={selection.onToggleAll} className="p-1 text-slate-500 cursor-pointer">
-                        {selection.allSelected ? (
+                    <td className="py-2 px-3">
+                      <button onClick={() => selection.onToggle(id)} className="p-1 cursor-pointer">
+                        {isSelected ? (
                           <CheckSquare className="w-4 h-4 text-indigo-600" />
                         ) : (
                           <Square className="w-4 h-4 text-slate-300" />
                         )}
                       </button>
-                    </th>
+                    </td>
                   )}
                   {columns.map((col, i) => (
-                    <th
+                    <td
                       key={i}
-                      scope="col"
                       className={`py-2 px-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}
                     >
-                      {col.header}
-                    </th>
+                      {col.render(row)}
+                    </td>
                   ))}
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {data.map((row) => {
-                  const id = rowKey(row);
-                  const isSelected = selection ? selection.selectedIds.includes(id) : false;
-                  return (
-                    <tr
-                      key={id}
-                      className={`hover:bg-slate-50/80 transition-colors ${rowClassName?.(row) ?? ''} ${
-                        isSelected ? 'bg-indigo-50/40' : ''
-                      }`}
-                    >
-                      {selection && (
-                        <td className="py-2 px-3">
-                          <button onClick={() => selection.onToggle(id)} className="p-1 cursor-pointer">
-                            {isSelected ? (
-                              <CheckSquare className="w-4 h-4 text-indigo-600" />
-                            ) : (
-                              <Square className="w-4 h-4 text-slate-300" />
-                            )}
-                          </button>
-                        </td>
-                      )}
-                      {columns.map((col, i) => (
-                        <td
-                          key={i}
-                          className={`py-2 px-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}
-                        >
-                          {col.render(row)}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {footer}
-        </>
-      )}
-    </div>
+              );
+            })}
+          </tbody>
+          {tfoot && <tfoot>{tfoot}</tfoot>}
+        </table>
+      </div>
+      {footer}
+    </>
   );
 }

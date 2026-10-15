@@ -1,3 +1,4 @@
+import { useTransientFlag } from '../common/useTransient';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -21,7 +22,7 @@ export const TestingTab: React.FC = () => {
 
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [wipeConfirmText, setWipeConfirmText] = useState('');
-  const [wipeSuccess, setWipeSuccess] = useState(false);
+  const [wipeSuccess, flashWipeSuccess] = useTransientFlag(5000);
 
   const notesCount = Object.values(caseNotes).reduce((acc: number, curr: any) => acc + (Array.isArray(curr) ? curr.length : 0), 0);
   const attachmentsCount = Object.values(caseAttachments).reduce((acc: number, curr: any) => acc + (Array.isArray(curr) ? curr.length : 0), 0);
@@ -40,8 +41,7 @@ export const TestingTab: React.FC = () => {
     wipeAllData();
     setShowWipeModal(false);
     setWipeConfirmText('');
-    setWipeSuccess(true);
-    setTimeout(() => setWipeSuccess(false), 5000);
+    flashWipeSuccess();
   };
 
   return (

@@ -1,21 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { auditRepo } from '../../db/repos';
-import { canManageSystem } from '../../services/permissions';
-import { ConfirmDialog } from '../common/ui';
-import { Sliders, ShieldCheck, LayoutGrid, Lock, LockOpen, Save, Trash2, Play, RotateCcw, Sun, Moon, Monitor } from 'lucide-react';
+import { Sliders, LayoutGrid, Lock, LockOpen, Save, Trash2, Play, RotateCcw, Sun, Moon, Monitor } from 'lucide-react';
 import { isThemeMode, type ThemeMode } from '../../theme/theme';
 import { useDashboardLayout, type DashboardDensity } from '../../components/dashboard/useDashboardLayout';
 import { PANEL_KEYS } from '../../components/dashboard/panelRegistry';
 
-/** The surfaces a currency change actually repaints — D6 requires the dialog to
-    name them, so the admin confirms against real screens rather than a label. */
-const CURRENCY_SURFACES = [
-  'Every invoice, receipt and statement of account',
-  'The payments register and general ledger ledger amounts',
-  'Billing reports, vouchers and the dashboard totals',
-  'New invoice and payment-entry forms (default currency)',
-];
 
 /**
  * Dashboard layout preferences (Settings-owned keys).
@@ -213,32 +203,8 @@ const DashboardLayoutCard: React.FC = () => {
 
 /** TAB: APPLICATION PREFERENCES — extracted verbatim from SettingsView (P3 split). */
 export const PreferencesTab: React.FC = () => {
-  const { user, userPreferences, updateUserPreferences } = useApp();
-  // D6 — the billing currency is a lab-wide consequence, so it follows the
-  // admin-only system actions rather than the per-user preference switches.
-  const mayChangeCurrency = canManageSystem(user, 'currency:edit');
-  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null);
-  const currentCurrency = userPreferences?.currency || 'PKR';
+  const { userPreferences, updateUserPreferences } = useApp();
   const themeMode: ThemeMode = isThemeMode(userPreferences?.theme_mode) ? userPreferences.theme_mode : 'system';
-
-  const applyCurrency = () => {
-    if (!pendingCurrency) return;
-    const from = currentCurrency;
-    updateUserPreferences({ currency: pendingCurrency });
-    try {
-      auditRepo.log({
-        actor: user?.name || 'Unknown',
-        action: 'update',
-        entity_type: 'settings',
-        entity_id: 'currency',
-        entity_ref: 'Billing currency',
-        notes: `Billing currency changed from ${from} to ${pendingCurrency}`,
-        old_state: { currency: from },
-        new_state: { currency: pendingCurrency },
-      });
-    } catch { /* audit is best-effort: never block a preference save */ }
-    setPendingCurrency(null);
-  };
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-6">
@@ -249,38 +215,13 @@ export const PreferencesTab: React.FC = () => {
           </div>
           <div>
             <h2 className="text-base font-bold text-slate-900">Application Defaults & System Preferences</h2>
-            <p className="text-xs text-slate-500">Configure global currency, default turnaround times, and notification thresholds</p>
+            <p className="text-xs text-slate-500">Default turnaround times, new-case defaults and notification thresholds</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">Billing Currency</label>
-          <select
-            value={currentCurrency}
-            disabled={!mayChangeCurrency}
-            onChange={(e) => setPendingCurrency(e.target.value)}
-            className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <option value="PKR">Pakistani Rupee (PKR - ₨)</option>
-            <option value="USD">US Dollar (USD - $)</option>
-            <option value="EUR">Euro (EUR - €)</option>
-            <option value="GBP">British Pound (GBP - £)</option>
-            <option value="AED">UAE Dirham (AED)</option>
-          </select>
-          {!mayChangeCurrency ? (
-            <p className="mt-1 text-[11px] text-amber-700 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              Admin only — changing the billing currency repaints money on every screen.
-            </p>
-          ) : (
-            <p className="mt-1 text-[11px] text-slate-500">
-              Changing this asks for confirmation first and is written to the audit trail.
-            </p>
-          )}
-        </div>
-
+        
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Default Turnaround Time (Days)</label>
           <input
@@ -379,20 +320,6 @@ export const PreferencesTab: React.FC = () => {
         </div>
       </div>
 
-      <ConfirmDialog
-        open={pendingCurrency !== null}
-        title={`Change billing currency to ${pendingCurrency ?? ''}?`}
-        tone="indigo"
-        consequences={CURRENCY_SURFACES}
-        confirmLabel="Change currency"
-        onConfirm={applyCurrency}
-        onCancel={() => setPendingCurrency(null)}
-      >
-        <p className="text-xs text-slate-500">
-          Recorded amounts keep their stored values; only how they are displayed changes. This
-          change is logged against your account.
-        </p>
-      </ConfirmDialog>
     </div>
   );
 };

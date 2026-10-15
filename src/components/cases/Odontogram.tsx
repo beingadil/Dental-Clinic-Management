@@ -310,7 +310,20 @@ function Odontogram({
   const [activeShade, setActiveShade] = useState("A2");
   const [selectedToothId, setSelectedToothId] = useState<number | null>(initialSelected[0] || null);
 
-  // Dynamic Clinical Specs from Settings
+  /* Clinical specs — BUNDLED, not editable.
+   *
+   * The comment here used to read "Dynamic Clinical Specs from Settings", and a
+   * listener for a `clinical-specs-updated` event that nothing in the codebase
+   * ever dispatched: `clinicalSpecsService` exposes `getClinicalSpecs()` and no
+   * writer, and there is no Settings tab for materials, prep types, shade
+   * guides or implant brands. So the specs are seeded once at install and are
+   * read-only forever — which is a defensible design, but not one the code was
+   * honest about.
+   *
+   * The listener is kept because it costs nothing and is the correct seam IF a
+   * settings editor is ever added: the service already returns the current
+   * specs, so a `dispatchEvent(new Event('clinical-specs-updated'))` from a
+   * future writer would light this up with no change here. */
   const [clinicalSpecs, setClinicalSpecs] = useState(getClinicalSpecs());
 
   useEffect(() => {

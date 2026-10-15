@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "node scripts/verify-binaries.mjs && vitest run",
     "test:watch": "vitest",
-    "lint": "node scripts/version-guard.mjs && node scripts/verify-binaries.mjs && node scripts/role-picker.mjs --check && tsc --noEmit",
+    "lint": "node scripts/version-guard.mjs && npm run verify:binaries && node scripts/role-picker.mjs --check && tsc --noEmit",
+    "verify:binaries": "node scripts/verify-binaries.mjs",
     "audit:contrast": "node scripts/contrast-audit.mjs",
     "audit:darkbar": "node scripts/find-darkbar-ink.mjs",
     "audit:inline-bg": "node scripts/audit-inline-bg.mjs",
@@ -49,7 +50,6 @@
     "jsdom": "^25.0.1",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
     "vitest": "^5.0.3"

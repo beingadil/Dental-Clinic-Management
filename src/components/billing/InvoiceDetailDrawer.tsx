@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { Drawer, InvoiceStatusBadge } from '../common/ui';
+import { Drawer, InvoiceStatusBadge, DataTable } from '../common/ui';
 import { useApp } from '../../context/AppContext';
-import { Invoice, PaymentRecord } from '../../types';
+import { Invoice, JournalLine, PaymentRecord } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
 import { formatDoctorName } from '../../utils/doctorName';
 import { caseDetailLines } from '../../services/ledgerCaseDetail';
@@ -459,24 +459,33 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                         </button>
                       </div>
                       <div className="text-[11px] text-slate-500 mb-2">{j.date} · {j.description}</div>
-                      <table className="w-full text-[11px]">
-                        <thead>
-                          <tr className="text-ink-muted uppercase tracking-wider">
-                            <th scope="col" className="text-left font-bold py-0.5">Account</th>
-                            <th scope="col" className="text-right font-bold py-0.5">Debit</th>
-                            <th scope="col" className="text-right font-bold py-0.5">Credit</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {j.lines.map((l) => (
-                            <tr key={l.id} className="border-t border-slate-100">
-                              <td className="py-1 text-slate-700">{l.account_code} · {l.account_name}</td>
-                              <td className="py-1 text-right font-mono text-slate-700">{l.debit ? formatPKR(l.debit) : '—'}</td>
-                              <td className="py-1 text-right font-mono text-slate-700">{l.credit ? formatPKR(l.credit) : '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      {/* Shared primitive owns the header row, the row hover and
+                          the scroll wrapper. This nested ledger was flush
+                          (no horizontal padding, tighter rows than the default),
+                          so both are carried on each column. */}
+                      <DataTable<JournalLine>
+                        data={j.lines}
+                        rowKey={(l) => l.id}
+                        columns={[
+                          {
+                            header: 'Account',
+                            className: 'py-1 px-0 text-slate-700',
+                            render: (l) => <>{l.account_code} · {l.account_name}</>,
+                          },
+                          {
+                            header: 'Debit',
+                            align: 'right',
+                            className: 'py-1 px-0 font-mono text-slate-700',
+                            render: (l) => <>{l.debit ? formatPKR(l.debit) : '—'}</>,
+                          },
+                          {
+                            header: 'Credit',
+                            align: 'right',
+                            className: 'py-1 px-0 font-mono text-slate-700',
+                            render: (l) => <>{l.credit ? formatPKR(l.credit) : '—'}</>,
+                          },
+                        ]}
+                      />
                     </div>
                   ))
                 )}

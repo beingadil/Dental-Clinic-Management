@@ -1,4 +1,6 @@
+import { invoiceBalanceDue } from '../../services/financeDomain';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTransientFlag } from '../common/useTransient';
 import { DentalCase, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, Landmark, Download, CheckCircle2 } from 'lucide-react';
@@ -77,6 +79,10 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
   // had been recorded in billing history. Carrying the count is what makes the
   // confirmation worth showing; 0 simply means "nothing to announce".
   const [savedCount, setSavedCount] = useState(0);
+  /** Clears the announcement after 4s, cancelled on unmount. */
+  /* Only the trigger is wanted here — the visible flag is `savedCount`, which is
+     0 when there is nothing to announce. */
+  const [, savedFlash] = useTransientFlag(4000);
   const [slipStyle] = useState<PrintSettings['jobSlipStyle']>(() => loadPrintSettings().jobSlipStyle);
   // Preview zoom: 'fit' scales sheets to the modal width (default); 0.75 / 1
   // are the operator's explicit choices for reading fine print on screen.
@@ -87,7 +93,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
   /** Announce a completed save for a few seconds, then clear it. */
   const announceSaved = (count: number) => {
     setSavedCount(count);
-    setTimeout(() => setSavedCount(0), 4000);
+    savedFlash();
   };
 
   /**
@@ -353,7 +359,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
                 );
               }
 
-              const remainingBalance = Math.max(0, invoice.final_amount - invoice.amount_paid);
+              const remainingBalance = invoiceBalanceDue(invoice);
 
               return (
                 <div

@@ -1,3 +1,4 @@
+import { formatPKR } from '../../services/financeDomain';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CaseTemplate } from '../../types';
@@ -165,7 +166,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
               >
                 {caseTypes.map((ct) => (
                   <option key={ct.id} value={ct.id}>
-                    {ct.name} (PKR {ct.base_price.toLocaleString()})
+                    {ct.name} ({formatPKR(ct.base_price)})
                   </option>
                 ))}
               </select>

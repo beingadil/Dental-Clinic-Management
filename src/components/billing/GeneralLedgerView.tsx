@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ACCOUNT_CODES, formatPKR } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
 import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
@@ -24,8 +25,9 @@ import {
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
 import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
-import { ACCOUNT_CODES } from '../../services/financeDomain';
+;
 import { CaseDetailModal } from '../cases/CaseDetailModal';
+import { DataTable } from '../common/ui';
 import { DentalCase } from '../../types';
 
 interface GeneralLedgerViewProps {
@@ -295,6 +297,26 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
     () => caseScope.items.slice(0, ledgerLimit),
     [caseScope, ledgerLimit],
   );
+
+  /* The "Balance brought forward" line is a statement row, not a transaction.
+     DataTable has no slot above the first data row, so it travels as a
+     synthetic first row and each column branches on `kind`. It is only added
+     when there are entries to show: DataTable's empty state replaces the
+     whole table, so a lone opening line would suppress the "No ledger
+     entries found" message — and that message is the whole point of the
+     empty case. The closing-balance bar below the table still carries the
+     balance for it. */
+  type LedgerRow =
+    | { kind: 'opening' }
+    | { kind: 'entry'; idx: number; entry: (typeof caseScope.items)[number] };
+
+  const ledgerRows: LedgerRow[] = useMemo(() => {
+    const rows: LedgerRow[] = visibleLedgerItems.map((entry, idx) => ({ kind: 'entry', entry, idx }));
+    if (visibleLedgerItems.length > 0 && (openingBalance !== 0 || startDate)) {
+      rows.unshift({ kind: 'opening' });
+    }
+    return rows;
+  }, [visibleLedgerItems, openingBalance, startDate]);
 
   // Helper to format narration and determine entry category
   const getNarrationDetails = (entry: LedgerEntry): NarrationDetails => {
@@ -714,208 +736,228 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    <th scope="col" className="py-2 px-3 w-14 text-center">Sr No.</th>
-                    <th scope="col" className="py-2 px-3 w-28">Date</th>
-                    <th scope="col" className="py-2 px-3 w-40">Clinic</th>
-                    <th scope="col" className="py-2 px-3 w-32">Case / Job</th>
-                    <th scope="col" className="py-2 px-3">Narration (Type / Reference)</th>
-                    <th scope="col" className="py-2 px-3 text-right w-28">Debit (PKR)</th>
-                    <th scope="col" className="py-2 px-3 text-right w-28">Credit (PKR)</th>
-                    <th scope="col" className="py-2 px-3 text-right w-36">Closing Balance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  {/* Opening Balance Row if date filtered or non-zero */}
-                  {(openingBalance !== 0 || startDate) && (
-                    <tr className="bg-amber-50/40 text-slate-700 font-semibold italic">
-                      <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[11px]">-</td>
-                      <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">{startDate || '-'}</td>
-                      <td className="py-2.5 px-4 font-bold text-slate-800">
-                        {selectedClinic ? selectedClinic.name : 'Consolidated Clinics'}
-                      </td>
-                      <td className="py-2.5 px-3 text-ink-muted">—</td>
-                      <td className="py-2.5 px-4">
-                        <span className="inline-block text-[11px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
-                          Opening Balance
-                        </span>
-                        <span className="text-slate-600 not-italic">Balance brought forward</span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right text-slate-500">-</td>
-                      <td className="py-2.5 px-3 text-right text-slate-500">-</td>
-                      <td className="py-2.5 px-4 text-right font-bold font-mono text-slate-900 not-italic">
-                        PKR {openingBalance.toLocaleString()}
-                      </td>
-                    </tr>
-                  )}
-
-                  {ledgerItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-500">
-                        <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-ink-body flex items-center justify-center mb-3">
-                          <FileSpreadsheet className="w-6 h-6" />
-                        </div>
-                        <p className="text-sm font-bold text-slate-800">No ledger entries found</p>
-                        <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                          There are no recorded case invoices or payments for the selected clinic and date filter. Try selecting 'All Time' or choosing another clinic.
-                        </p>
-                      </td>
-                    </tr>
-                  ) : (
-                    visibleLedgerItems.map((entry, idx) => {
-                      const details = getNarrationDetails(entry);
-                      const Icon = details.icon;
-
-                      return (
-                        <tr 
-                          key={entry.id || idx}
-                          className="hover:bg-slate-50/80 transition-colors"
-                        >
-                          {/* Sr No. */}
-                          <td className="py-2 px-3 text-center font-mono text-[11px] text-slate-500 font-semibold">
-                            {idx + 1}
-                          </td>
-
-                          {/* Date */}
-                          <td className="py-2 px-3 text-slate-700 whitespace-nowrap font-medium text-[11px]">
-                            {entry.date ? entry.date.slice(0, 10) : '-'}
-                          </td>
-
-                          {/* Clinic */}
-                          <td className="py-2 px-3">
-                            <span className="font-bold text-slate-900 block truncate max-w-[160px]" title={entry.lab_name}>
-                              {entry.lab_name}
-                            </span>
-                          </td>
-
-                          {/* Case/Job — first-class relational reference; opens the real case record */}
-                          <td className="py-2 px-3">
-                            {entry.case_number ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const c = cases.find((x) => x.id === entry.case_id)
-                                    || cases.find((x) => x.case_number === entry.case_number);
-                                  if (c) setSelectedCaseForModalLocal(c);
-                                }}
-                                disabled={!entry.case_id && !cases.some((x) => x.case_number === entry.case_number)}
-                                title={entry.case_id ? 'Open case' : 'Case record not found'}
-                                className="inline-block font-mono text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-indigo-100 transition-colors cursor-pointer disabled:cursor-default disabled:hover:bg-indigo-50"
-                              >
-                                {entry.case_number}
-                              </button>
-                            ) : (
-                              <span className="text-slate-300 text-xs">—</span>
-                            )}
-                          </td>
-
-                          {/* Narration whether its a case entry or cash/payment */}
-                          <td className="py-2 px-3">
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${details.typeBadgeBg}`}>
-                                  <Icon className="w-3 h-3" />
-                                  {details.typeLabel}
-                                </span>
-                                <span className="font-semibold text-slate-800 text-xs">
-                                  {details.narration}
-                                </span>
-                              </div>
-                              {details.subText && (
-                                <p className="text-[11px] text-slate-500 font-normal pl-0.5">
-                                  {details.subText}
-                                </p>
-                              )}
-                              {details.caseDetail.length > 0 && (
-                                /* The case the money is booked against —
-                                   patient, procedure, teeth, shade. */
-                                <dl className="mt-1 grid grid-cols-1 gap-x-4 gap-y-0.5 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2 sm:grid-cols-2">
-                                  {details.caseDetail.map((d) => (
-                                    <div key={d.label} className="flex items-baseline gap-1.5 min-w-0">
-                                      <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-ink-muted">
-                                        {d.label}
-                                      </dt>
-                                      <dd className="truncate text-[11px] text-slate-700" title={d.value}>
-                                        {d.value}
-                                      </dd>
-                                    </div>
-                                  ))}
-                                </dl>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Debit */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap">
-                            {entry.debit > 0 ? (
-                              <span className="font-bold text-blue-900 font-mono">
-                                PKR {entry.debit.toLocaleString()}
-                              </span>
-                            ) : (
-                              <span className="text-ink-muted font-mono">-</span>
-                            )}
-                          </td>
-
-                          {/* Credit */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap">
-                            {entry.credit > 0 ? (
-                              <span className="font-bold text-emerald-700 font-mono">
-                                PKR {entry.credit.toLocaleString()}
-                              </span>
-                            ) : (
-                              <span className="text-ink-muted font-mono">-</span>
-                            )}
-                          </td>
-
-                          {/* Closing Balance */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
-                            <span className={entry.closing_balance > 0 ? 'text-slate-900' : entry.closing_balance < 0 ? 'text-emerald-700' : 'text-slate-500'}>
-                              PKR {entry.closing_balance.toLocaleString()}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-
-                {/* Period activity totals only — the closing balance is the
-                    final line of the statement, below everything else. */}
-                {caseScope.items.length > 0 && (
-                  <tfoot>
-                    <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-xs text-slate-900">
-                      <td colSpan={5} className="py-3.5 px-4 text-right uppercase tracking-wider font-bold">
-                        Total Period Activity:
-                      </td>
-                      <td className="py-3.5 px-3 text-right font-bold font-mono text-blue-900 whitespace-nowrap">
-                        PKR {caseScope.debitsSum.toLocaleString()}
-                      </td>
-                      <td className="py-3.5 px-3 text-right font-bold font-mono text-emerald-700 whitespace-nowrap">
-                        PKR {caseScope.creditsSum.toLocaleString()}
-                      </td>
-                      <td className="py-3.5 px-4 text-right text-ink-muted whitespace-nowrap">—</td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-              {caseScope.items.length > visibleLedgerItems.length && (
-                <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
-                  <span className="text-xs text-slate-500">
-                    Showing {visibleLedgerItems.length} of {caseScope.items.length} entries — totals cover the full period
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setLedgerLimit((n) => n + LEDGER_CAP_STEP)}
-                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                  >
-                    Show {Math.min(LEDGER_CAP_STEP, caseScope.items.length - visibleLedgerItems.length)} More
-                  </button>
+            {/* DataTable owns the <thead>, the ds-th header row and the scroll
+                wrapper; the card above stays put. The <tfoot> totals row and
+                the "show more" bar travel through `footer` — the tfoot keeps
+                its own one-row table so its eight cells still line up with the
+                columns above. */}
+            <DataTable<LedgerRow>
+              data={ledgerRows}
+              rowKey={(row) => (row.kind === 'opening' ? '__opening' : row.entry.id || `row-${row.idx}`)}
+              rowClassName={(row) => (row.kind === 'opening' ? 'bg-amber-50/40 text-slate-700 font-semibold italic' : '')}
+              emptyState={
+                <div className="py-12 text-center text-slate-500">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-ink-body flex items-center justify-center mb-3">
+                    <FileSpreadsheet className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-800">No ledger entries found</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                    There are no recorded case invoices or payments for the selected clinic and date filter. Try selecting 'All Time' or choosing another clinic.
+                  </p>
                 </div>
-              )}
-            </div>
+              }
+              tfoot={
+                /* Period activity totals only — the closing balance is the
+                    final line of the statement, below everything else.
+
+                    This was passed through `footer` wrapped in its own
+                    one-row `<table>`, because `footer` renders AFTER `</table>`
+                    and a bare `<tfoot>` out there is invalid markup. That
+                    second table laid its columns out independently of the
+                    columns above, so the totals drifted out of alignment. The
+                    `tfoot` prop puts it back inside the real table. */
+                caseScope.items.length > 0 ? (
+                  <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-xs text-slate-900">
+                    <td colSpan={5} className="py-3.5 px-4 text-right uppercase tracking-wider font-bold">
+                      Total Period Activity:
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-bold font-mono text-blue-900 whitespace-nowrap">
+                      {formatPKR(caseScope.debitsSum)}
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-bold font-mono text-emerald-700 whitespace-nowrap">
+                      {formatPKR(caseScope.creditsSum)}
+                    </td>
+                    <td className="py-3.5 px-4 text-right text-ink-muted whitespace-nowrap">—</td>
+                  </tr>
+                ) : null
+              }
+              footer={
+                <>
+                  {caseScope.items.length > visibleLedgerItems.length && (
+                    <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
+                      <span className="text-xs text-slate-500">
+                        Showing {visibleLedgerItems.length} of {caseScope.items.length} entries — totals cover the full period
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setLedgerLimit((n) => n + LEDGER_CAP_STEP)}
+                        className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                      >
+                        Show {Math.min(LEDGER_CAP_STEP, caseScope.items.length - visibleLedgerItems.length)} More
+                      </button>
+                    </div>
+                  )}
+                </>
+              }
+              columns={[
+                {
+                  header: 'Sr No.',
+                  align: 'center',
+                  className: 'w-14 py-2 px-3 font-mono text-[11px] text-slate-500 font-semibold',
+                  render: (row) => (row.kind === 'opening' ? <span>-</span> : row.idx + 1),
+                },
+                {
+                  header: 'Date',
+                  className: 'w-28 py-2.5 px-3 font-mono text-[11px]',
+                  render: (row) =>
+                    row.kind === 'opening' ? (
+                      <span className="text-slate-600">{startDate || '-'}</span>
+                    ) : (
+                      <span className="text-slate-700 whitespace-nowrap font-medium">
+                        {row.entry.date ? row.entry.date.slice(0, 10) : '-'}
+                      </span>
+                    ),
+                },
+                {
+                  header: 'Clinic',
+                  className: 'w-40 py-2.5 px-3 font-bold',
+                  render: (row) =>
+                    row.kind === 'opening' ? (
+                      <span className="text-slate-800">
+                        {selectedClinic ? selectedClinic.name : 'Consolidated Clinics'}
+                      </span>
+                    ) : (
+                      <span className="font-bold text-slate-900 block truncate max-w-[160px]" title={row.entry.lab_name}>
+                        {row.entry.lab_name}
+                      </span>
+                    ),
+                },
+                {
+                  header: 'Case / Job',
+                  className: 'w-32',
+                  render: (row) => {
+                    if (row.kind === 'opening') return <span className="text-ink-muted">—</span>;
+                    const entry = row.entry;
+                    return entry.case_number ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const c = cases.find((x) => x.id === entry.case_id)
+                            || cases.find((x) => x.case_number === entry.case_number);
+                          if (c) setSelectedCaseForModalLocal(c);
+                        }}
+                        disabled={!entry.case_id && !cases.some((x) => x.case_number === entry.case_number)}
+                        title={entry.case_id ? 'Open case' : 'Case record not found'}
+                        className="inline-block font-mono text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-indigo-100 transition-colors cursor-pointer disabled:cursor-default disabled:hover:bg-indigo-50"
+                      >
+                        {entry.case_number}
+                      </button>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    );
+                  },
+                },
+                {
+                  header: 'Narration (Type / Reference)',
+                  render: (row) => {
+                    if (row.kind === 'opening') {
+                      return (
+                        <>
+                          <span className="inline-block text-[11px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 mr-2 border border-amber-200">
+                            Opening Balance
+                          </span>
+                          <span className="text-slate-600 not-italic">Balance brought forward</span>
+                        </>
+                      );
+                    }
+                    const details = getNarrationDetails(row.entry);
+                    const Icon = details.icon;
+
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${details.typeBadgeBg}`}>
+                            <Icon className="w-3 h-3" />
+                            {details.typeLabel}
+                          </span>
+                          <span className="font-semibold text-slate-800 text-xs">
+                            {details.narration}
+                          </span>
+                        </div>
+                        {details.subText && (
+                          <p className="text-[11px] text-slate-500 font-normal pl-0.5">
+                            {details.subText}
+                          </p>
+                        )}
+                        {details.caseDetail.length > 0 && (
+                          /* The case the money is booked against —
+                             patient, procedure, teeth, shade. */
+                          <dl className="mt-1 grid grid-cols-1 gap-x-4 gap-y-0.5 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2 sm:grid-cols-2">
+                            {details.caseDetail.map((d) => (
+                              <div key={d.label} className="flex items-baseline gap-1.5 min-w-0">
+                                <dt className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                                  {d.label}
+                                </dt>
+                                <dd className="truncate text-[11px] text-slate-700" title={d.value}>
+                                  {d.value}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+                      </div>
+                    );
+                  },
+                },
+                {
+                  header: 'Debit (PKR)',
+                  align: 'right',
+                  className: 'w-28',
+                  render: (row) =>
+                    row.kind === 'opening' ? (
+                      <span>-</span>
+                    ) : (
+                      row.entry.debit > 0 ? (
+                        <span className="font-bold text-blue-900 font-mono">
+                          {formatPKR(row.entry.debit)}
+                        </span>
+                      ) : (
+                        <span className="text-ink-muted font-mono">-</span>
+                      )
+                    ),
+                },
+                {
+                  header: 'Credit (PKR)',
+                  align: 'right',
+                  className: 'w-28',
+                  render: (row) =>
+                    row.kind === 'opening' ? (
+                      <span>-</span>
+                    ) : (
+                      row.entry.credit > 0 ? (
+                        <span className="font-bold text-emerald-700 font-mono">
+                          {formatPKR(row.entry.credit)}
+                        </span>
+                      ) : (
+                        <span className="text-ink-muted font-mono">-</span>
+                      )
+                    ),
+                },
+                {
+                  header: 'Closing Balance',
+                  align: 'right',
+                  className: 'w-36 py-2.5 px-3 whitespace-nowrap font-mono font-bold text-slate-900',
+                  render: (row) =>
+                    row.kind === 'opening' ? (
+                      <span className="not-italic">{formatPKR(openingBalance)}</span>
+                    ) : (
+                      <span className={row.entry.closing_balance > 0 ? 'text-slate-900' : row.entry.closing_balance < 0 ? 'text-emerald-700' : 'text-slate-500'}>
+                        {formatPKR(row.entry.closing_balance)}
+                      </span>
+                    ),
+                },
+              ]}
+            />
 
             {/* Final line of the statement: the closing balance, after the last
                 chronologically ordered entry. */}
@@ -933,7 +975,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
                 </span>
               </div>
               <span className="font-mono text-lg font-bold tracking-tight text-slate-900">
-                PKR {caseScope.closing.toLocaleString()} {caseScope.closing > 0 ? 'Dr' : caseScope.closing < 0 ? 'Cr' : ''}
+                {formatPKR(caseScope.closing)} {caseScope.closing > 0 ? 'Dr' : caseScope.closing < 0 ? 'Cr' : ''}
               </span>
             </div>
           </div>

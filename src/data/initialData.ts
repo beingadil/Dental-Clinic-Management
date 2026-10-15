@@ -107,9 +107,16 @@ export const INITIAL_NOTIFICATIONS: AppNotification[] = [];
 export const INITIAL_NOTIFICATION_CONFIG: NotificationConfig = {
   overdue_frequencies: ['1_day_before', 'on_due_date', '1_day_after', '3_days_after', '7_days_after'],
   payment_frequencies: ['1_day_before', 'on_due_date', '3_days_after', '7_days_after', '14_days_after'],
-  enable_escalation: true,
+  /* Escalation was INERT for its whole life, so these three values were never
+     observed by anyone — the Settings tab showed them and nothing read them.
+     Now that `buildEscalationAlerts` consults them, shipping `enable_escalation:
+     true` with a `daily` interval would switch a repeating escalation on for
+     every lab that never asked for one, on the update that made it real. So the
+     default is OFF and the interval is weekly: an operator who wants escalation
+     turns it on, and one who doesn't is unaffected. */
+  enable_escalation: false,
   escalation_threshold_days: 7,
-  recurring_interval: 'daily',
+  recurring_interval: 'weekly',
 };
 
 export const INITIAL_EMAIL_TEMPLATES: EmailTemplate[] = [

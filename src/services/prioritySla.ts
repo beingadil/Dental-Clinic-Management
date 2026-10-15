@@ -130,10 +130,31 @@ export function prioritySlaLabel(p: PriorityLevel): string {
   return `${PRIORITY_LABELS[p]} — ${days} day${days === 1 ? '' : 's'}`;
 }
 
-/** Due date = today + the configured turnaround for `priority`, on the LOCAL day. */
-export function computeSlaDueDate(priority: PriorityLevel, from: Date = new Date()): string {
+/**
+ * Due date = today + the configured turnaround for `priority`, on the LOCAL day.
+ *
+ * `normalFallbackDays` exists because `UserPreferences.default_turnaround_days`
+ * is a real, operator-editable control in Settings → Preferences that used to be
+ * read by nothing at all — the SLA table quietly ignored it. Rather than add a
+ * SECOND editor for the same promise, that preference is now the fallback for the
+ * `normal` priority when the operator has not set an explicit SLA row for it.
+ * The SLA table always wins; this only fills a gap.
+ */
+export function computeSlaDueDate(
+  priority: PriorityLevel,
+  from: Date = new Date(),
+  normalFallbackDays?: number,
+): string {
   const d = new Date(from);
-  d.setDate(d.getDate() + slaDays[priority]);
+  const fallback =
+    priority === 'normal' &&
+    typeof normalFallbackDays === 'number' &&
+    Number.isFinite(normalFallbackDays) &&
+    normalFallbackDays > 0 &&
+    normalFallbackDays <= MAX_SLA_DAYS
+      ? Math.round(normalFallbackDays)
+      : slaDays[priority];
+  d.setDate(d.getDate() + fallback);
   // Local day, not toISOString(): setDate() works in local time, so reading
   // the result back in UTC walked the date back a day for every clinic
   // booking before 05:00 PKT.

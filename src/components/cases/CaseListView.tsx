@@ -8,7 +8,7 @@ import { CaseTemplateModal } from './CaseTemplateModal';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
-import { PageHeader, EmptyState, CaseStatusBadge, PriorityBadge, usePagination } from '../common/ui';
+import { PageHeader, EmptyState, CaseStatusBadge, PriorityBadge, usePagination, Modal, DataTable } from '../common/ui';
 import { 
   PlusCircle, 
   Search, 
@@ -231,15 +231,42 @@ export const CaseListView: React.FC = () => {
     if (!enabled) return { isWarning: false, isOverdue: false, isDueSoon: false, hoursLeft: 999 };
 
     const thresholdHours = brandingSettings?.warningThresholdHours ?? 24;
-    const isOverdue = c.delivery_date < todayStr;
-    const isDueSoon = c.delivery_date === todayStr;
-    const isWarning = isOverdue || isDueSoon;
+
+    /* `delivery_date` is a DATE, not a timestamp — there is no time of day to
+       compare against. So the only coherent reading of "warn me N hours before a
+       case is due" is "warn me when the due date falls within the next N hours
+       of wall-clock time", which with day granularity means: within
+       ceil(N/24) days.
+
+       This mattered because `warningThresholdHours` was wired to every LABEL in
+       this file — "Due Within Next 48 Hours", "DUE WITHIN 48H", "<48H" — while
+       the flag itself was `isOverdue || delivery_date === todayStr`. Setting the
+       threshold to 48 changed all that text and nothing else: a case due in two
+       days was never flagged, so the screen said "due within 48 hours" and then
+       showed no due-soon cases at all.
+
+       `hoursLeft` was the same lie in a different place: a hardcoded `8` for
+       anything due today. It is now the real distance, in hours. */
+    const DAY_MS = 86_400_000;
+    const startOfToday = new Date(`${todayStr}T00:00:00`).getTime();
+    const dueAt = c.delivery_date ? new Date(`${c.delivery_date}T00:00:00`).getTime() : NaN;
+
+    // An undated or unparseable case cannot be in a warning window.
+    if (Number.isNaN(dueAt)) {
+      return { isWarning: false, isOverdue: false, isDueSoon: false, hoursLeft: 999 };
+    }
+
+    const daysUntil = Math.round((dueAt - startOfToday) / DAY_MS);
+    const isOverdue = daysUntil < 0;
+    const isDueSoon = daysUntil === 0;
+    const windowDays = Math.max(0, Math.ceil(Math.max(1, thresholdHours) / 24));
+    const isWarning = isOverdue || daysUntil <= windowDays;
 
     return {
       isWarning,
       isOverdue,
       isDueSoon,
-      hoursLeft: isOverdue ? 0 : (c.delivery_date === todayStr ? 8 : thresholdHours)
+      hoursLeft: isOverdue ? 0 : daysUntil * 24
     };
   };
 
@@ -664,69 +691,84 @@ export const CaseListView: React.FC = () => {
           </div>
 
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
-            {filteredArchivedCases.length === 0 ? (
-              <div className="p-10 text-center">
-                <Archive className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-                <h3 className="font-bold text-slate-800 text-sm">No archived cases match</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Completed cases you archive from the workstation appear here. Nothing is deleted — restore any case back to the active board at any time.
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto no-scrollbar">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200/80 font-bold uppercase text-[10px] text-slate-500 tracking-wider">
-                      <th className="py-2 px-3">Case ID</th>
-                      <th className="py-2 px-3">Patient</th>
-                      <th className="py-2 px-3">Clinic</th>
-                      <th className="py-2 px-3">Material</th>
-                      <th className="py-2 px-3">Delivery</th>
-                      <th className="py-2 px-3">Status</th>
-                      <th className="py-2 px-3">Archived</th>
-                      <th className="py-2 px-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {filteredArchivedCases.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-2 px-3 font-bold text-slate-900">{c.case_number}</td>
-                        <td className="py-2 px-3 text-slate-700">{c.patient_name || '—'}</td>
-                        <td className="py-2 px-3 text-slate-700">{c.lab_name}</td>
-                        <td className="py-2 px-3 text-slate-700">{c.case_type_name}</td>
-                        <td className="py-2 px-3 text-slate-600">{c.delivery_date}</td>
-                        <td className="py-2 px-3">
-                          <CaseStatusBadge status={c.status} />
-                        </td>
-                        <td className="py-2 px-3 text-slate-500 text-[11px]">
-                          {c.archived_at ? c.archived_at.slice(0, 10) : '—'}
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => restoreCase(c.id)}
-                              className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors cursor-pointer"
-                              title="Restore to the active workstation"
-                            >
-                              <ArchiveRestore className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmPermanentId(c.id)}
-                              className="p-1.5 hover:bg-rose-50 text-ink-danger rounded-lg transition-colors cursor-pointer"
-                              title="Permanently delete this case and its history"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {/* The view's own card stays; `DataTable` renders a BARE table. */}
+            <DataTable
+              data={filteredArchivedCases}
+              rowKey={(c) => c.id}
+              /* This table's own row hover is `/60`, not the primitive's `/80`.
+                 Tailwind orders the opacity variants ascending, so only the
+                 important suffix keeps this view's lighter hover. */
+              rowClassName={() => 'hover:bg-slate-50/60!'}
+              emptyState={
+                <div className="p-10 text-center">
+                  <Archive className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                  <h3 className="font-bold text-slate-800 text-sm">No archived cases match</h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                    Completed cases you archive from the workstation appear here. Nothing is deleted — restore any case back to the active board at any time.
+                  </p>
+                </div>
+              }
+              columns={[
+                {
+                  header: 'Case ID',
+                  className: 'font-bold text-slate-900',
+                  render: (c) => c.case_number,
+                },
+                {
+                  header: 'Patient',
+                  className: 'text-slate-700',
+                  render: (c) => c.patient_name || '—',
+                },
+                {
+                  header: 'Clinic',
+                  className: 'text-slate-700',
+                  render: (c) => c.lab_name,
+                },
+                {
+                  header: 'Material',
+                  className: 'text-slate-700',
+                  render: (c) => c.case_type_name,
+                },
+                {
+                  header: 'Delivery',
+                  className: 'text-slate-600',
+                  render: (c) => c.delivery_date,
+                },
+                {
+                  header: 'Status',
+                  render: (c) => <CaseStatusBadge status={c.status} />,
+                },
+                {
+                  header: 'Archived',
+                  className: 'text-slate-500 text-[11px]',
+                  render: (c) => (c.archived_at ? c.archived_at.slice(0, 10) : '—'),
+                },
+                {
+                  header: 'Actions',
+                  align: 'right',
+                  render: (c) => (
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => restoreCase(c.id)}
+                        className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors cursor-pointer"
+                        title="Restore to the active workstation"
+                      >
+                        <ArchiveRestore className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmPermanentId(c.id)}
+                        className="p-1.5 hover:bg-rose-50 text-ink-danger rounded-lg transition-colors cursor-pointer"
+                        title="Permanently delete this case and its history"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </div>
         </div>
       ) : viewMode === 'kanban' ? (
@@ -1020,11 +1062,47 @@ export const CaseListView: React.FC = () => {
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    <th className="py-2 px-3 w-10 text-center">
+            /* `DataTable` has no per-row click slot, so this wrapper delegates:
+               the click is resolved back to a case by the clicked `<tr>`'s
+               position among this table's body rows (DataTable renders `data`
+               in order, one row per entry). The cells that used to swallow the
+               row click still do — the checkbox and the status/progress block
+               both call `e.stopPropagation()`, which stops this React handler
+               just as it used to stop the `<tr>` one. `cursor-pointer` now
+               lives in `rowClassName` for the same reason. */
+            <div
+              onClick={(e) => {
+                const table = e.currentTarget.querySelector('table');
+                const tr = (e.target as HTMLElement).closest('tbody tr');
+                const body = tr?.parentElement;
+                if (!table || !tr || !body || !table.contains(tr)) return;
+                const clicked = visibleFilteredCases[Array.from(body.children).indexOf(tr)];
+                if (clicked) setViewedCaseId(clicked.id);
+              }}
+            >
+              <DataTable
+                data={visibleFilteredCases}
+                rowKey={(c) => c.id}
+                /* The table's own hover is indigo at /40, not the primitive's
+                   slate /80. Tailwind emits the opacity variants ascending, so
+                   the important suffix is what keeps this view's hover. */
+                rowClassName={(c) => {
+                  const { isWarning } = checkCaseWarning(c);
+                  return `cursor-pointer hover:bg-indigo-50/40! ${
+                    selectedCaseIds.includes(c.id)
+                      ? 'bg-indigo-50/60'
+                      : isWarning
+                      ? 'bg-rose-50/70 border-l-4 border-l-rose-500 font-semibold'
+                      : ''
+                  }`;
+                }}
+                footer={casesPagination ?? undefined}
+                columns={[
+                  {
+                    /* A plain column, not `DataTable`'s `selection` slot: that
+                       one draws lucide Square/CheckSquare buttons, and this
+                       table has always used native checkboxes. */
+                    header: (
                       <input
                         type="checkbox"
                         checked={filteredCases.length > 0 && selectedCaseIds.length === filteredCases.length}
@@ -1032,144 +1110,156 @@ export const CaseListView: React.FC = () => {
                         className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                         title="Select or deselect all filtered cases"
                       />
-                    </th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Case #</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Patient</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Dental Clinic</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Material / Type</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Doctor</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">FDI Teeth</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Delivery Date</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Priority</th>
-                    <th className="py-2 px-4 font-bold text-slate-700">Price (PKR)</th>
-                    <th className="py-2 px-4 text-center font-bold text-slate-700">Status</th>
-                    <th className="py-2 px-4 text-right font-bold text-slate-700">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  {visibleFilteredCases.map((c) => {
-                    const { isWarning, isOverdue } = checkCaseWarning(c);
-                    const isSelected = selectedCaseIds.includes(c.id);
-                    return (
-                      <tr
-                        key={c.id}
-                        onClick={() => setViewedCaseId(c.id)}
-                        className={`hover:bg-indigo-50/40 cursor-pointer transition-colors ${
-                          isSelected 
-                            ? 'bg-indigo-50/60' 
-                            : isWarning 
-                            ? 'bg-rose-50/70 border-l-4 border-l-rose-500 font-semibold' 
-                            : ''
-                        }`}
-                      >
-                        <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleSelectCase(c.id)}
-                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                          />
-                        </td>
-
-                        <td className="py-2 px-4 font-bold text-slate-900">
-                          <div className="flex items-center gap-1.5">
-                            <span className="tracking-tight">{c.case_number}</span>
-                            {isWarning && (
-                              <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[9px] font-bold rounded-full uppercase tracking-wider animate-pulse">
-                                {isOverdue ? 'OVERDUE' : `<${brandingSettings?.warningThresholdHours || 24}H`}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-2 px-4 font-medium text-slate-700">{c.patient_name || '—'}</td>
-
-                        <td className="py-2 px-4 font-medium text-slate-800">{c.lab_name}</td>
-
-                        <td className="py-2 px-4 text-slate-700">
-                          <span className="font-semibold text-indigo-600">{c.case_type_name}</span>
-                          {c.shade && <span className="ml-1 text-[11px] text-ink-muted font-normal">({c.shade})</span>}
-                        </td>
-
-                        <td className="py-2 px-4 text-slate-700 font-medium">{formatDoctorName(c.doctor_name)}</td>
-
-                        <td className="py-2 px-4 text-slate-600">
-                          <span className="font-mono font-bold text-slate-800">#{c.selected_teeth.join(', ')}</span>
-                        </td>
-
-                        <td className="py-2 px-4">
-                          <div className={`font-semibold ${isOverdue ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>
-                            {c.delivery_date}
-                          </div>
-                        </td>
-
-                        <td className="py-2 px-4">
-                          <PriorityBadge priority={c.priority} />
-                        </td>
-
-                        <td className="py-2 px-4 font-bold text-slate-900">
-                          PKR {(c.final_price || 0).toLocaleString()}
-                        </td>
-
-                        <td className="py-2 px-4 min-w-[160px]">
-                          <div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between">
-                              <CaseStatusBadge status={c.status} />
-                            </div>
-                            <CaseProgressIndicator
-                              status={c.status}
-                              onStatusChange={(newStatus) => updateCase(c.id, { status: newStatus }, `Stage updated to ${newStatus}`)}
-                              variant="compact"
-                              showLabels={false}
-                            />
-                          </div>
-                        </td>
-
-                        <td className="py-2 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPrintSlipCase(c);
-                              }}
-                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
-                              title="Print Case Job Slip / Tray Ticket"
-                            >
-                              <Printer className="w-3.5 h-3.5" /> Slip
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedCase(c);
-                              }}
-                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
-                              title="Open this case in the case form"
-                            >
-                              <Pencil className="w-3.5 h-3.5" /> Open
-                            </button>
-                            {c.status === 'delivered' && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  archiveCase(c.id);
-                                }}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-700 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
-                                title="Case completed — move it to the Archive (kept, searchable, restorable)"
-                              >
-                                <Archive className="w-3.5 h-3.5" /> Archive
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {casesPagination}
+                    ),
+                    align: 'center',
+                    className: 'w-10',
+                    render: (c) => (
+                      <input
+                        type="checkbox"
+                        checked={selectedCaseIds.includes(c.id)}
+                        onChange={() => toggleSelectCase(c.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    ),
+                  },
+                  {
+                    header: 'Case #',
+                    /* `px-4` is wider than DataTable's `px-3` default and
+                       Tailwind emits the spacing scale ascending, so it wins. */
+                    className: 'px-4 font-bold text-slate-900',
+                    render: (c) => {
+                      const { isWarning, isOverdue } = checkCaseWarning(c);
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <span className="tracking-tight">{c.case_number}</span>
+                          {isWarning && (
+                            <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[9px] font-bold rounded-full uppercase tracking-wider animate-pulse">
+                              {isOverdue ? 'OVERDUE' : `<${brandingSettings?.warningThresholdHours || 24}H`}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    header: 'Patient',
+                    className: 'px-4 font-medium text-slate-700',
+                    render: (c) => c.patient_name || '—',
+                  },
+                  {
+                    header: 'Dental Clinic',
+                    className: 'px-4 font-medium text-slate-800',
+                    render: (c) => c.lab_name,
+                  },
+                  {
+                    header: 'Material / Type',
+                    className: 'px-4 text-slate-700',
+                    render: (c) => (
+                      <>
+                        <span className="font-semibold text-indigo-600">{c.case_type_name}</span>
+                        {c.shade && <span className="ml-1 text-[11px] text-ink-muted font-normal">({c.shade})</span>}
+                      </>
+                    ),
+                  },
+                  {
+                    header: 'Doctor',
+                    className: 'px-4 text-slate-700 font-medium',
+                    render: (c) => formatDoctorName(c.doctor_name),
+                  },
+                  {
+                    header: 'FDI Teeth',
+                    className: 'px-4 text-slate-600',
+                    render: (c) => (
+                      <span className="font-mono font-bold text-slate-800">#{c.selected_teeth.join(', ')}</span>
+                    ),
+                  },
+                  {
+                    header: 'Delivery Date',
+                    className: 'px-4',
+                    render: (c) => {
+                      const { isOverdue } = checkCaseWarning(c);
+                      return (
+                        <div className={`font-semibold ${isOverdue ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>
+                          {c.delivery_date}
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    header: 'Priority',
+                    className: 'px-4',
+                    render: (c) => <PriorityBadge priority={c.priority} />,
+                  },
+                  {
+                    header: 'Price (PKR)',
+                    className: 'px-4 font-bold text-slate-900',
+                    render: (c) => <>PKR {(c.final_price || 0).toLocaleString()}</>,
+                  },
+                  {
+                    header: 'Status',
+                    align: 'center',
+                    className: 'px-4 min-w-[160px]',
+                    render: (c) => (
+                      <div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between">
+                          <CaseStatusBadge status={c.status} />
+                        </div>
+                        <CaseProgressIndicator
+                          status={c.status}
+                          onStatusChange={(newStatus) => updateCase(c.id, { status: newStatus }, `Stage updated to ${newStatus}`)}
+                          variant="compact"
+                          showLabels={false}
+                        />
+                      </div>
+                    ),
+                  },
+                  {
+                    header: 'Action',
+                    align: 'right',
+                    className: 'px-4',
+                    render: (c) => (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrintSlipCase(c);
+                          }}
+                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+                          title="Print Case Job Slip / Tray Ticket"
+                        >
+                          <Printer className="w-3.5 h-3.5" /> Slip
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedCase(c);
+                          }}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+                          title="Open this case in the case form"
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> Open
+                        </button>
+                        {c.status === 'delivered' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              archiveCase(c.id);
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-700 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            title="Case completed — move it to the Archive (kept, searchable, restorable)"
+                          >
+                            <Archive className="w-3.5 h-3.5" /> Archive
+                          </button>
+                        )}
+                      </div>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
         </div>
@@ -1245,23 +1335,26 @@ export const CaseListView: React.FC = () => {
         );
       })()}
 
-      {/* Template Preset Gallery Modal */}
-      {templateLibraryOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 border border-slate-200 shadow-2xl relative">
-            {/* The library renders its own close control, so this overlay no
-                longer draws a second one in the corner. */}
-            <CaseTemplateModal
-              onClose={() => setTemplateLibraryOpen(false)}
-              onApplyTemplate={(tmpl) => {
-                setAppliedTemplate(tmpl);
-                setTemplateLibraryOpen(false);
-                setIsNewModalOpen(true);
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* Template Preset Gallery Modal.
+          `hideClose` because the library draws its own close control — Modal
+          would otherwise add a second one in the opposite corner. Everything
+          else (backdrop, focus trap, Escape, aria-modal) comes from Modal. */}
+      <Modal
+        open={templateLibraryOpen}
+        onClose={() => setTemplateLibraryOpen(false)}
+        label="Case template library"
+        maxWidth="max-w-3xl"
+        hideClose
+      >
+        <CaseTemplateModal
+          onClose={() => setTemplateLibraryOpen(false)}
+          onApplyTemplate={(tmpl) => {
+            setAppliedTemplate(tmpl);
+            setTemplateLibraryOpen(false);
+            setIsNewModalOpen(true);
+          }}
+        />
+      </Modal>
 
       {/* Case Job Slip Printable Modal */}
       {printSlipCase && (

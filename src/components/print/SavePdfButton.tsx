@@ -1,3 +1,4 @@
+import { useTransientFlag } from '../common/useTransient';
 /**
  * "Save PDF" button for print modals — desktop (Tauri) builds only.
  *
@@ -20,7 +21,7 @@ interface SavePdfButtonProps {
 export function SavePdfButton({ suggestedName, disabled = false, className = '' }: SavePdfButtonProps) {
   const [available, setAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, flashDone] = useTransientFlag(4000);
 
   useEffect(() => {
     let mounted = true;
@@ -40,8 +41,7 @@ export function SavePdfButton({ suggestedName, disabled = false, className = '' 
     const result = await saveAsPdf(suggestedName);
     setBusy(false);
     if (result.status === 'saved') {
-      setDone(true);
-      setTimeout(() => setDone(false), 4000);
+      flashDone();
     } else if (result.status === 'error') {
       alert(`Could not save PDF: ${result.message}`);
     }

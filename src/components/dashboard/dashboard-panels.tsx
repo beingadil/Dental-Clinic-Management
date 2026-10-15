@@ -1,3 +1,4 @@
+import { formatPKR } from '../../services/financeDomain';
 /**
  * Dashboard panels.
  *
@@ -35,6 +36,7 @@ import {
   Send,
   ShieldAlert,
   ShieldCheck,
+Moon,
   Sun,
   TrendingUp,
   Truck,
@@ -74,7 +76,7 @@ const TONE_CHIP: Record<Tone, string> = {
 };
 
 const TONE_ICON_BG: Record<Tone, string> = {
-  muted: 'bg-slate-100 text-slate-500',
+  muted: 'bg-ds-sunken text-ds-body',
   accent: 'bg-ds-accent-soft text-ds-accent',
   qc: 'bg-ds-qc-soft text-ds-qc',
   pos: 'bg-ds-pos-soft text-ds-pos',
@@ -84,7 +86,7 @@ const TONE_ICON_BG: Record<Tone, string> = {
 };
 
 const TONE_BAR: Record<WorkloadRow['tone'], string> = {
-  muted: 'bg-slate-300',
+  muted: 'bg-ds-line',
   accent: 'bg-ds-accent',
   qc: 'bg-ds-qc',
   pos: 'bg-ds-pos',
@@ -101,9 +103,18 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({ 
   <span className={`ds-eyebrow ${className}`}>{children}</span>
 );
 
+/**
+ * A chip is a LABEL, not a sticker.
+ *
+ * These were all `rounded-full`, which is the single most recognisable AI
+ * dashboard tell — a wall of identical lozenges reads as decoration because it
+ * carries no information. `rounded-md` also scans faster down a column: a
+ * straight edge gives the eye something to align the text against, which a
+ * lozenge does not.
+ */
 const Chip: React.FC<{ tone: Tone; children: React.ReactNode }> = ({ tone, children }) => (
   <span
-    className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${TONE_CHIP[tone]}`}
+    className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${TONE_CHIP[tone]}`}
   >
     {children}
   </span>
@@ -137,18 +148,14 @@ const PanelHead: React.FC<{
   </div>
 );
 
-/** Right-aligned "View …" affordance anchored to the card's bottom edge. */
-const PanelFoot: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="absolute right-5 bottom-4 ds-link cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
-  >
-    {label} <ArrowRight className="w-3 h-3 inline -mt-0.5" />
-  </button>
-);
-
-/** Composed empty state — never a bare "0" pretending to be a result. */
+/**
+ * Composed empty state — never a bare "0" pretending to be a result.
+ *
+ * `PanelFoot` used to live here and is gone: it was a second <button> rendered
+ * INSIDE the KPI card's own clickable element, so activating either one fired
+ * the action twice. The KPI cards now render the affordance as a span and the
+ * whole card is the single button — see KpiCards.
+ */
 const Empty: React.FC<{ message: string; hint?: string }> = ({ message, hint }) => (
   <div className="flex flex-col items-center justify-center text-center py-6 px-3">
     <p className="text-[11px] font-semibold text-ds-body">{message}</p>
@@ -162,10 +169,14 @@ export const GreetingHeader: React.FC<{
   userName: string;
   onNewCase: () => void;
 }> = ({ userName, onNewCase }) => {
-  // Time-of-day greeting from the real clock — "morning" at 06:00 is a lie
-  // the reference mock cannot afford to make.
+  // Time-of-day greeting from the real clock.
+  //
+  // The old rule was `hour < 12 → "Good morning"`, which greeted a technician
+  // who opened the app at 01:57 as though it were dawn. A greeting is a claim
+  // about the time of day, so the bands have to be bands that exist: a lab day
+  // starts when a person starts work, not when the clock strikes midnight.
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting = hour < 5 ? 'Still up' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const now = new Date();
   const dateLine = now.toLocaleDateString('en-US', {
@@ -182,13 +193,15 @@ export const GreetingHeader: React.FC<{
       data-purpose="dashboard-greeting"
     >
       <div className="min-w-0">
-        <h1 className="flex items-center gap-2 text-[22px] sm:text-[26px] font-extrabold tracking-[-0.02em] text-ds-ink leading-none">
+        <h1 className="flex items-center gap-2.5 text-[22px] sm:text-[26px] font-extrabold tracking-[-0.02em] text-ds-ink leading-none">
           <span className="truncate">
             {greeting}, {userName}
           </span>
-          <Sun className="w-5 h-5 text-ds-warn shrink-0" strokeWidth={2.2} aria-hidden="true" />
+          <HourGlyph hour={hour} />
         </h1>
-        <p className="text-[12px] text-ds-body mt-1.5">Here&apos;s what&apos;s happening in your laboratory today.</p>
+        <p className="text-[12px] text-ds-body mt-1.5">
+          Today&apos;s bench, today&apos;s promises and what the clinics owe.
+        </p>
       </div>
 
       <div className="flex items-center gap-4 shrink-0">
@@ -199,7 +212,7 @@ export const GreetingHeader: React.FC<{
         <button
           type="button"
           onClick={onNewCase}
-          className="ds-hit ds-tap inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-ds-inverse text-white text-[12px] font-bold cursor-pointer hover:bg-ds-inverse-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
+          className="ds-hit ds-tap inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-ds-inverse text-white text-[12px] font-bold cursor-pointer hover:bg-ds-inverse-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
         >
           <Plus className="w-4 h-4" strokeWidth={2.4} />
           <span>New Case</span>
@@ -207,6 +220,24 @@ export const GreetingHeader: React.FC<{
       </div>
     </section>
   );
+};
+
+/**
+ * The glyph beside the greeting follows the CLOCK, not the decoration.
+ *
+ * It used to be a sun at every hour — a 21:00 greeting rendered with a sun
+ * over it, which is the kind of small lie that makes an instrument feel
+ * decorative. Now the same hour that picks the greeting picks the mark, so the
+ * two can never disagree.
+ */
+const HourGlyph: React.FC<{ hour: number }> = ({ hour }) => {
+  const { Icon, className } =
+    hour < 12
+      ? { Icon: Sun, className: 'text-ds-warn' }
+      : hour < 17
+        ? { Icon: Sun, className: 'text-ds-warn' }
+        : { Icon: Moon, className: 'text-ds-accent' };
+  return <Icon className={`w-5 h-5 ${className} shrink-0`} strokeWidth={2.2} aria-hidden="true" />;
 };
 
 /* ── 1 · KPI row ──────────────────────────────────────────────────────── */
@@ -277,12 +308,16 @@ export const KpiCards: React.FC<{ kpis: KpiRow; onGo: (view: string) => void }> 
     {
       key: 'outstanding',
       label: 'Outstanding',
-      value: kpis.outstanding > 0 ? Math.round(kpis.outstanding).toLocaleString() : EM,
+      /* A dash here read as *unknown*; zero reads as *nothing owed*. Those are
+         different facts and a lab with no debt should be told so plainly —
+         "PKR 0" is good news, "PKR —" is a question the operator has to answer
+         by opening the billing view. */
+      value: Math.round(kpis.outstanding).toLocaleString(),
       icon: Receipt,
       tone: 'warn',
       note:
         kpis.overdueAmount > 0
-          ? `↑ PKR ${Math.round(kpis.overdueAmount).toLocaleString()} overdue`
+          ? `↑ ${formatPKR(kpis.overdueAmount)} overdue`
           : 'Nothing overdue',
       noteTone: kpis.overdueAmount > 0 ? 'risk' : 'pos',
       actionLabel: 'View invoices',
@@ -293,22 +328,27 @@ export const KpiCards: React.FC<{ kpis: KpiRow; onGo: (view: string) => void }> 
 
   return (
     <section className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4" data-purpose="kpi-row">
-      {tiles.map((tile) => {
+      {tiles.map((tile, i) => {
         const Icon = tile.icon;
+        /* A real <button>, not <article role="button">.
+
+           The article carried onClick, onKeyDown, role and tabIndex AND
+           contained a <button> footer — nested interactive controls, which is
+           invalid and meant Enter on the footer fired the action twice (once
+           from the button's click, once from the keydown bubbling up). Making
+           the whole card the button removes the duplication and gives it a
+           real focus ring for free.
+
+           The hover cue is a border and an accent arrow, not a shadow lift:
+           the design rules ban hover-lift on every card, and four floating
+           tiles that all rise together say nothing about which one is live. */
         return (
-          <article
+          <button
             key={tile.key}
-            className="ds-panel relative p-4 pb-9 ds-enter hover:shadow-ds-lift transition-shadow cursor-pointer group"
-            style={{ ['--ds-i' as string]: tiles.indexOf(tile) }}
+            type="button"
             onClick={tile.onAction}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                tile.onAction();
-              }
-            }}
-            role="button"
-            tabIndex={0}
+            className="ds-panel relative p-4 pb-9 ds-enter text-left cursor-pointer group hover:border-ds-accent-ring transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
+            style={{ ['--ds-i' as string]: i }}
             aria-label={`${tile.label}: ${tile.value}`}
           >
             <div className="flex items-center gap-2.5">
@@ -331,8 +371,13 @@ export const KpiCards: React.FC<{ kpis: KpiRow; onGo: (view: string) => void }> 
               {tile.note}
             </p>
 
-            <PanelFoot label={tile.actionLabel} onClick={tile.onAction} />
-          </article>
+            {/* Visual affordance only. It is part of the card button, so it is a
+                span rather than a second button — nesting one control inside
+                another is what caused the double-fire above. */}
+            <span className="absolute right-5 bottom-4 ds-link pointer-events-none">
+              {tile.actionLabel} <ArrowRight className="w-3 h-3 inline -mt-0.5" />
+            </span>
+          </button>
         );
       })}
     </section>
@@ -408,7 +453,7 @@ export const ProductionWorkflow: React.FC<{
                   <>
                     {stage.unit}
                     <span
-                      className={`ml-1 font-bold ${stale ? 'text-amber-700' : 'text-ds-muted'}`}
+                      className={`ml-1 font-bold ${stale ? 'text-ds-warn-ink' : 'text-ds-muted'}`}
                     >
                       · {age}
                     </span>
@@ -528,7 +573,7 @@ export const TodaySchedule: React.FC<{
               />
             )}
             <span
-              className={`absolute left-0 top-[5px] w-[7px] h-[7px] rounded-full ring-2 ring-white ${
+              className={`absolute left-0 top-[5px] w-[7px] h-[7px] rounded-full ring-2 ring-ds-surface ${
                 TONE_ICON_BG[row.tone].split(' ')[1]
               }`}
               aria-hidden="true"
@@ -692,7 +737,7 @@ const RevenueChart: React.FC<{ series: { label: string; value: number }[] }> = (
             tabIndex={0}
             aria-label={`Cumulative collections. ${
               activeSeries
-                ? `${activeSeries.label}: PKR ${Math.round(activeSeries.value).toLocaleString()}`
+                ? ` ${activeSeries.label}:  `
                 : `${series.length} samples. Use arrow keys to inspect.`
             }`}
             onPointerMove={(e) => setHovered(nearest(e.clientX))}
@@ -763,7 +808,7 @@ const RevenueChart: React.FC<{ series: { label: string; value: number }[] }> = (
             >
               <div className="text-[9px] text-white/60">{activeSeries.label}</div>
               <div className="text-[11px] font-bold tabular-nums">
-                PKR {Math.round(activeSeries.value).toLocaleString()}
+                {formatPKR(Math.round(activeSeries.value))}
               </div>
               {pinned === active && (
                 <div className="text-[8px] text-white/50 mt-0.5">pinned · click to release</div>
@@ -829,7 +874,7 @@ export const RevenueCollections: React.FC<{
       <div className="mt-3 grid grid-cols-1 2xl:grid-cols-2 gap-4">
         <div className="min-w-0">
           <div className="ds-figure text-[24px] leading-none">
-            {revenue.billed > 0 ? `PKR ${Math.round(revenue.billed).toLocaleString()}` : EM}
+            {revenue.billed > 0 ? formatPKR(revenue.billed) : EM}
           </div>
           <p className="text-[11px] mt-1.5 font-semibold text-ds-pos-ink flex items-center gap-1">
             {revenue.momPct === null ? (
@@ -842,7 +887,7 @@ export const RevenueCollections: React.FC<{
             )}
           </p>
 
-          <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 mt-3" role="img" aria-label="Collection split">
+          <div className="flex h-2.5 rounded-full overflow-hidden bg-ds-sunken mt-3" role="img" aria-label="Collection split">
             <span className="bg-ds-pos" style={{ width: `${collectedShare * 100}%` }} />
             <span className="bg-ds-warn" style={{ width: `${outstandingShare * 100}%` }} />
             <span className="bg-ds-risk" style={{ width: `${overdueShare * 100}%` }} />
@@ -856,7 +901,7 @@ export const RevenueCollections: React.FC<{
                   <span className="truncate">{row.label}</span>
                 </dt>
                 <dd className="ds-figure text-[11px] font-bold whitespace-nowrap">
-                  PKR {Math.round(row.value).toLocaleString()}
+                  {formatPKR(Math.round(row.value))}
                   {row.pct !== null && <span className="text-ds-muted font-medium"> ({row.pct}%)</span>}
                 </dd>
               </div>
@@ -1010,7 +1055,7 @@ export const QuickActions: React.FC<{ actions: QuickAction[] }> = ({ actions }) 
             key={action.key}
             type="button"
             onClick={action.onClick}
-            className="ds-tap group flex items-center gap-2.5 rounded-xl border border-ds-line bg-white px-2.5 py-2 text-left cursor-pointer hover:border-ds-accent-ring hover:bg-ds-accent-soft/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
+            className="ds-tap group flex items-center gap-2.5 rounded-lg border border-ds-line bg-ds-surface px-2.5 py-2 text-left cursor-pointer hover:border-ds-accent-ring hover:bg-ds-accent-soft/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
           >
             <span className={`ds-icon-tile !w-8 !h-8 rounded-lg ${TONE_ICON_BG[action.tone]}`}>
               <Icon className="w-4 h-4" strokeWidth={2} />

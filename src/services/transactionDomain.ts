@@ -434,10 +434,16 @@ export const buildCreditNoteAdjustment = (input: {
     clinicId: string;
     invoiceId: string;
     amount: number;
-    reasonCode: string;
+reasonCode: string;
     reasonText: string;
     approvedBy?: string;
-    /** Business (adjustment) date — defaults to today when omitted. */
+    /** Justification reference the cashier typed (cheque no., txn id, …). */
+    referenceNumber?: string;
+    /** Free-text note the cashier typed alongside the reason. */
+    notes?: string;
+    /** Proof-of-payment images attached to the credit note. */
+    attachments?: PaymentAttachment[];
+    /** Business (adjustment) date - defaults to today when omitted. */
     date?: string;
   };
   invoice: Invoice | undefined;
@@ -464,6 +470,14 @@ export const buildCreditNoteAdjustment = (input: {
     date: command.date || nowStr.split(' ')[0],
     invoice_id: command.invoiceId,
     invoice_number: invoice?.invoice_number,
+    /* The reference, the cashier's note and any proof image used to be
+       collected by the form and then dropped on the floor for credit notes —
+       the field is right here on the type and simply was not assigned. A credit
+       note is the one adjustment a clinic will most often ask about later, so
+       losing its justification is the worst place to lose it. */
+    reference_number: command.referenceNumber || undefined,
+    notes: command.notes || undefined,
+    attachments: command.attachments?.length ? command.attachments : undefined,
     recorded_by: actor,
     approved_by: command.approvedBy || (actor !== 'Manager' ? actor : 'Lab Director'),
     created_at: nowStr,
@@ -483,15 +497,23 @@ export const buildCreditNoteAdjustment = (input: {
   return { adjustment, auditEvent };
 };
 
-/** Invoice update when a credit note lands on it. */
+/**
+ * Invoice update when a credit note lands on it.
+ *
+ * The clamp is the domain invariant, not a UI nicety: total credits can never
+ * exceed the invoice total. `issueCreditNoteV2` already caps at the call site,
+ * but this function is exported and the invariant has to hold for every caller,
+ * not just the one that remembered. Without it an over-credit drives the
+ * balance negative and the `>=` below force-marks the invoice `paid`.
+ */
 export const applyCreditNoteToInvoice = (inv: Invoice, amount: number): Invoice => {
-  const newCr = (inv.credit_notes_total || 0) + amount;
+  const newCr = Math.min((inv.credit_notes_total || 0) + amount, inv.final_amount || 0);
   const newStatus = deriveInvoiceStatus(inv.final_amount, inv.amount_paid || 0, inv.due_date, newCr);
   return {
     ...inv,
     credit_notes_total: newCr,
     status_v2: newStatus,
-    payment_status: (inv.amount_paid || 0) >= (inv.final_amount - newCr) ? 'paid' : inv.payment_status
+    payment_status: (inv.amount_paid || 0) >= (inv.final_amount - newCr) ? 'paid' : inv.payment_status,
   };
 };
 

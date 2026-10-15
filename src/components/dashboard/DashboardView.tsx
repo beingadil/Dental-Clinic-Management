@@ -35,7 +35,7 @@ import {
 import { STAGE_QUEUE } from './dashboard-panels';
 import { Masonry, type MasonryItem } from './useMasonry';
 import { useDashboardLayout, visiblePanels } from './useDashboardLayout';
-import { PANEL_KEYS, PANEL_LABELS } from './panelRegistry';
+import { PANEL_KEYS, PANEL_LABELS, rankOf } from './panelRegistry';
 import { PanelShell } from './PanelControls';
 import { PanelLayoutBar } from './PanelLayoutBar';
 import { UpdatePill } from './UpdatePill';
@@ -69,7 +69,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenNewCaseModal
    case behaves identically wherever it is clicked. The full CaseDetailModal
    is reserved for editing. */
   const [slipCase, setSlipCase] = React.useState<DentalCase | null>(null);
-const [paymentModalClinicId, setPaymentModalClinicId] = React.useState<string | undefined>(undefined);
 const [showPaymentModal, setShowPaymentModal] = React.useState(false);
 const [showShadeGuide, setShowShadeGuide] = React.useState(false);
 const [showCalendar, setShowCalendar] = React.useState(false);
@@ -141,7 +140,6 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
       icon: CreditCard,
       tone: 'pos',
       onClick: () => {
-        setPaymentModalClinicId(undefined);
         setShowPaymentModal(true);
       },
     },
@@ -255,12 +253,10 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
     upcoming: <UpcomingDeliveries rows={metrics.upcoming} onOpenCase={openCase} />,
   };
 
-  const masonryItems: MasonryItem[] = visibleKeys.map((k) => ({
-    key: k,
-    span: spans[k] ?? 1,
-    children: (
+  const renderPanel = (k: string): React.ReactNode => (
       <PanelShell
         label={PANEL_LABELS[k]}
+        rank={rankOf(k)}
         pinned={layout.prefs.pinned.includes(k)}
         wide={layout.prefs.wide.includes(k)}
         onPin={() => layout.togglePin(k)}
@@ -306,11 +302,24 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
           {panelContent[k]}
         </div>
       </PanelShell>
-    ),
+  );
+
+  /* Lead rank renders OUTSIDE the packer, above it. Two structural reasons: a
+     full-width panel is not expressible as a masonry span (the largest span is
+     the column count), and an axis the packer is free to reorder is not an
+     axis. It keeps its own controls, so `Hide panel` still works and a hidden
+     lead panel simply does not render. */
+  const leadKeys = visibleKeys.filter((k) => rankOf(k) === 'lead');
+  const gridKeys = visibleKeys.filter((k) => rankOf(k) !== 'lead');
+
+  const masonryItems: MasonryItem[] = gridKeys.map((k) => ({
+    key: k,
+    span: spans[k] ?? 1,
+    children: renderPanel(k),
   }));
 
   return (
-    <div className={`space-y-4 pb-10 ds-density-${density}`} data-purpose="dashboard">
+    <div className={`ds-ambient space-y-4 pb-10 ds-density-${density}`} data-purpose="dashboard">
       <GreetingHeader userName={user?.name || 'there'} onNewCase={onOpenNewCaseModal} />
 
       {/* Update notice: install a new version and restart from here without
@@ -337,6 +346,10 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
         }}
         onReset={layout.reset}
       />
+
+      {leadKeys.map((k) => (
+        <div key={k}>{renderPanel(k)}</div>
+      ))}
 
       <Masonry items={masonryItems} measureKey={`${density}-${metrics.atRisk.length}-${metrics.schedule.length}-${metrics.upcoming.length}-${metrics.workload.rows.length}`} />
 
@@ -374,7 +387,6 @@ const [pendingShade, setPendingShade] = React.useState<string | null>(null);
         <RecordTransactionModal
           isOpen
           initialMode="payment"
-          initialClinicId={paymentModalClinicId}
           onClose={() => setShowPaymentModal(false)}
         />
       )}

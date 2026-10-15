@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
+import { useTransientMessage, TransientBanner } from '../common/useTransient';
 import { useApp } from '../../context/AppContext';
 import {
   User,
-  CheckCircle2,
-  AlertCircle,
   Lock,
   Check,
 } from 'lucide-react';
 
 /** TAB: MY ACCOUNT & SECURITY — extracted verbatim from SettingsView (P3 split). */
 export const AccountTab: React.FC = () => {
-  const { user, updateUser, changePassword } = useApp();
+  const { user, users, updateUser, changePassword } = useApp();
 
   const [accountForm, setAccountForm] = useState({
     name: user?.name || '',
@@ -20,7 +19,7 @@ export const AccountTab: React.FC = () => {
     newPassword: '',
     confirmPassword: ''
   });
-  const [accountMsg, setAccountMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [accountMsg, flashAccountMsg, clearAccountMsg] = useTransientMessage(4000);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 space-y-6">
@@ -36,43 +35,50 @@ export const AccountTab: React.FC = () => {
         </div>
       </div>
 
-      {accountMsg && (
-        <div className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
-          accountMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
-        }`}>
-          {accountMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-ink-success shrink-0" /> : <AlertCircle className="w-4 h-4 text-ink-danger shrink-0" />}
-          <span>{accountMsg.text}</span>
-        </div>
-      )}
+      <TransientBanner message={accountMsg} className="rounded-2xl font-semibold" />
 
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          setAccountMsg(null);
+          clearAccountMsg();
           if (!user) return;
+
+          /* Username must stay unique, exactly as the Add-User form enforces it.
+             This screen wrote `username` straight through, so two accounts could
+             end up sharing a login name — created here, invisible until the
+             second person could no longer sign in unambiguously. */
+          const wanted = accountForm.username.trim();
+          if (wanted && wanted !== user.username) {
+            const taken = users.some((u) => u.id !== user.id && u.username?.toLowerCase() === wanted.toLowerCase());
+            if (taken) {
+              flashAccountMsg('error', 'That username is already taken.');
+              return;
+            }
+          }
 
           // Password change logic
           if (accountForm.newPassword) {
             if (accountForm.newPassword !== accountForm.confirmPassword) {
-              setAccountMsg({ type: 'error', text: 'New passwords do not match.' });
+              flashAccountMsg('error', 'New passwords do not match.');
               return;
             }
             const res = await changePassword(user.id, accountForm.currentPassword, accountForm.newPassword);
             if (!res.success) {
-              setAccountMsg({ type: 'error', text: res.message });
+              flashAccountMsg('error', res.message);
               return;
             }
           }
 
           updateUser(user.id, {
             name: accountForm.name,
-            username: accountForm.username,
+            username: wanted,
             email: accountForm.email
           });
 
-          setAccountMsg({ type: 'success', text: 'Account settings & credentials updated successfully!' });
+          flashAccountMsg('success', 'Account settings & credentials updated successfully!');
           setAccountForm((prev) => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
-          setTimeout(() => setAccountMsg(null), 4000);
+          /* No timer here: `flashAccountMsg` armed one when it was called on the
+             line above, and the hook clears it on unmount. */
         }}
         className="space-y-5"
       >

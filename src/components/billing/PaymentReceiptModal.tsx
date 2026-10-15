@@ -1,3 +1,4 @@
+import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import React, { useRef } from 'react';
 import { PaymentRecord, Invoice } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -113,7 +114,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
                 <p className="text-xs text-ink-muted mt-0.5">Pakistani Rupees (PKR)</p>
               </div>
               <p className="text-2xl font-bold text-ink-success tracking-tight">
-                PKR {payment.amount.toLocaleString()}
+                {formatPKR(payment.amount)}
               </p>
             </div>
 
@@ -131,16 +132,16 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-slate-50 p-2 rounded-lg">
                   <p className="text-[11px] text-slate-500 font-bold uppercase">Total Invoiced</p>
-                  <p className="font-bold text-slate-800 text-xs mt-0.5">PKR {invoice.final_amount.toLocaleString()}</p>
+                  <p className="font-bold text-slate-800 text-xs mt-0.5">{formatPKR(invoice.final_amount)}</p>
                 </div>
                 <div className="bg-emerald-50 p-2 rounded-lg">
                   <p className="text-[11px] text-ink-success font-bold uppercase">Total Paid</p>
-                  <p className="font-bold text-emerald-700 text-xs mt-0.5">PKR {invoice.amount_paid.toLocaleString()}</p>
+                  <p className="font-bold text-emerald-700 text-xs mt-0.5">{formatPKR(invoice.amount_paid)}</p>
                 </div>
                 <div className="bg-rose-50 p-2 rounded-lg">
                   <p className="text-[11px] text-ink-danger font-bold uppercase">Remaining</p>
                   <p className="font-bold text-rose-700 text-xs mt-0.5">
-                    PKR {Math.max(0, invoice.final_amount - invoice.amount_paid).toLocaleString()}
+                    PKR {invoiceBalanceDue(invoice).toLocaleString()}
                   </p>
                 </div>
               </div>

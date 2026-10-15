@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { TransientBanner } from '../common/useTransient';
 import { getTodayStr } from '../../utils/dateUtils';
 import { saveFile } from '../../lib/saveFile';
 import { useApp } from '../../context/AppContext';
@@ -57,7 +58,12 @@ import {
     props. */
 export const BackupTab: React.FC<{
   backupMessage: { type: 'success' | 'error'; text: string } | null;
-  setBackupMessage: (m: { type: 'success' | 'error'; text: string } | null) => void;
+  /* The optional duration lets a call site ask for a longer dwell than the
+   shared default — the export flow wants 6s because it is a long job the
+   operator needs to read the outcome of, while a dump result uses 5s. Passing
+   `null` dismisses immediately. The timer itself is owned by the container
+   (SettingsView) so an unmount cannot leave one running. */
+  setBackupMessage: (m: { type: 'success' | 'error'; text: string } | null, durationMs?: number) => void;
 }> = ({ backupMessage, setBackupMessage }) => {
   const {
     cases,
@@ -187,26 +193,31 @@ export const BackupTab: React.FC<{
         },
       );
       if (saved.status === 'cancelled') {
-        setBackupMessage({ type: 'error', text: 'Backup export cancelled — nothing was written.' });
+        setBackupMessage({ type: 'error', text: 'Backup export cancelled — nothing was written.' }, 6000);
         return;
       }
       if (saved.status !== 'saved') {
         setBackupMessage({
           type: 'error',
           text: `Backup could not be written: ${saved.status === 'error' ? saved.message : saved.status}`,
-        });
+        }, 6000);
         return;
       }
       const tables = Object.entries(pkg.manifest.table_counts).filter(([, n]) => n > 0);
       setBackupMessage({
         type: 'success',
         text: `Backup verified (checksum OK) — ${tables.length} tables, ${(pkg.manifest.db_size_bytes / 1024).toFixed(1)} KB. Saved to ${saved.path}`,
-      });
+      }, 6000);
     } catch (err: any) {
-      setBackupMessage({ type: 'error', text: `Backup failed: ${err?.message || 'unknown error'}` });
+      setBackupMessage({ type: 'error', text: `Backup failed: ${err?.message || 'unknown error'}` }, 6000);
     } finally {
       setBusy(null);
-      setTimeout(() => setBackupMessage(null), 6000);
+      /* The `finally` used to arm `setTimeout(() => setBackupMessage(null), 6000)`.
+         That is now redundant: every `setBackupMessage(...)` call above re-arms
+         the timer owned by `useTransientMessage` in SettingsView, which also
+         clears it on unmount — so nothing is left to cancel here, and a failed
+         export still shows its own error rather than being overwritten. The 6s
+         dwell it wanted is passed at the set sites below. */
     }
   };
 
@@ -332,7 +343,6 @@ export const BackupTab: React.FC<{
         type: 'success',
         text: `Successfully exported SQLite database script: ${filename}`
       });
-      setTimeout(() => setBackupMessage(null), 5000);
     } catch (err) {
       setBackupMessage({
         type: 'error',
@@ -431,28 +441,7 @@ export const BackupTab: React.FC<{
           balance; computed at boot by AppContext, surfaced here. */}
       <IntegrityPanel />
 
-      {backupMessage && (
-        <div className={`p-4 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 shadow-xs ${
-          backupMessage.type === 'success'
-            ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
-            : 'bg-rose-50 text-rose-900 border border-rose-300'
-        }`}>
-          <div className="flex items-center gap-2.5">
-            {backupMessage.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 text-ink-success shrink-0" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-ink-danger shrink-0" />
-            )}
-            <span>{backupMessage.text}</span>
-          </div>
-          <button
-            onClick={() => setBackupMessage(null)}
-            className="text-ink-muted hover:text-slate-600 p-1 rounded-lg"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      <TransientBanner message={backupMessage} className="p-4 rounded-2xl text-xs font-semibold shadow-xs" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Export */}
@@ -820,6 +809,14 @@ export const BackupTab: React.FC<{
 
         {backupRuns.length > 0 && (
           <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-100">
+            {/* DELIBERATELY NOT ON DataTable.
+
+                This is a header-less run log, not a labelled grid — it has no
+                <thead> at all. DataTable always renders a `ds-th` header row,
+                so adopting it would either bolt on an empty grey bar above the
+                log or require inventing four column labels the view never had.
+                Both are visible changes to a diagnostics panel, so it stays
+                hand-rolled. See common/ui/DataTable for what the primitive owns. */}
             <table className="w-full text-[11px]">
               <tbody>
                 {backupRuns.slice(0, 8).map((r, i) => (

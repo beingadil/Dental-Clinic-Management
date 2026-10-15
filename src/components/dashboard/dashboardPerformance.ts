@@ -1,3 +1,4 @@
+import { formatPKR } from '../../services/financeDomain';
 /**
  * Lab performance metrics — which ones the data can actually support.
  *
@@ -104,7 +105,7 @@ export function computePerformance(input: {
     row('Rework Rate', reworkRate === null ? null : `${reworkRate}%`),
     row(
       'Revenue / Case',
-      revenuePerCase === null ? null : `PKR ${revenuePerCase.toLocaleString()}`
+      revenuePerCase === null ? null : formatPKR(revenuePerCase)
     ),
     row('Ready to Ship', readyToShip === 0 ? null : `${readyToShip} case${readyToShip === 1 ? '' : 's'}`),
     row('Top Material', topMaterial ? titleCase(topMaterial) : null),

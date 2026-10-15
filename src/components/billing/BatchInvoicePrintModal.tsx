@@ -1,3 +1,4 @@
+import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
@@ -58,7 +59,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     return invoices
       .filter((inv) => {
         if (inv.lab_id !== labId) return false;
-        const due = inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0);
+        const due = invoiceBalanceDue(inv);
         if (due <= 0) return false;
         const d = dateOf(inv);
         if (!d) return true;
@@ -71,7 +72,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
 
   const selected = unpaidInvoices.filter((inv) => !excluded.includes(inv.id));
   const selectedTotal = selected.reduce(
-    (sum, inv) => sum + Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0)),
+    (sum, inv) => sum + invoiceBalanceDue(inv),
     0
   );
 
@@ -93,7 +94,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     if (selected.length === 0) return;
     // Every printed billing document is logged, one voucher per invoice.
     selected.forEach((inv) => {
-      const due = Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+      const due = invoiceBalanceDue(inv);
       saveVoucherToSystem({
         voucher_number: inv.invoice_number,
         voucher_type: 'invoice',
@@ -223,7 +224,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
           ) : (
             <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="border-b border-slate-200 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <tr className="ds-th">
                   <th scope="col" className="w-10 py-2.5 pl-6">✓</th>
                   <th scope="col" className="py-2.5 px-3">Invoice</th>
                   <th scope="col" className="py-2.5 px-3">Case</th>
@@ -234,10 +235,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
                 {unpaidInvoices.map((inv) => {
-                  const due = Math.max(
-                    0,
-                    inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0)
-                  );
+                  const due = invoiceBalanceDue(inv);
                   const isOn = !excluded.includes(inv.id);
                   const linkedCase = findCaseForInvoice(inv, cases);
                   return (
@@ -271,7 +269,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                         {String(inv.issue_date || inv.created_at || '').slice(0, 10) || '—'}
                       </td>
                       <td className="py-2.5 px-6 text-right align-top font-mono font-bold text-slate-900">
-                        PKR {due.toLocaleString()}
+                        {formatPKR(due)}
                       </td>
                     </tr>
                   );
@@ -282,7 +280,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                   <td colSpan={5} className="py-3 pl-6 uppercase tracking-wider">
                     {selected.length} of {unpaidInvoices.length} invoices selected
                   </td>
-                  <td className="py-3 px-6 text-right font-mono">PKR {selectedTotal.toLocaleString()}</td>
+                  <td className="py-3 px-6 text-right font-mono">{formatPKR(selectedTotal)}</td>
                 </tr>
               </tfoot>
             </table>
