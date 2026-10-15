@@ -433,7 +433,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                         </button>
                         {onOpenJournalModal && (
                           <button
-                            onClick={() => onOpenJournalModal(v.id)}
+                            onClick={() => onOpenJournalModal(v.voucher_number)}
                             className="ds-hit px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                             title="Trace to the double-entry journal"
                             aria-label={`Open journal entries for voucher ${v.voucher_number}`}
