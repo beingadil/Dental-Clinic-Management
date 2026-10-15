@@ -1,4 +1,5 @@
 import { invoiceBalanceDue } from '../../services/financeDomain';
+import { printCurrentDocument } from '../../utils/printDocument';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTransientFlag } from '../common/useTransient';
 import { DentalCase, Invoice } from '../../types';
@@ -128,7 +129,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
       if (slipStyle === 'compact') {
         doSlipPrint();
       } else {
-        setTimeout(() => window.print(), 60);
+        void printCurrentDocument();
       }
     } else {
       matchedInvoices.forEach((m) => {
@@ -149,7 +150,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
       announceSaved(matchedInvoices.filter((m) => m.invoice).length);
       // The modal root is .print-area: printStyles.css reveals exactly the
       // modal contents (invoices as previewed) and hides all app chrome.
-      setTimeout(() => window.print(), 60);
+      void printCurrentDocument();
     }
   };
 
@@ -168,15 +169,13 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
     body.classList.add(SLIP_PRINT_BODY_CLASS);
     root.classList.add(SLIP_PRINT_ROOT_CLASS);
     root.classList.remove('print-area', 'printable-area');
+    void printCurrentDocument();
+    // Restore after the print dialog/PDF sink consumes the layout.
     setTimeout(() => {
-      window.print();
-      // Restore after the print dialog/PDF sink consumes the layout.
-      setTimeout(() => {
-        body.classList.remove(SLIP_PRINT_BODY_CLASS);
-        root.classList.remove(SLIP_PRINT_ROOT_CLASS);
-        root.classList.add('print-area', 'printable-area');
-      }, 500);
-    }, 60);
+      body.classList.remove(SLIP_PRINT_BODY_CLASS);
+      root.classList.remove(SLIP_PRINT_ROOT_CLASS);
+      root.classList.add('print-area', 'printable-area');
+    }, 500);
   };
 
   /**

@@ -5,6 +5,7 @@ import { useApp } from '../../context/AppContext';
 import { X, Printer, CheckCircle2 } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { Modal } from '../common/ui';
+import { printCurrentDocument } from '../../utils/printDocument';
 
 interface PaymentReceiptModalProps {
   payment: PaymentRecord;
@@ -21,7 +22,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
   const printRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = () => {
-    window.print();
+    void printCurrentDocument();
   };
 
   return (

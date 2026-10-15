@@ -143,8 +143,17 @@ unsafe fn copy_stream_to_file(src: &IStream, path: &str) -> windows_core::Result
 /// Tauri command: the file dialog runs on the JS side (dialog plugin); this
 /// receives the chosen absolute path and renders the CURRENT document —
 /// the open print modal — into it.
+///
+/// ASYNC, deliberately. `webview.with_webview` schedules the WebView2 capture
+/// onto the UI thread, and this function then waits for it. As a *synchronous*
+/// command it ran on that same thread, so the UI thread was blocked inside
+/// `recv_timeout` while the work it was waiting for could never be scheduled —
+/// every save sat for the full `SAVE_TIMEOUT` and then failed with "Saving the
+/// PDF timed out". Declaring it `async` moves the wait onto the async runtime,
+/// leaving the UI thread free to run the capture, which is what the handler
+/// needs in order to complete.
 #[tauri::command]
-pub fn save_webview_as_pdf(
+pub async fn save_webview_as_pdf(
     webview: tauri::Webview<tauri::Wry>,
     path: String,
 ) -> Result<String, String> {

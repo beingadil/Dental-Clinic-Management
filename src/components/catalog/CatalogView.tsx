@@ -24,6 +24,7 @@ import { Modal } from '../common/ui';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { getTodayStr } from '../../utils/dateUtils';
 import { catalogNeedsTeeth } from '../../utils/catalogToothRequirement';
+import { printCurrentDocument } from '../../utils/printDocument';
 import {
   loadSlaSettings,
   saveSlaSettings,
@@ -221,7 +222,7 @@ export const CatalogView: React.FC = () => {
   const categoryNameFor = (id?: string) => categories.find((c) => c.id === id)?.name ?? id ?? 'Uncategorised';
 
   const handlePrintCatalog = () => {
-    window.print();
+    void printCurrentDocument();
   };
 
   /* ── Category CRUD ──────────────────────────────────────────────────────

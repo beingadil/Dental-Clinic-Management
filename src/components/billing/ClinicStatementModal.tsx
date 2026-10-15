@@ -8,6 +8,7 @@ import { Modal } from '../common/ui';
 import { getTodayStr } from '../../utils/dateUtils';
 import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
 import { isAdvanceAppliedPayment } from '../../services/monthlyStatement';
+import { printCurrentDocument } from '../../utils/printDocument';
 
 interface ClinicStatementModalProps {
   isOpen: boolean;
@@ -166,7 +167,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   if (!isOpen || !clinic) return null;
 
   const handlePrint = () => {
-    window.print();
+    void printCurrentDocument();
   };
 
   const handleExportCSV = () => {

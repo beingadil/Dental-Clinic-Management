@@ -477,11 +477,20 @@ const closingDrCr = (n: number) =>
 /**
  * Save a PDF. Routed through saveFile so the desktop build writes a real file
  * instead of silently ignoring the Blob download; the web path is unchanged.
+ *
+ * Returns the result rather than swallowing it. It used to be `void
+ * saveFile(...)`, which discarded the promise: a failed export produced no
+ * file, no message, and nothing in the console — the operator's only evidence
+ * that "Download" did not work was the file not appearing. `GeneralLedgerView`
+ * now reports the outcome.
  */
-export function downloadPdf(filename: string, pdf: string) {
+export function downloadPdf(
+  filename: string,
+  pdf: string,
+): Promise<import('./saveFile').SaveFileResult> {
   const bytes = new Uint8Array(pdf.length);
   for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
-  void saveFile(filename, bytes, {
+  return saveFile(filename, bytes, {
     extension: '.pdf',
     mimeType: 'application/pdf',
     dialogTitle: 'Save PDF',

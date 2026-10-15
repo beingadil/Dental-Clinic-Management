@@ -1,4 +1,5 @@
 import { useTransientFlag } from '../common/useTransient';
+import { printCurrentDocument } from '../../utils/printDocument';
 import { invoiceBalanceDue } from '../../services/financeDomain';
 import React, { useMemo, useState } from 'react';
 import { Invoice, DentalCase } from '../../types';
@@ -87,7 +88,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
     }
 
     flashSavedSuccess();
-    setTimeout(() => window.print(), 100);
+    void printCurrentDocument();
   };
 
   const headerNote = useMemo(() => {

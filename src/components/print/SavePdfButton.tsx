@@ -38,11 +38,53 @@ export function SavePdfButton({ suggestedName, disabled = false, className = '' 
   const handleClick = async () => {
     if (busy) return;
     setBusy(true);
-    const result = await saveAsPdf(suggestedName);
+
+    /* Belt and braces with the Rust-side timeout.
+     *
+     * The button used to set `busy` and then simply await the command. If that
+     * promise never settled — the UI thread deadlock described in
+     * pdf_save.rs, where the capture could not be scheduled — `busy` stayed
+     * true for good and the button spun forever with no way back. The operator
+     * saw "Saving." for the full 30s and then a dead control, with no message.
+     *
+     * Racing the command against a local timer means the control ALWAYS returns
+     * to its resting state, and every outcome that is not a success says so.
+     * The Rust timeout is 30s; this one is longer so the Rust error wins when
+     * there is one to report.
+     */
+    const LOCAL_TIMEOUT_MS = 45_000;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+    }, LOCAL_TIMEOUT_MS);
+
+    let result: Awaited<ReturnType<typeof saveAsPdf>>;
+    try {
+      result = await saveAsPdf(suggestedName);
+    } catch (err) {
+      result = { status: 'error', message: err instanceof Error ? err.message : String(err) };
+    } finally {
+      clearTimeout(timer);
+    }
+
     setBusy(false);
+
+    if (timedOut) {
+      alert(
+        'Saving the PDF did not finish in time and was stopped.\n\n' +
+          'Close any open print dialog and try again.'
+      );
+      return;
+    }
     if (result.status === 'saved') {
       flashDone();
-    } else if (result.status === 'error') {
+    } else if (result.status === 'cancelled') {
+      // The operator closed the save dialog. Not an error, and saying so would
+      // train them to ignore the dialog.
+      return;
+    } else if (result.status === 'unsupported') {
+      alert('Saving as PDF is only available in the desktop app. Use Print instead.');
+    } else {
       alert(`Could not save PDF: ${result.message}`);
     }
   };

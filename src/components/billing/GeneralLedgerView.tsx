@@ -21,9 +21,11 @@ import {
   Banknote,
   Receipt,
   FileSpreadsheet,
-  Building2
+  Building2,
+  Printer
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
+import { printCurrentDocument } from '../../utils/printDocument';
 import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
 ;
 import { CaseDetailModal } from '../cases/CaseDetailModal';
@@ -433,7 +435,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
 
   /* PDF export — a real vector document (text, table, page breaks), not a
      screenshot. Reuses the exact rows/totals the on-screen preview shows. */
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!selectedClinic) return;
     try {
       const clinicLabel = selectedClinic.name;
@@ -470,12 +472,18 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
           generatedOn: todayISO(),
         }
       );
-      downloadPdf(
+      const outcome = await downloadPdf(
         `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`,
         result.pdf
       );
+      // Reported rather than discarded: `downloadPdf` used to be fire-and-forget,
+      // so a failed export left no file and no message at all.
+      if (outcome.status === 'error') {
+        alert(`Could not export the ledger: ${outcome.message}`);
+      }
     } catch (e) {
       console.error('Error exporting PDF:', e);
+      alert(`Could not export the ledger: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -628,6 +636,27 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
           >
             <FileDown className="w-4 h-4" />
             <span>Export PDF</span>
+          </button>
+
+          {/* Print Ledger
+              There was no print button here at all — only Export PDF, which
+              downloads a file. `printCurrentDocument` waits for the preview
+              below to paint before opening the dialog; a bare window.print()
+              can snapshot the frame before the ledger renders. */}
+          <button
+            type="button"
+            onClick={() => void printCurrentDocument()}
+            disabled={!selectedClinic}
+            title={
+              selectedClinic
+                ? 'Print the ledger statement'
+                : 'Select a clinic to print its ledger'
+            }
+            aria-label="Print ledger statement"
+            className="shrink-0 py-2.5 px-4 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Print</span>
           </button>
 
           {/* Preview Button */}

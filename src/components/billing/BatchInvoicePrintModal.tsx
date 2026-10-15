@@ -1,4 +1,5 @@
 import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import { printCurrentDocument } from '../../utils/printDocument';
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
@@ -116,7 +117,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
         notes: `Batch print (${selected.length} invoices) ${from || 'start'} → ${to || 'today'} — Paid: PKR ${(inv.amount_paid || 0).toLocaleString()} | Balance: PKR ${due.toLocaleString()}`,
       });
     });
-    setTimeout(() => window.print(), 100);
+    void printCurrentDocument();
   };
 
   return (

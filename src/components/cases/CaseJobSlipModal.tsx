@@ -1,4 +1,5 @@
 import { useTransientFlag } from '../common/useTransient';
+import { printCurrentDocument } from '../../utils/printDocument';
 import React, { useState } from 'react';
 import { DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -66,26 +67,24 @@ export const CaseJobSlipModal: React.FC<CaseJobSlipModalProps> = ({ caseData, on
    */
   const handleDirectPrint = () => {
     if (slipStyle !== 'compact') {
-      setTimeout(() => window.print(), 100);
+      void printCurrentDocument();
       return;
     }
     const body = document.body;
     const card = cardRef.current;
     if (!card) {
-      setTimeout(() => window.print(), 100);
+      void printCurrentDocument();
       return;
     }
     body.classList.add(SLIP_PRINT_BODY_CLASS);
     card.classList.add(SLIP_PRINT_ROOT_CLASS);
     card.classList.remove('print-area', 'printable-area');
+    void printCurrentDocument();
     setTimeout(() => {
-      window.print();
-      setTimeout(() => {
-        body.classList.remove(SLIP_PRINT_BODY_CLASS);
-        card.classList.remove(SLIP_PRINT_ROOT_CLASS);
-        card.classList.add('print-area', 'printable-area');
-      }, 500);
-    }, 60);
+      body.classList.remove(SLIP_PRINT_BODY_CLASS);
+      card.classList.remove(SLIP_PRINT_ROOT_CLASS);
+      card.classList.add('print-area', 'printable-area');
+    }, 500);
   };
 
   const handleSaveAndPrint = (shouldDownloadFile = false) => {
