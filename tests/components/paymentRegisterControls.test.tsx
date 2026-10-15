@@ -192,9 +192,20 @@ describe('payment register correction controls', () => {
     expect(screen.queryByRole('button', { name: `Delete payment ${ADVANCE.payment_number}` })).toBeNull();
   });
 
-  it('points an empty register at the page filters rather than a date picker of its own', () => {
+  it('shows no empty-state copy, and owns no filters of its own', () => {
+    // CHANGED. The register used to print "No payments, advances or
+    // adjustments match the filters above - widen the date range". It sat
+    // directly under the filter bar it was describing and said nothing that
+    // bar did not. The operator removed it; an empty card is the whole
+    // message.
+    //
+    // Asserting the ABSENCE is deliberate: otherwise a later edit could put
+    // the message back and this test would still pass.
     renderRegister({ transactions: [] });
 
-    expect(screen.getByText(/No payments, advances or adjustments match the filters above/)).toBeTruthy();
+    expect(screen.queryByText(/No payments, advances or adjustments/)).toBeNull();
+    expect(screen.queryByText(/widen the date range/)).toBeNull();
+    // The filters belong to the page above, so the register owns none.
+    expect(screen.queryByTitle(/filter by date range/i)).toBeNull();
   });
 });

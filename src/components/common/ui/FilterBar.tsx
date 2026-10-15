@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Building2 } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { DatePickerRange } from '../DatePickerRange';
 import { DentalLab } from '../../../types';
 
@@ -24,7 +24,6 @@ export interface FilterBarClinics {
 interface FilterBarProps {
   search?: FilterBarSearch;
   dateRange?: FilterBarDateRange;
-  clinics?: FilterBarClinics;
   /** Action buttons grouped with the date range (export, ...). */
   actions?: React.ReactNode;
 }
@@ -41,14 +40,13 @@ interface FilterBarProps {
 export function FilterBar({
   search,
   dateRange,
-  clinics,
   actions,
 }: FilterBarProps) {
   return (
     <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
       <div className="flex flex-col md:flex-row md:items-center gap-3">
         {search && (
-          <div className="relative flex-1 min-w-[180px]">
+          <div className="relative flex-1 min-w-[260px] basis-full md:basis-auto">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <input
               type="text"
@@ -73,21 +71,6 @@ export function FilterBar({
           </div>
         )}
 
-        {clinics && (
-          <div className="relative w-full md:w-64 shrink-0">
-            <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <select
-              value={clinics.value}
-              onChange={(e) => clinics.onChange(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
-            >
-              <option value="all">All Clinics ({clinics.labs.length})</option>
-              {clinics.labs.map((lab) => (
-                <option key={lab.id} value={lab.id}>{lab.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
     </div>
   );

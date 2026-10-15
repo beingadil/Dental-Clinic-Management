@@ -97,10 +97,11 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
       {transactions.length === 0 ? (
-        <div className="p-12 text-center text-xs text-ink-muted">
-          No payments, advances or adjustments match the filters above — widen the
-          date range to reach older entries.
-        </div>
+        /* No empty-state message. The operator removed it: it sat directly under
+           the filter bar it was describing, saying nothing the bar did not
+           already show. An empty card is the whole message here — the filters
+           above are one click from a different range. */
+        null
       ) : (
         <div className="overflow-x-auto no-scrollbar">
           <table className="w-full text-left text-xs border-collapse">

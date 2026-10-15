@@ -107,6 +107,9 @@ const renderLedger = (invoices: unknown[], entries: unknown[]) => {
   const r = render(<GeneralLedgerView />);
   fireEvent.click(screen.getByText(/select clinic/i));
   fireEvent.click(screen.getByText('Cases Clinic'));
+  // The standalone Quick Dates pills are gone; the presets live inside the
+  // shared picker's own popover now, which is the path an operator takes.
+  fireEvent.click(screen.getByTitle(/filter by date range|select date/i));
   fireEvent.click(screen.getByRole('button', { name: 'All Time' }));
   fireEvent.click(screen.getByRole('button', { name: /preview/i }));
   return r;

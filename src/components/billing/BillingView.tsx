@@ -51,8 +51,7 @@ export const BillingView: React.FC = () => {
     advancePayments,
     accountAdjustments,
     bulkMarkPaid, 
-    deleteInvoice, 
-    labs,
+    deleteInvoice,
     getLabFinancialSummary,
     deletePaymentV2,
     updatePaymentAmountV2,
@@ -423,7 +422,6 @@ export const BillingView: React.FC = () => {
                 setInvToDate(t);
               },
             }}
-            clinics={{ labs, value: clinicFilter, onChange: setClinicFilter }}
             actions={
               <>
                 <button

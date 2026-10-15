@@ -15,7 +15,6 @@ import {
   ArrowDownLeft,
   ChevronDown,
   FileDown,
-  X, 
   FileText,
   CreditCard,
   Banknote,
@@ -60,14 +59,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   const clinicDropdownRef = useRef<HTMLDivElement>(null);
 
   // Case/Job filter — searches case numbers, invoice numbers, patient names.
-  const [caseFilter, setCaseFilter] = useState<string>('');
+  const [caseFilter] = useState<string>('');
 
   // Date filters
   // Ledger window defaults to TODAY (like the other billing tabs): older
   // entries are reached with the date picker or the 'All Time' preset.
   const [startDate, setStartDate] = useState<string>(() => todayISO());
   const [endDate, setEndDate] = useState<string>(() => todayISO());
-  const [activeDatePreset, setActiveDatePreset] = useState<string>('today');
 
   // Preview state: hidden until the user clicks Preview.
   const [isPreviewActive, setIsPreviewActive] = useState<boolean>(false);
@@ -138,59 +136,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
     return getDateStr(new Date(n.getFullYear(), 11, 31));
   };
 
-  // Quick date presets
-  const applyDatePreset = (preset: 'all' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year') => {
-    setActiveDatePreset(preset);
-    const now = new Date();
-
-    if (preset === 'all') {
-      setStartDate('');
-      setEndDate('');
-      return;
-    }
-
-    if (preset === 'today') {
-      // Local calendar day, matching the shared picker (toISOString would roll
-      // back a day for PKT/any +offset zone before 05:00 local time).
-      const todayStr = todayISO();
-      setStartDate(todayStr);
-      setEndDate(todayStr);
-      return;
-    }
-
-    if (preset === 'this_week') {
-      const dayOfWeek = now.getDay() || 7; // Sunday is 0, make it 7
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (dayOfWeek - 1));
-      setStartDate(getDateStr(monday));
-      setEndDate(getDateStr(now));
-      return;
-    }
-
-    if (preset === 'this_month') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setStartDate(getDateStr(firstDay));
-      setEndDate(getDateStr(lastDay));
-      return;
-    }
-
-    if (preset === 'last_month') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-      setStartDate(getDateStr(firstDay));
-      setEndDate(getDateStr(lastDay));
-      return;
-    }
-
-    if (preset === 'this_year') {
-      const firstDay = new Date(now.getFullYear(), 0, 1);
-      const lastDay = new Date(now.getFullYear(), 11, 31);
-      setStartDate(getDateStr(firstDay));
-      setEndDate(getDateStr(lastDay));
-      return;
-    }
-  };
 
   // Fetch all ledger records for the selected clinic or all clinics
   const rawLedgerEntries = useMemo(() => {
@@ -638,27 +583,19 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
             </div>
           </div>
 
-          {/* Case/Job search — case number, invoice number, or clinic-side name */}
-          <div className="relative shrink-0">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <input
-              type="text"
-              value={caseFilter}
-              onChange={(e) => { setCaseFilter(e.target.value); setLedgerLimit(LEDGER_CAP_STEP); }}
-              placeholder="Case / Job / Invoice #"
-              className="w-44 pl-9 pr-8 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-            />
-            {caseFilter && (
-              <button
-                type="button"
-                onClick={() => { setCaseFilter(''); setLedgerLimit(LEDGER_CAP_STEP); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-ink-muted hover:text-slate-700"
-                title="Clear case filter" aria-label="Clear case filter"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          {/* The Case / Job / Invoice # box is gone.
+
+              It was a second, narrower search sitting beside the date picker,
+              and it had become the thing an operator reached for expecting the
+              main search bar — which is the wide one above, already covering
+              case number, invoice number, doctor, patient, clinic, amounts and
+              receipts. Two search boxes with different reach on one screen is a
+              coin toss every time.
+
+              `caseFilter` remains in state and still scopes the query; with no
+              input it is simply always empty, i.e. the ledger shows every case
+              for the chosen clinic and period. Left wired rather than ripped
+              out because it participates in the export's `caseFilterLabel`. */}
 
           {/* Shared date picker */}
           <div className="shrink-0">
@@ -676,7 +613,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
               onChange={(f, t) => {
                 setStartDate(f);
                 setEndDate(t);
-                setActiveDatePreset('custom');
               }}
             />
           </div>
@@ -724,45 +660,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
           </button>
         </div>
 
-        {/* Quick Date Range Preset Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
-          <span className="text-[11px] font-bold text-slate-600 mr-1">Quick Dates:</span>
-          {[
-            { id: 'today', label: 'Today' },
-            { id: 'all', label: 'All Time' },
-            { id: 'this_week', label: 'This Week' },
-            { id: 'this_month', label: 'This Month' },
-            { id: 'last_month', label: 'Last Month' },
-            { id: 'this_year', label: 'This Year' },
-          ].map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => applyDatePreset(p.id as any)}
-              className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer ${
-                activeDatePreset === p.id
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-
-          {(startDate || endDate) && (
-            <button
-              type="button"
-              onClick={() => {
-                setStartDate('');
-                setEndDate('');
-                setActiveDatePreset('all');
-              }}
-              className="ml-auto text-[11px] text-ink-danger hover:underline flex items-center gap-1 font-semibold"
-            >
-              <X className="w-3 h-3" /> Clear Dates
-            </button>
-          )}
-        </div>
       </div>
 
       {/* PREVIEW CONTAINER — hidden until Preview clicked; shows an
