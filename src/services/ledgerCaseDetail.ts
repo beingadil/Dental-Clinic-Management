@@ -161,8 +161,109 @@ export const caseDetailLines = (
 };
 
 /** `Patient: Ali · Procedure: Zirconia · …` — the one-line CSV/PDF form. */
-export const caseDetailText = (c: DentalCase): string =>
-  caseDetailLines(c).map((l) => `${l.label}: ${l.value}`).join(' • ');
+export const caseDetailText = (c: DentalCase, { omit = [] }: CaseDetailOptions = {}): string =>
+  caseDetailLines(c, { omit })
+    .map((l) => `${l.label}: ${l.value}`)
+    .join(' • ');
+
+/* ---------------------------------------------------------------------------
+ * The General Ledger PRINT line.
+ *
+ * The downloadable ledger used to print, for one invoice:
+ *
+ *   Case Invoice - INV-0056  Invoice for Retainer (DS-0028) - Patient: 3154 -
+ *   Procedure: upper Retainer - Teeth: #11, #21 - Shade: A2 -
+ *   Received Date: Oct 5, 2026 - Delivery Date: Oct 10, 2026
+ *
+ * Six facts, of which three are already printed somewhere else on the same
+ * page, and one of which (the received date) contradicts the Date column it
+ * sits three lines below. It also wraps to four lines, which makes the row
+ * tall enough to push entries onto extra sheets.
+ *
+ * Two rules, applied HERE rather than at each call site so the ledger PDF and
+ * any future ledger export cannot disagree:
+ *
+ *   1. A row that is already a COLUMN does not belong in the description.
+ *      Received Date is the Date column; the case number is the CASE/JOB
+ *      column; the invoice number is the subject of the whole row.
+ *   2. A row that REPEATS the title is noise. `Procedure: upper Retainer`
+ *      beside a heading that already says `Retainer` tells the reader nothing
+ *      they cannot see two words earlier.
+ *
+ * What is left is what the columns do NOT already say:
+ *   Retainer - Patient: 3154 - Teeth: #11, #21 - Shade: A2
+ *
+ * Deliberately NOT applied to the on-screen preview: the preview is the
+ * working surface where an operator looks up one case and wants the full
+ * record, and it has no Date column competing with a Received Date row.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Rows the ledger PDF never prints inside a description.
+ *
+ * Only the two dates. Procedure is deliberately NOT here: it is dropped
+ * conditionally by `repeatsHeading`, so a procedure that genuinely differs
+ * from the heading still reaches the page. Listing it unconditionally made
+ * that check dead code.
+ */
+export const LEDGER_PRINT_OMIT: CaseDetailLabel[] = [
+  'Received Date',
+  'Delivery Date',
+];
+/**
+ * True when `value` says the same thing as `heading`, ignoring case,
+ * punctuation and filler words.
+ */
+const repeatsHeading = (heading: string, value: string): boolean => {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w && !['upper', 'lower', 'of', 'the', 'for', 'a', 'an'].includes(w));
+  const h = norm(heading);
+  const v = norm(value);
+  if (!h.length || !v.length) return false;
+  return h.some((w) => v.includes(w)) || v.some((w) => h.includes(w));
+};
+
+/**
+ * The one-line case description used by the General Ledger PRINT.
+ *
+ * `title` is the ledger entry's own description ("Invoice for Retainer"),
+ * used both as the leading text and to decide whether Procedure is a repeat.
+ */
+export const ledgerPrintDescription = (c: DentalCase | null, title?: string): string => {
+  if (!c) return (title || '').trim();
+
+  /* Reduce the entry description to the product it names.
+     GeneralLedgerView hands over "INV-0056  Invoice for Retainer (DS-0028)":
+     a document reference, a sentence of framing, the product, and a case
+     number that is already its own column. All four are removed. */
+  let heading = (title || c.case_type_name || c.case_type || '').trim();
+  heading = heading
+    /* leading document reference: INV-0056, PAY-0042, "RCPT/9", ... */
+    .replace(/^[A-Z]{2,}[\w-]*[\s/:]*\d+[\s:-]*/i, '')
+    .replace(/^invoice\s+for\s+/i, '')
+    /* trailing "(DS-0028)" */
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    /* collapse the whitespace the strips above left behind */
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (!heading) heading = c.case_type_name || c.case_type || 'Case work';
+
+  const facts = caseDetailLines(c)
+    .filter((l) => !LEDGER_PRINT_OMIT.includes(l.label as CaseDetailLabel))
+    /* Procedure survives only when it says something the heading does not. */
+    .filter((l) => l.label !== 'Procedure' || !repeatsHeading(heading, l.value))
+    /* Units repeats what Teeth already imply; it is the only count on the
+       page when the case is uncharted. */
+    .filter((l) => !(l.label === 'Units' && caseHasChartedTeeth(c)))
+    .map((l) => `${l.label}: ${l.value}`);
+
+  return [heading, ...facts].join(' \u2022 ');
+};
+
 
 /**
  * The matching rule, shared by both lookup helpers below.

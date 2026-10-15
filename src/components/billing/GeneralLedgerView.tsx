@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
 import { printCurrentDocument } from '../../utils/printDocument';
-import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
+import { caseDetailLines, ledgerPrintDescription, findCaseForEntry } from '../../services/ledgerCaseDetail';
 ;
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { DataTable } from '../common/ui';
@@ -451,7 +451,15 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
             clinic: item.lab_name || '',
             caseNumber: item.case_number || '',
             typeLabel: details.typeLabel,
-            narration: [details.narration, c ? caseDetailText(c) : ''].filter(Boolean).join(' • '),
+            /* The compact ledger-print line. It replaces the old
+               `${typeLabel} - ${ref} ${description} - ${caseDetailText(c)}`,
+               which repeated the Date column, the CASE/JOB column and the
+               product name three times over and wrapped to four lines.
+               `details.narration` carries "INV-0056  Invoice for Retainer
+               (DS-0028)" - ledgerPrintDescription takes the descriptive half of
+               that as its heading and drops the reference and the case number,
+               both of which are columns. */
+            narration: ledgerPrintDescription(c, details.narration),
             debit: item.debit || 0,
             credit: item.credit || 0,
             closing: item.closing_balance || 0,

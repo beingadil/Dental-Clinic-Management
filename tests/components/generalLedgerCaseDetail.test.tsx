@@ -155,19 +155,37 @@ describe('GeneralLedgerView case detail', () => {
     }[];
 
     const invoice = entries.find((e) => e.caseNumber === 'DS-2001');
-    expect(invoice?.narration).toContain('INV-0042');
+
+    /* CHANGED (ledger print compaction).
+     *
+     * The printed line used to open "Case Invoice - INV-0042  Invoice for
+     * Zirconia Crown (DS-2001) - Patient: Ali Raza - ... - Received Date: Oct 3,
+     * 2026 - Delivery Date: Dec 20, 2026". Four of those facts were already
+     * columns on the same row, and Received Date contradicted the Date column
+     * directly above it.
+     *
+     * What the description now says is what the columns do not:
+     *   Zirconia Crown - Patient: Ali Raza - Teeth: #11, #21 - Shade: A2
+     */
+    expect(invoice?.narration).toContain('Zirconia Crown');
     expect(invoice?.narration).toContain('Patient: Ali Raza');
-    expect(invoice?.narration).toContain('Procedure: Zirconia Crown');
     expect(invoice?.narration).toContain('Teeth: #11, #21');
     expect(invoice?.narration).toContain('Shade: A2');
-    expect(invoice?.narration).toContain('Received Date: Oct 3, 2026');
-    expect(invoice?.narration).toContain('Delivery Date: Dec 20, 2026');
+
+    // Already a column, or already said by the heading.
+    expect(invoice?.narration).not.toContain('INV-0042');
+    expect(invoice?.narration).not.toContain('DS-2001');
+    expect(invoice?.narration).not.toContain('Received Date');
+    expect(invoice?.narration).not.toContain('Oct 3, 2026');
+    expect(invoice?.narration).not.toContain('Delivery Date');
+    expect(invoice?.narration).not.toContain('Dec 20, 2026');
+    expect(invoice?.narration).not.toContain('Procedure:');
     expect(invoice?.narration).not.toContain('Doctor:');
     expect(invoice?.narration).not.toContain('Material:');
-    // CHANGED (compact invoice): was `not.toContain('Units:')`. The PDF narration
-    // is the ledger's own `caseDetailText`, so it now narrates the same unit
-    // count the printed invoice shows.
-    expect(invoice?.narration).toContain('Units: 2 units');
+
+    // Units repeats what the tooth list already counts. It survives only on an
+    // uncharted case, where it is the only quantity on the page.
+    expect(invoice?.narration).not.toContain('Units:');
 
     // The payment row carries no case detail.
     const payment = entries.find((e) => !e.caseNumber);

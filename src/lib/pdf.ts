@@ -270,15 +270,28 @@ export const chooseOrientation = (meta: LedgerPdfMeta): Orientation => {
 
 interface LedgerCol { key: string; label: string; w: number; align: 'left' | 'right' }
 
-/** Column plan fills the full content width; weights adapt to orientation. */
-function planColumns(g: Geo): { cols: LedgerCol[]; X: Record<string, number>; tableW: number } {
+/**
+ * Column plan fills the full content width; weights adapt to orientation.
+ *
+ * CLINIC is included only when the export is NOT scoped to one clinic.
+ * The operator asked for it removed on the grounds that the clinic name is
+ * already printed in the statement header - which is true, and true only when
+ * there IS one clinic. An "All Clinics" export has no clinic in the header, so
+ * dropping the column there would leave rows with no way to tell whose they
+ * are. Hence a condition, not a deletion.
+ */
+function planColumns(g: Geo, opts: { scopedToClinic: boolean }): { cols: LedgerCol[]; X: Record<string, number>; tableW: number } {
   const weights: Record<string, number> = {
     date: 0.085, clinic: 0.135, case: 0.105, type: 0.115, narr: 0.35,
     debit: 0.07, credit: 0.07, close: 0.07,
   };
   const raw: [string, string, number, 'left' | 'right'][] = [
     ['date', 'DATE', weights.date, 'left'],
-    ['clinic', 'CLINIC', weights.clinic, 'left'],
+    // Spreading a spread loses the tuple type, so the extra column is built
+    // separately and concatenated.
+    ...(opts.scopedToClinic
+      ? []
+      : ([['clinic', 'CLINIC', weights.clinic, 'left']] as [string, string, number, 'left'][])),
     ['case', 'CASE/JOB', weights.case, 'left'],
     ['type', 'TYPE', weights.type, 'left'],
     ['narr', 'DESCRIPTION / PARTICULARS', weights.narr, 'left'],
@@ -332,7 +345,10 @@ export function buildLedgerPdf(
   const orientation = chooseOrientation(meta);
   const geoKey = `${meta.paper || 'a4'}-${orientation}`;
   const g = GEOS[geoKey] || GEOS['a4-portrait'];
-  const { cols, X } = planColumns(g);
+  /* A single-clinic export names it in the header, so the column is dropped.
+     An "All Clinics" export has no clinic in the header and keeps it. */
+  const scopedToClinic = !/^all\s+clinics$/i.test((meta.clinicLabel || '').trim());
+  const { cols, X } = planColumns(g, { scopedToClinic });
   const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
   const narrW = colByKey.narr.w - 4;
   const headH = 15;
@@ -341,11 +357,16 @@ export function buildLedgerPdf(
 
   // Pre-wrap every row once so page breaks never split a row.
   const rows = entries.map((e) => {
-    const narr = `${e.typeLabel ? `${e.typeLabel} — ` : ''}${e.narration}`;
+    /* No typeLabel prefix here. It was rendered into the description as
+       "Case Invoice - " while ALSO being the TYPE column, so every row opened
+       by naming its own column. The type belongs in the column; the
+       description should describe the work. */
+    const narr = e.narration || '';
     const narrLines = wrapText(narr, narrW, 7);
     const ids: Record<string, { text: string; size: number }> = {
       date: fitShrink(e.date, colByKey.date.w - 4, 7),
-      clinic: fitShrink(e.clinic, colByKey.clinic.w - 4, 7),
+      // Absent when the column is not planned; guarded again at draw time.
+      ...(colByKey.clinic ? { clinic: fitShrink(e.clinic, colByKey.clinic.w - 4, 7) } : {}),
       case: fitShrink(e.caseNumber, colByKey.case.w - 4, 7),
       type: fitShrink(e.typeLabel, colByKey.type.w - 4, 7),
     };
@@ -424,7 +445,9 @@ export function buildLedgerPdf(
     for (const r of chunk.rows) {
       const { e, narrLines, ids } = r;
       ops.push({ kind: 'text', x: X.date + 2, y, size: ids.date.size, text: ids.date.text });
-      ops.push({ kind: 'text', x: X.clinic + 2, y, size: ids.clinic.size, text: ids.clinic.text });
+      if (colByKey.clinic && ids.clinic) {
+    ops.push({ kind: 'text', x: X.clinic + 2, y, size: ids.clinic.size, text: ids.clinic.text });
+  };
       if (e.caseNumber) {
         const cs = ids.case;
         ops.push({ kind: 'text', x: X.case + 2, y, size: cs.size, bold: true, grey: 0.25, text: cs.text });
