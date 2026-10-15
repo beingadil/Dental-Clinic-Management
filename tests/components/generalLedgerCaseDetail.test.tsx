@@ -121,13 +121,19 @@ describe('GeneralLedgerView case detail', () => {
     expect(screen.getByText('Dec 20, 2026')).toBeTruthy();
   });
 
-  it('leaves doctor, material and units to the case record', () => {
+  it('leaves doctor and material to the case record, and states the unit count', () => {
     renderLedger();
 
     expect(screen.queryByText('Doctor')).toBeNull();
     expect(screen.queryByText('Material')).toBeNull();
-    expect(screen.queryByText('Units')).toBeNull();
     expect(screen.queryByText('Dr. Tariq Mahmood')).toBeNull();
+
+    // CHANGED (compact invoice): this test used to assert `Units` was ABSENT
+    // — "units belong to the case record, not the money line". A printed
+    // invoice now prints the count instead of the tooth list, so the ledger
+    // block carries it too. The fixture charts two teeth, so it reads "2 units".
+    expect(screen.getByText('Units')).toBeTruthy();
+    expect(screen.getByText('2 units')).toBeTruthy();
   });
 
   it('renders the detail block once, on the invoice row only', () => {
@@ -158,7 +164,10 @@ describe('GeneralLedgerView case detail', () => {
     expect(invoice?.narration).toContain('Delivery Date: Dec 20, 2026');
     expect(invoice?.narration).not.toContain('Doctor:');
     expect(invoice?.narration).not.toContain('Material:');
-    expect(invoice?.narration).not.toContain('Units:');
+    // CHANGED (compact invoice): was `not.toContain('Units:')`. The PDF narration
+    // is the ledger's own `caseDetailText`, so it now narrates the same unit
+    // count the printed invoice shows.
+    expect(invoice?.narration).toContain('Units: 2 units');
 
     // The payment row carries no case detail.
     const payment = entries.find((e) => !e.caseNumber);

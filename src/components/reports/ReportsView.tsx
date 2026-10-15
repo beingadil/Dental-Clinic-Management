@@ -9,7 +9,6 @@ import { ClinicAccountsTable } from '../billing/ClinicAccountsTable';
 import { GeneralLedgerView } from '../billing/GeneralLedgerView';
 import { AuditLogView } from '../billing/AuditLogView';
 import { BillingReportsView } from '../billing/BillingReportsView';
-import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { JournalEntryModal } from '../billing/JournalEntryModal';
 import { ClinicStatementModal } from '../billing/ClinicStatementModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
@@ -25,8 +24,6 @@ export const ReportsView: React.FC = () => {
   const { labs, invoices, cases, setCurrentView } = useApp();
 
   const [activeTab, setActiveTab] = useState<ReportsTab>('overview');
-  const [collectLabId, setCollectLabId] = useState<string | undefined>();
-  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [clinicStatementId, setClinicStatementId] = useState<string | null>(null);
   const [journalRefId, setJournalRefId] = useState<string | null>(null);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
@@ -56,10 +53,9 @@ export const ReportsView: React.FC = () => {
           invoices={invoices}
           cases={cases}
           todayStr={getTodayStr()}
-          onCollect={(clinicId) => {
-            setCollectLabId(clinicId);
-            setIsRecordModalOpen(true);
-          }}
+          /* Billing & Invoices is the only place a payment is recorded, so the
+             accounts table links there rather than opening a second recorder. */
+          onCollect={() => setCurrentView('billing')}
           onStatement={(clinicId) => setClinicStatementId(clinicId)}
           onOpenClinics={() => setCurrentView('labs')}
         />
@@ -78,19 +74,8 @@ export const ReportsView: React.FC = () => {
         />
       )}
 
-      {/* Collect a payment against a clinic balance from the accounts table */}
-      {isRecordModalOpen && (
-        <RecordTransactionModal
-          isOpen={isRecordModalOpen}
-          onClose={() => {
-            setIsRecordModalOpen(false);
-            setCollectLabId(undefined);
-          }}
-          initialMode="payment"
-          initialLabId={collectLabId}
-          initialInvoiceId={undefined}
-        />
-      )}
+
+
 
       {/* Double-Entry Journal Entry Inspector Modal */}
       <JournalEntryModal

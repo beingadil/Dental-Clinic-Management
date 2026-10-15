@@ -52,14 +52,22 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
 
   const dateOf = (inv: Invoice) => String(inv.issue_date || inv.created_at || '').slice(0, 10);
 
-  /* Unpaid invoices for the chosen clinic inside the chosen period — real rows
-     only, oldest first so the printed stack matches the ledger sequence. */
-  const unpaidInvoices = useMemo(() => {
+  /* Every invoice for the chosen clinic inside the chosen period — NOT only the
+     unpaid ones.
+
+     This was filtered on `due > 0`, which hid exactly the invoices an operator
+     running a month-end or fortnightly statement needs to see: the ones fully
+     paid and the ones partly paid. The printed statement already carries Paid,
+     Balance and Status columns, so a settled invoice is a row that reads
+     "Paid 20,000 / Balance 0 / Full" — it is evidence the clinic paid, not
+     noise. Dropping the filter means the date range alone decides what prints,
+     which is what "pick 1 to 30 and see them all" means.
+
+     Oldest first so the printed stack matches the ledger sequence. */
+  const periodInvoices = useMemo(() => {
     return invoices
       .filter((inv) => {
         if (inv.lab_id !== labId) return false;
-        const due = inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0);
-        if (due <= 0) return false;
         const d = dateOf(inv);
         if (!d) return true;
         if (from && d < from) return false;
@@ -69,7 +77,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
       .sort((a, b) => dateOf(a).localeCompare(dateOf(b)));
   }, [invoices, labId, from, to]);
 
-  const selected = unpaidInvoices.filter((inv) => !excluded.includes(inv.id));
+  const selected = periodInvoices.filter((inv) => !excluded.includes(inv.id));
   const selectedTotal = selected.reduce(
     (sum, inv) => sum + Math.max(0, inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0)),
     0
@@ -130,15 +138,15 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               <FileSpreadsheet className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Batch Print Unpaid Invoices</h3>
+              <h3 className="text-sm font-bold text-slate-900">Batch Print Invoices</h3>
               <p className="text-xs text-slate-500">
-                Pick a clinic and a period — the unpaid invoices print as one statement, split across as many sheets as they need.
+                Pick a clinic and a period — every invoice in that range prints as one statement, split across as many sheets as they need. Fully paid, partly paid and unpaid all show.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <SavePdfButton
-              suggestedName={`Unpaid-Invoices-${getTodayStr()}.pdf`}
+              suggestedName={`Invoices-${getTodayStr()}.pdf`}
               disabled={selected.length === 0}
               className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-white border border-slate-300 px-4 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             />
@@ -211,12 +219,12 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
 
         {/* Selection list */}
         <div className="no-print max-h-72 overflow-y-auto border-b border-slate-100">
-          {unpaidInvoices.length === 0 ? (
+          {periodInvoices.length === 0 ? (
             <div className="py-10 text-center">
-              <p className="text-sm font-bold text-slate-800">No unpaid invoices in this period</p>
+              <p className="text-sm font-bold text-slate-800">No invoices in this period</p>
               <p className="mt-1 text-xs text-slate-500">
                 {selectedClinic
-                  ? `${selectedClinic.name} has no outstanding invoices between ${from || 'the earliest record'} and ${to || 'today'}.`
+                  ? `${selectedClinic.name} has no invoices between ${from || 'the earliest record'} and ${to || 'today'}.`
                   : 'Select a clinic to continue.'}
               </p>
             </div>
@@ -225,15 +233,15 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               <thead>
                 <tr className="border-b border-slate-200 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   <th scope="col" className="w-10 py-2.5 pl-6">✓</th>
+                  <th scope="col" className="py-2.5 px-3">Date</th>
                   <th scope="col" className="py-2.5 px-3">Invoice</th>
                   <th scope="col" className="py-2.5 px-3">Case</th>
                   <th scope="col" className="py-2.5 px-3">Doctor</th>
-                  <th scope="col" className="py-2.5 px-3">Date</th>
-                  <th scope="col" className="py-2.5 px-6 text-right">Balance Due</th>
+                  <th scope="col" className="py-2.5 px-6 text-right">Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {unpaidInvoices.map((inv) => {
+                {periodInvoices.map((inv) => {
                   const due = Math.max(
                     0,
                     inv.final_amount - (inv.amount_paid || 0) - (inv.credit_notes_total || 0)
@@ -249,6 +257,9 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                           onChange={() => toggle(inv.id)}
                           className="h-4 w-4 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
+                      </td>
+                      <td className="py-2.5 px-3 align-top text-slate-500">
+                        {String(inv.issue_date || inv.created_at || '').slice(0, 10) || '—'}
                       </td>
                       <td className="py-2.5 px-3 align-top font-mono font-bold text-slate-900">{inv.invoice_number}</td>
                       {/* The job behind the invoice, so the operator can see
@@ -267,9 +278,6 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                       <td className="py-2.5 px-3 align-top text-slate-600">
                         {formatDoctorName(inv.doctor_name)}
                       </td>
-                      <td className="py-2.5 px-3 align-top text-slate-500">
-                        {String(inv.issue_date || inv.created_at || '').slice(0, 10) || '—'}
-                      </td>
                       <td className="py-2.5 px-6 text-right align-top font-mono font-bold text-slate-900">
                         PKR {due.toLocaleString()}
                       </td>
@@ -280,7 +288,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               <tfoot>
                 <tr className="border-t-2 border-slate-300 bg-slate-100 text-xs font-bold text-slate-900">
                   <td colSpan={5} className="py-3 pl-6 uppercase tracking-wider">
-                    {selected.length} of {unpaidInvoices.length} invoices selected
+                    {selected.length} of {periodInvoices.length} invoices selected
                   </td>
                   <td className="py-3 px-6 text-right font-mono">PKR {selectedTotal.toLocaleString()}</td>
                 </tr>
@@ -289,7 +297,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
           )}
         </div>
 
-        {/* Paper preview — one sheet per page of the selected unpaid invoices.
+        {/* Paper preview - one sheet per page of the selected invoices.
             A long batch becomes several `.print-doc-page` sheets; the shared
             print CSS turns each into a real page break on paper (and a dashed
             divider on screen). NOT `.no-print`: the preview shell must stay

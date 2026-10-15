@@ -1,17 +1,7 @@
 import React from 'react';
-import { Search, Building2, AlertTriangle } from 'lucide-react';
+import { Search, Building2 } from 'lucide-react';
 import { DatePickerRange } from '../DatePickerRange';
 import { DentalLab } from '../../../types';
-
-export type FilterPillTone = 'default' | 'danger' | 'success';
-
-export interface FilterPill {
-  id: string;
-  label: string;
-  count?: number;
-  /** danger = rose alert styling with a warning glyph, success = emerald. */
-  tone?: FilterPillTone;
-}
 
 export interface FilterBarSearch {
   value: string;
@@ -37,28 +27,25 @@ interface FilterBarProps {
   clinics?: FilterBarClinics;
   /** Action buttons grouped with the date range (export, ...). */
   actions?: React.ReactNode;
-  pills?: FilterPill[];
-  activePill?: string;
-  onPillChange?: (id: string) => void;
 }
 
 /**
- * Shared filter chrome above the billing tables: a search-first row
- * (search → date range + actions → clinic → extra selects) and the
- * sub-filter pill row. The invoice list and the transaction register
- * render exactly this layout through here.
+ * The one filter band above a billing list: search, date range + actions, clinic.
+ *
+ * This used to carry a second row of sub-filter pills. They were removed along
+ * with the payments register's own copy of this whole bar: a status or category
+ * is something the operator reads off the rows and the counts on the dashboard,
+ * not a control they reset before every glance, and two stacked filter bands
+ * above two tables made the page look like two pages.
  */
 export function FilterBar({
   search,
   dateRange,
   clinics,
   actions,
-  pills,
-  activePill,
-  onPillChange,
 }: FilterBarProps) {
   return (
-    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
       <div className="flex flex-col md:flex-row md:items-center gap-3">
         {search && (
           <div className="relative flex-1 min-w-[180px]">
@@ -102,48 +89,6 @@ export function FilterBar({
           </div>
         )}
       </div>
-
-      {pills && pills.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 no-scrollbar">
-          {pills.map((pill) => {
-            const isActive = activePill === pill.id;
-            const tone = pill.tone ?? 'default';
-            return (
-              <button
-                key={pill.id}
-                onClick={() => onPillChange?.(pill.id)}
-                aria-pressed={isActive}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  isActive
-                    ? tone === 'danger'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : tone === 'success'
-                      ? 'bg-emerald-700 text-white shadow-xs'
-                      : 'bg-slate-900 text-white shadow-xs'
-                    : tone === 'danger' && (pill.count ?? 0) > 0
-                    ? 'bg-rose-100 text-rose-800 hover:bg-rose-200 font-bold'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {tone === 'danger' && (pill.count ?? 0) > 0 && (
-                  <AlertTriangle className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-ink-danger'}`} />
-                )}
-                <span>{pill.label}</span>
-                <span
-                  role="status"
-                  aria-live="polite"
-                  aria-label={`${pill.label}: ${pill.count ?? 0}`}
-                  className={`px-1.5 py-0.2 rounded-md text-[11px] tabular-nums ${
-                    isActive ? 'bg-black/20 text-white' : 'bg-white/80 text-slate-700'
-                  }`}
-                >
-                  {pill.count ?? 0}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

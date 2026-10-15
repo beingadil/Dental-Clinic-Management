@@ -1,468 +1,225 @@
-import React, { useState, useMemo } from 'react';
-import { getTodayStr } from '../../utils/dateUtils';
-import { useApp } from '../../context/AppContext';
-import { PaymentRecord, AdvancePayment, AccountAdjustment, Invoice } from '../../types';
-import { DatePickerRange, todayISO } from '../common/DatePickerRange';
-import { 
-  DollarSign, 
-  Wallet, 
-  FileCheck2, 
-  Search, 
-  Filter, 
-  Printer, 
-  Image as ImageIcon, 
-  Building2, 
-  Download,
+import React, { useState, useEffect } from 'react';
+import { PaymentRecord } from '../../types';
+import type { UnifiedTransaction } from '../../services/transactionRegister';
+import {
+  DollarSign,
+  Wallet,
+  FileCheck2,
+  Printer,
+  Image as ImageIcon,
   Scale,
-  ArrowLeftRight
+  Trash2
 } from 'lucide-react';
 
-export type UnifiedTransactionType = 'payment' | 'advance' | 'adjustment';
-
-export interface UnifiedTransaction {
-  id: string;
-  sourceType: UnifiedTransactionType;
-  txnNumber: string;
-  date: string;
-  labId: string;
-  labName: string;
-  category: string;
-  detail: string;
-  referenceNumber?: string;
-  method?: string;
-  amount: number;
-  direction: 'inflow' | 'credit' | 'debit' | 'refund';
-  recordedBy: string;
-  hasAttachments: boolean;
-  attachmentsCount: number;
-  rawPayment?: PaymentRecord;
-  rawAdvance?: AdvancePayment;
-  rawAdjustment?: AccountAdjustment;
-  invoiceId?: string;
-  invoiceNumber?: string;
-  caseNumber?: string;
-  isReversed?: boolean;
-  reversalReason?: string;
-}
-
 interface TransactionRegisterProps {
+  /**
+   * The rows to render, already filtered. The page owns the filters — search,
+   * date range and clinic — so one query drives this register and the invoice
+   * table above it instead of the two disagreeing (see BillingView).
+   */
+  transactions: UnifiedTransaction[];
   onViewProof: (payment: PaymentRecord) => void;
-  onPrintReceipt: (payment: PaymentRecord, invoice?: Invoice) => void;
-  onReverseTransaction?: (target: {
-    referenceType: 'payment' | 'advance_payment' | 'adjustment';
-    referenceId: string;
-    referenceNumber: string;
-    amount: number;
-    labName: string;
-    date: string;
-    details?: string;
-  }) => void;
+  /** Printing a receipt resolves the invoice from the row the operator clicked. */
+  onPrintReceipt: (txn: UnifiedTransaction) => void;
+  /**
+   * Delete a payment entry — its whole receipt. Never the invoice: voiding one
+   * is an action on the invoice table, with its own confirmation. Omitted, the
+   * Delete action simply does not render.
+   */
+  onDeletePayment?: (payment: PaymentRecord) => void;
+  /**
+   * Change a payment entry's amount. Returns false when the command refused the
+   * change (not a positive number, or it would overpay the invoice), and the
+   * row then snaps back to the stored amount.
+   */
+  onEditPaymentAmount?: (payment: PaymentRecord, amount: number) => boolean;
   onOpenJournalModal?: (referenceId: string) => void;
 }
 
-export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
-  onViewProof,
-  onPrintReceipt,
-  onReverseTransaction,
-  onOpenJournalModal
-}) => {
-  const { 
-    allPayments, 
-    advancePayments, 
-    accountAdjustments, 
-    invoices, 
-    labs 
-  } = useApp();
+/**
+ * The amount on a payment entry, editable in place.
+ *
+ * The draft is local, so a half-typed number never reaches the ledger: it
+ * commits once, on blur or Enter, and snaps back to the stored value whenever
+ * the command refuses the change. The row — not this input — is the source of
+ * truth, which is why there is no error text here to fall out of date.
+ */
+const EditableAmount: React.FC<{
+  value: number;
+  label: string;
+  onCommit: (next: number) => boolean;
+}> = ({ value, label, onCommit }) => {
+  const [draft, setDraft] = useState<string>(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
 
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'payment' | 'advance' | 'adjustment'>('all');
-  const [selectedLabId, setSelectedLabId] = useState<string>('all');
-  const [methodFilter, setMethodFilter] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  // This tab is the daily working surface: entries made TODAY by default;
-  // the enhanced date-range picker rewinds to any previous day/range.
-  const today = todayISO();
-  const [fromDate, setFromDate] = useState<string>(today);
-  const [toDate, setToDate] = useState<string>(today);
-
-  // Map and unify all financial transactions into a single feed
-  const unifiedTransactions = useMemo<UnifiedTransaction[]>(() => {
-    const list: UnifiedTransaction[] = [];
-
-    // 1. Invoice Payments
-    allPayments.forEach((pay) => {
-      const matchedInv = invoices.find((i) => i.id === pay.invoice_id || i.invoice_number === pay.invoice_number);
-      const isAdvanceAlloc = pay.payment_method === 'advance';
-      list.push({
-        id: pay.id,
-        sourceType: 'payment',
-        txnNumber: pay.payment_number || 'PAY-RCPT',
-        date: pay.payment_date,
-        labId: pay.lab_id || matchedInv?.lab_id || '',
-        labName: pay.lab_name || matchedInv?.lab_name || 'Dental Clinic',
-        category: isAdvanceAlloc ? 'Advance Credit Settlement' : 'Invoice Payment',
-        detail: `Invoice ${pay.invoice_number || matchedInv?.invoice_number || ''} ${matchedInv?.case_number ? `(Case #${matchedInv.case_number})` : ''}`,
-        referenceNumber: pay.reference_number,
-        method: pay.payment_method,
-        amount: pay.amount,
-        direction: 'inflow',
-        recordedBy: pay.recorded_by || 'Staff',
-        hasAttachments: !!pay.attachments && pay.attachments.length > 0,
-        attachmentsCount: pay.attachments?.length || 0,
-        rawPayment: pay,
-        invoiceId: pay.invoice_id,
-        invoiceNumber: pay.invoice_number || matchedInv?.invoice_number,
-        caseNumber: matchedInv?.case_number,
-        isReversed: pay.is_reversed,
-        reversalReason: pay.reversal_reason
-      });
-    });
-
-    // 2. Advance Deposits
-    advancePayments.forEach((adv) => {
-      list.push({
-        id: adv.id,
-        sourceType: 'advance',
-        txnNumber: adv.payment_number,
-        date: adv.payment_date,
-        labId: adv.lab_id,
-        labName: adv.lab_name,
-        category: 'Advance Deposit',
-        detail: `Remaining Credit: PKR ${(adv.remaining_amount || 0).toLocaleString()}`,
-        referenceNumber: adv.reference_number,
-        method: adv.payment_method,
-        amount: adv.amount,
-        direction: 'inflow',
-        recordedBy: adv.recorded_by || 'Staff',
-        hasAttachments: !!adv.attachments && adv.attachments.length > 0,
-        attachmentsCount: adv.attachments?.length || 0,
-        rawAdvance: adv,
-        isReversed: adv.is_reversed,
-        reversalReason: adv.reversal_reason
-      });
-    });
-
-    // 3. Account Adjustments
-    accountAdjustments.forEach((adj) => {
-      let catLabel = 'Credit Note';
-      let dir: 'credit' | 'debit' | 'refund' = 'credit';
-      if (adj.type === 'debit_adjustment') {
-        catLabel = 'Debit Surcharge';
-        dir = 'debit';
-      } else if (adj.type === 'refund') {
-        catLabel = 'Customer Refund';
-        dir = 'refund';
-      }
-
-      list.push({
-        id: adj.id,
-        sourceType: 'adjustment',
-        txnNumber: adj.adjustment_number,
-        date: adj.date,
-        labId: adj.lab_id,
-        labName: adj.lab_name,
-        category: catLabel,
-        detail: adj.reason,
-        referenceNumber: adj.reference_number,
-        method: 'Adjustment',
-        amount: adj.amount,
-        direction: dir,
-        recordedBy: adj.recorded_by || 'Staff',
-        hasAttachments: !!adj.attachments && adj.attachments.length > 0,
-        attachmentsCount: adj.attachments?.length || 0,
-        rawAdjustment: adj,
-        isReversed: adj.is_reversed,
-        reversalReason: adj.reversal_reason
-      });
-    });
-
-    // Sort descending by date
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [allPayments, advancePayments, accountAdjustments, invoices]);
-
-  // Filtered transactions
-  const filteredTransactions = useMemo(() => {
-    return unifiedTransactions.filter((txn) => {
-      // Date range (YYYY-MM-DD compare works even on 'YYYY-MM-DD HH:mm' values)
-      const day = txn.date.slice(0, 10);
-      if (fromDate && day < fromDate) return false;
-      if (toDate && day > toDate) return false;
-
-      // Category filter
-      if (categoryFilter !== 'all' && txn.sourceType !== categoryFilter) {
-        return false;
-      }
-
-      // Clinic filter
-      if (selectedLabId !== 'all' && txn.labId !== selectedLabId) {
-        return false;
-      }
-
-      // Method filter
-      if (methodFilter !== 'all') {
-        if (!txn.method || txn.method.toLowerCase() !== methodFilter.toLowerCase()) {
-          return false;
-        }
-      }
-
-      // Search term
-      if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase();
-        const matchTxn = txn.txnNumber.toLowerCase().includes(q);
-        const matchLab = txn.labName.toLowerCase().includes(q);
-        const matchRef = (txn.referenceNumber || '').toLowerCase().includes(q);
-        const matchDetail = txn.detail.toLowerCase().includes(q);
-        const matchStaff = txn.recordedBy.toLowerCase().includes(q);
-        if (!matchTxn && !matchLab && !matchRef && !matchDetail && !matchStaff) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [unifiedTransactions, categoryFilter, selectedLabId, methodFilter, searchTerm, fromDate, toDate]);
-
-  // Handle Export CSV
-  const handleExportCSV = () => {
-    const headers = ['Transaction #', 'Date', 'Dental Clinic', 'Type / Category', 'Detail / Notes', 'Method', 'Reference #', 'Amount (PKR)', 'Staff'];
-    const rows = filteredTransactions.map(t => [
-      `"${t.txnNumber}"`,
-      `"${t.date}"`,
-      `"${t.labName}"`,
-      `"${t.category}"`,
-      `"${t.detail.replace(/"/g, '""')}"`,
-      `"${t.method || ''}"`,
-      `"${t.referenceNumber || ''}"`,
-      t.amount,
-      `"${t.recordedBy}"`
-    ]);
-
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Dental_Solutions_Transactions_${getTodayStr()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const commit = () => {
+    const next = Number(draft);
+    if (!Number.isFinite(next) || next <= 0 || Math.round(next * 100) === Math.round(value * 100)) {
+      setDraft(String(value));
+      return;
+    }
+    if (!onCommit(next)) setDraft(String(value));
   };
 
   return (
-    <div className="space-y-5">
+    <input
+      type="number"
+      min="1"
+      step="1"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          // Committed here rather than by blurring: Enter is the commit, and a
+          // keystroke must not depend on the browser moving focus for it.
+          e.preventDefault();
+          commit();
+        } else if (e.key === 'Escape') {
+          setDraft(String(value));
+        }
+      }}
+      aria-label={label}
+      title="Edit this amount. The invoice balance and the receipt's journal follow the new figure."
+      className="w-24 px-1 py-0.5 text-right font-mono font-bold tabular-nums text-ink-success bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded focus:outline-none"
+    />
+  );
+};
 
-      {/* Search, Date Range & Sub-Filters */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-        {/* Search-first filter row: search → date range → clinic → method (matches Archive tab) */}
-        <div className="flex flex-col md:flex-row md:items-center gap-3">
-          {/* Search */}
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search receipt #, clinic, ref #, remarks..."
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          {/* Date Range (defaults to today — rewind to view previous entries) + Export */}
-          <div className="flex items-center gap-2 shrink-0">
-            <DatePickerRange
-              from={fromDate}
-              to={toDate}
-              onChange={(f, t) => {
-                setFromDate(f);
-                setToDate(t);
-              }}
-            />
-            <button
-              onClick={handleExportCSV}
-              className="p-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
-              title="Export Transactions CSV" aria-label="Export transactions CSV"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Dental Clinic Filter */}
-          <div className="relative w-full md:w-64 shrink-0">
-            <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <select
-              value={selectedLabId}
-              onChange={(e) => setSelectedLabId(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
-            >
-              <option value="all">All Clinics ({labs.length})</option>
-              {labs.map((lab) => (
-                <option key={lab.id} value={lab.id}>{lab.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Method Filter */}
-          <div className="relative w-full md:w-44 shrink-0">
-            <Filter className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <select
-              value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
-            >
-              <option value="all">All Payment Methods</option>
-              <option value="cash">Cash</option>
-              <option value="bank">Bank Transfer (IBFT)</option>
-              <option value="cheque">Cheque</option>
-              <option value="advance">Clinic Advance Credit</option>
-            </select>
-          </div>
+export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
+  transactions,
+  onViewProof,
+  onPrintReceipt,
+  onDeletePayment,
+  onEditPaymentAmount,
+  onOpenJournalModal
+}) => {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+      {transactions.length === 0 ? (
+        <div className="p-12 text-center text-xs text-ink-muted">
+          No payments, advances or adjustments match the filters above — widen the
+          date range to reach older entries.
         </div>
+      ) : (
+        <div className="overflow-x-auto no-scrollbar">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[11px] text-slate-500 tracking-wider">
+                <th scope="col" className="py-2 px-3">Txn / Receipt #</th>
+                <th scope="col" className="py-2 px-3">Date</th>
+                <th scope="col" className="py-2 px-3">Dental Clinic</th>
+                <th scope="col" className="py-2 px-3">Category</th>
+                <th scope="col" className="py-2 px-3">Detail & Notes</th>
+                <th scope="col" className="py-2 px-3">Method & Ref #</th>
+                <th scope="col" className="py-2 px-3 text-right">Amount (PKR)</th>
+                <th scope="col" className="py-2 px-3 text-center">Proof Slip</th>
+                <th scope="col" className="py-2 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-medium">
+              {transactions.map((txn) => {
+                const isPayment = txn.sourceType === 'payment';
+                const isAdvance = txn.sourceType === 'advance';
+                const isAdjustment = txn.sourceType === 'adjustment';
 
-        {/* Sub-Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 no-scrollbar">
-          {[
-            { id: 'all', label: 'All Transactions', count: unifiedTransactions.length },
-            { id: 'payment', label: 'Invoice Payments', count: allPayments.length },
-            { id: 'advance', label: 'Advance Deposits', count: advancePayments.length },
-            { id: 'adjustment', label: 'Adjustments & Notes', count: accountAdjustments.length },
-          ].map((sub) => {
-            const isActive = categoryFilter === sub.id;
-            return (
-              <button
-                key={sub.id}
-                onClick={() => setCategoryFilter(sub.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  isActive
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                <span>{sub.label}</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[11px] ${
-                  isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700'
-                }`}>
-                  {sub.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+                return (
+                  <tr key={`${txn.sourceType}-${txn.id}`} className={`hover:bg-slate-50/80 transition-colors ${txn.isReversed ? 'bg-rose-50/40 opacity-75' : ''}`}>
 
-      {/* Unified Transactions Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-        {filteredTransactions.length === 0 ? (
-          <div className="p-12 text-center text-xs text-ink-muted">
-            No transactions found for the selected date range and filters — rewind
-            the date picker to view previous entries.
-          </div>
-        ) : (
-          <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[11px] text-slate-500 tracking-wider">
-                  <th scope="col" className="py-2 px-3">Txn / Receipt #</th>
-                  <th scope="col" className="py-2 px-3">Date</th>
-                  <th scope="col" className="py-2 px-3">Dental Clinic</th>
-                  <th scope="col" className="py-2 px-3">Category</th>
-                  <th scope="col" className="py-2 px-3">Detail & Notes</th>
-                  <th scope="col" className="py-2 px-3">Method & Ref #</th>
-                  <th scope="col" className="py-2 px-3 text-right">Amount (PKR)</th>
-                  <th scope="col" className="py-2 px-3 text-center">Proof Slip</th>
-                  <th scope="col" className="py-2 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredTransactions.map((txn) => {
-                  const isPayment = txn.sourceType === 'payment';
-                  const isAdvance = txn.sourceType === 'advance';
-                  const isAdjustment = txn.sourceType === 'adjustment';
-
-                  return (
-                    <tr key={`${txn.sourceType}-${txn.id}`} className={`hover:bg-slate-50/80 transition-colors ${txn.isReversed ? 'bg-rose-50/40 opacity-75' : ''}`}>
-                      
-                      {/* Transaction # */}
-                      <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span>{txn.txnNumber}</span>
-                          {txn.isReversed && (
-                            <span className="px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 text-rose-700 uppercase tracking-tight">
-                              REVERSED
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Date */}
-                      <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
-                        {txn.date}
-                      </td>
-
-                      {/* Clinic Name */}
-                      <td className="py-2 px-3 font-semibold text-slate-900">
-                        {txn.labName}
-                      </td>
-
-                      {/* Category Badge */}
-                      <td className="py-2 px-3 whitespace-nowrap">
-                        {isPayment && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <DollarSign className="w-3 h-3" />
-                            <span>{txn.category}</span>
+                    {/* Transaction # */}
+                    <td className="py-2 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span>{txn.txnNumber}</span>
+                        {txn.isReversed && (
+                          <span className="px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 text-rose-700 uppercase tracking-tight">
+                            REVERSED
                           </span>
                         )}
-                        {isAdvance && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            <Wallet className="w-3 h-3" />
-                            <span>Advance Deposit</span>
+                      </div>
+                    </td>
+
+                    {/* Date */}
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
+                      {txn.date}
+                    </td>
+
+                    {/* Clinic Name */}
+                    <td className="py-2 px-3 font-semibold text-slate-900">
+                      {txn.labName}
+                    </td>
+
+                    {/* Category Badge */}
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      {isPayment && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <DollarSign className="w-3 h-3" />
+                          <span>{txn.category}</span>
+                        </span>
+                      )}
+                      {isAdvance && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <Wallet className="w-3 h-3" />
+                          <span>Advance Deposit</span>
+                        </span>
+                      )}
+                      {isAdjustment && (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                          txn.direction === 'credit'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : txn.direction === 'debit'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}>
+                          <FileCheck2 className="w-3 h-3" />
+                          <span>{txn.category}</span>
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Detail & Staff */}
+                    <td className="py-2 px-3 text-slate-600 max-w-xs">
+                      <p className="font-medium text-slate-800 line-clamp-1">{txn.detail}</p>
+                      <p className="text-[11px] text-slate-500">By {txn.recordedBy}</p>
+                    </td>
+
+                    {/* Method & Ref */}
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
+                          txn.method === 'cash'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : txn.method === 'bank'
+                            ? 'bg-blue-100 text-blue-800'
+                            : txn.method === 'cheque'
+                            ? 'bg-slate-100 text-slate-800'
+                            : txn.method === 'advance'
+                            ? 'bg-indigo-100 text-indigo-800'
+                            : 'bg-purple-100 text-purple-800'
+                        }`}>
+                          {txn.method || '—'}
+                        </span>
+                        {txn.referenceNumber && (
+                          <span className="font-mono text-[11px] text-slate-500">
+                            #{txn.referenceNumber}
                           </span>
                         )}
-                        {isAdjustment && (
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                            txn.direction === 'credit'
-                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                              : txn.direction === 'debit'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}>
-                            <FileCheck2 className="w-3 h-3" />
-                            <span>{txn.category}</span>
-                          </span>
-                        )}
-                      </td>
+                      </div>
+                    </td>
 
-                      {/* Detail & Staff */}
-                      <td className="py-2 px-3 text-slate-600 max-w-xs">
-                        <p className="font-medium text-slate-800 line-clamp-1">{txn.detail}</p>
-                        <p className="text-[11px] text-slate-500">By {txn.recordedBy}</p>
-                      </td>
-
-                      {/* Method & Ref */}
-                      <td className="py-2 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
-                            txn.method === 'cash'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : txn.method === 'bank'
-                              ? 'bg-blue-100 text-blue-800'
-                              : txn.method === 'cheque'
-                              ? 'bg-slate-100 text-slate-800'
-                              : txn.method === 'advance'
-                              ? 'bg-indigo-100 text-indigo-800'
-                              : 'bg-purple-100 text-purple-800'
-                          }`}>
-                            {txn.method || '—'}
-                          </span>
-                          {txn.referenceNumber && (
-                            <span className="font-mono text-[11px] text-slate-500">
-                              #{txn.referenceNumber}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Amount */}
-                      <td className="py-2 px-3 text-right font-bold whitespace-nowrap">
+                    {/* Amount — editable in place on a payment entry, because
+                        a mistyped figure is corrected here or nowhere: the
+                        invoice and the receipt journal both follow it. */}
+                    <td className="py-2 px-3 text-right font-bold whitespace-nowrap">
+                      {isPayment && txn.rawPayment && !txn.isReversed && onEditPaymentAmount ? (
+                        <span className="inline-flex items-center justify-end gap-1 text-ink-success">
+                          <span className="text-[11px]">PKR</span>
+                          <EditableAmount
+                            value={txn.amount}
+                            label={`Amount of payment ${txn.txnNumber}`}
+                            onCommit={(next) => onEditPaymentAmount(txn.rawPayment!, next)}
+                          />
+                        </span>
+                      ) : (
                         <span className={
                           txn.direction === 'inflow'
                             ? 'text-ink-success'
@@ -474,119 +231,105 @@ export const TransactionRegister: React.FC<TransactionRegisterProps> = ({
                         }>
                           PKR <span className="tabular-nums">{(txn.amount || 0).toLocaleString()}</span>
                         </span>
-                      </td>
+                      )}
+                    </td>
 
-                      {/* Proof Slip Attachment */}
-                      <td className="py-2 px-3 text-center whitespace-nowrap">
-                        {txn.hasAttachments ? (
+                    {/* Proof Slip Attachment */}
+                    <td className="py-2 px-3 text-center whitespace-nowrap">
+                      {txn.hasAttachments ? (
+                        <button
+                          onClick={() => {
+                            if (txn.rawPayment) {
+                              onViewProof(txn.rawPayment);
+                            } else if (txn.rawAdvance) {
+                              onViewProof({
+                                id: txn.rawAdvance.id,
+                                payment_number: txn.rawAdvance.payment_number,
+                                invoice_id: '',
+                                lab_id: txn.rawAdvance.lab_id,
+                                lab_name: txn.rawAdvance.lab_name,
+                                amount: txn.rawAdvance.amount,
+                                payment_method: txn.rawAdvance.payment_method,
+                                payment_date: txn.rawAdvance.payment_date,
+                                reference_number: txn.rawAdvance.reference_number,
+                                notes: txn.rawAdvance.notes,
+                                attachments: txn.rawAdvance.attachments,
+                                recorded_by: txn.rawAdvance.recorded_by
+                              });
+                            } else if (txn.rawAdjustment) {
+                              onViewProof({
+                                id: txn.rawAdjustment.id,
+                                payment_number: txn.rawAdjustment.adjustment_number,
+                                invoice_id: '',
+                                lab_id: txn.rawAdjustment.lab_id,
+                                lab_name: txn.rawAdjustment.lab_name,
+                                amount: txn.rawAdjustment.amount,
+                                payment_method: 'cash',
+                                payment_date: txn.rawAdjustment.date,
+                                reference_number: txn.rawAdjustment.reference_number,
+                                notes: txn.rawAdjustment.reason,
+                                attachments: txn.rawAdjustment.attachments,
+                                recorded_by: txn.rawAdjustment.recorded_by
+                              });
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded text-[11px] transition-colors cursor-pointer"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" />
+                          <span>{txn.attachmentsCount} Slip{txn.attachmentsCount > 1 ? 's' : ''}</span>
+                        </button>
+                      ) : (
+                        <span className="text-slate-300 text-[11px]">—</span>
+                      )}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-2 px-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {isPayment && txn.rawPayment && (
                           <button
-                            onClick={() => {
-                              if (txn.rawPayment) {
-                                onViewProof(txn.rawPayment);
-                              } else if (txn.rawAdvance) {
-                                onViewProof({
-                                  id: txn.rawAdvance.id,
-                                  payment_number: txn.rawAdvance.payment_number,
-                                  invoice_id: '',
-                                  lab_id: txn.rawAdvance.lab_id,
-                                  lab_name: txn.rawAdvance.lab_name,
-                                  amount: txn.rawAdvance.amount,
-                                  payment_method: txn.rawAdvance.payment_method,
-                                  payment_date: txn.rawAdvance.payment_date,
-                                  reference_number: txn.rawAdvance.reference_number,
-                                  notes: txn.rawAdvance.notes,
-                                  attachments: txn.rawAdvance.attachments,
-                                  recorded_by: txn.rawAdvance.recorded_by
-                                });
-                              } else if (txn.rawAdjustment) {
-                                onViewProof({
-                                  id: txn.rawAdjustment.id,
-                                  payment_number: txn.rawAdjustment.adjustment_number,
-                                  invoice_id: '',
-                                  lab_id: txn.rawAdjustment.lab_id,
-                                  lab_name: txn.rawAdjustment.lab_name,
-                                  amount: txn.rawAdjustment.amount,
-                                  payment_method: 'cash',
-                                  payment_date: txn.rawAdjustment.date,
-                                  reference_number: txn.rawAdjustment.reference_number,
-                                  notes: txn.rawAdjustment.reason,
-                                  attachments: txn.rawAdjustment.attachments,
-                                  recorded_by: txn.rawAdjustment.recorded_by
-                                });
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded text-[11px] transition-colors cursor-pointer"
+                            onClick={() => onPrintReceipt(txn)}
+                            className="px-2 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1 transition-all cursor-pointer"
+                            title="Print Official Payment Slip" aria-label="Print official payment slip"
                           >
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            <span>{txn.attachmentsCount} Slip{txn.attachmentsCount > 1 ? 's' : ''}</span>
+                            <Printer className="w-3 h-3 text-slate-500" />
+                            <span>Receipt</span>
                           </button>
-                        ) : (
-                          <span className="text-slate-300 text-[11px]">—</span>
                         )}
-                      </td>
 
-                      {/* Actions */}
-                      <td className="py-2 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {isPayment && txn.rawPayment && (
-                            <button
-                              onClick={() => {
-                                const matchedInv = invoices.find(i => i.id === txn.invoiceId || i.invoice_number === txn.invoiceNumber);
-                                onPrintReceipt(txn.rawPayment!, matchedInv);
-                              }}
-                              className="px-2 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1 transition-all cursor-pointer"
-                              title="Print Official Payment Slip" aria-label="Print official payment slip"
-                            >
-                              <Printer className="w-3 h-3 text-slate-500" />
-                              <span>Receipt</span>
-                            </button>
-                          )}
+                        {/* Inspect Double-Entry Journal */}
+                        {onOpenJournalModal && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenJournalModal(txn.txnNumber || txn.referenceNumber || '')}
+                            className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            title="Inspect Double-Entry Journal Records" aria-label="Inspect double-entry journal records"
+                          >
+                            <Scale className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
-                          {/* Inspect Double-Entry Journal */}
-                          {onOpenJournalModal && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenJournalModal(txn.txnNumber || txn.referenceNumber || '')}
-                              className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                              title="Inspect Double-Entry Journal Records" aria-label="Inspect double-entry journal records"
-                            >
-                              <Scale className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                        {/* Delete this payment entry — never the invoice. */}
+                        {isPayment && txn.rawPayment && !txn.isReversed && onDeletePayment ? (
+                          <button
+                            type="button"
+                            onClick={() => onDeletePayment(txn.rawPayment!)}
+                            className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Payment Entry" aria-label={`Delete payment ${txn.txnNumber}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
 
-                          {/* Audit-Compliant Reversal (the only removal path — no silent deletes) */}
-                          {!txn.isReversed && onReverseTransaction ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onReverseTransaction({
-                                  referenceType: txn.sourceType === 'payment' ? 'payment' : txn.sourceType === 'advance' ? 'advance_payment' : 'adjustment',
-                                  referenceId: txn.id,
-                                  referenceNumber: txn.txnNumber,
-                                  amount: txn.amount,
-                                  labName: txn.labName,
-                                  date: txn.date,
-                                  details: txn.detail
-                                });
-                              }}
-                              className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Reverse Transaction (Compensating Journal)" aria-label="Reverse transaction (compensating journal)"
-                            >
-                              <ArrowLeftRight className="w-3.5 h-3.5" />
-                            </button>
-                          ) : null}
-                        </div>
-                      </td>
-
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };

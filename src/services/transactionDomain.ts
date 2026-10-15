@@ -506,52 +506,18 @@ export const reverseCreditNoteOnInvoice = (inv: Invoice, amount: number): Invoic
   };
 };
 
-// ────────────────────────────────────────────── reversal (V2)
+// ────────────────────────────────────────────── payment entry corrections
 
-export const markReversal = <T extends { is_reversed?: boolean; status?: any; reversal_reason?: string; reversed_at?: string; reversed_by?: string }>(
-  entity: T,
-  reason: string,
-  actor: string,
-  at: string,
-  extra: Partial<T> = {},
-): T =>
-  ({
-    ...entity,
-    is_reversed: true,
-    status: 'reversed',
-    reversal_reason: reason,
-    reversed_at: at,
-    reversed_by: actor,
-    ...extra,
-  } as T);
-
-export const buildReversalAuditEvent = (input: {
-  entityType: 'payment' | 'advance_payment' | 'adjustment';
-  entityId: string;
-  entityRef: string;
-  amount: number;
-  reason: string;
-  actor: string;
-  kind: 'payment' | 'advance' | 'adjustment';
-}): AuditEvent =>
-  buildAuditEvent({
-    actor: input.actor,
-    action: 'TRANSACTION_REVERSED',
-    entity_type: input.entityType,
-    entity_id: input.entityId,
-    entity_ref: input.entityRef,
-    reason: input.reason,
-    notes: input.kind === 'payment'
-      ? `Reversed payment ${input.entityRef} (${formatPKR(input.amount)}). Reason: ${input.reason}`
-      : input.kind === 'advance'
-        ? `Reversed advance deposit ${input.entityRef} (${formatPKR(input.amount)}). Reason: ${input.reason}`
-        : `Reversed adjustment ${input.entityRef} (${formatPKR(input.amount)}). Reason: ${input.reason}`
-  });
-
-/** Invoice update when one of its payments is reversed (paid total recomputed from active payments). */
-export const applyPaymentReversalToInvoice = (
+/**
+ * Invoice update after its stored payments change — an entry edited or deleted.
+ *
+ * The paid total is always RECOMPUTED from the payments that remain, never
+ * nudged by a delta: an adjustment that drifts from the rows it is supposed to
+ * sum is the one error the invoice drawer, the statement and the receivables
+ * report would all disagree about.
+ */
+export const recomputeInvoiceFromPayments = (
   inv: Invoice,
-  _referenceId: string,
   updatedPayments: PaymentRecord[],
 ): Invoice => {
   const activePaid = updatedPayments

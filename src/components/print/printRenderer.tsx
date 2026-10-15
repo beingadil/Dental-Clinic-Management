@@ -4,7 +4,12 @@ import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { caseHasChartedTeeth, billableUnits } from '../../utils/catalogToothRequirement';
-import { caseDetailLines, findCaseForInvoice, formatReceivedDate } from '../../services/ledgerCaseDetail';
+import {
+  caseDetailLines,
+  findCaseForInvoice,
+  formatReceivedDate,
+  INVOICE_DETAIL_OMIT,
+} from '../../services/ledgerCaseDetail';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
 
@@ -70,6 +75,36 @@ export const DEFAULT_ENABLED: Record<DocumentKind, string[]> = {
 
 const on = (sections: string[], id: string) => sections.includes(id);
 const money = (n: number) => `PKR ${(n || 0).toLocaleString()}`;
+
+/* Separator for the inline case-detail line.
+   Spelled with an escape rather than a literal `·` so a mangled byte in an
+   editor or a shell round-trip cannot silently turn the join into something
+   else. It bit us once: a PowerShell rewrite corrupted the literal and the
+   printed row read "Ali Raza A? Retainer" instead of the separator. */
+export const SEP = ' \u00B7 ';
+
+/**
+ * Settlement status for a printed invoice, derived from the BALANCE.
+ *
+ * Not read off `payment_status`, because those two disagree the moment a
+ * credit note is applied: the stored status can still say `paid` while the
+ * printed balance is non-zero, or `unpaid` once the balance is cleared. What
+ * the operator reads on paper has to agree with the number on the same row,
+ * so the balance wins.
+ *
+ * One helper rather than two derivations: the single invoice and the batch
+ * statement row print the same column, and when each had its own inline
+ * ternary the batch row fell back to the stored `payment_status` — so the two
+ * documents disagreed about the same invoice. Shared, so they cannot.
+ */
+export const invoiceStatus = (
+  balance: number,
+  paid: number | undefined,
+): { label: 'Full' | 'Partial' | 'Unpaid'; className: string } => {
+  if (balance <= 0) return { label: 'Full', className: 'font-bold text-emerald-700' };
+  if ((paid || 0) > 0) return { label: 'Partial', className: 'font-bold text-amber-700' };
+  return { label: 'Unpaid', className: 'font-bold text-rose-700' };
+};
 
 interface PrintDocumentProps {
   kind: DocumentKind;
@@ -183,13 +218,60 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   /* Same rows as the statement's case block and the invoice drawer's case card,
      from the same formatter — so the single invoice, the batch statement and
      the screen cannot drift apart. */
-  const invoiceCaseDetail = invoiceCase ? caseDetailLines(invoiceCase) : [];
+  /* Invoice case rows. Teeth and Delivery Date are suppressed here, and only
+     here: a printed invoice is a billing document, so the reader needs what
+     was made and how much, not the charting list or the bench date — and the
+     operator asked for those to come off. `Units` replaces the tooth list and
+     carries the same "4 units" wording the line item above already uses.
+     The job slip keeps both, because the bench genuinely needs them.
+     INVOICE_DETAIL_OMIT is shared with statementPagination so the sheet
+     budget is priced from the same rows that print. */
+  const invoiceCaseDetail = invoiceCase
+    ? caseDetailLines(invoiceCase, { omit: INVOICE_DETAIL_OMIT })
+    : [];
 
   /* Prefer the case the caller resolved; fall back to the one we looked up, so
      a caller that passes only `cases` still gets teeth, units and the case
      block instead of a silently emptier invoice. */
   const resolvedCase = caseData ?? invoiceCase;
-  const resolvedHasTeeth = caseHasChartedTeeth(resolvedCase);
+
+  /* ---- Invoice line, rebuilt as a receivable row ----------------------
+     The operator asked for the printed invoice to read as one scannable line
+     per case — "adil - zirconia, 4 units" — with Amount / Paid / Balance /
+     Status alongside, so a monthly or fortnightly run can be read without
+     totalling anything by hand.
+
+     Deliberately NOT carried over from the old table:
+       - "Teeth: #21, #22, #23, #24" — replaced by the unit count. The tooth
+         list is chart-level detail; on paper it wrapped the row and told the
+         reader nothing they could not get from the unit count.
+       - the separate Rate column. It rendered `money(invoice.amount)`, i.e.
+         byte-identical to Amount, so it was a column that cost width and
+         said nothing.
+       - the per-case-number prefix. The invoice number is already in the meta
+         block directly above.
+     Each part is dropped when absent rather than rendered empty, so an
+     invoice with no patient on file prints "zirconia, 4 units" and not
+     " - zirconia, 4 units". */
+  const invoicePatient = invoice?.patient_name || resolvedCase?.patient_name || '';
+  const invoiceCaseType = invoice?.case_type_name || '';
+  const invoiceUnits = billableUnits(resolvedCase);
+  const invoiceLineLabel = [
+    [invoicePatient, invoiceCaseType].filter(Boolean).join(' - ') || invoiceCaseType || 'Case work',
+    invoiceUnits > 0 ? `${invoiceUnits} unit${invoiceUnits === 1 ? '' : 's'}` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  // Net of discount and any credit notes, floored at zero: a credit note
+  // larger than the invoice is a data problem, not a negative amount to print.
+  const invoiceBalance = Math.max(
+    0,
+    (invoice?.final_amount ?? 0) - (invoice?.amount_paid || 0) - (invoice?.credit_notes_total || 0),
+  );
+
+  const { label: invoiceStatusLabel, className: invoiceStatusClass } =
+    invoiceStatus(invoiceBalance, invoice?.amount_paid);
 
   /* The balance block must total the whole run even when the table is split
      across sheets, so it sums `balanceInvoices` when the caller supplies it. */
@@ -373,85 +455,86 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               `loadDocumentSections` keeps only ids already stored, so a new
               section would stay invisible to anyone who saved a section list. */}
           {on(sections, 'billTo') && invoiceCaseDetail.length > 0 && (
-            <div className="mb-4 border border-slate-300 p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+            <div className="mb-3">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
                 Case Details
               </div>
-              <dl className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px]">
-                {invoiceCaseDetail.map((d) => (
-                  <div key={d.label}>
-                    <dt className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{d.label}</dt>
-                    <dd className="font-semibold">{d.value}</dd>
-                  </div>
-                ))}
-              </dl>
+              {/* Inline, for the same reason as the batch row: a bordered grid
+                  of labelled pairs costs four lines per invoice and was the
+                  main reason a monthly run spilled onto a second sheet. */}
+              <div className="text-[10px] leading-tight text-slate-700">
+                {invoiceCaseDetail.map((d) => d.value).join(SEP)}
+              </div>
             </div>
           )}
           {on(sections, 'lineItems') && (
-            <table className="w-full border-collapse text-[11px] mb-4">
-              <thead>
-                <tr>
-                  {['Description', 'Units', 'Rate', 'Amount'].map((h) => (
-                    <th key={h} className={`border border-slate-300 bg-slate-100 px-2 py-1.5 text-[10px] uppercase tracking-wider font-bold ${h === 'Amount' ? 'text-right' : 'text-left'}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="border border-slate-300 px-2 py-1.5">
-                    <span className="font-semibold">{invoice.case_type_name}</span>
-                    {invoice.case_number && <span className="text-slate-500"> · Case {invoice.case_number}</span>}
-                    {resolvedCase?.selected_teeth && resolvedHasTeeth && (
-                      <div className="text-slate-500">Teeth: {resolvedCase.selected_teeth!.map((t) => `#${t}`).join(', ')}</div>
-                    )}
-                    {/* Material stays on the line item. Shade moved DOWN into the
-                        case block below, so the same shade is not printed twice. */}
-                    {resolvedCase?.material && (
-                      <div className="text-slate-500">Material: {resolvedCase.material}</div>
-                    )}
-                  </td>
-                  <td className="border border-slate-300 px-2 py-1.5">{billableUnits(resolvedCase)}</td>
-                  <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
-                  <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount)}</td>
-                </tr>
-                {invoice.discount > 0 && (
+            <>
+              {/* Received date sits here rather than in the invoice meta block:
+                  the operator asked for "the day it received", which is the CASE
+                  received_date (when the work reached the lab) — a different
+                  thing from invoice.issue_date, the day it was billed. */}
+              {resolvedCase?.received_date && (
+                <div className="mb-2 text-[10px] text-slate-600">
+                  <span className="font-bold uppercase tracking-wider text-slate-500">Date Received: </span>
+                  {/* Formatted, not the raw ISO string. The batch statement's Date
+                      column already prints this case through formatReceivedDate, so
+                      the two documents would otherwise disagree about the same
+                      date — one "2026-10-03", the other "Oct 3, 2026". */}
+                  {formatReceivedDate(resolvedCase)}
+                </div>
+              )}
+              <table className="w-full border-collapse text-[11px] mb-3">
+                <thead>
                   <tr>
-                    <td className="border border-slate-300 px-2 py-1.5">Discount</td>
-                    <td className="border border-slate-300 px-2 py-1.5"></td>
-                    <td className="border border-slate-300 px-2 py-1.5 text-right">-</td>
-                    <td className="border border-slate-300 px-2 py-1.5 text-right">-{money(invoice.discount)}</td>
+                    {['Description', 'Amount', 'Paid', 'Balance', 'Status'].map((h) => (
+                      <th key={h} className={`border border-slate-300 bg-slate-100 px-2 py-1.5 text-[10px] uppercase tracking-wider font-bold ${h === 'Description' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    ))}
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  <tr>
+                    {/* One cell carries the whole case: patient, what was made,
+                        and how much work. Previously the teeth were listed as
+                        "Teeth: #21, #22, #23, #24" — the operator asked for
+                        "4 units" instead, because on a printout the tooth list
+                        is noise they cannot act on and it wraps the row. */}
+                    <td className="border border-slate-300 px-2 py-1.5">
+                      <span className="font-semibold">{invoiceLineLabel}</span>
+                    </td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.final_amount)}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-right">{money(invoice.amount_paid)}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-right font-semibold">{money(invoiceBalance)}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-center">
+                      <span className={invoiceStatusClass}>{invoiceStatusLabel}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
           )}
-          {on(sections, 'totals') && (
-            <div className="flex justify-end mb-4">
-              <table className="w-72 border-collapse text-[11px]">
+          {on(sections, 'totals') && invoice.discount > 0 && (
+            /* Discount only.
+               This block used to repeat Subtotal / Net Payable / Amount Paid /
+               Balance Due, all four of which now sit in the line-item table one
+               row above — same numbers, twice on the same sheet, which is
+               exactly the bulk the operator asked to cut. What it alone still
+               explains is the discount arithmetic: gross minus discount is the
+               Amount on the row. When there is no discount the block prints
+               nothing at all rather than restating the table. */
+            <div className="flex justify-end mb-3">
+              <table className="w-64 border-collapse text-[11px]">
                 <tbody>
                   <tr className="border border-slate-300">
-                    <td className="px-3 py-1.5 text-slate-600">Subtotal</td>
-                    <td className="px-3 py-1.5 text-right font-semibold">{money(invoice.amount)}</td>
+                    <td className="px-3 py-1.5 text-slate-600">Gross</td>
+                    <td className="px-3 py-1.5 text-right">{money(invoice.amount)}</td>
                   </tr>
-                  {invoice.discount > 0 && (
-                    <tr className="border border-slate-300 border-t-0">
-                      <td className="px-3 py-1.5 text-slate-600">Discount</td>
-                      <td className="px-3 py-1.5 text-right">-{money(invoice.discount)}</td>
-                    </tr>
-                  )}
                   <tr className="border border-slate-300 border-t-0">
-                    <td className="px-3 py-1.5 font-bold uppercase tracking-wider">Net Payable</td>
+                    <td className="px-3 py-1.5 text-slate-600">Discount</td>
+                    <td className="px-3 py-1.5 text-right">-{money(invoice.discount)}</td>
+                  </tr>
+                  <tr className="border border-slate-300 border-t-0">
+                    <td className="px-3 py-1.5 font-bold uppercase tracking-wider">Net</td>
                     <td className="px-3 py-1.5 text-right font-bold">{money(invoice.final_amount)}</td>
-                  </tr>
-                  <tr className="border border-slate-300 border-t-0">
-                    <td className="px-3 py-1.5 text-slate-600">Amount Paid</td>
-                    <td className="px-3 py-1.5 text-right text-emerald-700">{money(invoice.amount_paid || 0)}</td>
-                  </tr>
-                  <tr className="border-2 border-slate-900 bg-slate-100">
-                    <td className="px-3 py-2 font-bold uppercase tracking-wider">Balance Due</td>
-                    <td className="px-3 py-2 text-right text-sm font-bold">
-                      {money(Math.max(0, invoice.final_amount - (invoice.amount_paid || 0)))}
-                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -572,7 +655,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                       only when the invoice has no resolvable case at all —
                       otherwise the column would be blank for exactly the rows a
                       clinic most needs to chase. */}
-                  {['Invoice #', 'Received', 'Case', 'Amount', 'Paid', 'Balance', 'Status'].map((h) => (
+                  {['Date', 'Invoice #', 'Case', 'Amount', 'Paid', 'Balance', 'Status'].map((h) => (
                     <th key={h} className="border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold">{h}</th>
                   ))}
                 </tr>
@@ -581,42 +664,62 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                 {statementInvoices.map((inv) => {
                   const linkedCase = findCaseForInvoice(inv, statementCases);
                   // Shade moves OUT of this block entirely and the received
-                  // date moves UP into the `Received` column, so both are
+                  // date moves UP into the `Date` column, so both are
                   // suppressed here rather than printed twice on one row.
+                  // Teeth and Delivery Date go for the same reason the single
+                  // invoice suppresses them: a billing row should read as
+                  // "patient, procedure, N units", and the charting list plus
+                  // the bench date only made the cell tall. `Units` is kept.
                   const detail = linkedCase
-                    ? caseDetailLines(linkedCase, { omit: ['Shade', 'Received Date'] })
+                    ? caseDetailLines(linkedCase, { omit: INVOICE_DETAIL_OMIT })
                     : [];
                   const received = linkedCase ? formatReceivedDate(linkedCase) : '';
+                  // Same derivation as the single invoice — see invoiceStatus.
+                  // The balance printed next to it subtracts credit notes, so
+                  // the label has to come from that same number.
+                  const batchBalance =
+                    inv.final_amount -
+                    (inv.amount_paid || 0) -
+                    (inv.credit_notes_total || 0);
+                  const batchStatus = invoiceStatus(batchBalance, inv.amount_paid);
                   return (
                   <tr key={inv.id}>
-                    <td className="border border-slate-400 px-2 py-1 align-top font-bold">{inv.invoice_number}</td>
+                    {/* Date leads the row. The operator reads a statement as
+                        "what arrived, when", so the day the work came in sits
+                        left of the invoice number rather than second to it.
+                        Header and body moved together — the two are separate
+                        maps, and swapping one alone would silently misalign
+                        every column under it. */}
                     <td className="border border-slate-400 px-2 py-1 align-top">
                       {received || inv.issue_date || inv.created_at?.slice(0, 10) || '—'}
                     </td>
-                    {/* The job the invoice is against — patient, procedure,
-                        teeth and the promised day. The received date is NOT
-                        repeated here: the `Received` column above already
+                    <td className="border border-slate-400 px-2 py-1 align-top font-bold">{inv.invoice_number}</td>
+                    {/* The job the invoice is against. The received date is NOT
+                        repeated here: the `Date` column above already
                         carries it, and printing the same date twice on one row
-                        reads as two different facts. */}
+                        reads as two different facts.
+
+                        One line, not a nested definition grid. This used to be
+                        a bordered 2-column <dl> with "PATIENT 3578 /
+                        PROCEDURE Zirconia / TEETH #35, #36, #45, #46 / DELIVERY
+                        DATE ..." — four labelled pairs inside a box inside a
+                        cell, which made every invoice row four lines tall and
+                        pushed a fortnightly run onto extra sheets. A billing
+                        reader wants the case identified, not annotated, so the
+                        facts are joined inline and the labels drop away; the
+                        same words are all still present. */}
                     <td className="border border-slate-400 px-2 py-1 align-top">
-                      <span className="font-semibold">{inv.case_number || '—'}</span>
+                      <span className="block font-semibold">{inv.case_number || '—'}</span>
                       {detail.length > 0 && (
-                        <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 border border-slate-300 bg-slate-50 px-1.5 py-1">
-                          {detail.map((d) => (
-                            <div key={d.label} className="flex items-baseline gap-1">
-                              <dt className="shrink-0 text-[8px] font-bold uppercase tracking-wider text-slate-600">
-                                {d.label}
-                              </dt>
-                              <dd className="text-[9px] text-slate-700">{d.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
+                        <div className="text-[9px] leading-tight text-slate-700">
+                          {detail.map((d) => d.value).join(SEP)}
+                        </div>
                       )}
                     </td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.final_amount)}</td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.amount_paid || 0)}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.final_amount - (inv.amount_paid || 0))}</td>
-                    <td className="border border-slate-400 px-2 py-1 align-top capitalize">{inv.payment_status}</td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(batchBalance)}</td>
+                    <td className="border border-slate-400 px-2 py-1 align-top">{batchStatus.label}</td>
                   </tr>
                   );
                 })}

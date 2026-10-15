@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
 
 const { CASE, INVOICE, LAB, TODAY } = vi.hoisted(() => {
   // The modal opens on the Today period, so the fixture invoice is dated today.
@@ -96,6 +96,13 @@ vi.mock('../../src/context/AppContext', () => ({
 }));
 
 import { BatchInvoicePrintModal } from '../../src/components/billing/BatchInvoicePrintModal';
+import { SEP } from '../../src/components/print/printRenderer';
+
+/* The inline-join separator, as an escape rather than a pasted literal.
+   A shell round-trip corrupted that literal once and the suite then failed
+   with a message pointing at the renderer instead of the test. Keep this in
+   step with SEP in printRenderer.tsx. */
+
 
 afterEach(cleanup);
 
@@ -110,27 +117,42 @@ describe('BatchInvoicePrintModal case detail', () => {
     // The statement table resolves the invoice to its case: the number shows
     // twice on screen, once in the selection list and once on the sheet.
     expect(screen.getAllByText('INV-0042')).toHaveLength(2);
-    expect(screen.getByText('Patient')).toBeTruthy();
-    expect(screen.getByText('Ali Raza')).toBeTruthy();
-    expect(screen.getByText('Procedure')).toBeTruthy();
-    expect(screen.getByText('Zirconia Crown')).toBeTruthy();
-    expect(screen.getByText('Teeth')).toBeTruthy();
-    expect(screen.getByText('#11, #21')).toBeTruthy();
-    // The promised day stays a row of its own — it is a commitment about the
-    // future, and folding it in with the received day is what let the two be
-    // read as the same fact.
-    expect(screen.getByText('Delivery Date')).toBeTruthy();
-    expect(screen.getByText('Dec 20, 2026')).toBeTruthy();
+    // CHANGED (compact invoice): the case block is no longer a bordered
+    // two-column <dl> of labelled pairs ("PATIENT Ali Raza / PROCEDURE
+    // Zirconia Crown / TEETH #11, #21"). It is ONE inline line whose values are
+    // joined with a middot, so there are no label nodes on the sheet at all —
+    // the whole joined string is a single text node and the assertion moves
+    // from the labels to the values. Same facts, minus the box: patient,
+    // product, and the unit count that replaced the tooth list.
+    // SEP below is the escape the renderer uses for its inline join, so this
+    // assertion tracks the code instead of duplicating a literal middle dot
+    // that a shell round-trip can silently corrupt (it already did once).
+    expect(screen.getByText(`Ali Raza${SEP}Zirconia Crown${SEP}2 units`)).toBeTruthy();
+    // The tooth list and the promised day are both off a billing row.
+    expect(screen.queryByText('#11, #21')).toBeNull();
+    expect(screen.queryByText('Dec 20, 2026')).toBeNull();
+    // …and with the labels gone, so are the label strings themselves.
+    expect(screen.queryByText('Patient')).toBeNull();
+    expect(screen.queryByText('Procedure')).toBeNull();
+    expect(screen.queryByText('Teeth')).toBeNull();
+    expect(screen.queryByText('Delivery Date')).toBeNull();
   });
 
-  it('shows the received date in the Received column, not inside the case block', () => {
+  it(
+    'leads the row with the Date column instead of burying the date in the case block',
+  () => {
     render(<BatchInvoicePrintModal onClose={() => {}} />);
 
     // The date a clinic reconciles against is the day the lab took the job in,
-    // so it owns the column next to the invoice number. It used to print the
-    // invoice's issue date there and repeat the received date as a row in the
-    // case block, putting two different clocks on one line.
-    expect(screen.getByText('Received')).toBeTruthy();
+    // so it owns the first column, ahead of the invoice number. It used to
+    // print the invoice's issue date there and repeat the received date as a
+    // row in the case block, putting two different clocks on one line.
+    //
+    // Scoped to the printed sheet: the on-screen picker now labels its column
+    // `Date` too, which is correct — but it makes a page-wide query ambiguous,
+    // and the test is about what comes out of the printer.
+    const sheet = document.querySelector('.print-doc-page') as HTMLElement;
+    expect(within(sheet).getByText('Date')).toBeTruthy();
     expect(screen.getByText('Oct 3, 2026')).toBeTruthy();
 
     // …and the block must not repeat it, nor carry a shade the column area

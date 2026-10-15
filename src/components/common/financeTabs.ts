@@ -34,15 +34,26 @@ import {
   BarChart3,
   BookOpen,
   Building2,
-  DollarSign,
   FileSpreadsheet,
   FileText,
   ShieldCheck,
 } from 'lucide-react';
 import type { TabItem } from './ui';
 
-/** Money in: the operational register. */
-export type BillingTab = 'invoices' | 'transactions';
+/**
+ * Money in: the operational register.
+ *
+ * One tab. There used to be two — Invoices & Receivables, and Payments &
+ * Transactions — and the second was removed because a solo operator running a
+ * month-end statement does not think "now I am on the payments tab"; they think
+ * "what does this clinic owe me, and what have they paid". Both answers live on
+ * one surface now: the invoice table above, the payment register below.
+ *
+ * The union is written out by hand and pinned against the array by
+ * tests/components/financeTabOwnership.test.ts, so an id the array does not
+ * declare cannot be added back quietly.
+ */
+export type BillingTab = 'invoices';
 
 /** Money out, looked back on: business intelligence and the read-only books. */
 export type ReportsTab =
@@ -65,7 +76,6 @@ export type ReportsTab =
  */
 export const BILLING_TABS = [
   { id: 'invoices', label: 'Invoices & Receivables', icon: FileText },
-  { id: 'transactions', label: 'Payments & Transactions', icon: DollarSign },
 ] as const satisfies readonly TabItem<BillingTab>[];
 
 export const REPORTS_TABS = [

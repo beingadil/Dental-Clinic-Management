@@ -9,22 +9,27 @@ import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from './PaymentProofModal';
 import { PaymentReceiptModal } from './PaymentReceiptModal';
 import { TransactionRegister } from './TransactionRegister';
+import { invoiceMatchesSearch } from '../../services/invoiceSearch';
+import {
+  buildUnifiedTransactions,
+  filterUnifiedTransactions,
+  transactionCsvRows,
+  type UnifiedTransaction,
+} from '../../services/transactionRegister';
 import { BatchInvoicePrintModal } from './BatchInvoicePrintModal';
 import { RecordTransactionModal } from './RecordTransactionModal';
 import { JournalEntryModal } from './JournalEntryModal';
-import { ReversalModal, ReversalTarget } from './ReversalModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { ClinicStatementModal } from './ClinicStatementModal';
-import { PageHeader, EmptyState, TabsNav, DataTable, FilterBar, usePagination } from '../common/ui';
-import { BILLING_TABS, labelOf, type BillingTab } from '../common/financeTabs';
+import { PageHeader, EmptyState, DataTable, FilterBar, usePagination } from '../common/ui';
+import { BILLING_TABS, labelOf } from '../common/financeTabs';
 import { todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
 import { 
-  Wallet, 
-  FileCheck2, 
-  Printer, 
+  Wallet,
+  Printer,
   Search, 
   Download, 
   Trash2,
@@ -32,7 +37,6 @@ import {
   AlertTriangle,
   Clock,
   ArrowDownLeft,
-  ArrowUpRight,
   Eye,
   FileSpreadsheet
 } from 'lucide-react';
@@ -41,22 +45,26 @@ export const BillingView: React.FC = () => {
   const { 
     invoices, 
     cases, 
+    allPayments,
+    advancePayments,
+    accountAdjustments,
     bulkMarkPaid, 
     deleteInvoice, 
     labs,
     getLabFinancialSummary,
+    deletePaymentV2,
+    updatePaymentAmountV2,
     user
   } = useApp();
 
   // Core navigation. Clinic accounts, the double-entry ledger, the audit
   // trail and the monthly report/statement archives are the read-only side of
   // the money — they live in Analytics & Reports. This module is money in.
-  const [activeTab, setActiveTab] = useState<BillingTab>('invoices');
+
 
   // Invoices tab filter states
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [clinicFilter, setClinicFilter] = useState<string>('all');
-  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'overdue' | 'paid'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Business date for bulk settlements — user-picked, defaults to today.
   const [bulkPayDate, setBulkPayDate] = useState<string>(getTodayStr());
@@ -69,9 +77,15 @@ export const BillingView: React.FC = () => {
   // Finance 2.0 Unified & Inspection Modals
   const [selectedDrawerInvoice, setSelectedDrawerInvoice] = useState<Invoice | null>(null);
   const [journalModalRef, setJournalModalRef] = useState<string | null>(null);
-  const [reversalTarget, setReversalTarget] = useState<ReversalTarget | null>(null);
+  /* A payment entry queued for deletion. Deleting money needs the same room to
+     explain itself that voiding an invoice gets — the invoice balance and the
+     ledger both move. */
+  const [paymentToDelete, setPaymentToDelete] = useState<PaymentRecord | null>(null);
   const [isUnifiedRecordModalOpen, setIsUnifiedRecordModalOpen] = useState<boolean>(false);
-  const [unifiedModalMode, setUnifiedModalMode] = useState<'payment' | 'advance_deposit' | 'credit_note' | 'refund'>('payment');
+  /* Two things only: money against an invoice, or money held on account.
+     Credit notes and refunds were removed from the recorder — see
+     RecordTransactionModal.tsx for why — so the union narrows with them. */
+  const [unifiedModalMode, setUnifiedModalMode] = useState<'payment' | 'advance_deposit'>('payment');
   const [unifiedModalLabId, setUnifiedModalLabId] = useState<string | undefined>(undefined);
   const [unifiedModalInvoiceId, setUnifiedModalInvoiceId] = useState<string | undefined>(undefined);
   const [clinicStatementModalId, setClinicStatementModalId] = useState<string | null>(null);
@@ -114,39 +128,6 @@ export const BillingView: React.FC = () => {
     return getLabFinancialSummary(clinicFilter);
   }, [clinicFilter, getLabFinancialSummary]);
 
-  const selectedLab = useMemo(() => {
-    if (clinicFilter === 'all') return null;
-    return labs.find((l) => l.id === clinicFilter);
-  }, [clinicFilter, labs]);
-
-  // Live Counts for Invoice Filter Tabs (respects selected clinic)
-  const statusCounts = useMemo(() => {
-    let allCount = 0;
-    let unpaidCount = 0;
-    let partialCount = 0;
-    let overdueCount = 0;
-    let paidCount = 0;
-
-    invoices.forEach((inv) => {
-      if (clinicFilter !== 'all' && inv.lab_id !== clinicFilter) return;
-
-      allCount++;
-      const { isOverdue } = isInvoiceOverdue(inv);
-
-      if (inv.payment_status === 'paid') {
-        paidCount++;
-      } else if (isOverdue) {
-        overdueCount++;
-      } else if (inv.payment_status === 'partial') {
-        partialCount++;
-      } else {
-        unpaidCount++;
-      }
-    });
-
-    return { allCount, unpaidCount, partialCount, overdueCount, paidCount };
-  }, [invoices, clinicFilter]);
-
   // Filtered Invoices
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
@@ -160,39 +141,12 @@ export const BillingView: React.FC = () => {
         return false;
       }
 
-      const { isOverdue } = isInvoiceOverdue(inv);
-
-      // Status filter
-      if (invoiceStatusFilter === 'unpaid') {
-        if (inv.payment_status !== 'unpaid' || isOverdue) return false;
-      }
-      if (invoiceStatusFilter === 'partial') {
-        if (inv.payment_status !== 'partial' || isOverdue) return false;
-      }
-      if (invoiceStatusFilter === 'overdue') {
-        if (!isOverdue) return false;
-      }
-      if (invoiceStatusFilter === 'paid') {
-        if (inv.payment_status !== 'paid') return false;
-      }
-
-      // Search term
-      if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase();
-        const matchInv = (inv.invoice_number || '').toLowerCase().includes(q);
-        const matchCase = (inv.case_number || '').toLowerCase().includes(q);
-        const matchLab = (inv.lab_name || '').toLowerCase().includes(q);
-        // Formatted, so "Dr Ahmad" still matches the now-bare stored name.
-        const matchDoc = formatDoctorName(inv.doctor_name, '').toLowerCase().includes(q);
-        const matchMat = (inv.case_type_name || '').toLowerCase().includes(q);
-        if (!matchInv && !matchCase && !matchLab && !matchDoc && !matchMat) {
-          return false;
-        }
-      }
+      // Search — every field of the invoice, not just its numbers and names.
+      if (!invoiceMatchesSearch(inv, searchTerm)) return false;
 
       return true;
     });
-  }, [invoices, clinicFilter, invoiceStatusFilter, searchTerm, invFromDate, invToDate]);
+  }, [invoices, clinicFilter, searchTerm, invFromDate, invToDate]);
 
   /* Paged, not incrementally grown. Mounting 1000+ heavy rows froze scroll and
      search on volume datasets; the old render cap bounded the first paint but
@@ -203,8 +157,23 @@ export const BillingView: React.FC = () => {
     pagination: invoicesPagination,
   } = usePagination(filteredInvoices, {
     initialPageSize: 50,
-    resetKey: `${clinicFilter}|${invoiceStatusFilter}|${searchTerm}|${invFromDate}|${invToDate}`,
+    resetKey: `${clinicFilter}|${searchTerm}|${invFromDate}|${invToDate}`,
   });
+
+  /*
+   * The payments register underneath the invoice table, built from every stored
+   * money document and filtered by the SAME controls the table above it uses.
+   *
+   * Two filter bands once sat on this page — one per table — and they disagreed
+   * the moment either changed: filtering to one clinic left the register listing
+   * every other clinic's receipts. One band, one query, both lists.
+   */
+  const registerTransactions = useMemo<UnifiedTransaction[]>(() => {
+    return filterUnifiedTransactions(
+      buildUnifiedTransactions({ allPayments, advancePayments, accountAdjustments, invoices }),
+      { search: searchTerm, fromDate: invFromDate, toDate: invToDate, clinicId: clinicFilter },
+    );
+  }, [allPayments, advancePayments, accountAdjustments, invoices, searchTerm, invFromDate, invToDate, clinicFilter]);
 
   const toggleSelectAll = () => {
     if (selectedIds.length === filteredInvoices.length) {
@@ -251,6 +220,15 @@ export const BillingView: React.FC = () => {
       inv.due_date
     ]);
     downloadCSV(`Dental_Solutions_Invoices_${getTodayStr()}`, [headers, ...rows]);
+  };
+
+  /* Exports exactly what the register is showing — the same rows the operator
+     can see, under the same filters. */
+  const handleExportTransactionsCSV = () => {
+    downloadCSV(
+      `Dental_Solutions_Transactions_${getTodayStr()}`,
+      transactionCsvRows(registerTransactions),
+    );
   };
 
   const getStatusBadge = (inv: Invoice) => {
@@ -332,26 +310,15 @@ export const BillingView: React.FC = () => {
         breadcrumbs={[
           { label: 'Financial Hub' },
           {
-            label: labelOf(BILLING_TABS, activeTab)
+            label: labelOf(BILLING_TABS, 'invoices')
           }
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {selectedLabSummary && selectedLabSummary.outstanding_balance === 0 && (selectedLabSummary.advance_balance || 0) > 0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setUnifiedModalLabId(selectedLab?.id);
-                  setUnifiedModalMode('refund');
-                  setIsUnifiedRecordModalOpen(true);
-                }}
-                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
-                title="Lab holds advance credit for this clinic. Pay refund or apply debit adjustment"
-              >
-                <ArrowUpRight className="w-4 h-4 shrink-0" />
-                <span>Pay / Refund Clinic (PKR {(selectedLabSummary.advance_balance || 0).toLocaleString()})</span>
-              </button>
-            ) : (
+            {/* The "Pay / Refund Clinic" button that used to open the recorder in
+                refund mode is gone. Refund was money OUT and the operator removed
+                it; a clinic holding advance credit now has it drawn down by later
+                invoices (Clinic Credit Wallet) rather than paid back. */}
               <button
                 type="button"
                 onClick={() => {
@@ -369,16 +336,15 @@ export const BillingView: React.FC = () => {
                     : 'Receive Payment'}
                 </span>
               </button>
-            )}
 
             <button
               type="button"
               onClick={() => setBatchPrintOpen(true)}
               className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
-              title="Print every unpaid invoice for one clinic over a month or date range"
+              title="Print every invoice for one clinic over a month or date range - paid, partly paid and unpaid"
             >
               <Printer className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>Batch Print Unpaid</span>
+              <span>Batch Print Invoices</span>
             </button>
 
             {clinicFilter !== 'all' && (
@@ -407,21 +373,12 @@ export const BillingView: React.FC = () => {
               <span>Advance Deposit</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setUnifiedModalInvoiceId(undefined);
-                setUnifiedModalLabId(clinicFilter !== 'all' ? clinicFilter : undefined);
-                setUnifiedModalMode('credit_note');
-                setIsUnifiedRecordModalOpen(true);
-              }}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <FileCheck2 className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>Credit Note / Adjustment</span>
-            </button>
+            {/* The "Credit Note / Adjustment" button is gone. Issuing a credit note
+                is a write-off decision, not a collection, and the operator removed
+                it from the recorder. Credit notes already issued still show on the
+                invoice drawer and still net off the balance. */}
 
-            {selectedIds.length > 0 && activeTab === 'invoices' && (
+            {selectedIds.length > 0 && (
               <>
                 <label className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-xl shadow-2xs">
                   <span className="text-xs font-semibold text-slate-600 shrink-0">Payment date</span>
@@ -446,28 +403,15 @@ export const BillingView: React.FC = () => {
         }
       />
 
-      {/* Main Tab Navigation (Comprehensive ERP Finance Modules) */}
-      <TabsNav<BillingTab>
-        activeTab={activeTab}
-        onChange={(tabId) => {
-          setActiveTab(tabId);
-          setSelectedIds([]);
-        }}
-        fit="fill"
-        variant="pills"
-        tabs={[...BILLING_TABS]}
-      />
-
       {/* TAB 1: INVOICES & RECEIVABLES */}
-      {activeTab === 'invoices' && (
-        <div className="space-y-5">
+      <div className="space-y-5">
 
           {/* Search, Clinic Dropdown & Filter Controls */}
           <FilterBar
             search={{
               value: searchTerm,
               onChange: setSearchTerm,
-              placeholder: 'Search by invoice #, case #, dental clinic, doctor, material...',
+              placeholder: 'Search patient, invoice #, case #, doctor, clinic, amount, receipt ref...',
             }}
             dateRange={{
               from: invFromDate,
@@ -479,23 +423,23 @@ export const BillingView: React.FC = () => {
             }}
             clinics={{ labs, value: clinicFilter, onChange: setClinicFilter }}
             actions={
-              <button
-                onClick={handleExportInvoicesCSV}
-                className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-500" />
-                <span>Export Invoices CSV</span>
-              </button>
+              <>
+                <button
+                  onClick={handleExportInvoicesCSV}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Export Invoices CSV</span>
+                </button>
+                <button
+                  onClick={handleExportTransactionsCSV}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Export Transactions CSV</span>
+                </button>
+              </>
             }
-            pills={[
-              { id: 'all', label: 'All Invoices', count: statusCounts.allCount },
-              { id: 'unpaid', label: 'Pending (Unpaid)', count: statusCounts.unpaidCount },
-              { id: 'partial', label: 'Partially Paid', count: statusCounts.partialCount },
-              { id: 'overdue', label: 'Overdue', count: statusCounts.overdueCount, tone: 'danger' },
-              { id: 'paid', label: 'Paid in Full', count: statusCounts.paidCount, tone: 'success' },
-            ]}
-            activePill={invoiceStatusFilter}
-            onPillChange={(id) => setInvoiceStatusFilter(id as any)}
           />
 
           {/* Invoices Table */}
@@ -531,7 +475,6 @@ export const BillingView: React.FC = () => {
                   onAction={() => {
                     setSearchTerm('');
                     setClinicFilter('all');
-                    setInvoiceStatusFilter('all');
                     setInvFromDate('');
                     setInvToDate('');
                   }}
@@ -702,19 +645,15 @@ export const BillingView: React.FC = () => {
                           <span>{isOverdue ? 'Receive Overdue' : 'Receive'}</span>
                         </button>
                       ) : clinicSummary.outstanding_balance === 0 && clinicSummary.advance_balance > 0 ? (
-                        <button
-                          onClick={() => {
-                            setUnifiedModalInvoiceId(undefined);
-                            setUnifiedModalLabId(inv.lab_id);
-                            setUnifiedModalMode('refund');
-                            setIsUnifiedRecordModalOpen(true);
-                          }}
-                          className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                          title="Clinic has credit surplus. Click to pay refund or adjust"
+                        /* A clinic holding advance credit has it drawn down by later
+                           invoices (Clinic Credit Wallet) rather than refunded. */
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] font-bold rounded-md border border-indigo-200"
+                          title="Clinic holds advance credit. It is drawn down by later invoices."
                         >
-                          <ArrowUpRight className="w-3.5 h-3.5 text-purple-600" />
-                          <span>Pay / Refund</span>
-                        </button>
+                          <Wallet className="w-3 h-3 text-indigo-500" />
+                          <span>Credit PKR {clinicSummary.advance_balance.toLocaleString()}</span>
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
                           <CheckCircle2 className="w-3 h-3 text-ink-success" />
@@ -759,17 +698,26 @@ export const BillingView: React.FC = () => {
           />
 
         </div>
-      )}
 
-      {/* TAB 2: UNIFIED PAYMENTS & TRANSACTIONS REGISTER */}
-      {activeTab === 'transactions' && (
-        <TransactionRegister
-          onViewProof={(pay) => setSelectedProofPayment(pay)}
-          onPrintReceipt={(pay, inv) => setSelectedReceiptPayment({ payment: pay, invoice: inv })}
-          onReverseTransaction={(target) => setReversalTarget(target)}
-          onOpenJournalModal={(refId) => setJournalModalRef(refId)}
-        />
-      )}
+      {/* The payment register, directly under the invoice table it pays into.
+          It used to be a second tab; see financeTabs.ts for why that split
+          the operator's one question into two surfaces. A payment entry is
+          corrected here — amount edited in place, or the entry deleted — and
+          the invoice it settled recomputes its own balance. */}
+      <TransactionRegister
+        transactions={registerTransactions}
+        onViewProof={(pay) => setSelectedProofPayment(pay)}
+        onPrintReceipt={(txn) => {
+          if (!txn.rawPayment) return;
+          const matched = invoices.find(
+            (i) => i.id === txn.invoiceId || i.invoice_number === txn.invoiceNumber,
+          );
+          setSelectedReceiptPayment({ payment: txn.rawPayment, invoice: matched });
+        }}
+        onDeletePayment={(pay) => setPaymentToDelete(pay)}
+        onEditPaymentAmount={(pay, amount) => updatePaymentAmountV2(pay.id, amount)}
+        onOpenJournalModal={(refId) => setJournalModalRef(refId)}
+      />
 
       {/* Unified Transaction Recording Modal (Finance 2.0 Engine) */}
       {isUnifiedRecordModalOpen && (
@@ -793,13 +741,6 @@ export const BillingView: React.FC = () => {
         referenceId={journalModalRef || ''}
       />
 
-      {/* Audit-Compliant Reversal Modal */}
-      <ReversalModal
-        isOpen={!!reversalTarget}
-        onClose={() => setReversalTarget(null)}
-        target={reversalTarget}
-      />
-
       {/* Invoice Details & Settlement Lifecycle Drawer */}
       <InvoiceDetailDrawer
         isOpen={!!selectedDrawerInvoice}
@@ -812,27 +753,10 @@ export const BillingView: React.FC = () => {
           setUnifiedModalMode('payment');
           setIsUnifiedRecordModalOpen(true);
         }}
-        onOpenCreditNoteModal={(inv) => {
-          setSelectedDrawerInvoice(null);
-          setUnifiedModalLabId(inv.lab_id);
-          setUnifiedModalInvoiceId(inv.id);
-          setUnifiedModalMode('credit_note');
-          setIsUnifiedRecordModalOpen(true);
-        }}
         onOpenJournalModal={(refId) => setJournalModalRef(refId)}
         onPrintInvoice={(inv) => setPrintModalInvoice(inv)}
         onViewReceipt={(pay) => setSelectedReceiptPayment({ payment: pay })}
-        onReversePayment={(pay) => {
-          setReversalTarget({
-            referenceType: 'payment',
-            referenceId: pay.id,
-            referenceNumber: pay.payment_number ?? '',
-            amount: pay.amount,
-            labName: pay.lab_name ?? '',
-            date: pay.payment_date,
-            details: `Invoice Payment: ${pay.invoice_number ?? ''}`
-          });
-        }}
+        onDeletePayment={(pay) => setPaymentToDelete(pay)}
       />
 
       {/* Official Clinic Statement of Account Modal */}
@@ -844,7 +768,7 @@ export const BillingView: React.FC = () => {
         />
       )}
 
-      {/* Batch print — every unpaid invoice for a clinic over a period */}
+      {/* Batch print — every invoice for a clinic over a period, paid ones included */}
       {batchPrintOpen && (
         <BatchInvoicePrintModal
           initialLabId={clinicFilter !== 'all' ? clinicFilter : undefined}
@@ -902,6 +826,25 @@ export const BillingView: React.FC = () => {
         onConfirm={() => {
           if (voidTarget) deleteInvoice(voidTarget.id);
           setVoidTarget(null);
+        }}
+      />
+
+      {/* Delete a payment entry. Never the invoice: voiding one stays on the
+          invoice table, where its issuance journal and retired number are the
+          things being explained. */}
+      <ConfirmDialog
+        open={!!paymentToDelete}
+        title={`Delete payment ${paymentToDelete?.payment_number || ''}`}
+        consequences={[
+          `${paymentToDelete?.lab_name || 'The clinic'}'s balance goes back up by ${(paymentToDelete?.amount || 0).toLocaleString()} PKR on the invoice it paid.`,
+          'The receipt, its journal entry and any bank reconciliation item raised for it are removed.',
+          'A PAYMENT_DELETED audit entry records who deleted it.',
+        ]}
+        confirmLabel="Delete Payment"
+        onCancel={() => setPaymentToDelete(null)}
+        onConfirm={() => {
+          if (paymentToDelete) deletePaymentV2(paymentToDelete.id);
+          setPaymentToDelete(null);
         }}
       />
 

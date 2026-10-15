@@ -20,7 +20,7 @@
  */
 
 import { formatDate, receivedDateFor } from '../utils/dateUtils';
-import { caseHasChartedTeeth } from '../utils/catalogToothRequirement';
+import { caseHasChartedTeeth, billableUnits } from '../utils/catalogToothRequirement';
 import type { DentalCase, Invoice, LedgerEntry } from '../types';
 
 export interface CaseDetailLine {
@@ -32,10 +32,28 @@ export interface CaseDetailLine {
 export type CaseDetailLabel =
   | 'Patient'
   | 'Procedure'
+  | 'Units'
   | 'Teeth'
   | 'Shade'
   | 'Received Date'
   | 'Delivery Date';
+
+/**
+ * Detail rows a printed INVOICE suppresses.
+ *
+ * Exported because `statementPagination` must price a row from the same list
+ * the renderer prints from. They drifted once — the renderer omitted four rows
+ * while the paginator priced all seven — which over-estimated every sheet and
+ * pushed runs onto extra pages. Shared, so they cannot drift again.
+ *
+ * A job slip still wants Teeth; it is not an invoice consumer.
+ */
+export const INVOICE_DETAIL_OMIT: CaseDetailLabel[] = [
+  'Shade',
+  'Received Date',
+  'Teeth',
+  'Delivery Date',
+];
 
 export interface CaseDetailOptions {
   /**
@@ -121,6 +139,17 @@ export const caseDetailLines = (
   // reaches the same answer for the same row and none can drift.
   if (caseHasChartedTeeth(c)) {
     lines.push({ label: 'Teeth', value: formatTeeth(c) });
+  }
+  /* Units, as a count and never as a tooth list.
+     A printed invoice wants "4 units", not "Teeth: #35, #36, #45, #46": the
+     per-tooth list wraps the row and tells a reader reconciling a bill
+     nothing they can act on. Emitted alongside Teeth rather than instead of it
+     so a job slip — which DOES need the tooth list for the bench — keeps it,
+     and the invoice consumer suppresses Teeth via `omit`. Same reasoning as
+     the Teeth gate below: one formatter, consumers choose their rows. */
+  const units = billableUnits(c);
+  if (units > 0) {
+    lines.push({ label: 'Units', value: `${units} unit${units === 1 ? '' : 's'}` });
   }
   lines.push(
     { label: 'Shade', value: c.shade || '' },

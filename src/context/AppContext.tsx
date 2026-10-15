@@ -260,11 +260,10 @@ interface AppContextType {
     approvedBy?: string;
     date?: string;
   }) => AccountAdjustment;
-  reverseTransactionV2: (command: {
-    referenceType: 'payment' | 'advance_payment' | 'adjustment';
-    referenceId: string;
-    reason: string;
-  }) => boolean;
+  /** Delete a payment entry (its whole receipt); invoices are never touched. */
+  deletePaymentV2: (paymentId: string) => boolean;
+  /** Change a payment entry's amount; refused when it would overpay the invoice. */
+  updatePaymentAmountV2: (paymentId: string, amount: number) => boolean;
 
   // Saved Vouchers & Slips
   saveVoucherToSystem: (voucher: Omit<SavedVoucher, 'id' | 'created_at' | 'saved_by'>) => SavedVoucher;
@@ -1598,7 +1597,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAdvanceDepositV2,
     applyAdvanceCreditV2,
     issueCreditNoteV2,
-    reverseTransactionV2,
+    deletePaymentV2,
+    updatePaymentAmountV2,
   } = useTransactionCommands({
     labs,
     invoices,
@@ -1727,7 +1727,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordAdvanceDepositV2,
         applyAdvanceCreditV2,
         issueCreditNoteV2,
-        reverseTransactionV2,
+        deletePaymentV2,
+        updatePaymentAmountV2,
 
         saveVoucherToSystem,
         deleteSavedVoucher,

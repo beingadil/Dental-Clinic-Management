@@ -84,11 +84,10 @@ const renderDrawer = (invoice: Invoice = INVOICE) =>
       onClose={noop}
       invoice={invoice}
       onOpenPaymentModal={noop}
-      onOpenCreditNoteModal={noop}
       onOpenJournalModal={noop}
       onPrintInvoice={noop}
       onViewReceipt={noop}
-      onReversePayment={noop}
+      onDeletePayment={noop}
     />,
   );
 

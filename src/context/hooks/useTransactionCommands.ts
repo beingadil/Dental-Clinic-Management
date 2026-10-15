@@ -2,20 +2,21 @@ import type {
   Invoice,
   AdvancePayment,
   AccountAdjustment,
+  PaymentAllocation,
   PaymentRecord,
   JournalEntry,
   ReconciliationItem,
 } from '../../types';
-import { formatPKR } from '../../services/financeDomain';
+import { formatPKR, roundMoney } from '../../services/financeDomain';
 import { getNowStamp } from '../../utils/dateUtils';
 import {
   buildPaymentJournal,
   buildAdvanceDepositJournal,
   buildApplyAdvanceJournal,
   buildAdjustmentJournal,
-  buildReversalJournal,
 } from '../../services/financeDomain';
 import {
+  buildAuditEvent,
   prepareTransaction,
   applyPaymentToInvoice,
   prepareAdvanceDeposit,
@@ -25,21 +26,32 @@ import {
   applyAdvanceToInvoice,
   buildCreditNoteAdjustment,
   applyCreditNoteToInvoice,
-  reverseCreditNoteOnInvoice,
-  applyPaymentReversalToInvoice,
-  markReversal,
-  buildReversalAuditEvent,
+  recomputeInvoiceFromPayments,
   buildReconciliationUpdate,
 } from '../../services/transactionDomain';
 import { buildPaymentReceivedNotification, buildAdvanceDepositV2Notification } from '../../services/notificationDomain';
 
 /**
  * V2 cashier command flows (audit F2 continuation) — recordTransaction,
- * advance deposit, advance credit, credit note, reversal and reconciliation.
- * The business rules live in services/transactionDomain.ts (pure) and the
- * journal builders in financeDomain; this hook only sequences state updates
- * in the same order the inline AppContext implementations used.
+ * advance deposit, advance credit, credit note, payment-entry correction and
+ * reconciliation. The business rules live in services/transactionDomain.ts
+ * (pure) and the journal builders in financeDomain; this hook only sequences
+ * state updates in the same order the inline AppContext implementations used.
  */
+
+/**
+ * The receipt a stored payment number belongs to: `PAY-2026-0007-2` is the
+ * second slice of `PAY-2026-0007`, and a base number is returned unchanged.
+ *
+ * One cash receipt paid across several invoices is stored as one payment row
+ * per invoice (see prepareTransaction), so "this entry" and "this receipt" are
+ * only the same thing for the common single-invoice case — every correction
+ * below has to decide which one it means.
+ */
+const receiptNumberOf = (paymentNumber?: string): string => {
+  const parts = (paymentNumber || '').split('-');
+  return parts.length > 3 ? parts.slice(0, -1).join('-') : (paymentNumber || '');
+};
 export function useTransactionCommands(deps: {
   labs: { id: string; name: string }[];
   invoices: Invoice[];
@@ -350,134 +362,169 @@ export function useTransactionCommands(deps: {
     return prepared.adjustment;
   };
 
-  const reverseTransactionV2 = (command: {
-    referenceType: 'payment' | 'advance_payment' | 'adjustment';
-    referenceId: string;
-    reason: string;
-  }): boolean => {
-    if (!command.reason.trim()) return false;
+  /**
+   * Delete a payment entry.
+   *
+   * Receipt-level, deliberately: one cash receipt that paid across several
+   * invoices is stored as one row per invoice, so deleting a single row would
+   * leave the rest of a receipt whose journal no longer matches it. Deleting
+   * any row therefore deletes the whole receipt — its rows, its journal and its
+   * reconciliation items — and every invoice it touched recomputes its paid
+   * total from the payments that remain. The invoice itself is never touched;
+   * voiding one is a separate action on the invoice table.
+   */
+  const deletePaymentV2 = (paymentId: string): boolean => {
+    let target: PaymentRecord | null = null;
+    for (const inv of invoices) {
+      const found = (inv.payments || []).find((p) => p.id === paymentId || p.payment_number === paymentId);
+      if (found) {
+        target = found;
+        break;
+      }
+    }
+    if (!target) return false;
+
+    const deleted = target;
+    const receiptNumber = receiptNumberOf(deleted.payment_number);
+    /* Every stored row of this receipt: the same base number, whichever slice
+       the operator was looking at when they pressed Delete. */
+    const isReceiptRow = (p: Pick<PaymentRecord, 'id' | 'payment_number'>): boolean =>
+      p.id === deleted.id || (!!p.payment_number && receiptNumberOf(p.payment_number) === receiptNumber);
+
+    const actor = actorName || 'Cashier';
+
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        const payments = inv.payments || [];
+        if (!payments.some(isReceiptRow)) return inv;
+        return recomputeInvoiceFromPayments(inv, payments.filter((p) => !isReceiptRow(p)));
+      }),
+    );
+
+    // The receipt's journal goes with it: a payment that no longer exists must
+    // not keep debiting cash on the general ledger.
+    setJournalEntries((prev) => prev.filter((j) => j.id !== deleted.journal_id && j.reference_number !== receiptNumber));
+
+    /* A stale bank-reconciliation item would keep asking the operator to match
+       cash that was deleted. Matched on the receipt's numbers — a reconciliation
+       row stores the payment it was built from, not this slice's id. */
+    const receiptRefs = new Set(
+      [deleted.id, deleted.payment_number, deleted.receipt_number, deleted.reference_number, receiptNumber].filter(
+        (ref): ref is string => !!ref,
+      ),
+    );
+    setReconciliationItems((prev) => prev.filter((r) => !receiptRefs.has(r.payment_id) && !receiptRefs.has(r.reference_number)));
+
+    setAuditEvents((prev) => [
+      buildAuditEvent({
+        actor,
+        action: 'PAYMENT_DELETED',
+        entity_type: 'payment',
+        entity_id: deleted.id,
+        entity_ref: receiptNumber,
+        old_state: { amount: deleted.amount, method: deleted.payment_method, date: deleted.payment_date },
+        notes: `Deleted payment ${receiptNumber} (${formatPKR(deleted.amount)}) from ${deleted.lab_name || 'clinic'}. Balances were recomputed from the payments that remain.`,
+      }),
+      ...prev,
+    ]);
+
+    return true;
+  };
+
+  /**
+   * Change the amount of one payment entry.
+   *
+   * Only the amount moves: the invoice recomputes its paid total from the rows
+   * that remain, and the receipt's journal is rebuilt from those rows, so the
+   * register and the ledger cannot disagree. Refused when the new amount is not
+   * a positive number, or when it would take the invoice past settled — the
+   * excess belongs in an advance deposit, which is a different document.
+   */
+  const updatePaymentAmountV2 = (paymentId: string, amount: number): boolean => {
+    const next = roundMoney(amount);
+    if (!Number.isFinite(next) || next <= 0) return false;
+
+    let target: PaymentRecord | null = null;
+    let host: Invoice | null = null;
+    for (const inv of invoices) {
+      const found = (inv.payments || []).find((p) => p.id === paymentId || p.payment_number === paymentId);
+      if (found) {
+        target = found;
+        host = inv;
+        break;
+      }
+    }
+    if (!target || !host) return false;
+
+    const edited = target;
+    const invoice = host;
+    if (next === roundMoney(edited.amount)) return true;
+
+    const settledByOthers = (invoice.payments || [])
+      .filter((p) => p.id !== edited.id && !p.is_reversed)
+      .reduce((sum, p) => sum + p.amount, 0);
+    const invoiceCeiling = Math.max(0, invoice.final_amount - (invoice.credit_notes_total || 0));
+    if (next + settledByOthers > invoiceCeiling + 0.001) return false;
+
     const nowStr = getNowStamp();
-    const actor = actorName || 'Supervisor';
+    const actor = actorName || 'Cashier';
+    const receiptNumber = receiptNumberOf(edited.payment_number);
 
-    if (command.referenceType === 'payment') {
-      let targetPayment: PaymentRecord | null = null;
-      for (const inv of invoices) {
-        const p = (inv.payments || []).find((pay) => pay.id === command.referenceId || pay.payment_number === command.referenceId);
-        if (p) {
-          targetPayment = p;
-          break;
-        }
-      }
-      if (!targetPayment) return false;
-      // Reversing twice would post a second compensating journal against the
-      // same payment. The idempotent guard is here (in addition to the
-      // is_reversed checks below) so a double-click or a retried command
-      // cannot double-reverse and unbalance the ledger.
-      if (targetPayment.is_reversed) return false;
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        const payments = inv.payments || [];
+        if (!payments.some((p) => p.id === edited.id)) return inv;
+        return recomputeInvoiceFromPayments(
+          inv,
+          payments.map((p) => (p.id === edited.id ? { ...p, amount: next } : p)),
+        );
+      }),
+    );
 
-      // Mark payment reversed on invoices and adjust amount_paid
-      setInvoices((prev) =>
-        prev.map((inv) => {
-          const match = (inv.payments || []).find((p) => p.id === command.referenceId || p.payment_number === command.referenceId);
-          if (!match || match.is_reversed) return inv;
-
-          const updatedPayments = (inv.payments || []).map((p) =>
-            p.id === match.id ? markReversal(p, command.reason, actor, nowStr) : p,
-          );
-          return applyPaymentReversalToInvoice(inv, command.referenceId, updatedPayments);
-        }),
+    const journal = journalEntries.find((j) => j.id === edited.journal_id);
+    if (journal) {
+      const liveRows = invoices
+        .flatMap((inv) => inv.payments || [])
+        .filter((p) => !p.is_reversed && receiptNumberOf(p.payment_number) === receiptNumber)
+        .map((p) => (p.id === edited.id ? { ...p, amount: next } : p));
+      const unapplied = Math.max(0, roundMoney(edited.unapplied_amount || 0));
+      const allocations: PaymentAllocation[] = liveRows.map((p) => {
+        const prior = (edited.allocations || []).find((a) => a.invoice_id === p.invoice_id);
+        return {
+          id: prior?.id ?? `alloc-${p.id}`,
+          source_type: 'payment',
+          source_id: edited.id,
+          source_ref: edited.payment_number || receiptNumber,
+          invoice_id: p.invoice_id || '',
+          invoice_number: p.invoice_number || 'INV',
+          amount: p.amount,
+          allocated_at: prior?.allocated_at ?? p.created_at ?? nowStr,
+          allocated_by: prior?.allocated_by ?? p.recorded_by ?? actor,
+          notes: prior?.notes,
+        };
+      });
+      const total = roundMoney(liveRows.reduce((sum, p) => sum + p.amount, 0) + unapplied);
+      const rebuilt = buildPaymentJournal({ ...edited, amount: total }, allocations, unapplied, actor);
+      setJournalEntries((prev) =>
+        prev.map((j) => (j.id === journal.id ? { ...rebuilt, id: journal.id, journal_number: journal.journal_number } : j)),
       );
-
-      // Compensating journal
-      const origJournal = journalEntries.find(
-        (j) => j.reference_id === targetPayment?.id || j.reference_number === targetPayment?.payment_number
-          || j.reference_number === (targetPayment?.payment_number || '').replace(/-D?\d+$/, ''),
-      );
-      if (origJournal) {
-        const revJournal = buildReversalJournal(origJournal, command.reason, actor);
-        setJournalEntries((prev) => [revJournal, ...prev]);
-      }
-
-      setAuditEvents((prev) => [
-        buildReversalAuditEvent({
-          entityType: 'payment',
-          entityId: targetPayment.id,
-          entityRef: targetPayment.payment_number || 'PAY',
-          amount: targetPayment.amount,
-          reason: command.reason,
-          actor,
-          kind: 'payment',
-        }),
-        ...prev,
-      ]);
-
-      return true;
-    } else if (command.referenceType === 'advance_payment') {
-      const adv = advancePayments.find((a) => a.id === command.referenceId || a.payment_number === command.referenceId);
-      if (!adv || adv.is_reversed) return false;
-
-      setAdvancePayments((prev) =>
-        prev.map((a) => (a.id === adv.id ? markReversal(a, command.reason, actor, nowStr, { remaining_amount: 0 }) : a)),
-      );
-
-      const origJournal = journalEntries.find(
-        (j) => j.reference_id === adv.id || j.reference_number === adv.payment_number,
-      );
-      if (origJournal) {
-        const revJournal = buildReversalJournal(origJournal, command.reason, actor);
-        setJournalEntries((prev) => [revJournal, ...prev]);
-      }
-
-      setAuditEvents((prev) => [
-        buildReversalAuditEvent({
-          entityType: 'advance_payment',
-          entityId: adv.id,
-          entityRef: adv.payment_number,
-          amount: adv.amount,
-          reason: command.reason,
-          actor,
-          kind: 'advance',
-        }),
-        ...prev,
-      ]);
-
-      return true;
-    } else if (command.referenceType === 'adjustment') {
-      const adj = accountAdjustments.find((a) => a.id === command.referenceId || a.adjustment_number === command.referenceId);
-      if (!adj || adj.is_reversed) return false;
-
-      // Restore invoice credit if it was a credit note
-      if (adj.invoice_id) {
-        setInvoices((prev) => prev.map((item) => (item.id === adj.invoice_id ? reverseCreditNoteOnInvoice(item, adj.amount) : item)));
-      }
-
-      setAccountAdjustments((prev) => prev.map((a) => (a.id === adj.id ? markReversal(a, command.reason, actor, nowStr) : a)));
-
-      const origJournal = journalEntries.find(
-        (j) => j.reference_id === adj.id || j.reference_number === adj.adjustment_number,
-      );
-      if (origJournal) {
-        const revJournal = buildReversalJournal(origJournal, command.reason, actor);
-        setJournalEntries((prev) => [revJournal, ...prev]);
-      }
-
-      setAuditEvents((prev) => [
-        buildReversalAuditEvent({
-          entityType: 'adjustment',
-          entityId: adj.id,
-          entityRef: adj.adjustment_number,
-          amount: adj.amount,
-          reason: command.reason,
-          actor,
-          kind: 'adjustment',
-        }),
-        ...prev,
-      ]);
-
-      return true;
     }
 
-    return false;
+    setAuditEvents((prev) => [
+      buildAuditEvent({
+        actor,
+        action: 'PAYMENT_AMOUNT_CHANGED',
+        entity_type: 'payment',
+        entity_id: edited.id,
+        entity_ref: edited.payment_number || receiptNumber,
+        old_state: { amount: edited.amount },
+        new_state: { amount: next },
+        notes: `Payment ${edited.payment_number || receiptNumber} changed from ${formatPKR(edited.amount)} to ${formatPKR(next)}.`,
+      }),
+      ...prev,
+    ]);
+
+    return true;
   };
 
   const reconcileItemV2 = (id: string, matchNotes?: string) => {
@@ -532,7 +579,8 @@ export function useTransactionCommands(deps: {
     recordAdvanceDepositV2,
     applyAdvanceCreditV2,
     issueCreditNoteV2,
-    reverseTransactionV2,
+    deletePaymentV2,
+    updatePaymentAmountV2,
     reconcileItemV2,
     flagReconciliationExceptionV2,
   };

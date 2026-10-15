@@ -7,7 +7,6 @@ import { LabContactsManager } from './LabContactsManager';
 import { LabPricingManager } from './LabPricingManager';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
-import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import { PaymentProofModal } from '../billing/PaymentProofModal';
 import { PaymentReceiptModal } from '../billing/PaymentReceiptModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
@@ -73,7 +72,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
   const [isCreatingNewCase, setIsCreatingNewCase] = useState(false);
 
   // Financial modals state
-  const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [selectedProofPayment, setSelectedProofPayment] = useState<PaymentRecord | null>(null);
   const [selectedReceiptPayment, setSelectedReceiptPayment] = useState<{ payment: PaymentRecord; invoice?: Invoice } | null>(null);
   const [selectedInvoiceModal, setSelectedInvoiceModal] = useState<Invoice | null>(null);
@@ -461,13 +459,16 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                             <p className="text-[11px] text-slate-500 mt-0.5">Case {inv.case_number} • {formatDoctorName(inv.doctor_name)}</p>
                             <p className="text-xs font-bold text-amber-700 mt-0.5">Due: PKR {(rem || 0).toLocaleString()}</p>
                           </div>
-                          <button
-                            onClick={() => setPaymentModalInvoice(inv)}
-                            className="px-3 py-1.5 bg-fill-success hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                          {/* Billing & Invoices is the only place a payment is
+                              recorded. This button states that instead of opening a
+                              fourth copy of the recorder — see financeTabs.ts. */}
+                          <span
+                            title="Record this payment in Billing & Invoices"
+                            className="px-3 py-1.5 bg-fill-success text-white font-bold text-xs rounded-lg shadow-2xs flex items-center gap-1 shrink-0 cursor-default"
                           >
                             <DollarSign className="w-3.5 h-3.5" />
-                            <span>Record Pay</span>
-                          </button>
+                            <span>Record in Billing</span>
+                          </span>
                         </div>
                       );
                     })}
@@ -835,21 +836,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
         />
       )}
 
-      {/* Payment Recording Modal */}
-      {!!paymentModalInvoice && (
-        <RecordTransactionModal
-          isOpen
-          onClose={() => setPaymentModalInvoice(null)}
-          initialMode="payment"
-          initialInvoiceId={paymentModalInvoice.id}
-          onSuccess={(res) => {
-            if (res.receiptNumber) {
-              const pay = allPayments.find((p) => p.receipt_number === res.receiptNumber);
-              if (pay) setSelectedReceiptPayment({ payment: pay, invoice: paymentModalInvoice });
-            }
-          }}
-        />
-      )}
 
       {/* Payment Proof Viewer Modal */}
       {selectedProofPayment && (

@@ -114,13 +114,20 @@ describe('ClinicStatementModal case detail', () => {
     expect(screen.getByText('Dec 20, 2026')).toBeTruthy();
   });
 
-  it('leaves doctor, material and units to the case record', () => {
+  it('leaves doctor and material to the case record, and states the unit count', () => {
     renderModal();
 
     expect(screen.queryByText('Doctor')).toBeNull();
     expect(screen.queryByText('Material')).toBeNull();
-    expect(screen.queryByText('Units')).toBeNull();
     expect(screen.queryByText('Dr. Tariq Mahmood')).toBeNull();
+
+    // CHANGED (compact invoice): this test used to assert `Units` was ABSENT.
+    // The clinic statement is one of the consumers that still prints labelled
+    // rows, so the new row reaches it as a label + value like every other — it
+    // only appeared because `caseDetailLines` gained the row. The fixture
+    // charts two teeth, so it reads "2 units".
+    expect(screen.getByText('Units')).toBeTruthy();
+    expect(screen.getByText('2 units')).toBeTruthy();
   });
 
   it('leaves a payment row with no case detail', () => {
@@ -152,7 +159,10 @@ describe('ClinicStatementModal case detail', () => {
     expect(description).toContain('Delivery Date: Dec 20, 2026');
     expect(description).not.toContain('Doctor:');
     expect(description).not.toContain('Material:');
-    expect(description).not.toContain('Units:');
+    // CHANGED (compact invoice): was `not.toContain('Units:')`. The export is
+    // the ledger's own `caseDetailText`, so it now narrates the same unit count
+    // the printed invoice shows.
+    expect(description).toContain('Units: 2 units');
 
     // The payment row gets an empty case, not the invoice's.
     const payment = rows[2];
