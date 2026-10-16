@@ -25,6 +25,16 @@ export const LoginPage: React.FC = () => {
   const [setupPassword, setSetupPassword] = useState('');
   const [setupBusy, setSetupBusy] = useState(false);
 
+  /* Password strength — scored 0-4 from length, case mix, digits, symbols. */
+  const passwordStrength = (pw: string): number => {
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+    if (/\d/.test(pw)) score++;
+    if (/[^a-zA-Z\d]/.test(pw)) score++;
+    return score;
+  };
+
   const appName = brandingSettings.appName || 'Dental Solutions';
   const tagline = brandingSettings.tagline || 'Dental Laboratory Information System';
 
@@ -57,6 +67,8 @@ export const LoginPage: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    // `rememberMe` is honoured inside useAuthDomain.login, which owns the
+    // dsw_remember_user key — do not write it from here as well.
     login(usernameOrEmail, password, rememberMe)
       .then((success) => {
         setIsSubmitting(false);
@@ -172,6 +184,36 @@ export const LoginPage: React.FC = () => {
                       {8 - setupPassword.length} more character{8 - setupPassword.length === 1 ? '' : 's'} needed
                     </p>
                   )}
+                  {setupPassword.length > 0 && (() => {
+                    /* Derived once: the bar fill, its colour and the word are
+                       three views of one verdict, so they cannot drift into
+                       saying different things. */
+                    const strength = passwordStrength(setupPassword);
+                    const longEnough = setupPassword.length >= 8;
+                    const verdict = !longEnough
+                      ? { bar: 'bg-rose-500', text: 'text-rose-700', word: strength >= 2 ? 'Fair' : 'Weak' }
+                      : strength >= 3
+                        ? { bar: 'bg-emerald-600', text: 'text-emerald-700', word: 'Strong' }
+                        : { bar: 'bg-amber-500', text: 'text-amber-700', word: 'Good' };
+                    return (
+                      <div className="mt-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${verdict.bar}`}
+                              style={{ width: `${(strength / 4) * 100}%` }}
+                            />
+                          </div>
+                          <span className={`text-[10px] font-bold ${verdict.text}`}>{verdict.word}</span>
+                        </div>
+                        {longEnough && strength < 3 && (
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Mix in upper case, a number and a symbol to harden it.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <button

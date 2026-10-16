@@ -29,6 +29,7 @@ import { todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
+import { invoiceBadge } from '../../services/invoiceBadge';
 import { 
   Wallet,
   Printer,
@@ -207,7 +208,7 @@ export const BillingView: React.FC = () => {
   // Export Invoices to CSV (B9: RFC-4180 quoting — clinics with commas/quotes
   // used to break rows under the old hand-rolled joiner)
   const handleExportInvoicesCSV = () => {
-    const headers = ['Invoice #', 'Case #', 'Dental Clinic', 'Doctor', 'Material / Type', 'Final Amount (PKR)', 'Paid (PKR)', 'Remaining (PKR)', 'Status', 'Due Date'];
+    const headers = ['Invoice #', 'Case #', 'Dental Clinic', 'Doctor', 'Material / Type', 'Final Amount (PKR)', 'Amount Paid (PKR)', 'Remaining (PKR)', 'Status', 'Due Date'];
     const rows = filteredInvoices.map(inv => [
       inv.invoice_number,
       inv.case_number,
@@ -232,72 +233,47 @@ export const BillingView: React.FC = () => {
     );
   };
 
+/* Pill + subtext for one invoice. The DECISION lives in services/invoiceBadge
+   (derived from the balance, never from the stored payment_status, and never
+   sharing the overdue danger treatment); this only paints it. */
   const getStatusBadge = (inv: Invoice) => {
-    const remaining = invoiceBalanceDue(inv);
-    if (inv.payment_status === 'paid' || remaining <= 0) {
-      return (
-        <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 text-ink-success" />
-            <span>Paid</span>
-          </span>
-          <span className="text-[11px] text-slate-500 mt-0.5">Paid in Full</span>
-        </div>
-      );
-    }
-
-    const { isOverdue, diffDays } = isInvoiceOverdue(inv);
-    if (isOverdue) {
-      return (
-        <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-            <AlertTriangle className="w-3 h-3 text-ink-danger" />
-            <span>Overdue</span>
-          </span>
-          <span className="text-[11px] font-bold text-ink-danger mt-0.5 whitespace-nowrap">
-            {diffDays === 1 ? '1 day late' : `${diffDays} days late`}
-          </span>
-        </div>
-      );
-    }
-
-    if (inv.payment_status === 'partial' || (inv.amount_paid || 0) > 0) {
-      return (
-        <div className="inline-flex flex-col items-center">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-            <Clock className="w-3 h-3 text-ink-info" />
-            <span>Partial</span>
-          </span>
-          <span className="text-[11px] font-semibold text-ink-info mt-0.5 whitespace-nowrap">
-            {formatPKR(inv.amount_paid || 0)} paid
-          </span>
-        </div>
-      );
-    }
-
-    // Pending unpaid & within terms
-    let dueSubtext = 'Pending';
-    if (inv.due_date) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const dueDate = new Date(inv.due_date);
-      dueDate.setHours(0, 0, 0, 0);
-      const diffMs = dueDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-      if (diffDays === 0) dueSubtext = 'Due Today';
-      else if (diffDays === 1) dueSubtext = 'Due Tomorrow';
-      else if (diffDays > 1) dueSubtext = `Due in ${diffDays}d`;
-    }
+    const badge = invoiceBadge(inv);
+    const PAINT = {
+      paid: {
+        pill: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        sub: 'text-slate-500',
+        Icon: CheckCircle2,
+        ink: 'text-ink-success',
+      },
+      overdue: {
+        pill: 'bg-rose-100 text-rose-800 border-rose-200',
+        sub: 'text-ink-danger font-bold',
+        Icon: AlertTriangle,
+        ink: 'text-ink-danger',
+      },
+      /* Partial and Pending are both 'fine for now' - amber, deliberately not
+         rose, so only Overdue reads as chase-me. */
+      partial: {
+        pill: 'bg-amber-50 text-amber-800 border-amber-200',
+        sub: 'text-amber-700 font-semibold',
+        Icon: Clock,
+        ink: 'text-ink-warning',
+      },
+      pending: {
+        pill: 'bg-amber-50 text-amber-800 border-amber-200',
+        sub: 'text-amber-700 font-semibold',
+        Icon: Clock,
+        ink: 'text-ink-warning',
+      },
+    }[badge.tone];
 
     return (
       <div className="inline-flex flex-col items-center">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-          <Clock className="w-3 h-3 text-ink-warning" />
-          <span>Pending</span>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${PAINT.pill}`}>
+          <PAINT.Icon className={`w-3 h-3 ${PAINT.ink}`} />
+          <span>{badge.label}</span>
         </span>
-        <span className="text-[11px] font-semibold text-amber-700 mt-0.5 whitespace-nowrap">
-          {dueSubtext}
-        </span>
+        <span className={`text-[11px] mt-0.5 whitespace-nowrap ${PAINT.sub}`}>{badge.detail}</span>
       </div>
     );
   };
@@ -578,7 +554,7 @@ export const BillingView: React.FC = () => {
                 render: (inv: Invoice) => formatPKR(inv.final_amount || 0),
               },
               {
-                header: 'Paid',
+                header: 'Amount Paid',
                 align: 'right',
                 className: 'font-mono font-semibold text-ink-success whitespace-nowrap tabular-nums',
                 render: (inv: Invoice) => formatPKR(inv.amount_paid || 0),

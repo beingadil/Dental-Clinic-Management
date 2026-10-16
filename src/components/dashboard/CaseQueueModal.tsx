@@ -8,11 +8,14 @@
  * same Job Slip the workstation opens.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, ExternalLink, ChevronRight } from 'lucide-react';
-import type { DentalCase, CaseStatus } from '../../types';
+import { X, ExternalLink, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import type { DentalCase, CaseStatus, PriorityLevel } from '../../types';
 import { EmptyState, Badge, CaseStatusBadge } from '../common/ui';
 import { Search, ShieldAlert, CheckCircle2, TrendingUp } from 'lucide-react';
 import { getTodayStr, daysDiff } from '../../utils/dateUtils';
+
+/** Sort keys offered by the queue header. */
+type QueueSortKey = 'due_date' | 'priority' | 'age';
 import { formatDoctorName } from '../../utils/doctorName';
 
 export type QueueId =
@@ -105,6 +108,12 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
   onClose,
 }) => {
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<QueueSortKey>('due_date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  /* urgent first. Rank, not alphabet: `high` is a real PriorityLevel and
+     omitting it made this object fail to type-check. */
+  const PRIORITY_RANK: Record<PriorityLevel, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 
   useEffect(() => {
     if (!queue) return;
@@ -141,11 +150,32 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
           (c.lab_name || '').toLowerCase().includes(term)
       )
       .sort(
-        (a, b) =>
-          (a.delivery_date || '9999').localeCompare(b.delivery_date || '9999') ||
-          a.case_number.localeCompare(b.case_number)
+        (a, b) => {
+          const dir = sortOrder === 'asc' ? 1 : -1;
+          if (sortBy === 'priority') {
+            const cmp = PRIORITY_RANK[a.priority ?? 'normal'] - PRIORITY_RANK[b.priority ?? 'normal'];
+            if (cmp !== 0) return dir * cmp;
+          }
+          if (sortBy === 'age') {
+            /* Age is measured from when the case was registered, never from the
+               delivery date — mixing the two would make an old case with a far
+               future delivery look brand new. */
+            const ageOf = (c: DentalCase) => new Date(`${(c.created_at || '').slice(0, 10)}T00:00:00`).getTime();
+            const cmp = ageOf(a) - ageOf(b);
+            if (cmp !== 0) return dir * cmp;
+          }
+          // due date, with the case number as a stable tiebreak. The tiebreak
+          // is NOT direction-flipped: reversing it would put DS-9000 before
+          // DS-1000 within a single due date for no reason the operator asked for.
+          return (
+            (a.delivery_date || '9999').localeCompare(b.delivery_date || '9999') ||
+            a.case_number.localeCompare(b.case_number)
+          );
+        }
       );
-  }, [cases, queue, search, today, horizon]);
+    // sortBy/sortOrder belong here: without them the dropdown re-rendered but
+    // the row order never changed, because the memo never re-ran.
+  }, [cases, queue, search, today, horizon, sortBy, sortOrder]);
 
   if (!queue) return null;
   const meta = QUEUE_TITLES[queue];
@@ -191,9 +221,31 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
               className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:border-blue-400 focus:outline-none"
             />
           </div>
-          <span className="text-[11px] font-bold text-slate-500 tabular-nums shrink-0">
-            {rows.length} {rows.length === 1 ? 'case' : 'cases'}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as QueueSortKey)}
+              className="p-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-700 focus:outline-none"
+            >
+              <option value="due_date">Due Date</option>
+              <option value="priority">Priority</option>
+              <option value="age">Case Age</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-[11px] font-bold text-slate-700 transition-colors cursor-pointer whitespace-nowrap"
+              /* Named in words, not an unlabelled arrow — an icon alone left the
+                 operator unable to tell which way "asc" actually pointed. */
+              title={`Sort ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+            >
+              {sortOrder === 'asc' ? <ChevronUp className="w-3.5 h-3.5" aria-hidden /> : <ChevronDown className="w-3.5 h-3.5" aria-hidden />}
+              <span className="sr-only">{sortOrder === 'asc' ? 'Ascending' : 'Descending'}</span>
+            </button>
+            <span className="text-[11px] font-bold text-slate-500 tabular-nums shrink-0">
+              {rows.length} {rows.length === 1 ? 'case' : 'cases'}
+            </span>
+          </div>
         </div>
 
         {rows.length === 0 ? (

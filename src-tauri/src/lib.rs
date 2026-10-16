@@ -164,22 +164,37 @@ fn db_save_bytes(state: State<DbState>, bytes_b64: String) -> Result<SaveResult,
 
     let bytes = base64_decode(&bytes_b64)?;
     let tmp = path.with_extension("sqlite.tmp");
+    // Write to the temp file first, cleaning it up on ANY error so a
+    // half-written .tmp never lingers in the app data directory.
     {
-        let mut f = fs::File::create(&tmp).map_err(|e| format!("cannot create temp file: {e}"))?;
-        f.write_all(&bytes)
-            .map_err(|e| format!("cannot write temp file: {e}"))?;
-        f.sync_all()
-            .map_err(|e| format!("cannot flush temp file: {e}"))?;
+        let mut f = fs::File::create(&tmp).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("cannot create temp file: {e}")
+        })?;
+        if let Err(e) = f.write_all(&bytes) {
+            let _ = fs::remove_file(&tmp);
+            return Err(format!("cannot write temp file: {e}"));
+        }
+        if let Err(e) = f.sync_all() {
+            let _ = fs::remove_file(&tmp);
+            return Err(format!("cannot flush temp file: {e}"));
+        }
     }
     // Atomic replace: rename over the live file — the DB never exists in a
     // half-written state (Windows rename uses MOVEFILE_REPLACE_EXISTING).
     // Fall back to remove+rename only if the filesystem refuses the overwrite
-    // (e.g. an antivirus scanner briefly holding the target).
+    // (e.g. an antivirus scanner briefly holding the target). Note: between
+    // remove_file and the second rename there is a brief window where the
+    // database file does not exist; this fallback is only used when the
+    // filesystem refuses an in-place rename.
     if fs::rename(&tmp, &path).is_err() {
         if path.exists() {
             fs::remove_file(&path).map_err(|e| format!("cannot replace database file: {e}"))?;
         }
-        fs::rename(&tmp, &path).map_err(|e| format!("cannot finalize database file: {e}"))?;
+        fs::rename(&tmp, &path).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("cannot finalize database file: {e}")
+        })?;
     }
 
     Ok(SaveResult {
@@ -208,7 +223,28 @@ fn db_backup_file(state: State<DbState>) -> Result<String, String> {
     // where a user-chosen destination belongs.
     let stamp = chrono_like_stamp();
     let target = path.with_extension(format!("sqlite.{stamp}.bak"));
-    fs::copy(&path, &target).map_err(|e| format!("backup copy failed: {e}"))?;
+    let tmp = path.with_extension(format!("sqlite.{stamp}.bak.tmp"));
+    let bytes = fs::read(&path).map_err(|e| format!("backup copy failed: {e}"))?;
+    {
+        let mut f = fs::File::create(&tmp).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("backup copy failed: {e}")
+        })?;
+        f.write_all(&bytes)
+            .map_err(|e| {
+                let _ = fs::remove_file(&tmp);
+                format!("backup copy failed: {e}")
+            })?;
+        f.sync_all()
+            .map_err(|e| {
+                let _ = fs::remove_file(&tmp);
+                format!("backup copy failed: {e}")
+            })?;
+    }
+    fs::rename(&tmp, &target).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("backup copy failed: {e}")
+    })?;
     Ok(target.to_string_lossy().to_string())
 }
 

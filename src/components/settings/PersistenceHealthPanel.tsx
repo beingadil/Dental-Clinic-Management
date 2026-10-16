@@ -12,6 +12,7 @@ import {
 import { getDesktopDatabasePath, getLastSaveAt, getLastSaveBackend, getLastSnapshotBytes } from '../../db/persistence';
 import { getLastSyncSuccessAt } from '../../db/syncCore';
 import { DataTable } from '../common/ui';
+import { runIntegrityCheckSafe } from '../../db/integrityCheck';
 
 /**
  * Save & sync health panel (Settings > Database & Backup).
@@ -80,8 +81,32 @@ function lastOk(fromJournal: string | null, fromSession: string | null): string 
 export function PersistenceHealthPanel() {
   const [summary, setSummary] = useState<FailureSummary>(() => getFailureSummary());
   const [copied, flashCopied] = useTransientFlag(2500);
+  const [integrityBusy, setIntegrityBusy] = useState(false);
+  const [integrityResult, setIntegrityResult] = useState<{ ok: boolean; detail: string } | null>(null);
 
   const refresh = useCallback(() => setSummary(getFailureSummary()), []);
+
+  /* Pure reads — the same verdict the boot-time self-check logs. */
+  const runIntegrityCheck = () => {
+    setIntegrityBusy(true);
+    setIntegrityResult(null);
+    try {
+      const report = runIntegrityCheckSafe();
+      if (!report) {
+        setIntegrityResult({ ok: false, detail: 'Database not ready — could not run integrity check.' });
+        return;
+      }
+      const failed = report.findings.filter((f) => !f.ok);
+      setIntegrityResult({
+        ok: report.ok,
+        detail: failed.length === 0
+          ? `All ${report.findings.length} checks passed — database is healthy.`
+          : failed.map((f) => f.detail).join(' · '),
+      });
+    } finally {
+      setIntegrityBusy(false);
+    }
+  };
 
   useEffect(() => {
     // Three sources, all cheap: the journal itself, plus the existing banners'
@@ -172,6 +197,20 @@ export function PersistenceHealthPanel() {
               <Eraser className="w-3.5 h-3.5" /> Clear log
             </button>
           )}
+          <button
+            type="button"
+            onClick={runIntegrityCheck}
+            disabled={integrityBusy}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/70 border border-slate-200 font-semibold text-slate-700 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {integrityBusy ? (
+              <>Checking…</>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5" /> Integrity Check
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -185,6 +224,23 @@ export function PersistenceHealthPanel() {
         <span>last save OK {lastOk(summary.save.lastSuccessAt, getLastSaveAt())}</span>
         <span>last sync OK {lastOk(summary.sync.lastSuccessAt, getLastSyncSuccessAt())}</span>
       </div>
+
+      {/* Referential + orphan-row verdict from integrityCheck.ts — surfaced here so
+          the operator can run it on demand instead of only seeing it in the
+          boot log. */}
+      {integrityResult && (
+        <div className={`p-3 rounded-xl text-xs font-semibold flex items-start gap-2 border ${
+          integrityResult.ok
+            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+            : 'bg-rose-50 text-rose-800 border border-rose-200'
+        }`}>
+          {integrityResult.ok ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
+          <div>
+            <span className="font-bold">{integrityResult.ok ? 'Database integrity OK' : 'Database integrity issues found'}</span>
+            <span className="block font-normal">{integrityResult.detail}</span>
+          </div>
+        </div>
+      )}
 
       {totalFailures === 0 ? (
         <p className="text-slate-600">

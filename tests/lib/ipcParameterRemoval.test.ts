@@ -209,9 +209,23 @@ describe('IPC: db_load / db_backup_file take no caller-supplied path', () => {
     it('db_backup_file derives its target beside the database, not from a caller', () => {
       const body = fnBody('db_backup_file');
       expect(body).toMatch(/path\.with_extension\(/);
-      // fs::copy must take the derived `target`, never a bare argument value.
-      expect(body).toMatch(/fs::copy\(&path,\s*&target\)/);
+      // Every path in here is derived from `path`; no argument reaches a sink.
       expect(body).not.toMatch(/PathBuf::from/);
+      expect(body).not.toMatch(/fs::copy\(/);
+    });
+
+    it('db_backup_file lands the backup atomically, so a torn copy is never left named .bak', () => {
+      // `fs::copy` straight onto the .bak name is not atomic: an interrupted
+      // copy leaves a truncated file that still looks like a valid backup.
+      // The bytes go to a .tmp sibling, fsync, then rename into place.
+      const body = fnBody('db_backup_file');
+      expect(body).toMatch(/fs::File::create\(&tmp\)/);
+      expect(body).toMatch(/f\.sync_all\(\)/);
+      expect(body).toMatch(/fs::rename\(&tmp,\s*&target\)/);
+      // Every failure path clears the temp file, or it lingers as litter that
+      // the next backup can collide with.
+      const cleanupCount = (body.match(/remove_file\(&tmp\)/g) ?? []).length;
+      expect(cleanupCount).toBeGreaterThanOrEqual(3);
     });
 
     it('still registers both commands, under the names the frontend invokes', () => {

@@ -4,6 +4,7 @@ import { seedDatabase } from './seeds';
 import { runLegacyMigration } from './legacyMigrator';
 import { installAutoPersistence, loadSnapshot } from './persistence';
 import { setDatabase, getDatabase, isDatabaseReady, exportDatabaseBytes } from './core';
+import { runIntegrityCheck } from './integrityCheck';
 
 export { getDatabase, isDatabaseReady, exportDatabaseBytes };
 let bootPromise: Promise<SqliteEngine> | null = null;
@@ -59,6 +60,22 @@ export async function initEngineFromBytes(bytes?: Uint8Array): Promise<SqliteEng
       (applied.length ? ` (applied: ${applied.join(', ')})` : '')
   );
   setDatabase(engine);
+  // Boot-time integrity self-check. Advisory, never fatal: the findings are
+  // logged and the same verdict is re-runnable on demand from
+  // Settings > Persistence Health. It does NOT throw, including on a restore —
+  // backupService.ts already gates a swap on its own structural validation
+  // (schema_migrations present + PRAGMA integrity_check ok), and this
+  // referential pass would otherwise reject a valid older database that simply
+  // predates one of the invariants.
+  const integrity = runIntegrityCheck(engine);
+  if (!integrity.ok) {
+    const bad = integrity.findings
+      .filter((f) => !f.ok)
+      .map((f) => `${f.check}: ${f.detail}`)
+      .join('; ');
+    // eslint-disable-next-line no-console
+    console.error(`[db] INTEGRITY CHECK WARNING at ${integrity.ranAt}: ${bad}`, integrity.findings);
+  }
   installAutoPersistence(engine);
   return engine;
 }

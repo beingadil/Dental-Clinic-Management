@@ -17,6 +17,7 @@ vi.mock('../../src/context/AppContext', () => ({
     archiveCase: () => {},
     restoreCase: () => {},
     deleteCasePermanently: () => {},
+    getQcState: () => ({ attempts: 0 }),
   }),
 }));
 

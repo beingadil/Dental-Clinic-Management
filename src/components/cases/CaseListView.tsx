@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate } from '../../types';
+import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, QcCaseState } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
 import { formatDoctorName } from '../../utils/doctorName';
 import { CaseDetailView } from './CaseDetailView';
@@ -15,10 +15,12 @@ import {
   Filter, 
   ArrowDownAZ,
   ArrowUpZA,
+  ArrowRight,
   Bookmark, 
   AlertTriangle, 
   Clock, 
   Calendar,
+  CheckCircle2,
   LayoutGrid,
   Table as TableIcon,
   GripVertical,
@@ -42,6 +44,12 @@ const KANBAN_STAGES: { id: CaseStatus; title: string; color: string; badgeBg: st
   { id: 'delivered', title: 'Delivered', color: 'bg-fill-success', badgeBg: 'bg-emerald-100 text-emerald-800', headerBg: 'border-emerald-100 bg-emerald-50/50' },
   { id: 'revision', title: 'Revision', color: 'bg-amber-600', badgeBg: 'bg-amber-100 text-amber-800', headerBg: 'border-amber-100 bg-amber-50/50' },
 ];
+
+/** Status → operator-facing title, derived from the kanban stages so the bulk
+    buttons and the columns can never disagree on what a status is called. */
+const STATUS_LABELS: Record<CaseStatus, string> = Object.fromEntries(
+  KANBAN_STAGES.map((s) => [s.id, s.title]),
+) as Record<CaseStatus, string>;
 
 /** Columns the workstation list can be ordered by. */
 type CaseSortKey =
@@ -154,7 +162,7 @@ const SORT_OPTIONS: { group: string; options: { value: CaseSortKey; label: strin
 ];
 
 export const CaseListView: React.FC = () => {
-  const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently } = useApp();
+  const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently, getQcState } = useApp();
 
   /* Workstation shows ACTIVE cases; the Archive tab shows completed cases
      (archived_at set). Archived rows never enter the kanban/table pipeline. */
@@ -164,6 +172,8 @@ export const CaseListView: React.FC = () => {
   const [archiveClinic, setArchiveClinic] = useState('all');
   const [archiveSearch, setArchiveSearch] = useState('');
   const [confirmPermanentId, setConfirmPermanentId] = useState<string | null>(null);
+  /* Status a bulk status-change is waiting on confirmation for, or null. */
+  const [bulkStatusTarget, setBulkStatusTarget] = useState<CaseStatus | null>(null);
 
   const activeCases = useMemo(() => cases.filter((c) => !c.archived_at), [cases]);
   const archivedCases = useMemo(() => cases.filter((c) => !!c.archived_at), [cases]);
@@ -312,11 +322,14 @@ export const CaseListView: React.FC = () => {
       const term = searchTerm.toLowerCase();
       const matchNum = (c.case_number || '').toLowerCase().includes(term);
       const matchPatient = (c.patient_name || '').toLowerCase().includes(term);
+      // The clinic's number is how the front desk actually identifies a patient
+      // on the phone, and it was the one field the list could not be searched by.
+      const matchPhone = (labs.find((l) => l.id === c.lab_id)?.phone || '').toLowerCase().includes(term);
       const matchLab = (c.lab_name || '').toLowerCase().includes(term);
       // Matched on the DISPLAY name so "Dr Ahmad" still finds the bare-stored row.
       const matchDoc = formatDoctorName(c.doctor_name, '').toLowerCase().includes(term);
       const matchType = (c.case_type_name || '').toLowerCase().includes(term);
-      if (!matchNum && !matchPatient && !matchLab && !matchDoc && !matchType) return false;
+      if (!matchNum && !matchPatient && !matchPhone && !matchLab && !matchDoc && !matchType) return false;
     }
 
     // Status
@@ -357,7 +370,70 @@ export const CaseListView: React.FC = () => {
       if (!hit) return false;
     }
     return true;
-  }).sort((a, b) => (b.archived_at || '').localeCompare(a.archived_at || '')), [archivedCases, archiveFrom, archiveTo, archiveClinic, archiveSearch]);
+}), [archivedCases, archiveFrom, archiveTo, archiveClinic, archiveSearch]);
+
+  /* ─── Case due ──────────────────────────────────────────────────────────
+     Days between now and the promised delivery date — negative once the date
+     has passed. This is the metric that means something in a lab: a 20-day-old
+     case delivered today is perfect work, while an 8-day-old case already two
+     days late is a problem. Age alone cannot tell those apart, and the app
+     already carries a per-priority SLA in prioritySla.ts. */
+  const DAY_MS = 86_400_000;
+  const startOfTodayMs = () => new Date(`${todayStr}T00:00:00`).getTime();
+
+  const daysToDelivery = (c: DentalCase): number | null => {
+    if (!c.delivery_date) return null;
+    const due = new Date(`${c.delivery_date.slice(0, 10)}T00:00:00`).getTime();
+    if (Number.isNaN(due)) return null;
+    return Math.round((due - startOfTodayMs()) / DAY_MS);
+  };
+
+  const dueTone = (days: number | null) => {
+    if (days === null) return 'border-slate-200 bg-slate-50 text-slate-400';
+    if (days < 0) return 'border-rose-200 bg-rose-50 text-rose-700';
+    if (days === 0) return 'border-amber-200 bg-amber-50 text-amber-700';
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  };
+
+  const dueLabel = (days: number | null) => {
+    if (days === null) return '—';
+    if (days < 0) return `${Math.abs(days)}d late`;
+    if (days === 0) return 'Due today';
+    if (days === 1) return '1d left';
+    return `${days}d left`;
+  };
+
+  /* ─── QC state ──────────────────────────────────────────────────────────
+     Derived once for every case so the list view can show a QC badge
+     without re-deriving the inspection stream per row on each render. */
+  const qcStateByCase = useMemo(() => {
+    const map = new Map<string, QcCaseState>();
+    for (const c of cases) map.set(c.id, getQcState(c.id));
+    return map;
+  }, [cases]);
+
+  const qcBadge = (c: DentalCase) => {
+    const state = qcStateByCase.get(c.id);
+    if (!state || state.attempts === 0) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 text-slate-500 text-[10px] px-2 py-0.5 font-semibold">
+          QC Pending
+        </span>
+      );
+    }
+    if (state.last_result === 'pass') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px] px-2 py-0.5 font-semibold">
+          QC Passed
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700 text-[10px] px-2 py-0.5 font-semibold">
+        QC Failed
+      </span>
+    );
+  };
 
   /* The resetKey mirrors exactly what used to reset the render cap: a narrower
      filter, or a re-sort, starts the reader from the top of the new order. */
@@ -508,7 +584,7 @@ export const CaseListView: React.FC = () => {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search Case #, Lab, Doctor..."
+              placeholder="Search Case #, Patient, Phone, Clinic, Doctor, Type..."
               className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
           </div>
@@ -632,6 +708,30 @@ export const CaseListView: React.FC = () => {
               <Receipt className="w-4 h-4" />
               <span>Print Invoices ({selectedCaseIds.length})</span>
             </button>
+            {/* Quick status bulk actions. Each opens a confirmation naming the count and
+                the target — these write to every selected row at once, and
+                "Delivered" pulls the cases out of the active workstation, so a
+                stray click must not be able to clear the queue. */}
+            {(['received', 'in_progress', 'delivered'] as CaseStatus[]).map((next) => (
+              <button
+                key={next}
+                type="button"
+                onClick={() => setBulkStatusTarget(next)}
+                className={`px-3 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-colors cursor-pointer ${
+                  next === 'delivered' ? 'bg-fill-success hover:bg-fill-success' : 'bg-slate-800 hover:bg-slate-700'
+                }`}
+                title={`Mark all ${selectedCaseIds.length} selected case(s) as ${STATUS_LABELS[next]}`}
+              >
+                {next === 'received' ? (
+                  <Clock className="w-3.5 h-3.5" />
+                ) : next === 'in_progress' ? (
+                  <ArrowRight className="w-3.5 h-3.5" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                <span>Mark {STATUS_LABELS[next]}</span>
+              </button>
+            ))}
 
             <button
               type="button"
@@ -736,7 +836,12 @@ export const CaseListView: React.FC = () => {
                 },
                 {
                   header: 'Status',
-                  render: (c) => <CaseStatusBadge status={c.status} />,
+                  render: (c) => (
+                    <div className="flex flex-col items-start gap-1">
+                      <CaseStatusBadge status={c.status} />
+                      {qcBadge(c)}
+                    </div>
+                  ),
                 },
                 {
                   header: 'Archived',
@@ -1179,9 +1284,18 @@ export const CaseListView: React.FC = () => {
                     className: 'px-4',
                     render: (c) => {
                       const { isOverdue } = checkCaseWarning(c);
+                      const days = daysToDelivery(c);
                       return (
-                        <div className={`font-semibold ${isOverdue ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>
-                          {c.delivery_date}
+                        <div className="flex flex-col items-start gap-1">
+                          <div className={`font-semibold ${isOverdue ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>
+                            {c.delivery_date}
+                          </div>
+                          {/* Countdown derived from that same date, so the column
+                              answers "how much time is left", not just "when". */}
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${dueTone(days)}`}>
+                            <Calendar className="w-2.5 h-2.5" />
+                            {dueLabel(days)}
+                          </span>
                         </div>
                       );
                     },
@@ -1271,7 +1385,9 @@ export const CaseListView: React.FC = () => {
         if (!victim) return null;
         return (
           <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4">
+            <div role="dialog" aria-modal="true" aria-label={`Confirm permanent deletion of ${victim.case_number}`}
+              className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4"
+            >
               <div className="flex items-center gap-3 text-ink-danger">
                 <Trash2 className="w-6 h-6 shrink-0" />
                 <h3 className="font-bold text-base text-slate-900">Permanently delete {victim.case_number}?</h3>
@@ -1304,6 +1420,53 @@ export const CaseListView: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* Bulk status-change confirmation — names the count and the target, because
+          the write lands on every selected row at once. */}
+      {bulkStatusTarget && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Confirm bulk status change to ${STATUS_LABELS[bulkStatusTarget]}`}
+            className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center gap-3 text-slate-900">
+              <ArrowRight className="w-6 h-6 shrink-0 text-ink-info" />
+              <h3 className="font-bold text-base">
+                Mark {selectedCaseIds.length} case{selectedCaseIds.length === 1 ? '' : 's'} as {STATUS_LABELS[bulkStatusTarget]}?
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {bulkStatusTarget === 'delivered'
+                ? 'Delivered cases leave the active workstation and move toward the archive. Cases still awaiting their delivery date will be marked done early - check the selection first.'
+                : 'Every selected case moves to this stage of the workflow. Individual cases can be moved back afterwards.'}
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setBulkStatusTarget(null)}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  selectedCaseIds.forEach((id) =>
+                    updateCase(id, { status: bulkStatusTarget }, `Bulk: marked ${STATUS_LABELS[bulkStatusTarget]}`),
+                  );
+                  clearSelection();
+                  setBulkStatusTarget(null);
+                }}
+                className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer"
+              >
+                Mark {STATUS_LABELS[bulkStatusTarget]}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Case Detail / Create Modal */}
       {(selectedCase || isNewModalOpen) && (

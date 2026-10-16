@@ -6,6 +6,7 @@ import { formatDoctorName } from '../../utils/doctorName';
 import { usePagination } from '../common/ui/Pagination';
 import { Modal } from '../common/ui/Modal';
 import { DataTable } from '../common/ui';
+import { formatPKR } from '../../services/financeDomain';
 import { 
   Building2, 
   PlusCircle, 
@@ -17,11 +18,13 @@ import {
   ArrowUpDown,
   ChevronRight,
   LayoutGrid,
-  Table as TableIcon
+  Table as TableIcon,
+  DollarSign,
+  AlertCircle
 } from 'lucide-react';
 
 export const LabListView: React.FC = () => {
-  const { labs, cases, addLab } = useApp();
+  const { labs, cases, invoices, allPayments, addLab, getLabFinancialSummary } = useApp();
 
   const [selectedLab, setSelectedLab] = useState<DentalLab | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -122,6 +125,58 @@ export const LabListView: React.FC = () => {
     }
     return byLab;
   }, [cases]);
+
+  /* Outstanding balance per clinic, computed from the lab financial summary. */
+  const outstandingByLab = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const lab of labs) {
+      const summary = getLabFinancialSummary(lab.id);
+      map.set(lab.id, summary.outstanding_balance || 0);
+    }
+    return map;
+  }, [labs, getLabFinancialSummary]);
+
+  /* Last thing that HAPPENED with a clinic, as YYYY-MM-DD.
+      /* Last thing that HAPPENED with a clinic, as YYYY-MM-DD.
+
+     Two traps this avoids, both of which made the column useless:
+       - `delivery_date` is a future promise, not activity. Counting it meant
+         every clinic with an open case reported its next delivery date, so the
+         "last activity" column could never show a dormant account.
+       - stamps arrive in two shapes ('2026-03-04 10:00' and '2026-03-04'),
+         which do not compare correctly as strings. Everything is trimmed to a
+         date first, then compared. */
+  const lastActivityByLab = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const lab of labs) {
+      let latest: string | null = null;
+      const consider = (stamp?: string | null) => {
+        if (!stamp) return;
+        const day = stamp.slice(0, 10);
+        if (!latest || day > latest) latest = day;
+      };
+      for (const c of cases.filter((c) => c.lab_id === lab.id)) {
+        consider(c.created_at);
+        consider(c.updated_at);
+      }
+      for (const inv of invoices.filter((inv) => inv.lab_id === lab.id)) {
+        consider(inv.created_at);
+        consider(inv.issue_date);
+      }
+      for (const pay of allPayments.filter((p) => p.lab_id === lab.id)) {
+        consider(pay.payment_date);
+      }
+      map.set(lab.id, latest);
+    }
+    return map;
+  }, [labs, cases, invoices, allPayments]);
+
+  /* What the clinic owes, in words the operator acts on. Deliberately NOT
+     bucketed into amount bands: a fixed rupee threshold would paint a normal
+     balance "clear" on one clinic and "overdue" on another for no operational
+     reason. Either they owe nothing, or they owe something. */
+  const balanceTone = (amount: number) =>
+    amount === 0 ? 'text-ink-success' : 'text-ink-danger';
 
   const filteredLabs = useMemo(() => {
     return labs.filter((l) => {
@@ -285,6 +340,20 @@ export const LabListView: React.FC = () => {
                       <MapPin className="w-3.5 h-3.5 text-ink-muted shrink-0 mt-0.5" />
                       <span className="text-slate-500 line-clamp-1">{lab.address || 'No address on file'}</span>
                     </div>
+                    {/* Outstanding Balance */}
+                    <div className={`flex items-center gap-2 pt-0.5 ${balanceTone(outstandingByLab.get(lab.id) || 0)}`}>
+                      <DollarSign className="w-3.5 h-3.5 shrink-0" />
+                      <span className="font-semibold">
+                        {outstandingByLab.get(lab.id) === 0 ? 'Nothing outstanding' : formatPKR(outstandingByLab.get(lab.id) || 0)}
+                      </span>
+                    </div>
+                    {/* Last Activity */}
+                    <div className="flex items-center gap-2 pt-0.5 text-slate-500">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span className="font-mono text-[10px]">
+                        {lastActivityByLab.get(lab.id) || 'No activity'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Most Recent Case Highlight (if any) */}
@@ -403,6 +472,24 @@ export const LabListView: React.FC = () => {
                       <span className="text-slate-300 italic font-normal">No cases</span>
                     );
                   },
+                },
+                {
+                  header: 'Outstanding Balance',
+                  align: 'center',
+                  className: 'py-2.5 px-4 font-bold whitespace-nowrap',
+                  render: (lab: DentalLab) => {
+                    const bal = outstandingByLab.get(lab.id) || 0;
+                    return (
+                      <span className={`font-mono font-semibold ${balanceTone(bal)}`}>
+                        {bal === 0 ? 'Clear' : formatPKR(bal)}
+                      </span>
+                    );
+                  },
+                },
+                {
+                  header: 'Last Activity',
+                  className: 'py-2.5 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap',
+                  render: (lab: DentalLab) => lastActivityByLab.get(lab.id) || '—',
                 },
                 {
                   header: 'Action',

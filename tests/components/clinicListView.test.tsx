@@ -16,7 +16,7 @@ const { LABS, CASES } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../src/context/AppContext', () => ({
-  useApp: () => ({ labs: LABS, cases: CASES, addLab: () => {} }),
+  useApp: () => ({ labs: LABS, cases: CASES, addLab: () => {}, invoices: [], allPayments: [], getLabFinancialSummary: () => ({ outstanding_balance: 0 }) }),
 }));
 
 import { LabListView } from '../../src/components/labs/LabListView';

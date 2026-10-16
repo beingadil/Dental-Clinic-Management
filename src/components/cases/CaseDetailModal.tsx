@@ -1282,7 +1282,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowJobSlipModal(true)}
-                  className={`hidden items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-white/20 active:scale-[0.97] md:inline-flex ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-white/20 active:scale-[0.97] ${EASE}`}
                   title="Print Job Slip / Workstation Routing Ticket"
                 >
                   <Printer className="h-4 w-4" />
