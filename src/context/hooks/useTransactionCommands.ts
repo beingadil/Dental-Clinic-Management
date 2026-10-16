@@ -18,6 +18,22 @@ import type {
   ReconciliationItem,
 } from '../../types';
 import { getNowStamp } from '../../utils/dateUtils';
+import type { PaymentMethod } from '../../types';
+
+/**
+ * What may be changed on a payment that has already been recorded.
+ *
+ * Every field here is a correction to the same document — never a second
+ * document — and each one is rebuilt into the receipt's journal so the register,
+ * the ledger and the printed invoice cannot end up telling three stories.
+ */
+export interface PaymentPatch {
+  amount?: number;
+  payment_method?: PaymentMethod;
+  payment_date?: string;
+  reference_number?: string;
+  notes?: string;
+}
 import {
   buildAuditEvent,
   prepareTransaction,
@@ -517,18 +533,9 @@ export function useTransactionCommands(deps: {
     return true;
   };
 
-  /**
-   * Change the amount of one payment entry.
-   *
-   * Only the amount moves: the invoice recomputes its paid total from the rows
-   * that remain, and the receipt's journal is rebuilt from those rows, so the
-   * register and the ledger cannot disagree. Refused when the new amount is not
-   * a positive number, or when it would take the invoice past settled — the
-   * excess belongs in an advance deposit, which is a different document.
-   */
-  const updatePaymentAmountV2 = (paymentId: string, amount: number): boolean => {
-    const next = roundMoney(amount);
-    if (!Number.isFinite(next) || next <= 0) return false;
+  const updatePaymentV2 = (paymentId: string, patch: PaymentPatch): boolean => {
+    const next = patch.amount === undefined ? 0 : roundMoney(patch.amount);
+    if (patch.amount !== undefined && (!Number.isFinite(next) || next <= 0)) return false;
 
     let target: PaymentRecord | null = null;
     let host: Invoice | null = null;
@@ -544,13 +551,25 @@ export function useTransactionCommands(deps: {
 
     const edited = target;
     const invoice = host;
-    if (next === roundMoney(edited.amount)) return true;
+
+    /* Only the fields the caller named move. `amountOf` keeps the untouched
+       amount so a method-only correction does not accidentally re-validate the
+       invoice ceiling against a zero. */
+    const amountOf = patch.amount === undefined ? roundMoney(edited.amount) : next;
+    const applied: PaymentPatch = { ...patch, amount: amountOf };
+    const nothingToDo =
+      amountOf === roundMoney(edited.amount) &&
+      (applied.payment_method === undefined || applied.payment_method === edited.payment_method) &&
+      (applied.payment_date === undefined || applied.payment_date === edited.payment_date) &&
+      (applied.reference_number === undefined || applied.reference_number === edited.reference_number) &&
+      (applied.notes === undefined || applied.notes === edited.notes);
+    if (nothingToDo) return true;
 
     const settledByOthers = (invoice.payments || [])
       .filter((p) => p.id !== edited.id && !p.is_reversed)
       .reduce((sum, p) => sum + p.amount, 0);
     const invoiceCeiling = Math.max(0, invoice.final_amount - (invoice.credit_notes_total || 0));
-    if (next + settledByOthers > invoiceCeiling + 0.001) return false;
+    if (amountOf + settledByOthers > invoiceCeiling + 0.001) return false;
 
     const nowStr = getNowStamp();
     const actor = actorName || 'Cashier';
@@ -562,7 +581,7 @@ export function useTransactionCommands(deps: {
         if (!payments.some((p) => p.id === edited.id)) return inv;
         return recomputeInvoiceFromPayments(
           inv,
-          payments.map((p) => (p.id === edited.id ? { ...p, amount: next } : p)),
+          payments.map((p) => (p.id === edited.id ? { ...p, ...applied, amount: amountOf } : p)),
         );
       }),
     );
@@ -572,7 +591,7 @@ export function useTransactionCommands(deps: {
       const liveRows = invoices
         .flatMap((inv) => inv.payments || [])
         .filter((p) => !p.is_reversed && receiptNumberOf(p.payment_number) === receiptNumber)
-        .map((p) => (p.id === edited.id ? { ...p, amount: next } : p));
+        .map((p) => (p.id === edited.id ? { ...p, ...applied, amount: amountOf } : p));
       const unapplied = Math.max(0, roundMoney(edited.unapplied_amount || 0));
       const allocations: PaymentAllocation[] = liveRows.map((p) => {
         const prior = (edited.allocations || []).find((a) => a.invoice_id === p.invoice_id);
@@ -590,28 +609,65 @@ export function useTransactionCommands(deps: {
         };
       });
       const total = roundMoney(liveRows.reduce((sum, p) => sum + p.amount, 0) + unapplied);
-      const rebuilt = buildPaymentJournal({ ...edited, amount: total }, allocations, unapplied, actor);
+      /* The journal is rebuilt from the corrected row, so a changed method or
+         date lands on the ledger too — cash-vs-bank is an account choice, not
+         decoration, and a corrected voucher that still posted to the old account
+         would make the ledger disagree with the register. */
+      const rebuilt = buildPaymentJournal(
+        { ...edited, ...applied, amount: total },
+        allocations,
+        unapplied,
+        actor,
+      );
       setJournalEntries((prev) =>
         prev.map((j) => (j.id === journal.id ? { ...rebuilt, id: journal.id, journal_number: journal.journal_number } : j)),
       );
     }
 
+    /* One audit line per changed field, so a correction reads as what it was
+       rather than as a single opaque "something changed". An amount change keeps
+       its original action name: that string is long-standing vocabulary in the
+       audit trail, and renaming it would silently reclassify every historical
+       entry as something else. */
+    const fieldNames: Record<keyof PaymentPatch, keyof PaymentRecord> = {
+      amount: 'amount',
+      payment_method: 'payment_method',
+      payment_date: 'payment_date',
+      reference_number: 'reference_number',
+      notes: 'notes',
+    };
+    const changes = (Object.keys(applied) as (keyof PaymentPatch)[]).filter(
+      (k) => applied[k] !== undefined && applied[k] !== (edited as never)[fieldNames[k]],
+    );
+
     setAuditEvents((prev) => [
-      buildAuditEvent({
-        actor,
-        action: 'PAYMENT_AMOUNT_CHANGED',
-        entity_type: 'payment',
-        entity_id: edited.id,
-        entity_ref: edited.payment_number || receiptNumber,
-        old_state: { amount: edited.amount },
-        new_state: { amount: next },
-        notes: `Payment ${edited.payment_number || receiptNumber} changed from ${formatPKR(edited.amount)} to ${formatPKR(next)}.`,
-      }),
+      ...changes.map((field) =>
+        buildAuditEvent({
+          actor,
+          action: field === 'amount' ? 'PAYMENT_AMOUNT_CHANGED' : 'PAYMENT_CORRECTED',
+          entity_type: 'payment',
+          entity_id: edited.id,
+          entity_ref: edited.payment_number || receiptNumber,
+          old_state: { [field]: (edited as never)[fieldNames[field]] },
+          new_state: { [field]: (applied as never)[field] },
+          notes: `Payment ${edited.payment_number || receiptNumber}: ${String(field)} changed from ${String(
+            (edited as never)[fieldNames[field]] ?? '(blank)',
+          )} to ${String((applied as never)[field] ?? '(blank)')}. Ledger rebuilt to match.`,
+        }),
+      ),
       ...prev,
     ]);
 
     return true;
   };
+
+  /**
+   * Amount-only correction. Kept as the narrow entry point the register's inline
+   * editor uses; it defers to `updatePaymentV2` so the two can never disagree
+   * about how a correction propagates.
+   */
+  const updatePaymentAmountV2 = (paymentId: string, amount: number): boolean =>
+    updatePaymentV2(paymentId, { amount });
 
   const reconcileItemV2 = (id: string, matchNotes?: string) => {
     const nowStr = getNowStamp();
@@ -667,6 +723,7 @@ export function useTransactionCommands(deps: {
     issueCreditNoteV2,
     deletePaymentV2,
     updatePaymentAmountV2,
+    updatePaymentV2,
     reconcileItemV2,
     flagReconciliationExceptionV2,
   };

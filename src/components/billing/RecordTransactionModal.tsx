@@ -12,7 +12,9 @@ import {
   Scale,
   Split,
   ChevronDown,
-  ShieldCheck
+  ShieldCheck,
+  Search,
+  X
 } from 'lucide-react';
 import { Modal } from '../common/ui';
 import ClinicPicker from '../common/ui/ClinicPicker';
@@ -96,6 +98,9 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const [allocations, setAllocations] = useState<{ [invoiceId: string]: number }>({});
   /* The allocation list is folded away until asked for — see the block below. */
   const [showAllocations, setShowAllocations] = useState(false);
+  /* Narrows the open-invoice list while the operator is paying. Reset whenever
+     the list is folded away so a stale query does not greet them next time. */
+  const [allocationQuery, setAllocationQuery] = useState('');
 
   /* Inline validation/POST errors (B6): alert() was blocking, non-aria and
      inconsistent with the rest of the module's inline-error voice. One error
@@ -128,6 +133,28 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
       return due > 0;
     });
   }, [invoices, clinicId]);
+
+  /* The open invoices narrowed by whatever the operator typed. Searchable on the
+     patient id, the invoice number and the case number, because those are the
+     three things said out loud at a counter. An allocation made against an
+     invoice hidden by the filter is still kept — filtering is a way of finding
+     a row, never a way of dropping one the cashier already chose. */
+  const visibleAllocations = useMemo(() => {
+    const q = allocationQuery.trim().toLowerCase();
+    if (!q) return clinicInvoices;
+    return clinicInvoices.filter((inv) => {
+      const patientId = (inv as unknown as { patient_id?: string }).patient_id || inv.patient_name;
+      return [inv.invoice_number, inv.case_number, patientId, inv.case_type_name]
+        .filter((v): v is string => !!v)
+        .some((v) => v.toLowerCase().includes(q));
+    });
+  }, [clinicInvoices, allocationQuery]);
+
+  /* A clinic change starts a different set of invoices, so a query carried over
+     from the last clinic would show an empty list for no visible reason. */
+  useEffect(() => {
+    setAllocationQuery('');
+  }, [clinicId]);
 
   // Selected clinic available advance wallet balance
   const clinicAdvanceWallet = useMemo(() => {
@@ -506,11 +533,46 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                   This clinic has <strong>0 open unpaid invoices</strong>. Any collected payment will be credited to their advance wallet as unapplied deposit.
                 </div>
               ) : (
-                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
-                  {clinicInvoices.map((inv) => {
+                <div className="space-y-2">
+                  {/* Search the open invoices. A patient at the counter is
+                      identified by their patient id or their case number far
+                      more often than by an invoice number nobody has read aloud,
+                      so both are searchable here alongside the clinic's own
+                      numbers. */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      value={allocationQuery}
+                      onChange={(e) => setAllocationQuery(e.target.value)}
+                      placeholder="Search by patient id, invoice #, case #..."
+                      aria-label="Search open invoices to pay"
+                      className="w-full pl-8 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                    />
+                    {allocationQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setAllocationQuery('')}
+                        className="absolute right-2 top-1.5 p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        aria-label="Clear invoice search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {visibleAllocations.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-500 bg-white rounded-md border border-slate-200">
+                      No open invoice matches <strong>{allocationQuery}</strong>.
+                      {clinicInvoices.length > 0 && ' Clear the search to see all of them.'}
+                    </div>
+                  ) : (
+                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                  {visibleAllocations.map((inv) => {
                     const due = invoiceBalanceDue(inv);
                     const currentAlloc = allocations[inv.id] || 0;
                     const isTarget = selectedInvoiceId === inv.id;
+                    const patientId = (inv as unknown as { patient_id?: string }).patient_id || inv.patient_name;
                     return (
                       <div
                         key={inv.id}
@@ -530,17 +592,21 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                         } ${isTarget ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-slate-200'}`}
                       >
                         <div className="flex-1 min-w-0 pr-3">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono font-bold text-slate-900">{inv.invoice_number}</span>
                             {isTarget && (
                               <span className="text-[10px] font-bold uppercase tracking-wide bg-indigo-600 text-white px-1.5 py-0.5 rounded">
                                 Target
                               </span>
                             )}
-                            <span className="text-slate-500">• Due: {inv.due_date}</span>
-                            {inv.patient_name && (
-                              <span className="text-slate-600 truncate">• Pt: {inv.patient_name}</span>
+                            {/* The patient id is what the counter searches on,
+                                so it is shown rather than buried in the row. */}
+                            {patientId && (
+                              <span className="font-mono text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                                Pt {String(patientId)}
+                              </span>
                             )}
+                            <span className="text-slate-500">• Due: {inv.due_date}</span>
                           </div>
                           <div className="text-[11px] text-slate-500 mt-0.5">
                             Total: {formatPKR(inv.final_amount)} | Balance Due: <strong className="text-slate-800 font-mono">{formatPKR(due)}</strong>
@@ -570,6 +636,8 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                       </div>
                     );
                   })}
+                  </div>
+                  )}
                 </div>
               )}
 

@@ -64,6 +64,7 @@ import { nextReservedInvoiceNumber } from '../services/invoiceNumbering';
 import { applyBrandColor } from '../services/brandingTheme';
 import { readNotificationCadence, readEscalationRule, NOTIFICATION_CONFIG_CHANGED } from '../services/notificationSettings';
 import { useTransactionCommands } from './hooks/useTransactionCommands';
+import type { PaymentPatch } from './hooks/useTransactionCommands';
 import { useAuthDomain } from './hooks/useAuthDomain';
 import { buildInvoiceAllocation } from '../services/paymentDomain';
 import { useBillingDomain } from './hooks/useBillingDomain';
@@ -269,6 +270,7 @@ interface AppContextType {
   deletePaymentV2: (paymentId: string) => boolean;
   /** Change a payment entry's amount; refused when it would overpay the invoice. */
   updatePaymentAmountV2: (paymentId: string, amount: number) => boolean;
+  updatePaymentV2: (paymentId: string, patch: PaymentPatch) => boolean;
 
   // Saved Vouchers & Slips
   saveVoucherToSystem: (voucher: Omit<SavedVoucher, 'id' | 'created_at' | 'saved_by'>) => SavedVoucher;
@@ -1610,6 +1612,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     issueCreditNoteV2,
     deletePaymentV2,
     updatePaymentAmountV2,
+    updatePaymentV2,
   } = useTransactionCommands({
     labs,
     invoices,
@@ -1742,6 +1745,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         issueCreditNoteV2,
         deletePaymentV2,
         updatePaymentAmountV2,
+        updatePaymentV2,
 
         saveVoucherToSystem,
         deleteSavedVoucher,

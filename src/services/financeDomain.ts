@@ -64,6 +64,17 @@ export const generateId = (prefix: string): string => {
 };
 
 /**
+ * Has money actually been received against this invoice?
+ *
+ * Reads the payment rows rather than `amount_paid`, which is a stored total
+ * that can drift from them. A reversed payment does not count: it was undone,
+ * so the invoice is unpaid again and belongs back in the allocation list rather
+ * than on a screen of settled records.
+ */
+export const hasLivePayment = (invoice: { payments?: { is_reversed?: boolean }[] }): boolean =>
+  (invoice.payments || []).some((p) => !p.is_reversed);
+
+/**
  * Validate that journal lines strictly balance (Sum of Debits === Sum of Credits)
  */
 export const assertJournalBalanced = (lines: JournalLine[]): boolean => {

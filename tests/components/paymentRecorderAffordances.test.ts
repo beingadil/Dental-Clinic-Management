@@ -64,7 +64,7 @@ describe('payment recorder', () => {
     // Removing auto-fill must not remove the capability to settle a specific
     // invoice; that is what the register and the drawer are for.
     expect(source).toMatch(/handleAllocationChange/);
-    expect(source).toMatch(/clinicInvoices\.map/);
+    expect(source).toMatch(/visibleAllocations\.map/);
   });
 
   it('shares one ClinicPicker rather than three copies of the dropdown', () => {

@@ -1,5 +1,5 @@
 import { formatPKR } from '../../services/financeDomain';
-import { invoiceBalanceDue } from '../../services/financeDomain';
+import { invoiceBalanceDue, hasLivePayment } from '../../services/financeDomain';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord } from '../../types';
@@ -22,6 +22,7 @@ import { BatchInvoicePrintModal } from './BatchInvoicePrintModal';
 import { RecordTransactionModal } from './RecordTransactionModal';
 import { JournalEntryModal } from './JournalEntryModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
+import EditPaymentModal from './EditPaymentModal';
 import { ClinicStatementModal } from './ClinicStatementModal';
 import { PageHeader, EmptyState, DataTable, FilterBar, usePagination } from '../common/ui';
 import { BILLING_TABS, labelOf } from '../common/financeTabs';
@@ -36,6 +37,7 @@ import {
   Search, 
   Download, 
   Trash2,
+  Pencil,
   CheckCircle2, 
   AlertTriangle,
   Clock,
@@ -56,6 +58,7 @@ export const BillingView: React.FC = () => {
     getLabFinancialSummary,
     deletePaymentV2,
     updatePaymentAmountV2,
+    updatePaymentV2,
     user
   } = useApp();
 
@@ -83,6 +86,9 @@ export const BillingView: React.FC = () => {
      explain itself that voiding an invoice gets — the invoice balance and the
      ledger both move. */
   const [paymentToDelete, setPaymentToDelete] = useState<PaymentRecord | null>(null);
+  /* The voucher being corrected. Reading one opens the receipt modal, which is a
+     different intent from changing it. */
+  const [voucherToEdit, setVoucherToEdit] = useState<PaymentRecord | null>(null);
   const [isUnifiedRecordModalOpen, setIsUnifiedRecordModalOpen] = useState<boolean>(false);
   /* Two things only: money against an invoice, or money held on account.
      Credit notes and refunds were removed from the recorder — see
@@ -131,8 +137,20 @@ export const BillingView: React.FC = () => {
   }, [clinicFilter, getLabFinancialSummary]);
 
   // Filtered Invoices
+  //
+  // ONLY invoices that have been paid against appear here. An invoice becomes a
+  // Billing row the moment a payment lands on it, which is what makes this
+  // screen a record of vouchers rather than a wall of bills. Nothing is lost by
+  // it: an invoice with no payment is something the operator goes to look for
+  // while taking money, in Receive Payment → Invoice Allocations, which is
+  // where a payment can actually be applied to it.
+  //
+  // A reversed payment does not count. It was undone, so the invoice is unpaid
+  // again and belongs back in the allocation list, not on a screen of records.
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
+      if (!hasLivePayment(inv)) return false;
+
       // Date range on the billing day (created_at is 'YYYY-MM-DD HH:mm')
       const day = (inv.created_at || '').slice(0, 10);
       if (invFromDate && (!day || day < invFromDate)) return false;
@@ -149,6 +167,14 @@ export const BillingView: React.FC = () => {
       return true;
     });
   }, [invoices, clinicFilter, searchTerm, invFromDate, invToDate]);
+
+  /* Whether the clinic has ANY paid invoice at all, ignoring every filter. The
+     empty state needs it to tell "nothing paid yet" apart from "your filters
+     hid everything" — two problems with opposite fixes. */
+  const hasAnyPaidInvoice = useMemo(
+    () => invoices.some((inv) => hasLivePayment(inv)),
+    [invoices],
+  );
 
   /* Paged, not incrementally grown. Mounting 1000+ heavy rows froze scroll and
      search on volume datasets; the old render cap bounded the first paint but
@@ -452,18 +478,38 @@ export const BillingView: React.FC = () => {
             }}
             emptyState={
               <div className="p-6">
-                <EmptyState
-                  icon={Search}
-                  title="No invoices match the active filters"
-                  description="This tab lists today's invoices by default — rewind the date picker to see earlier days, or reset to show every date."
-                  actionLabel="Reset Filters & Show All Dates"
-                  onAction={() => {
-                    setSearchTerm('');
-                    setClinicFilter('all');
-                    setInvFromDate('');
-                    setInvToDate('');
-                  }}
-                />
+                {/* Two different reasons produce an empty table, and they need
+                    different words. Telling an operator whose database has no
+                    payments yet to "rewind the date picker" sends them hunting
+                    through dates for a problem that has nothing to do with
+                    dates. */}
+                {hasAnyPaidInvoice ? (
+                  <EmptyState
+                    icon={Search}
+                    title="No paid invoices match the active filters"
+                    description="This list shows invoices that have money against them. Widen the date range or clear the search to see more of them."
+                    actionLabel="Reset Filters & Show All Dates"
+                    onAction={() => {
+                      setSearchTerm('');
+                      setClinicFilter('all');
+                      setInvFromDate('');
+                      setInvToDate('');
+                    }}
+                  />
+                ) : (
+                  <EmptyState
+                    icon={Wallet}
+                    title="No payments recorded yet"
+                    description="An invoice appears here the moment a payment is received against it — this list is your record of vouchers. Nothing has been paid yet, so there is nothing to show."
+                    actionLabel="Receive Payment"
+                    onAction={() => {
+                      setUnifiedModalInvoiceId(undefined);
+                      setUnifiedModalLabId(undefined);
+                      setUnifiedModalMode('payment');
+                      setIsUnifiedRecordModalOpen(true);
+                    }}
+                  />
+                )}
               </div>
             }
             footer={invoicesPagination ?? undefined}
@@ -581,6 +627,64 @@ export const BillingView: React.FC = () => {
                 render: (inv: Invoice) => getStatusBadge(inv),
               },
               {
+                header: 'Vouchers',
+                className: 'whitespace-nowrap',
+                /* The voucher IS the record on this screen, so each payment is
+                   shown here with the three things an operator needs to do to it:
+                   read it, correct it, delete it. Deleting removes the payment
+                   and restores the invoice's balance — the invoice itself is
+                   never touched. */
+                render: (inv: Invoice) => {
+                  const vouchers = (inv.payments || []).filter((p) => !p.is_reversed);
+                  if (vouchers.length === 0) return <span className="text-slate-400">—</span>;
+                  return (
+                    <div className="space-y-1">
+                      {vouchers.map((pay) => (
+                        <div
+                          key={pay.id}
+                          className="flex items-center gap-1.5 text-[11px] bg-emerald-50/70 border border-emerald-200 rounded-md px-2 py-1"
+                        >
+                          <span className="font-mono font-bold text-emerald-800">
+                            {pay.payment_number || 'PAY'}
+                          </span>
+                          <span className="font-mono tabular-nums text-slate-700">
+                            {formatPKR(pay.amount || 0)}
+                          </span>
+                          <span className="text-slate-500">{pay.payment_date}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedReceiptPayment({ payment: pay, invoice: inv })}
+                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                            title={`View voucher ${pay.payment_number || ''}`}
+                            aria-label={`View voucher ${pay.payment_number || ''}`}
+                          >
+                            <Eye className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setVoucherToEdit(pay)}
+                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                            title={`Edit voucher ${pay.payment_number || ''}`}
+                            aria-label={`Edit voucher ${pay.payment_number || ''}`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPaymentToDelete(pay)}
+                            className="p-0.5 text-slate-400 hover:text-ink-danger hover:bg-rose-50 rounded cursor-pointer"
+                            title={`Delete voucher ${pay.payment_number || ''}`}
+                            aria-label={`Delete voucher ${pay.payment_number || ''}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                },
+              },
+              {
                 header: 'Actions',
                 align: 'right',
                 className: 'whitespace-nowrap',
@@ -629,20 +733,6 @@ export const BillingView: React.FC = () => {
                         title="Print Invoice Statement" aria-label="Print invoice statement"
                       >
                         <Printer className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={() => { if (canPost(user, 'invoice:void')) setVoidTarget(inv); }}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          canPost(user, 'invoice:void')
-                            ? 'text-ink-muted hover:text-ink-danger hover:bg-rose-50 cursor-pointer'
-                            : 'text-slate-200 cursor-not-allowed'
-                        }`}
-                        title={canPost(user, 'invoice:void') ? 'Void Invoice' : 'Void Invoice (admin only)'}
-                        aria-label={canPost(user, 'invoice:void') ? `Void invoice ${inv.invoice_number}` : `Void invoice ${inv.invoice_number} (admin only)`}
-                        aria-disabled={!canPost(user, 'invoice:void')}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   );
@@ -712,6 +802,19 @@ export const BillingView: React.FC = () => {
         onPrintInvoice={(inv) => setPrintModalInvoice(inv)}
         onViewReceipt={(pay) => setSelectedReceiptPayment({ payment: pay })}
         onDeletePayment={(pay) => setPaymentToDelete(pay)}
+        onVoidInvoice={(inv) => setVoidTarget(inv)}
+        canVoid={canPost(user, 'invoice:void')}
+      />
+
+      {/* Correcting a voucher: amount, method, date and reference. Saving
+          rebuilds the receipt's journal, so the register, the general ledger
+          and the printed invoice all move together. */}
+      <EditPaymentModal
+        isOpen={!!voucherToEdit}
+        payment={voucherToEdit}
+        onSave={(id, patch) => updatePaymentV2(id, patch)}
+        onDelete={(pay) => setPaymentToDelete(pay)}
+        onClose={() => setVoucherToEdit(null)}
       />
 
       {/* Official Clinic Statement of Account Modal */}

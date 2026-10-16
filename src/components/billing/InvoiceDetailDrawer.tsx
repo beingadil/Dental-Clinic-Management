@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Receipt,
   Trash2,
-  Wallet
+  Wallet,
+  Ban
 } from 'lucide-react';
 
 interface InvoiceDetailDrawerProps {
@@ -31,6 +32,10 @@ interface InvoiceDetailDrawerProps {
   onViewReceipt: (payment: PaymentRecord) => void;
   /** Delete a payment entry (its whole receipt). Never the invoice itself. */
   onDeletePayment: (payment: PaymentRecord) => void;
+  /** Void the invoice document itself — an accounting action, not a correction. */
+  onVoidInvoice?: (invoice: Invoice) => void;
+  /** Whether the signed-in user may void an invoice. */
+  canVoid?: boolean;
 }
 
 export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
@@ -41,7 +46,9 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   onOpenJournalModal,
   onPrintInvoice,
   onViewReceipt,
-  onDeletePayment
+  onDeletePayment,
+  onVoidInvoice,
+  canVoid,
 }) => {
   const { cases, accountAdjustments, journalEntries, advancePayments, applyAdvanceCreditV2 } = useApp();
   const [jvOpen, setJvOpen] = useState(false);
@@ -155,6 +162,25 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             >
               <Printer className="w-4 h-4" />
             </button>
+            {/* Voiding the invoice lives HERE, not on the table row. Deleting a
+                payment is a correction and belongs on the voucher; cancelling
+                the document itself is a rarer accounting action and is kept
+                apart from it so neither is a stray click away. */}
+            {onVoidInvoice && (
+              <button
+                onClick={() => onVoidInvoice(invoice)}
+                className={`p-2 rounded-lg transition-colors ${
+                  canVoid
+                    ? 'text-ink-muted hover:text-ink-danger hover:bg-rose-50 cursor-pointer'
+                    : 'text-slate-200 cursor-not-allowed'
+                }`}
+                title={canVoid ? 'Void this invoice document' : 'Void this invoice (admin only)'}
+                aria-label={canVoid ? `Void invoice ${invoice.invoice_number}` : `Void invoice ${invoice.invoice_number} (admin only)`}
+                aria-disabled={!canVoid}
+              >
+                <Ban className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 rounded-lg text-ink-muted hover:text-slate-600 hover:bg-slate-200/60 transition-colors"
