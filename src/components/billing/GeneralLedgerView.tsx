@@ -11,7 +11,6 @@ import {
   RotateCcw, 
   DollarSign,
   AlertCircle,
-  CheckCircle2,
   X,
   ArrowUpRight,
   ArrowDownLeft,
@@ -25,7 +24,6 @@ import {
   Printer
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
-import { printCurrentDocument } from '../../utils/printDocument';
 import { caseDetailLines, ledgerPrintDescription, findCaseForEntry } from '../../services/ledgerCaseDetail';
 ;
 import { CaseDetailModal } from '../cases/CaseDetailModal';
@@ -46,19 +44,18 @@ interface NarrationDetails {
   caseDetail: { label: string; value: string }[];
 }
 
-/* What the last Export/Print press did. `null` is the state the operator used
-   to be left in after every successful save. */
-type ExportNotice = { kind: 'saved' | 'error' | 'warn'; text: string; path?: string };
+/* What went wrong, when something did. There is deliberately NO 'saved' state:
+   the file chooser is its own confirmation — the operator picked the location,
+   so telling them afterwards that it saved is noise sitting on top of the thing
+   they just acknowledged. Errors and the missing-clinic prompt stay, because
+   those are the cases where the operator would otherwise be left guessing. */
+type ExportNotice = { kind: 'error' | 'warn'; text: string };
 
 /* One wording for both buttons, so "nothing happened" is never ambiguous. */
 const NEEDS_CLINIC: ExportNotice = {
   kind: 'warn',
   text: 'Choose a clinic first — the ledger statement is prepared per clinic.',
 };
-
-/** A saved path only reads as a location when it is one. The web build hands
-    back a bare file name and must not be shown as though it were on disk. */
-const isAbsolutePath = (p: string): boolean => /^[a-zA-Z]:[\\/]|^\\\\/.test(p);
 
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   const { labs, getLedgerEntries, brandingSettings, cases, invoices } = useApp();
@@ -414,9 +411,58 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
     };
   };
 
-  /* PDF export — a real vector document (text, table, page breaks), not a
-     screenshot. Reuses the exact rows/totals the on-screen preview shows. */
-  const handleExportPDF = async () => {
+/* Builds the statement document. BOTH output buttons go through here, so
+     "Print" and "Export PDF" cannot produce two different documents. They used
+     to: one ran the PDF generator, the other printed the on-screen HTML through
+     the browser's dialog, so "Print" was never the file the operator had been
+     exporting. Same rows, same totals, same page breaks, same bytes. */
+  const buildStatement = () => {
+    const clinicLabel = selectedClinic!.name;
+    const periodLabel = startDate || endDate
+      ? `${startDate || 'Beginning'} → ${endDate || 'Present'}`
+      : 'All Time';
+    const result = buildLedgerPdf(
+      caseScope.items.map((item) => {
+        const details = getNarrationDetails(item);
+        const c = findCaseForEntry(item, cases);
+        return {
+          date: String(item.date || '').slice(0, 10),
+          clinic: item.lab_name || '',
+          caseNumber: item.case_number || '',
+          typeLabel: details.typeLabel,
+          /* The compact ledger-print line. It replaces the old
+             `${typeLabel} - ${ref} ${description} - ${caseDetailText(c)}`,
+             which repeated the Date column, the CASE/JOB column and the
+             product name three times over and wrapped to four lines. */
+          narration: ledgerPrintDescription(c, details.narration),
+          debit: item.debit || 0,
+          credit: item.credit || 0,
+          closing: item.closing_balance || 0,
+        };
+      }),
+      {
+        labName: brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab',
+        clinicLabel,
+        periodLabel,
+        caseFilterLabel: caseFilter.trim() || undefined,
+        accountName: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.name,
+        accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.code,
+        openingBalance,
+        totalDebits: caseScope.debitsSum,
+        totalCredits: caseScope.creditsSum,
+        closingBalance: caseScope.closing,
+        transactionCount: caseScope.items.length,
+        generatedOn: todayISO(),
+      },
+    );
+    const fileName = `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`;
+    return { fileName, pdf: result.pdf };
+  };
+
+  /* Renders the statement and puts it wherever the operator chooses.
+     `label` only shapes the file-type description in the chooser, so the
+     window reads correctly. */
+  const saveStatement = async (label: string) => {
     /* Used to be a bare `return`. With the button also `disabled`, pressing
        Export PDF with no clinic chosen produced no file, no message and no
        visible change at all — indistinguishable from a broken export. */
@@ -426,81 +472,30 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
     }
     setExportNotice(null);
     try {
-      const clinicLabel = selectedClinic.name;
-      const periodLabel = startDate || endDate
-        ? `${startDate || 'Beginning'} → ${endDate || 'Present'}`
-        : 'All Time';
-      const result = buildLedgerPdf(
-        caseScope.items.map((item) => {
-          const details = getNarrationDetails(item);
-          const c = findCaseForEntry(item, cases);
-          return {
-            date: String(item.date || '').slice(0, 10),
-            clinic: item.lab_name || '',
-            caseNumber: item.case_number || '',
-            typeLabel: details.typeLabel,
-            /* The compact ledger-print line. It replaces the old
-               `${typeLabel} - ${ref} ${description} - ${caseDetailText(c)}`,
-               which repeated the Date column, the CASE/JOB column and the
-               product name three times over and wrapped to four lines.
-               `details.narration` carries "INV-0056  Invoice for Retainer
-               (DS-0028)" - ledgerPrintDescription takes the descriptive half of
-               that as its heading and drops the reference and the case number,
-               both of which are columns. */
-            narration: ledgerPrintDescription(c, details.narration),
-            debit: item.debit || 0,
-            credit: item.credit || 0,
-            closing: item.closing_balance || 0,
-          };
-        }),
-        {
-          labName: brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab',
-          clinicLabel,
-          periodLabel,
-          caseFilterLabel: caseFilter.trim() || undefined,
-          accountName: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.name,
-          accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.code,
-          openingBalance,
-          totalDebits: caseScope.debitsSum,
-          totalCredits: caseScope.creditsSum,
-          closingBalance: caseScope.closing,
-          transactionCount: caseScope.items.length,
-          generatedOn: todayISO(),
-        }
-      );
-      const fileName = `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`;
-      const outcome = await downloadPdf(fileName, result.pdf);
+      const { fileName, pdf } = buildStatement();
+      const outcome = await downloadPdf(fileName, pdf, label);
 
-      /* Every outcome is now reported ON THE PAGE. `downloadPdf` returns a
-         result rather than swallowing it, but that result was only ever read
-         for the error case — a successful save said nothing, so "did it save?"
-         had no answer on screen at all. Cancelling the save dialog is silence
-         too, which is correct: the operator chose that. */
-      if (outcome.status === 'saved') {
-        setExportNotice({
-          kind: 'saved',
-          text:
-            outcome.path && isAbsolutePath(outcome.path)
-              ? `Ledger statement saved.`
-              : `Ledger statement downloaded.`,
-          path: outcome.path,
-        });
-      } else if (outcome.status === 'cancelled') {
-        return;
-      } else if (outcome.status === 'error') {
+      /* Only the unhappy paths are announced. A successful save is confirmed by
+         the chooser the operator just dismissed — a banner repeating it was
+         clutter the operator asked to lose. Cancelling says nothing, which is
+         right: they chose that. */
+      if (outcome.status === 'error') {
         setExportNotice({
           kind: 'error',
           text: `Could not save the PDF: ${outcome.message}`,
         });
       }
     } catch (e) {
-      console.error('Error exporting PDF:', e);
+      console.error('Error building the ledger PDF:', e);
       setExportNotice({
         kind: 'error',
         text: `Could not export the ledger: ${e instanceof Error ? e.message : String(e)}`,
       });
     }
   };
+
+  const handleExportPDF = () => saveStatement('PDF document');
+  const handlePrint = () => saveStatement('Ledger statement PDF');
 
   return (
     <div className="space-y-6 print-page">
@@ -571,68 +566,42 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
             <span>Export PDF</span>
           </button>
 
-          {/* Print Ledger
-              There was no print button here at all — only Export PDF, which
-              downloads a file. `printCurrentDocument` waits for the preview
-              below to paint before opening the dialog; a bare window.print()
-              can snapshot the frame before the ledger renders. */}
+          {/* Print Ledger — the same PDF as Export PDF, saved through the same
+              chooser. It used to hand the on-screen HTML to the browser's print
+              dialog, which was a different document from the exported file and a
+              blank page whenever the preview had not been opened. */}
           <button
             type="button"
-            onClick={() => {
-              if (!selectedClinic) {
-                setExportNotice(NEEDS_CLINIC);
-                return;
-              }
-              /* The ledger's printable content lives inside `.print-flow`,
-                 which is only mounted when the preview is open. Print used to
-                 call window.print() regardless, so pressing Print before
-                 Preview printed a BLANK page and said nothing — the document
-                 simply was not in the DOM yet. Open it first, let it paint,
-                 then print. */
-              setIsPreviewActive(true);
-              setExportNotice(null);
-              void printCurrentDocument();
-            }}
-            title="Print the ledger statement"
-            aria-label="Print ledger statement"
+            onClick={handlePrint}
+            title="Save the ledger statement as a PDF"
+            aria-label="Print ledger statement as PDF"
             className="shrink-0 py-2.5 px-4 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span>Print</span>
           </button>
 
-          {/* Export outcome, stated on the page.
+          {/* Failures only.
 
-              An `alert()` is the only feedback this had, and an operator who
-              pressed the button and looked back at the ledger never saw it —
-              the dialog was behind them, or the window had moved on. The file
-              landing somewhere they were not looking is exactly the symptom
-              reported. Naming the saved path here is what makes "did it save?"
-              answerable without hunting through the filesystem. */}
+              There was a green "saved" banner naming the file. It was added
+              because, before the chooser existed, a save happened invisibly and
+              the operator had no way to know where it went. Now the OS chooser
+              IS that confirmation — they pick the location and dismiss the
+              window. Repeating it on the page afterwards is noise on top of the
+              thing they just acknowledged, and it was removed on request.
+              Errors and the missing-clinic prompt stay: those are the cases
+              where the operator would otherwise be left guessing. */}
           {exportNotice && (
             <div
               role="status"
               className={`lg:col-span-12 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
                 exportNotice.kind === 'error'
                   ? 'bg-rose-50 border-rose-200 text-ink-danger'
-                  : exportNotice.kind === 'warn'
-                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'
               }`}
             >
-              {exportNotice.kind === 'saved' ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              )}
-              <span className="min-w-0 break-words">
-                {exportNotice.text}
-                {exportNotice.path && (
-                  <span className="block mt-0.5 font-mono text-[11px] opacity-80 break-all">
-                    {exportNotice.path}
-                  </span>
-                )}
-              </span>
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="min-w-0 break-words">{exportNotice.text}</span>
               <button
                 type="button"
                 onClick={() => setExportNotice(null)}

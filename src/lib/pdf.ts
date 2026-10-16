@@ -510,12 +510,14 @@ const closingDrCr = (n: number) =>
 export function downloadPdf(
   filename: string,
   pdf: string,
+  /** Labels the file type in the chooser, so the window reads correctly. */
+  dialogTitle: string = 'Save PDF',
 ): Promise<import('./saveFile').SaveFileResult> {
   const bytes = new Uint8Array(pdf.length);
   for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
   return saveFile(filename, bytes, {
     extension: '.pdf',
     mimeType: 'application/pdf',
-    dialogTitle: 'Save PDF',
+    dialogTitle,
   });
 }

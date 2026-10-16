@@ -59,11 +59,111 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/** Appends the extension unless the name already carries it. */
+const withExtension = (fileName: string, extension: string): string =>
+  fileName.toLowerCase().endsWith(extension.toLowerCase())
+    ? fileName
+    : `${fileName}${extension}`;
+
+/* The narrow slice of the File System Access API this uses. Declared here rather
+ * than pulled from a lib because TypeScript's DOM lib does not type the picker
+ * uniformly across TS versions, and the browser feature-detects it anyway. */
+interface SaveFilePickerOptions {
+  suggestedName?: string;
+  types?: { description?: string; accept: Record<string, string[]> }[];
+}
+interface FileHandleLike {
+  name: string;
+  createWritable: () => Promise<{
+    write: (data: Blob) => Promise<void>;
+    close: () => Promise<void>;
+  }>;
+}
+type PickerFn = (opts?: SaveFilePickerOptions) => Promise<FileHandleLike>;
+
+/** Chromium-only, and only in a secure context. `127.0.0.1` counts as one, so
+    this is available in the dev server, not just on a hosted page. */
+function savePicker(): PickerFn | null {
+  if (!window.isSecureContext) return null;
+  const fn = (window as unknown as { showSaveFilePicker?: PickerFn }).showSaveFilePicker;
+  return typeof fn === 'function' ? fn : null;
+}
+
 /**
- * Save `content` as `fileName`, asking the operator where it goes on desktop.
+ * Save in a plain browser, in the two ways it can.
  *
- * `extension` drives both the native file-type filter and the filename
- * fallback; `mimeType` only matters to the browser download path.
+ * With the File System Access API the operator gets a real Save As window and
+ * picks the location. Without it (Firefox, Safari) there is no chooser at all,
+ * so the file goes to the browser's downloads folder via an anchor click —
+ * which is a working save, but not one the operator chose, and it is reported
+ * as such so nobody goes hunting through the filesystem for a dialog that was
+ * never going to appear.
+ */
+async function saveInBrowser(
+  bytes: Uint8Array,
+  fileName: string,
+  opts: { extension: string; mimeType: string; dialogTitle?: string },
+): Promise<SaveFileResult> {
+  const blob = new Blob([bytes as BlobPart], { type: opts.mimeType });
+
+  const picker = savePicker();
+  if (picker) {
+    try {
+      const handle = await picker({
+        suggestedName: fileName,
+        types: [
+          {
+            description: opts.dialogTitle ?? 'File',
+            accept: { [opts.mimeType]: [opts.extension.replace('.', '')] },
+          },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { status: 'saved', path: handle.name, bytes: bytes.length };
+    } catch (err) {
+      /* Dismissing the chooser is a choice, not a failure. Reporting it as an
+         error would train the operator to ignore the message. Matched on the
+         error NAME rather than on DOMException, because the abort surfaces as a
+         plain Error in some embedders and would otherwise read as a real fault. */
+      if (err instanceof Error && err.name === 'AbortError') {
+        return { status: 'cancelled' };
+      }
+      return {
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  try {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Revoking immediately can cancel the download in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    return { status: 'saved', path: fileName, bytes: bytes.length };
+  } catch (err) {
+    return {
+      status: 'error',
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Save `content` as `fileName`, asking the operator where it goes.
+ *
+ * Desktop gets the native dialog; a browser gets a Save As window via the File
+ * System Access API, falling back to a plain download where that is missing.
+ *
+ * `extension` drives both the file-type filter and the filename fallback;
+ * `mimeType` only matters on the browser paths.
  */
 export async function saveFile(
   fileName: string,
@@ -88,27 +188,7 @@ export async function saveFile(
           'The file-save helper could not be loaded in the desktop app, so nothing was written. Restart Dental Solutions and try again.',
       };
     }
-    // Web build: the browser download the page has always used.
-    try {
-      const blob = new Blob([bytes as BlobPart], { type: opts.mimeType });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName.toLowerCase().endsWith(opts.extension)
-        ? fileName
-        : `${fileName}${opts.extension}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      // Revoking immediately can cancel the download in some browsers.
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      return { status: 'saved', path: fileName, bytes: bytes.length };
-    } catch (err) {
-      return {
-        status: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      };
-    }
+    return saveInBrowser(bytes, withExtension(fileName, opts.extension), opts);
   }
 
   if (!dialogApi || !invokeFn) {

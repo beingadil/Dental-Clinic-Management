@@ -106,14 +106,14 @@ describe('the ledger export button', () => {
     expect(src).toMatch(/NEEDS_CLINIC/);
   });
 
-  it('reports a successful save on the page, naming the path', () => {
+  it('still reports a failure, where the operator would otherwise be guessing', () => {
     const src = require('node:fs').readFileSync(
       require('node:path').resolve(process.cwd(), 'src/components/billing/GeneralLedgerView.tsx'),
       'utf8',
     );
-    // A successful save used to say nothing at all; only the error case raised
-    // an alert, which is behind the window the operator was looking at.
-    expect(src).toMatch(/kind: 'saved'/);
+    // The success banner was removed on request — the OS chooser is the
+    // confirmation. The error path is not optional.
+    expect(src).toMatch(/Could not save the PDF/);
     expect(src).toMatch(/role="status"/);
   });
 });
