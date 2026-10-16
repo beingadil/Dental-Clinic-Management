@@ -687,6 +687,49 @@ fn installed_relaunch_target(current_exe: &std::path::Path) -> PathBuf {
     current_exe.to_path_buf()
 }
 
+/// Absolute path to Windows PowerShell, or `None` if it is not installed.
+///
+/// `Command::new("powershell")` looks the name up on the child's PATH. That
+/// lookup is the whole reason the updater used to fail with "program not
+/// found": a PATH that omits `%SystemRoot%\System32\WindowsPowerShell\v1.0`
+/// (a trimmed service account, a sanitised launcher environment, a shell that
+/// rewrote PATH) leaves nothing to resolve, and the update aborted with an
+/// error that named the installer rather than the missing interpreter. The
+/// installer's location is fixed by Windows, so resolve it directly.
+#[cfg(windows)]
+fn powershell_exe() -> Option<PathBuf> {
+    let roots: Vec<PathBuf> = std::env::var("SystemRoot")
+        .map(PathBuf::from)
+        .into_iter()
+        .chain(std::env::var("WINDIR").map(PathBuf::from))
+        .chain([PathBuf::from(r"C:\Windows")])
+        .collect();
+
+    for root in roots {
+        // The native view first, then the redirected one, so a 32-bit build
+        // still finds PowerShell where WOW64 did not leave it.
+        for base in [
+            root.join("Sysnative").join("WindowsPowerShell").join("v1.0"),
+            root.join("System32").join("WindowsPowerShell").join("v1.0"),
+        ] {
+            let candidate = base.join("powershell.exe");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Escapes a path for embedding in a PowerShell single-quoted string literal.
+/// A `'` in a path (legal on NTFS, and present in some user profile names)
+/// would otherwise close the literal early and turn the waiter script into a
+/// syntax error, reported to the operator as a failed install.
+#[cfg(windows)]
+fn ps_quote(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\'', "''")
+}
+
 /// Spawns a detached waiter that runs the silent NSIS installer AFTER this
 /// process exits, then relaunches the app on the new version.
 ///
@@ -697,21 +740,32 @@ fn installed_relaunch_target(current_exe: &std::path::Path) -> PathBuf {
 /// outlives our exit; CREATE_NO_WINDOW keeps it invisible.
 #[cfg(windows)]
 fn spawn_install_waiter(staged: &std::path::Path, relaunch_target: &std::path::Path) -> Result<(), String> {
+    let shell = powershell_exe().ok_or_else(|| {
+        "Windows PowerShell was not found on this machine, so the update cannot be installed \
+         automatically. Download the installer from the releases page and run it yourself."
+            .to_string()
+    })?;
     let script = format!(
         "Wait-Process -Id {} -ErrorAction SilentlyContinue; $p = Start-Process -FilePath '{}' -ArgumentList '/S' -PassThru -WindowStyle Hidden; Wait-Process -Id $p.Id; Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}'",
         std::process::id(),
-        staged.display(),
-        relaunch_target.display()
+        ps_quote(staged),
+        ps_quote(relaunch_target)
     );
     use std::os::windows::process::CommandExt;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    Command::new("powershell")
+    Command::new(&shell)
         .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
         .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Could not start the installer: {e}"))
+        .map_err(|e| {
+            format!(
+                "Could not start the update helper ({}) : {e}. You can install this update by \
+                 downloading the installer from the releases page instead.",
+                shell.display()
+            )
+        })
 }
 
 #[cfg(not(windows))]
