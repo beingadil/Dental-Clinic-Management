@@ -26,7 +26,8 @@ export interface InvoiceBadge {
   tone: InvoiceBadgeTone;
   /** Word on the pill. */
   label: 'Paid' | 'Overdue' | 'Partial' | 'Pending';
-  /** The line under the pill: a second fact, never a restatement of the label. */
+  /** The line under the pill: a second fact, never a restatement of the label.
+      Empty when there is nothing worth a second line — the pill stands alone. */
   detail: string;
   /** True only when the operator is being asked to chase this row. */
   needsAttention: boolean;
@@ -69,12 +70,10 @@ export function invoiceBadge(inv: Invoice, today: Date = new Date()): InvoiceBad
     };
   }
 
-  let detail = 'Pending';
-  if (inv.due_date) {
-    const diffDays = daysUntilDue(inv.due_date, today);
-    if (diffDays === 0) detail = 'Due Today';
-    else if (diffDays === 1) detail = 'Due Tomorrow';
-    else if (diffDays > 1) detail = `Due in ${diffDays}d`;
-  }
-  return { tone: 'pending', label: 'Pending', detail, needsAttention: false };
+  /* No countdown here. "Due in 6d" / "Due Today" is a payment-terms promise,
+     and it was the widest thing in the Status column on a narrow screen while
+     telling the operator nothing they can act on — an invoice inside its terms
+     needs no chasing, and the date it is due is one click away in the invoice
+     breakdown. Only a PAST-due invoice earns a second line here. */
+  return { tone: 'pending', label: 'Pending', detail: '', needsAttention: false };
 }

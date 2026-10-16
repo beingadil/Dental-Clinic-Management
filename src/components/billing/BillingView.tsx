@@ -273,7 +273,11 @@ export const BillingView: React.FC = () => {
           <PAINT.Icon className={`w-3 h-3 ${PAINT.ink}`} />
           <span>{badge.label}</span>
         </span>
-        <span className={`text-[11px] mt-0.5 whitespace-nowrap ${PAINT.sub}`}>{badge.detail}</span>
+        {/* An empty detail renders nothing — an invoice inside its terms has
+            no second fact worth the width. */}
+        {badge.detail && (
+          <span className={`text-[11px] mt-0.5 whitespace-nowrap ${PAINT.sub}`}>{badge.detail}</span>
+        )}
       </div>
     );
   };
@@ -538,11 +542,6 @@ export const BillingView: React.FC = () => {
                 },
               },
               {
-                header: 'Case Material',
-                className: 'text-slate-600',
-                render: (inv: Invoice) => inv.case_type_name,
-              },
-              {
                 header: 'Doctor',
                 className: 'text-slate-600 whitespace-nowrap',
                 render: (inv: Invoice) => formatDoctorName(inv.doctor_name),
@@ -576,45 +575,6 @@ export const BillingView: React.FC = () => {
                 },
               },
               {
-                header: 'Due Date & Terms',
-                align: 'center',
-                className: 'whitespace-nowrap',
-                render: (inv: Invoice) => {
-                  const remaining = invoiceBalanceDue(inv);
-                  const isPaid = inv.payment_status === 'paid' || remaining <= 0;
-                  const { isOverdue, diffDays } = isInvoiceOverdue(inv);
-                  if (isPaid) {
-                    return (
-                      <div className="inline-flex flex-col items-center">
-                        <span className="text-slate-500 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
-                        <span className="text-[11px] text-ink-success font-bold">Settled</span>
-                      </div>
-                    );
-                  }
-                  if (isOverdue) {
-                    return (
-                      <div className="inline-flex flex-col items-center">
-                        <span className="text-ink-danger font-bold text-[11px] flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3 text-ink-danger shrink-0" />
-                          <span>{inv.due_date}</span>
-                        </span>
-                        <span className="px-1.5 py-0.2 bg-rose-100 text-rose-700 font-bold text-[11px] rounded mt-0.5 whitespace-nowrap">
-                          EXPIRED ({diffDays}d)
-                        </span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="inline-flex flex-col items-center">
-                      <span className="text-slate-700 text-[11px] font-medium">{inv.due_date || 'N/A'}</span>
-                      <span className="text-[11px] text-amber-700 font-semibold">
-                        {inv.due_date ? 'Within Terms' : 'No Terms'}
-                      </span>
-                    </div>
-                  );
-                },
-              },
-              {
                 header: 'Payment Status',
                 align: 'center',
                 className: 'whitespace-nowrap',
@@ -627,44 +587,33 @@ export const BillingView: React.FC = () => {
                 render: (inv: Invoice) => {
                   const remaining = invoiceBalanceDue(inv);
                   const isPaid = inv.payment_status === 'paid' || remaining <= 0;
-                  const { isOverdue } = isInvoiceOverdue(inv);
                   const clinicSummary = getLabFinancialSummary(inv.lab_id);
                   return (
                     <div className="flex items-center justify-end gap-1.5">
-                      {!isPaid ? (
-                        <button
-                          onClick={() => {
-                            setUnifiedModalInvoiceId(inv.id);
-                            setUnifiedModalLabId(inv.lab_id);
-                            setUnifiedModalMode('payment');
-                            setIsUnifiedRecordModalOpen(true);
-                          }}
-                          className={`px-2.5 py-1 text-white font-bold text-xs rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer ${
-                            isOverdue
-                              ? 'bg-rose-600 hover:bg-rose-700'
-                              : 'bg-fill-success hover:bg-emerald-700'
-                          }`}
-                          title={isOverdue ? 'Receive overdue payment' : 'Receive payment against this invoice'}
-                        >
-                          <ArrowDownLeft className="w-3.5 h-3.5" />
-                          <span>{isOverdue ? 'Receive Overdue' : 'Receive'}</span>
-                        </button>
-                      ) : clinicSummary.outstanding_balance === 0 && clinicSummary.advance_balance > 0 ? (
-                        /* A clinic holding advance credit has it drawn down by later
-                           invoices (Clinic Credit Wallet) rather than refunded. */
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] font-bold rounded-md border border-indigo-200"
-                          title="Clinic holds advance credit. It is drawn down by later invoices."
-                        >
-                          <Wallet className="w-3 h-3 text-indigo-500" />
-                          <span>Credit PKR {clinicSummary.advance_balance.toLocaleString()}</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-ink-success" />
-                          <span>Cleared</span>
-                        </span>
-                      )}
+                      {/* No per-row Receive button. A payment is recorded from
+                          the payments register below the table, or from the
+                          invoice breakdown drawer — one place to look, and two
+                          fewer controls in a row that has to fit a small
+                          screen. The settled/credit state still reads here so a
+                          scan of the column tells you where each invoice stands. */}
+                      {isPaid ? (
+                        clinicSummary.outstanding_balance === 0 && clinicSummary.advance_balance > 0 ? (
+                          /* A clinic holding advance credit has it drawn down by later
+                             invoices (Clinic Credit Wallet) rather than refunded. */
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] font-bold rounded-md border border-indigo-200"
+                            title="Clinic holds advance credit. It is drawn down by later invoices."
+                          >
+                            <Wallet className="w-3 h-3 text-indigo-500" />
+                            <span>Credit PKR {clinicSummary.advance_balance.toLocaleString()}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
+                            <CheckCircle2 className="w-3 h-3 text-ink-success" />
+                            <span>Cleared</span>
+                          </span>
+                        )
+                      ) : null}
 
                       <button
                         onClick={() => setSelectedDrawerInvoice(inv)}

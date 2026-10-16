@@ -105,19 +105,6 @@ describe('invoiceBadge — only a late balance demands action', () => {
     expect(badge.needsAttention).toBe(true);
   });
 
-  it('leaves an invoice due today Pending, not Overdue', () => {
-    const badge = invoiceBadge(inv({ due_date: '2026-10-10' }), TODAY);
-    expect(badge.tone).toBe('pending');
-    expect(badge.detail).toBe('Due Today');
-    expect(badge.needsAttention).toBe(false);
-  });
-
-  it('counts down to a future due date', () => {
-    const badge = invoiceBadge(inv({ due_date: '2026-10-13' }), TODAY);
-    expect(badge.detail).toBe('Due in 3d');
-    expect(badge.needsAttention).toBe(false);
-  });
-
   it('never calls a within-terms invoice Overdue, whatever the stored status', () => {
     // The specific regression: painting every unpaid row rose buried the
     // handful the operator actually had to chase.
@@ -130,9 +117,32 @@ describe('invoiceBadge — only a late balance demands action', () => {
     }
   });
 
+  it('leaves an invoice due today Pending, not Overdue', () => {
+    const badge = invoiceBadge(inv({ due_date: '2026-10-10' }), TODAY);
+    expect(badge.tone).toBe('pending');
+    expect(badge.needsAttention).toBe(false);
+  });
+
+  it('says nothing about time remaining while an invoice is still within terms', () => {
+    // Payment terms are gone: "Due Today" / "Due in 6d" told the operator
+    // nothing they can act on and was the widest string in the column.
+    for (const due of ['2026-10-10', '2026-10-11', '2026-10-25']) {
+      const badge = invoiceBadge(inv({ due_date: due }), TODAY);
+      expect(badge.tone).toBe('pending');
+      expect(badge.detail).toBe('');
+    }
+  });
+
+  it('never phrases an overdue invoice as time remaining either', () => {
+    // The only second line left is a PAST-due count — a fact to act on.
+    const badge = invoiceBadge(inv({ due_date: '2026-10-05' }), TODAY);
+    expect(badge.detail).toBe('5 days overdue');
+    expect(badge.detail).not.toMatch(/Due in/);
+  });
+
   it('treats an invoice with no due date as open-ended rather than late', () => {
     const badge = invoiceBadge(inv({ due_date: '' }), TODAY);
     expect(badge.tone).toBe('pending');
-    expect(badge.detail).toBe('Pending');
+    expect(badge.detail).toBe('');
   });
 });
