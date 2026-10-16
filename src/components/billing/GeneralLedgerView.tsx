@@ -10,6 +10,9 @@ import {
   Eye, 
   RotateCcw, 
   DollarSign,
+  AlertCircle,
+  CheckCircle2,
+  X,
   ArrowUpRight,
   ArrowDownLeft,
   FileDown,
@@ -43,6 +46,20 @@ interface NarrationDetails {
   caseDetail: { label: string; value: string }[];
 }
 
+/* What the last Export/Print press did. `null` is the state the operator used
+   to be left in after every successful save. */
+type ExportNotice = { kind: 'saved' | 'error' | 'warn'; text: string; path?: string };
+
+/* One wording for both buttons, so "nothing happened" is never ambiguous. */
+const NEEDS_CLINIC: ExportNotice = {
+  kind: 'warn',
+  text: 'Choose a clinic first — the ledger statement is prepared per clinic.',
+};
+
+/** A saved path only reads as a location when it is one. The web build hands
+    back a bare file name and must not be shown as though it were on disk. */
+const isAbsolutePath = (p: string): boolean => /^[a-zA-Z]:[\\/]|^\\\\/.test(p);
+
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   const { labs, getLedgerEntries, brandingSettings, cases, invoices } = useApp();
 
@@ -64,6 +81,9 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
 
   // Preview state: hidden until the user clicks Preview.
   const [isPreviewActive, setIsPreviewActive] = useState<boolean>(false);
+
+  /* Outcome of the last Export/Print press, shown on the page. */
+  const [exportNotice, setExportNotice] = useState<ExportNotice | null>(null);
 
 // Selected clinic object
   const selectedClinic = useMemo(() => {
@@ -397,7 +417,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   /* PDF export — a real vector document (text, table, page breaks), not a
      screenshot. Reuses the exact rows/totals the on-screen preview shows. */
   const handleExportPDF = async () => {
-    if (!selectedClinic) return;
+    /* Used to be a bare `return`. With the button also `disabled`, pressing
+       Export PDF with no clinic chosen produced no file, no message and no
+       visible change at all — indistinguishable from a broken export. */
+    if (!selectedClinic) {
+      setExportNotice(NEEDS_CLINIC);
+      return;
+    }
+    setExportNotice(null);
     try {
       const clinicLabel = selectedClinic.name;
       const periodLabel = startDate || endDate
@@ -441,18 +468,37 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
           generatedOn: todayISO(),
         }
       );
-      const outcome = await downloadPdf(
-        `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`,
-        result.pdf
-      );
-      // Reported rather than discarded: `downloadPdf` used to be fire-and-forget,
-      // so a failed export left no file and no message at all.
-      if (outcome.status === 'error') {
-        alert(`Could not export the ledger: ${outcome.message}`);
+      const fileName = `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`;
+      const outcome = await downloadPdf(fileName, result.pdf);
+
+      /* Every outcome is now reported ON THE PAGE. `downloadPdf` returns a
+         result rather than swallowing it, but that result was only ever read
+         for the error case — a successful save said nothing, so "did it save?"
+         had no answer on screen at all. Cancelling the save dialog is silence
+         too, which is correct: the operator chose that. */
+      if (outcome.status === 'saved') {
+        setExportNotice({
+          kind: 'saved',
+          text:
+            outcome.path && isAbsolutePath(outcome.path)
+              ? `Ledger statement saved.`
+              : `Ledger statement downloaded.`,
+          path: outcome.path,
+        });
+      } else if (outcome.status === 'cancelled') {
+        return;
+      } else if (outcome.status === 'error') {
+        setExportNotice({
+          kind: 'error',
+          text: `Could not save the PDF: ${outcome.message}`,
+        });
       }
     } catch (e) {
       console.error('Error exporting PDF:', e);
-      alert(`Could not export the ledger: ${e instanceof Error ? e.message : String(e)}`);
+      setExportNotice({
+        kind: 'error',
+        text: `Could not export the ledger: ${e instanceof Error ? e.message : String(e)}`,
+      });
     }
   };
 
@@ -507,18 +553,19 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
             />
           </div>
 
-          {/* PDF Export Button — real vector document, not a screenshot */}
+          {/* PDF Export Button — real vector document, not a screenshot
+
+              NOT disabled without a clinic. It was, and a disabled control
+              cannot be clicked and cannot explain itself: the operator pressed
+              Export PDF, nothing happened, and the only clue was a tooltip they
+              have to already be hovering to see. It now always responds, and
+              says what it needs. */}
           <button
             type="button"
             onClick={handleExportPDF}
-            disabled={!selectedClinic}
-            title={
-              selectedClinic
-                ? 'Download ledger statement as PDF (selectable text, real pages)'
-                : 'Select a clinic first'
-            }
+            title="Download ledger statement as PDF (selectable text, real pages)"
             aria-label="Download ledger statement as PDF"
-            className="shrink-0 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <FileDown className="w-4 h-4" />
             <span>Export PDF</span>
@@ -531,19 +578,63 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
               can snapshot the frame before the ledger renders. */}
           <button
             type="button"
-            onClick={() => void printCurrentDocument()}
-            disabled={!selectedClinic}
-            title={
-              selectedClinic
-                ? 'Print the ledger statement'
-                : 'Select a clinic to print its ledger'
-            }
+            onClick={() => {
+              if (!selectedClinic) {
+                setExportNotice(NEEDS_CLINIC);
+                return;
+              }
+              void printCurrentDocument();
+            }}
+            title="Print the ledger statement"
             aria-label="Print ledger statement"
-            className="shrink-0 py-2.5 px-4 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 py-2.5 px-4 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span>Print</span>
           </button>
+
+          {/* Export outcome, stated on the page.
+
+              An `alert()` is the only feedback this had, and an operator who
+              pressed the button and looked back at the ledger never saw it —
+              the dialog was behind them, or the window had moved on. The file
+              landing somewhere they were not looking is exactly the symptom
+              reported. Naming the saved path here is what makes "did it save?"
+              answerable without hunting through the filesystem. */}
+          {exportNotice && (
+            <div
+              role="status"
+              className={`lg:col-span-12 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
+                exportNotice.kind === 'error'
+                  ? 'bg-rose-50 border-rose-200 text-ink-danger'
+                  : exportNotice.kind === 'warn'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              }`}
+            >
+              {exportNotice.kind === 'saved' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              )}
+              <span className="min-w-0 break-words">
+                {exportNotice.text}
+                {exportNotice.path && (
+                  <span className="block mt-0.5 font-mono text-[11px] opacity-80 break-all">
+                    {exportNotice.path}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setExportNotice(null)}
+                className="ml-auto shrink-0 opacity-60 hover:opacity-100 cursor-pointer"
+                aria-label="Dismiss export message"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Preview Button */}
           <button

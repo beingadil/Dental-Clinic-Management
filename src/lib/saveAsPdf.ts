@@ -22,11 +22,16 @@ let invokeFn: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>
 async function loadTauriApis(): Promise<boolean> {
   if (!isDesktop()) return false;
   if (dialogApi && invokeFn) return true;
+  /* No permanent latch on failure: a transient chunk-load failure right after
+     an app update used to pin every later export in that session to
+     `unsupported`, with no way back short of a restart. */
   try {
     dialogApi = await import('@tauri-apps/plugin-dialog');
     invokeFn = invoke;
     return true;
   } catch {
+    dialogApi = null;
+    invokeFn = null;
     return false;
   }
 }

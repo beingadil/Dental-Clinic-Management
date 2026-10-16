@@ -30,18 +30,21 @@ export type SaveFileResult =
 /** Loaded once, lazily — the Tauri modules do not exist in the web bundle. */
 let dialogApi: typeof import('@tauri-apps/plugin-dialog') | null = null;
 let invokeFn: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
-let loadAttempted = false;
 
 async function loadTauriApis(): Promise<boolean> {
   if (!isDesktop()) return false;
   if (dialogApi && invokeFn) return true;
-  if (loadAttempted && !invokeFn) return false;
-  loadAttempted = true;
+  /* No permanent latch on failure. The dynamic import can fail transiently —
+     a chunk 404 right after an app update, a service worker mid-swap — and
+     latching it made every later export in that session take the browser path
+     for good, with no way back short of a restart. */
   try {
     dialogApi = await import('@tauri-apps/plugin-dialog');
     invokeFn = invoke;
     return true;
   } catch {
+    dialogApi = null;
+    invokeFn = null;
     return false;
   }
 }
@@ -71,7 +74,20 @@ export async function saveFile(
     typeof content === 'string' ? new TextEncoder().encode(content) : content;
 
   const native = await loadTauriApis();
-  if (!native || !dialogApi || !invokeFn) {
+
+  if (!native) {
+    /* Inside the desktop shell there is NO browser to fall back to. WebView2
+       routes the download event away, so a Blob + <a download> here silently
+       discards the bytes — and it used to report `saved`, which is how an
+       export could vanish with the app reporting success. Fail loudly instead;
+       the operator is far better served by a message than by silence. */
+    if (isDesktop()) {
+      return {
+        status: 'error',
+        message:
+          'The file-save helper could not be loaded in the desktop app, so nothing was written. Restart Dental Solutions and try again.',
+      };
+    }
     // Web build: the browser download the page has always used.
     try {
       const blob = new Blob([bytes as BlobPart], { type: opts.mimeType });
@@ -93,6 +109,13 @@ export async function saveFile(
         message: err instanceof Error ? err.message : String(err),
       };
     }
+  }
+
+  if (!dialogApi || !invokeFn) {
+    return {
+      status: 'error',
+      message: 'The file-save helper is not available in the desktop app.',
+    };
   }
 
   try {
