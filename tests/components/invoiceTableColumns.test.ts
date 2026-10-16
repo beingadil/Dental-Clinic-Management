@@ -57,11 +57,18 @@ describe('invoices table columns', () => {
     expect(source).not.toMatch(/>\s*Receive\s*</);
   });
 
-  it('reaches the payment recorder from the register below the table instead', () => {
-    // Removing the button must not remove the capability: the register is the
-    // remaining entry point, so it has to still be wired.
-    expect(source).toContain('TransactionRegister');
+  it('reaches the payment recorder from the header button instead', () => {
+    // Removing the row button must not remove the capability. The register that
+    // used to sit below the table is gone too, so the header button is now the
+    // only entry point and has to stay wired.
     expect(source).toMatch(/setUnifiedModalMode\('payment'\)/);
+    expect(source).toMatch(/Receive Payment/);
+  });
+
+  it('carries no second payments surface', () => {
+    // Vouchers live on the invoice row and nowhere else. The register repeated
+    // every payment a second time, so a mistyped amount had two places to fix.
+    expect(source).not.toContain('TransactionRegister');
   });
 
   it('reads no payment-terms countdown off any invoice row', () => {

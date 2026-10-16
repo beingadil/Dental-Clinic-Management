@@ -583,6 +583,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
                 setExportNotice(NEEDS_CLINIC);
                 return;
               }
+              /* The ledger's printable content lives inside `.print-flow`,
+                 which is only mounted when the preview is open. Print used to
+                 call window.print() regardless, so pressing Print before
+                 Preview printed a BLANK page and said nothing — the document
+                 simply was not in the DOM yet. Open it first, let it paint,
+                 then print. */
+              setIsPreviewActive(true);
+              setExportNotice(null);
               void printCurrentDocument();
             }}
             title="Print the ledger statement"

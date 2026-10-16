@@ -10,7 +10,6 @@ import { InvoiceStatementModal } from './InvoiceStatementModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from './PaymentProofModal';
 import { PaymentReceiptModal } from './PaymentReceiptModal';
-import { TransactionRegister } from './TransactionRegister';
 import { invoiceMatchesSearch } from '../../services/invoiceSearch';
 import {
   buildUnifiedTransactions,
@@ -57,7 +56,6 @@ export const BillingView: React.FC = () => {
     deleteInvoice,
     getLabFinancialSummary,
     deletePaymentV2,
-    updatePaymentAmountV2,
     updatePaymentV2,
     user
   } = useApp();
@@ -442,7 +440,10 @@ export const BillingView: React.FC = () => {
                   className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Export Transactions CSV</span>
+                  {/* Named for what it now exports. It was "Transactions" because
+                      the register below listed every money document; with the
+                      register gone, the file is the vouchers. */}
+                  <span>Export Vouchers CSV</span>
                 </button>
               </>
             }
@@ -744,25 +745,13 @@ export const BillingView: React.FC = () => {
 
         </div>
 
-      {/* The payment register, directly under the invoice table it pays into.
-          It used to be a second tab; see financeTabs.ts for why that split
-          the operator's one question into two surfaces. A payment entry is
-          corrected here — amount edited in place, or the entry deleted — and
-          the invoice it settled recomputes its own balance. */}
-      <TransactionRegister
-        transactions={registerTransactions}
-        onViewProof={(pay) => setSelectedProofPayment(pay)}
-        onPrintReceipt={(txn) => {
-          if (!txn.rawPayment) return;
-          const matched = invoices.find(
-            (i) => i.id === txn.invoiceId || i.invoice_number === txn.invoiceNumber,
-          );
-          setSelectedReceiptPayment({ payment: txn.rawPayment, invoice: matched });
-        }}
-        onDeletePayment={(pay) => setPaymentToDelete(pay)}
-        onEditPaymentAmount={(pay, amount) => updatePaymentAmountV2(pay.id, amount)}
-        onOpenJournalModal={(refId) => setJournalModalRef(refId)}
-      />
+      {/* No payments register. It used to sit directly under the invoice table,
+          repeating every payment the Vouchers column already showed — two
+          surfaces for one fact, and the operator had to learn which one to edit
+          a mistyped amount in. The vouchers on the invoice row are now the only
+          place a payment lives: read it, correct it, delete it, all from the row
+          it belongs to. `registerTransactions` survives below solely as the data
+          behind the vouchers CSV export. */}
 
       {/* Unified Transaction Recording Modal (Finance 2.0 Engine) */}
       {isUnifiedRecordModalOpen && (
