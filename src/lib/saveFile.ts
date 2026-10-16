@@ -127,29 +127,17 @@ async function saveInBrowser(
         ],
       });
 
-      /* THE 0-BYTE BUG, and it was not the write.
+      /* A handle from showSaveFilePicker() ALREADY carries write permission — the
+         operator granted it by picking the location. Do not ask again.
 
-         showSaveFilePicker() CREATES the file at the chosen path immediately —
-         empty. createWritable() then opens a stream on it, and that call
-         requires write permission on the handle. Without it Chromium throws
-         NotAllowedError, the catch below reports an error, and the operator is
-         left holding a file that exists and is zero bytes. That is exactly the
-         symptom: "saving locally now but with 0 bytes".
+         The prompt-for-access call exists for handles from showDirectoryPicker()
+         and drag-and-drop, where the app must ask. On a save handle it answers
+         'denied' for a location the operator has already been granted, which is
+         exactly the "refused write access" the operator hit: the guard refused
+         a save it was entitled to make.
 
-         So ask for readwrite before opening the stream. */
-      if (handle.queryPermission && handle.requestPermission) {
-        const current = await handle.queryPermission({ mode: 'readwrite' });
-        if (current !== 'granted') {
-          const asked = await handle.requestPermission({ mode: 'readwrite' });
-          if (asked !== 'granted') {
-            return {
-              status: 'error',
-              message:
-                'The browser refused write access to that location, so nothing was saved. Choose a different folder.',
-            };
-          }
-        }
-      }
+         So open the stream directly. If the platform still refuses, the catch
+         below falls through to the plain download rather than losing the file. */
 
       /* createWritable() stages into a temp file and swaps it in on close(), so
          anything that goes wrong between here and the close leaves the chosen
@@ -177,10 +165,10 @@ async function saveInBrowser(
       if (err instanceof Error && err.name === 'AbortError') {
         return { status: 'cancelled' };
       }
-      return {
-        status: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      };
+      /* Anything else — a refused stream, a locked file, a sync folder fighting
+         the swap — falls through to the plain download below. The operator
+         still gets their file; losing the chooser is a lesser loss than losing
+         the save. */
     }
   }
 

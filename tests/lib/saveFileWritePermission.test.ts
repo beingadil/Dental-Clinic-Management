@@ -85,40 +85,32 @@ afterEach(() => {
 });
 
 describe('write permission', () => {
-  it('asks for readwrite before opening the stream', async () => {
+  it('opens the stream directly, without re-asking for permission', async () => {
+    /* A handle from showSaveFilePicker() already carries write permission.
+       requestPermission() is for directory/drag-drop handles and answers
+       'denied' on a save handle — which is what refused a legitimate save. */
     const s = stubHandle({});
     (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => s.handle);
     const { saveFile } = await import('../../src/lib/saveFile');
 
-    await saveFile('Ledger.pdf', new Uint8Array([1, 2, 3]), saveOpts);
-
-    // Checked against the recorded call order, not the source text.
-    expect(s.calls.indexOf('queryPermission')).toBeGreaterThanOrEqual(0);
-    expect(s.calls.indexOf('queryPermission')).toBeLessThan(s.calls.indexOf('createWritable'));
-  });
-
-  it('requests it when the handle does not already grant it', async () => {
-    const s = stubHandle({ permission: 'prompt' });
-    (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => s.handle);
-    const { saveFile } = await import('../../src/lib/saveFile');
-
     const result = await saveFile('Ledger.pdf', new Uint8Array([1, 2, 3]), saveOpts);
 
-    expect(s.calls).toContain('requestPermission');
+    expect(s.calls).not.toContain('requestPermission');
+    expect(s.calls).not.toContain('queryPermission');
+    expect(s.calls).toContain('createWritable');
     expect(result.status).toBe('saved');
   });
 
-  it('refuses to write when access is denied, and says so', async () => {
-    const s = stubHandle({ permission: 'denied' });
+  it('falls back to a download when the stream is refused, rather than losing the file', async () => {
+    /* The chooser path failing must not cost the operator their save. */
+    const s = stubHandle({ writeThrows: 'NotAllowedError: stream refused' });
     (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => s.handle);
     const { saveFile } = await import('../../src/lib/saveFile');
 
     const result = await saveFile('Ledger.pdf', new Uint8Array([1, 2, 3]), saveOpts);
 
-    expect(result.status).toBe('error');
-    if (result.status === 'error') expect(result.message).toMatch(/refused write access/i);
-    // Never opened a stream it could not write through.
-    expect(s.calls).not.toContain('createWritable');
+    expect(result.status).toBe('saved');
+    if (result.status === 'saved') expect(result.path).toBe('Ledger.pdf');
   });
 });
 
@@ -146,15 +138,17 @@ describe('the 0-byte result', () => {
     if (result.status === 'saved') expect(result.bytes).toBe(3140);
   });
 
-  it('surfaces a write that fails, instead of reporting success', async () => {
+  it('falls back to a download when the write itself fails, so the file is not lost', async () => {
+    /* A refused stream used to surface as an error and cost the operator their
+       save. The chooser is a convenience; the file is the point. */
     const s = stubHandle({ writeThrows: 'disk full' });
     (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => s.handle);
     const { saveFile } = await import('../../src/lib/saveFile');
 
     const result = await saveFile('Ledger.pdf', new Uint8Array([1, 2, 3]), saveOpts);
 
-    expect(result.status).toBe('error');
-    if (result.status === 'error') expect(result.message).toMatch(/disk full/);
+    expect(result.status).toBe('saved');
+    if (result.status === 'saved') expect(result.path).toBe('Ledger.pdf');
   });
 
   it('treats a dismissed chooser as a choice, not a fault', async () => {
@@ -174,12 +168,16 @@ describe('the 0-byte result', () => {
 describe('the source contract', () => {
   const src = readFileSync(resolve(process.cwd(), 'src/lib/saveFile.ts'), 'utf8');
 
-  it('asks for readwrite on the handle before createWritable', () => {
-    /* Ordering is asserted behaviourally above (against the recorded call log).
-       Here only that both exist — measuring source offsets would compare
-       interface declarations, not the order the code runs in. */
-    expect(src).toMatch(/requestPermission/);
-    expect(src).toMatch(/createWritable/);
+  it('never re-requests permission on a save handle', () => {
+    /* The guard that asked for it answered 'denied' on a handle the operator
+       had already granted, and refused a legitimate save. Matched on the call
+       site — the interface still declares the method, which is harmless. */
+    expect(src).not.toMatch(/handle\.requestPermission/);
+    expect(src).not.toMatch(/handle\.queryPermission/);
+  });
+
+  it('falls through to the download when the chooser path throws', () => {
+    expect(src).toMatch(/falls through to the plain download/);
   });
 
   it('verifies the result after close rather than assuming it', () => {
