@@ -1,19 +1,17 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ACCOUNT_CODES, formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
 import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getDateStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
+import { ClinicPicker } from '../common/ui/ClinicPicker';
 import { 
-  Search, 
   Eye, 
   RotateCcw, 
-  CheckCircle2,
   DollarSign,
   ArrowUpRight,
   ArrowDownLeft,
-  ChevronDown,
   FileDown,
   FileText,
   CreditCard,
@@ -54,9 +52,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   // Clinic selection: starts empty — the user must actively pick a clinic;
   // there is no consolidated "all clinics" mode.
   const [selectedClinicId, setSelectedClinicId] = useState<string>('');
-  const [clinicSearchText, setClinicSearchText] = useState<string>('');
-  const [isClinicDropdownOpen, setIsClinicDropdownOpen] = useState<boolean>(false);
-  const clinicDropdownRef = useRef<HTMLDivElement>(null);
 
   // Case/Job filter — searches case numbers, invoice numbers, patient names.
   const [caseFilter] = useState<string>('');
@@ -70,36 +65,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   // Preview state: hidden until the user clicks Preview.
   const [isPreviewActive, setIsPreviewActive] = useState<boolean>(false);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (clinicDropdownRef.current && !clinicDropdownRef.current.contains(e.target as Node)) {
-        setIsClinicDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Selected clinic object
+// Selected clinic object
   const selectedClinic = useMemo(() => {
     if (selectedClinicId === 'all') return null;
     return labs.find((l) => l.id === selectedClinicId) || null;
   }, [labs, selectedClinicId]);
-
-  // Filtered clinics for the enhanced searchbar
-  const filteredClinics = useMemo(() => {
-    if (!clinicSearchText.trim()) return labs;
-    const q = clinicSearchText.toLowerCase();
-    return labs.filter(
-      (lab) =>
-        lab.name.toLowerCase().includes(q) ||
-        (lab.doctor_name && formatDoctorName(lab.doctor_name).toLowerCase().includes(q)) ||
-        (lab.phone && lab.phone.toLowerCase().includes(q)) ||
-        (lab.city && lab.city.toLowerCase().includes(q)) ||
-        (lab.code && lab.code.toLowerCase().includes(q))
-    );
-  }, [labs, clinicSearchText]);
 
   /* Quick-range helpers for the shared DatePickerRange. Every one of these
      builds a LOCAL Date and must therefore read the local day back out —
@@ -491,97 +461,17 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
       {/* SEARCH-FIRST FILTER ROW: clinic picker → date picker → preview */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-          {/* Clinic picker (searchable dropdown) */}
-          <div className="relative flex-1 min-w-[220px]" ref={clinicDropdownRef}>
-
-            <div className="relative">
-              <div
-                onClick={() => setIsClinicDropdownOpen(true)}
-                className={`w-full p-2.5 bg-slate-50 hover:bg-slate-100/80 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
-                  isClinicDropdownOpen ? 'border-blue-500 ring-2 ring-blue-100 bg-white' : 'border-slate-200'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 overflow-hidden">
-                  <Search className="w-4 h-4 text-slate-500 shrink-0" />
-                  {selectedClinic ? (
-                    <div className="truncate">
-                      <span className="text-xs font-bold text-slate-900">{selectedClinic.name}</span>
-                      {selectedClinic.doctor_name && (
-                        <span className="text-[11px] text-slate-500 ml-1.5">({formatDoctorName(selectedClinic.doctor_name)})</span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-xs font-bold text-ink-muted">
-                      Select clinic…
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isClinicDropdownOpen ? 'rotate-180' : ''}`} />
-                </div>
-              </div>
-
-              {/* Enhanced Dropdown List showing saved clinics */}
-              {isClinicDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-72 overflow-y-auto p-2 space-y-1">
-                  {/* Search input inside dropdown */}
-                  <div className="p-1.5 sticky top-0 bg-white border-b border-slate-100 mb-1">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
-                      <input
-                        type="text"
-                        value={clinicSearchText}
-                        onChange={(e) => setClinicSearchText(e.target.value)}
-                        placeholder="Type to filter saved clinics..."
-                        autoFocus
-                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Saved Clinics */}
-                  {filteredClinics.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-slate-500">
-                      No saved clinic matching "{clinicSearchText}"
-                    </div>
-                  ) : (
-                    filteredClinics.map((clinic) => {
-                      const isSelected = selectedClinicId === clinic.id;
-                      return (
-                        <button
-                          key={clinic.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedClinicId(clinic.id);
-                            setIsClinicDropdownOpen(false);
-                            setClinicSearchText('');
-                          }}
-                          className={`w-full text-left p-2.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
-                            isSelected
-                              ? 'bg-blue-50 text-blue-900 font-bold'
-                              : 'hover:bg-slate-50 text-slate-800'
-                          }`}
-                        >
-                          <div className="min-w-0 pr-2">
-                            <div className="font-bold text-slate-900 truncate">{clinic.name}</div>
-                            <div className="text-[11px] text-slate-500 font-normal flex items-center gap-2 mt-0.5 truncate">
-                              {clinic.doctor_name && <span>{formatDoctorName(clinic.doctor_name)}</span>}
-                              {clinic.city && <span>• {clinic.city}</span>}
-                              {clinic.phone && <span>• {clinic.phone}</span>}
-                            </div>
-                          </div>
-                          {isSelected && (
-                            <CheckCircle2 className="w-4 h-4 text-ink-info shrink-0" />
-                          )}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+{/* Clinic picker — the shared searchable dropdown. It replaced a local copy
+              that had drifted from the batch print dialog's; one component now
+              serves both, so the two cannot disagree on how a clinic is found. */}
+          <ClinicPicker
+            clinics={labs}
+            value={selectedClinicId || null}
+            onChange={setSelectedClinicId}
+            tone="blue"
+            compact
+            className="flex-1 min-w-[220px]"
+          />
 
           {/* The Case / Job / Invoice # box is gone.
 

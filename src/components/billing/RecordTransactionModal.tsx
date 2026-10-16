@@ -11,9 +11,11 @@ import {
   Upload,
   Scale,
   Split,
+  ChevronDown,
   ShieldCheck
 } from 'lucide-react';
 import { Modal } from '../common/ui';
+import ClinicPicker from '../common/ui/ClinicPicker';
 import { getTodayStr, getNowStamp } from '../../utils/dateUtils';
 
 interface RecordTransactionModalProps {
@@ -92,6 +94,8 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
 
   // Split allocations for multi-invoice payment
   const [allocations, setAllocations] = useState<{ [invoiceId: string]: number }>({});
+  /* The allocation list is folded away until asked for — see the block below. */
+  const [showAllocations, setShowAllocations] = useState(false);
 
   /* Inline validation/POST errors (B6): alert() was blocking, non-aria and
      inconsistent with the rest of the module's inline-error voice. One error
@@ -184,21 +188,6 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   const unappliedRemainder = Math.max(0, amount - totalAllocated);
 
   if (!isOpen) return null;
-
-  const handleAutoAllocate = () => {
-    let remaining = amount;
-    const newAlloc: { [id: string]: number } = {};
-    for (const inv of clinicInvoices) {
-      if (remaining <= 0) break;
-      const due = invoiceBalanceDue(inv);
-      const take = Math.min(due, remaining);
-      if (take > 0) {
-        newAlloc[inv.id] = take;
-        remaining -= take;
-      }
-    }
-    setAllocations(newAlloc);
-  };
 
   /* An allocation can never exceed the invoice balance nor the cash received. */
   const handleAllocationChange = (invId: string, val: number) => {
@@ -434,25 +423,23 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label htmlFor="payment-clinic-picker" className="block text-xs font-semibold text-slate-700 mb-1">
                 Dental Clinic / Doctor Account *
               </label>
-              <div className="relative">
-                <select
-                  value={clinicId}
-                  onChange={(e) => {
-                    setClinicId(e.target.value);
-                    setSelectedInvoiceId('');
-                  }}
-                  className="w-full text-xs px-3 py-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-800 font-medium"
-                >
-                  {labs.map((lab) => (
-                    <option key={lab.id} value={lab.id}>
-                      {lab.name} ({lab.city || 'Clinic'})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* A <select> listed every clinic as an <option>, which is fine at
+                  five and unusable at fifty — and the front desk usually knows
+                  the clinic by doctor or city, not the stored name. */}
+              <ClinicPicker
+                id="payment-clinic-picker"
+                clinics={labs}
+                value={clinicId || null}
+                onChange={(id) => {
+                  setClinicId(id);
+                  setSelectedInvoiceId('');
+                }}
+                tone="indigo"
+                placeholder="Select clinic…"
+              />
             </div>
 
             {/* Account Quick Health Box */}
@@ -470,31 +457,51 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
 
           {mode === 'payment' && (
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Split className="w-4 h-4 text-indigo-600" />
+              {/* Collapsed by default. The common case is an advance deposit
+                  against a clinic with a long tail of open invoices, and the
+                  operator had to scroll past every one of them to reach the
+                  save button. The header carries the whole story — how many are
+                  open, how much is allocated — so the list only has to open when
+                  there is genuinely something to allocate. */}
+              <button
+                type="button"
+                onClick={() => setShowAllocations((v) => !v)}
+                aria-expanded={showAllocations}
+                className="w-full flex items-center justify-between gap-3 text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Split className="w-4 h-4 text-indigo-600 shrink-0" />
                   <span className="text-xs font-bold text-slate-800">
                     Invoice Allocations ({clinicInvoices.length} Open Invoices)
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-xs">
-                  <span className="text-slate-500">Allocated: <strong className="text-indigo-700 font-mono">{formatPKR(totalAllocated)}</strong></span>
+                <div className="flex items-center gap-3 text-xs shrink-0">
+                  <span className="text-slate-500">
+                    Allocated: <strong className="text-indigo-700 font-mono">{formatPKR(totalAllocated)}</strong>
+                  </span>
                   {unappliedRemainder > 0 && (
                     <span className="text-amber-700 font-medium bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                       Unapplied Remainder: <strong className="font-mono">{formatPKR(unappliedRemainder)}</strong>
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={handleAutoAllocate}
-                    className="text-indigo-600 hover:text-indigo-800 font-semibold underline"
-                  >
-                    Auto-Fill Oldest First
-                  </button>
+                  {/* No auto-fill. It filled every open invoice oldest-first in one
+                      click, which is almost never the split the operator intended
+                      and left no way to see what it had done before saving. */}
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${showAllocations ? 'rotate-180' : ''}`}
+                    aria-hidden
+                  />
                 </div>
-              </div>
+              </button>
 
-              {clinicInvoices.length === 0 ? (
+              {!showAllocations && unappliedRemainder > 0 && (
+                <p className="text-[11px] text-slate-500">
+                  This deposit is not applied to any invoice yet. Open the list to
+                  choose which invoice it settles.
+                </p>
+              )}
+
+              {!showAllocations ? null : clinicInvoices.length === 0 ? (
                 <div className="p-4 text-center text-xs text-slate-500 bg-white rounded-md border border-slate-200">
                   This clinic has <strong>0 open unpaid invoices</strong>. Any collected payment will be credited to their advance wallet as unapplied deposit.
                 </div>

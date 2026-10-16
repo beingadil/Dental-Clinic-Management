@@ -1,6 +1,6 @@
 import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { printCurrentDocument } from '../../utils/printDocument';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
@@ -12,8 +12,9 @@ import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
 import '../print/printStyles.css';
-import { Printer, X, FileSpreadsheet, Building2, CheckCircle2, Search, ChevronDown } from 'lucide-react';
+import { Printer, X, FileSpreadsheet, Building2 } from 'lucide-react';
 import { Modal } from '../common/ui';
+import { ClinicPicker } from '../common/ui/ClinicPicker';
 
 interface BatchInvoicePrintModalProps {
   /** Clinic pre-selected from the billing filter, if any. */
@@ -52,38 +53,11 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     loadDocumentSections('statement', DEFAULT_ENABLED.statement)
   );
 
-  /* Searchable clinic picker. The plain <select> this replaces listed every
+/* The clinic chooser is the shared <ClinicPicker>: a plain <select> listed every
      clinic as an <option>, which is fine at five clinics and useless at fifty —
-     the operator has to scroll the whole list to find the one they want. This
-     is the same enhanced dropdown the General Ledger uses: a trigger showing the
-     current pick, a filter box, and a scrollable list of matches. */
-  const [isClinicDropdownOpen, setIsClinicDropdownOpen] = useState<boolean>(false);
-  const [clinicSearchText, setClinicSearchText] = useState<string>('');
-  const clinicDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close the dropdown on an outside click, so it behaves like a real picker
-  // rather than a panel that stays open until a clinic is chosen.
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (clinicDropdownRef.current && !clinicDropdownRef.current.contains(e.target as Node)) {
-        setIsClinicDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredClinics = useMemo(() => {
-    if (!clinicSearchText.trim()) return labs;
-    const q = clinicSearchText.toLowerCase();
-    return labs.filter(
-      (lab) =>
-        lab.name.toLowerCase().includes(q) ||
-        (lab.doctor_name && formatDoctorName(lab.doctor_name).toLowerCase().includes(q)) ||
-        (lab.city && lab.city.toLowerCase().includes(q)) ||
-        (lab.code && lab.code.toLowerCase().includes(q)),
-    );
-  }, [labs, clinicSearchText]);
+     the operator had to scroll a list to find a name they already knew. The
+     General Ledger needed the same thing and had grown its own copy; one
+     component now serves both, so they cannot drift apart again. */
 
   const dateOf = (inv: Invoice) => String(inv.issue_date || inv.created_at || '').slice(0, 10);
 
@@ -208,106 +182,27 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
 
         {/* Controls */}
         <div className="no-print grid grid-cols-1 gap-4 border-b border-slate-200 bg-slate-50/60 px-6 py-4 lg:grid-cols-12">
-          <div className="lg:col-span-5" ref={clinicDropdownRef}>
-            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
+<div className="lg:col-span-5">
+            <label htmlFor="batch-clinic-picker" className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
               <Building2 className="h-3.5 w-3.5 text-indigo-600" /> Clinic
             </label>
 
-            <div className="relative">
-              {/* Trigger */}
-              <div
-                onClick={() => setIsClinicDropdownOpen((v) => !v)}
-                role="combobox"
-                aria-expanded={isClinicDropdownOpen}
-                aria-haspopup="listbox"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setIsClinicDropdownOpen((v) => !v);
-                  }
-                }}
-                className={`w-full rounded-xl border flex items-center justify-between gap-2 px-3 py-2.5 text-xs cursor-pointer transition-all ${
-                  isClinicDropdownOpen
-                    ? 'border-indigo-500 ring-2 ring-indigo-100 bg-white'
-                    : 'border-slate-200 bg-white hover:border-slate-300'
-                }`}
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                  <span className={`truncate font-medium ${selectedClinic ? 'text-slate-900' : 'text-ink-muted'}`}>
-                    {selectedClinic ? selectedClinic.name : 'Select clinic…'}
-                  </span>
-                </div>
-                <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
-                    isClinicDropdownOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </div>
-
-              {/* Dropdown panel */}
-              {isClinicDropdownOpen && (
-                <div
-                  role="listbox"
-                  className="absolute top-full left-0 right-0 z-50 mt-1.5 max-h-72 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
-                >
-                  <div className="sticky top-0 mb-1 border-b border-slate-100 bg-white p-1.5">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-                      <input
-                        type="text"
-                        value={clinicSearchText}
-                        onChange={(e) => setClinicSearchText(e.target.value)}
-                        placeholder="Type to filter clinics…"
-                        autoFocus
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-3 text-xs focus:border-indigo-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {filteredClinics.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-slate-500">
-                      {labs.length === 0
-                        ? 'No clinics registered'
-                        : `No clinic matches "${clinicSearchText}"`}
-                    </div>
-                  ) : (
-                    filteredClinics.map((lab) => {
-                      const isSelected = labId === lab.id;
-                      return (
-                        <button
-                          key={lab.id}
-                          type="button"
-                          role="option"
-                          aria-selected={isSelected}
-                          onClick={() => {
-                            setLabId(lab.id);
-                            setExcluded([]);
-                            setIsClinicDropdownOpen(false);
-                            setClinicSearchText('');
-                          }}
-                          className={`flex w-full items-center justify-between rounded-lg p-2.5 text-left text-xs transition-colors ${
-                            isSelected ? 'bg-indigo-50 font-bold text-indigo-900' : 'text-slate-800 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="min-w-0 pr-2">
-                            <div className="truncate font-bold text-slate-900">{lab.name}</div>
-                            {lab.doctor_name && (
-                              <div className="mt-0.5 truncate text-[11px] font-normal text-slate-500">
-                                {formatDoctorName(lab.doctor_name)}
-                                {lab.city ? ` · ${lab.city}` : ''}
-                              </div>
-                            )}
-                          </div>
-                          {isSelected && <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-600" />}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
+            {/* The shared searchable picker. It replaced a local copy of the same
+                dropdown that had already drifted from the General Ledger's. */}
+            <ClinicPicker
+              id="batch-clinic-picker"
+              clinics={labs}
+              value={labId || null}
+              onChange={(id) => {
+                setLabId(id);
+                // A new clinic invalidates every excluded row from the old one.
+                setExcluded([]);
+              }}
+              tone="indigo"
+              emptyLabel={(q) =>
+                labs.length === 0 ? 'No clinics registered' : `No clinic matches "${q}"`
+              }
+            />
           </div>
 
           <div className="lg:col-span-7">
@@ -420,7 +315,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             {selected.length === 0 ? (
               <div className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter' : 'print-preview-page'}>
                 <div className="py-16 text-center text-xs text-ink-muted">
-                  <CheckCircle2 className="mx-auto mb-2 h-6 w-6 text-slate-300" />
+                  <FileSpreadsheet className="mx-auto mb-2 h-6 w-6 text-slate-300" />
                   Nothing selected to print.
                 </div>
               </div>
