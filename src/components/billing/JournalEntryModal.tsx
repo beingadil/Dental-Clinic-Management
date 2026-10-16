@@ -107,23 +107,28 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           <div className="rounded-lg border border-slate-200 overflow-hidden">
             {/* Shared primitive owns the header row, the row hover and the scroll
                 wrapper; the card above stays here. The `font-mono` this table
-                carried on its <tbody> moves onto the columns, and the totals row
-                travels through `footer` (DataTable has no <tfoot> slot). */}
+                carried on its <tbody> moves onto the columns, and the totals
+                row rides the primitive's `tfoot` slot so it stays inside the
+                table and column-aligns with the lines above. */}
             <DataTable<JournalLine>
               data={journal.lines}
               rowKey={(line) => line.id}
-              footer={
-                <div className="bg-slate-50 border-t-2 border-slate-200 font-mono font-semibold text-slate-900 flex">
-                  <div className="flex-1 px-3.5 py-2.5 text-right font-sans text-xs">
+              tfoot={
+                /* One totals row, not a second table. `footer` cannot do this:
+                   it lands after </table>, which forced the totals into a flex
+                   row that laid its cells out independently of the columns, so
+                   debit and credit drifted out of alignment with the lines. */
+                <tr className="bg-slate-50 border-t-2 border-slate-200 font-mono font-semibold text-slate-900">
+                  <td colSpan={2} className="px-3.5 py-2.5 text-right font-sans text-xs">
                     Entry Totals:
-                  </div>
-                  <div className="w-32 px-3.5 py-2.5 text-right text-indigo-700 font-bold">
+                  </td>
+                  <td className="w-32 px-3.5 py-2.5 text-right text-indigo-700 font-bold">
                     {formatPKR(totalDebit).replace('PKR ', '')}
-                  </div>
-                  <div className="w-32 px-3.5 py-2.5 text-right text-indigo-700 font-bold">
+                  </td>
+                  <td className="w-32 px-3.5 py-2.5 text-right text-indigo-700 font-bold">
                     {formatPKR(totalCredit).replace('PKR ', '')}
-                  </div>
-                </div>
+                  </td>
+                </tr>
               }
               columns={[
                 {
