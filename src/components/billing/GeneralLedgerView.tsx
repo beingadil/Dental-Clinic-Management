@@ -24,6 +24,7 @@ import {
   Printer
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
+import { printCurrentDocument } from '../../utils/printDocument';
 import { caseDetailLines, ledgerPrintDescription, findCaseForEntry } from '../../services/ledgerCaseDetail';
 ;
 import { CaseDetailModal } from '../cases/CaseDetailModal';
@@ -495,7 +496,21 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
   };
 
   const handleExportPDF = () => saveStatement('PDF document');
-  const handlePrint = () => saveStatement('Ledger statement PDF');
+
+  /* PRINT is the Windows print dialog, not a second way to save a PDF. It used
+     to print the on-screen HTML, which produced a blank page whenever the
+     preview had not been opened — the printable content lives in `.print-flow`
+     and is only mounted with it. Open the preview first, let it paint, then
+     hand it to the print dialog. Export PDF remains the file-producing one. */
+  const handlePrint = () => {
+    if (!selectedClinic) {
+      setExportNotice(NEEDS_CLINIC);
+      return;
+    }
+    setIsPreviewActive(true);
+    setExportNotice(null);
+    void printCurrentDocument();
+  };
 
   return (
     <div className="space-y-6 print-page">
@@ -566,15 +581,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
             <span>Export PDF</span>
           </button>
 
-          {/* Print Ledger — the same PDF as Export PDF, saved through the same
-              chooser. It used to hand the on-screen HTML to the browser's print
-              dialog, which was a different document from the exported file and a
-              blank page whenever the preview had not been opened. */}
+          {/* Print Ledger — the Windows print dialog. Opens the preview first, because
+              the printable content is only mounted with it. */}
           <button
             type="button"
             onClick={handlePrint}
-            title="Save the ledger statement as a PDF"
-            aria-label="Print ledger statement as PDF"
+            title="Print the ledger statement"
+            aria-label="Print ledger statement"
             className="shrink-0 py-2.5 px-4 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <Printer className="w-4 h-4" />

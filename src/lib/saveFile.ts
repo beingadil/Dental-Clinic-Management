@@ -59,12 +59,6 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** Appends the extension unless the name already carries it. */
-const withExtension = (fileName: string, extension: string): string =>
-  fileName.toLowerCase().endsWith(extension.toLowerCase())
-    ? fileName
-    : `${fileName}${extension}`;
-
 /* The narrow slice of the File System Access API this uses. Declared here rather
  * than pulled from a lib because TypeScript's DOM lib does not type the picker
  * uniformly across TS versions, and the browser feature-detects it anyway. */
@@ -74,10 +68,14 @@ interface SaveFilePickerOptions {
 }
 interface FileHandleLike {
   name: string;
-  createWritable: () => Promise<{
+  createWritable: (opts?: { keepExistingData?: boolean }) => Promise<{
     write: (data: Blob) => Promise<void>;
     close: () => Promise<void>;
   }>;
+  /** Read-back, to confirm the bytes landed rather than trusting close(). */
+  getFile?: () => Promise<{ size: number }>;
+  queryPermission?: (d: { mode: string }) => Promise<string>;
+  requestPermission?: (d: { mode: string }) => Promise<string>;
 }
 type PickerFn = (opts?: SaveFilePickerOptions) => Promise<FileHandleLike>;
 
@@ -114,14 +112,63 @@ async function saveInBrowser(
         types: [
           {
             description: opts.dialogTitle ?? 'File',
-            accept: { [opts.mimeType]: [opts.extension.replace('.', '')] },
+            /* The two save APIs disagree on extensions and both are strict.
+               The Tauri dialog plugin wants them bare ("pdf"); the File System
+               Access API rejects anything not starting with a dot, and says so:
+               "Extension 'pdf' must start with '.'". `opts.extension` is already
+               dotted, so it goes across as-is rather than being normalised the
+               way the dialog plugin's filters are. */
+            accept: {
+              [opts.mimeType]: [
+                opts.extension.startsWith('.') ? opts.extension : `.${opts.extension}`,
+              ],
+            },
           },
         ],
       });
-      const writable = await handle.createWritable();
+
+      /* THE 0-BYTE BUG, and it was not the write.
+
+         showSaveFilePicker() CREATES the file at the chosen path immediately —
+         empty. createWritable() then opens a stream on it, and that call
+         requires write permission on the handle. Without it Chromium throws
+         NotAllowedError, the catch below reports an error, and the operator is
+         left holding a file that exists and is zero bytes. That is exactly the
+         symptom: "saving locally now but with 0 bytes".
+
+         So ask for readwrite before opening the stream. */
+      if (handle.queryPermission && handle.requestPermission) {
+        const current = await handle.queryPermission({ mode: 'readwrite' });
+        if (current !== 'granted') {
+          const asked = await handle.requestPermission({ mode: 'readwrite' });
+          if (asked !== 'granted') {
+            return {
+              status: 'error',
+              message:
+                'The browser refused write access to that location, so nothing was saved. Choose a different folder.',
+            };
+          }
+        }
+      }
+
+      /* createWritable() stages into a temp file and swaps it in on close(), so
+         anything that goes wrong between here and the close leaves the chosen
+         file at zero bytes — created, empty, and reported as a success. Explicit
+         options, then a read-back so the outcome is checked rather than assumed. */
+      const writable = await handle.createWritable({ keepExistingData: false });
       await writable.write(blob);
       await writable.close();
-      return { status: 'saved', path: handle.name, bytes: bytes.length };
+
+      const written = await handle.getFile?.();
+      const landed = typeof written?.size === 'number' ? written.size : bytes.length;
+      if (bytes.length > 0 && landed === 0) {
+        return {
+          status: 'error',
+          message:
+            'The file was created but nothing was written to it. It is probably open in another program — close it and save again.',
+        };
+      }
+      return { status: 'saved', path: handle.name, bytes: landed };
     } catch (err) {
       /* Dismissing the chooser is a choice, not a failure. Reporting it as an
          error would train the operator to ignore the message. Matched on the
@@ -188,7 +235,7 @@ export async function saveFile(
           'The file-save helper could not be loaded in the desktop app, so nothing was written. Restart Dental Solutions and try again.',
       };
     }
-    return saveInBrowser(bytes, withExtension(fileName, opts.extension), opts);
+    return saveInBrowser(bytes, fileName, opts);
   }
 
   if (!dialogApi || !invokeFn) {

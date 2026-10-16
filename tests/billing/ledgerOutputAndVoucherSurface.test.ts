@@ -31,56 +31,59 @@ const ledger = readFileSync(
 );
 const saveFile = readFileSync(resolve(process.cwd(), 'src/lib/saveFile.ts'), 'utf8');
 
-describe('print and export produce the same document', () => {
-  it('both buttons go through one save path', () => {
-    expect(ledger).toMatch(/const handlePrint = \(\) => saveStatement\(/);
+describe('print and export are different actions', () => {
+  it('Print opens the Windows print dialog', () => {
+    expect(ledger).toMatch(/void printCurrentDocument\(\)/);
+  });
+
+  it('Export PDF is the one that saves a file', () => {
     expect(ledger).toMatch(/const handleExportPDF = \(\) => saveStatement\(/);
   });
 
-  it('neither button calls the browser print dialog any more', () => {
-    // window.print() rendered the on-screen HTML, not the generated PDF.
-    expect(ledger).not.toMatch(/window\.print\(/);
-    expect(ledger).not.toContain('printCurrentDocument');
+  it('Print opens the preview first, so the printable DOM exists', () => {
+    /* The blank-page bug: `.print-flow` is only mounted with the preview, and
+       the print stylesheet drops every sibling of it. */
+    const i = ledger.indexOf('const handlePrint');
+    const body = ledger.slice(i, i + 600);
+    expect(body).toMatch(/setIsPreviewActive\(true\)/);
+    expect(body.indexOf('setIsPreviewActive(true)')).toBeLessThan(
+      body.indexOf('printCurrentDocument'),
+    );
   });
 
-  it('builds the statement in one place, so the two cannot diverge', () => {
+  it('Print still refuses without a clinic', () => {
+    const i = ledger.indexOf('const handlePrint');
+    expect(ledger.slice(i, i + 400)).toMatch(/NEEDS_CLINIC/);
+  });
+
+  it('builds the exported PDF in one place', () => {
     const builds = ledger.match(/buildLedgerPdf\(/g) ?? [];
     expect(builds).toHaveLength(1);
     expect(ledger).toMatch(/const buildStatement = \(\) =>/);
   });
-
-  it('offers the PDF file type in the chooser for both', () => {
-    expect(ledger).toMatch(/saveStatement\('PDF document'\)/);
-    expect(ledger).toMatch(/saveStatement\('Ledger statement PDF'\)/);
-  });
 });
 
-describe('the browser gets a real Save As window', () => {
-  it('uses showSaveFilePicker when the browser has it', () => {
-    expect(saveFile).toMatch(/showSaveFilePicker/);
-  });
-
-  it('requires a secure context, so it is never half-available', () => {
-    // The API throws in an insecure context; gating on it means the fallback is
-    // a deliberate choice rather than a crash.
-    expect(saveFile).toMatch(/isSecureContext/);
-  });
-
-  it('writes the bytes to the chosen file rather than downloading', () => {
-    expect(saveFile).toMatch(/createWritable\(\)/);
-    expect(saveFile).toMatch(/writable\.write\(blob\)/);
-    expect(saveFile).toMatch(/writable\.close\(\)/);
-  });
-
-  it('treats a dismissed chooser as a choice, not a fault', () => {
-    expect(saveFile).toMatch(/AbortError/);
-    expect(saveFile).toMatch(/status: 'cancelled'/);
-  });
-
-  it('keeps the plain download for browsers without the API', () => {
-    // Firefox and Safari have no chooser; they still get a working save.
-    expect(saveFile).toMatch(/link\.download/);
+describe('the browser saves by downloading', () => {
+  it('hands the file to the browser download', () => {
     expect(saveFile).toMatch(/URL\.createObjectURL\(blob\)/);
+    expect(saveFile).toMatch(/link\.download/);
+    expect(saveFile).toMatch(/link\.click\(\)/);
+  });
+
+  it('reports the byte count it wrote', () => {
+    expect(saveFile).toMatch(/status: 'saved', path: fileName, bytes: bytes\.length/);
+  });
+
+  it('does NOT fall back to a download inside the desktop shell', () => {
+    /* WebView2 routes the download event away, so a Blob here discards the
+       bytes and used to report success anyway. The shell must fail loudly. */
+    expect(saveFile).toMatch(/if \(isDesktop\(\)\)/);
+    expect(saveFile).toMatch(/nothing was written/);
+  });
+
+  it('still uses the native dialog and Rust write on desktop', () => {
+    expect(saveFile).toMatch(/dialogApi\.save\(/);
+    expect(saveFile).toMatch(/invokeFn\('save_file_bytes'/);
   });
 });
 
