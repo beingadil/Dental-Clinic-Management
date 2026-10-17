@@ -131,23 +131,52 @@ describe('the delete button is never blocked by history', () => {
   });
 });
 
-describe('the deleted Account Ledger tab is really gone', () => {
-  it('no longer offers the tab', () => {
-    expect(src).not.toMatch(/Account Ledger & Statements/);
+describe('the clinic ledger is the shared General Ledger, not a second one', () => {
+  /* The tab was originally a bespoke ledger table with its own payment index
+     and row matcher. Two implementations of the same figures are free to
+     disagree, and the operator asked for "the same general ledger that we have
+     in reports and analytics" — one component, one set of numbers. */
+  it('renders GeneralLedgerView, locked to this clinic', () => {
+    expect(src).toMatch(/activeTab === 'ledger' && <GeneralLedgerView lockedClinicId=\{lab\.id\} \/>/);
   });
 
-  it('no longer accepts a ledger initial tab', () => {
-    expect(src).toMatch(/initialTab\?: 'cases' \| 'info' \| 'contacts' \| 'pricing'/);
+  it('offers the tab again, and still accepts it as an initial tab', () => {
+    expect(src).toMatch(/initialTab\?: 'cases' \| 'ledger' \| 'info' \| 'contacts' \| 'pricing'/);
+    expect(src).toMatch(/id: 'ledger', label: 'Account Ledger'/);
   });
 
-  it('took its dead code with it', () => {
-    /* The ledger table dragged a payment index, a per-row payment/invoice
-       matcher, a financial summary and a second ledger read. None of it had
-       another caller. */
+  it('keeps the bespoke ledger implementation deleted', () => {
     expect(src).not.toMatch(/ledgerRowMeta/);
     expect(src).not.toMatch(/paymentIndex/);
     expect(src).not.toMatch(/getLedgerEntries/);
     expect(src).not.toMatch(/getLabFinancialSummary/);
-    expect(src).not.toMatch(/activeTab === 'ledger'/);
+  });
+});
+
+describe('the embedded ledger cannot be pointed at a different clinic', () => {
+  const ledger = readFileSync(
+    join(process.cwd(), 'src/components/billing/GeneralLedgerView.tsx'),
+    'utf8'
+  );
+
+  it('takes an optional lockedClinicId', () => {
+    expect(ledger).toMatch(/lockedClinicId\?: string/);
+  });
+
+  it('prefers the lock over whatever was picked', () => {
+    expect(ledger).toMatch(/const selectedClinicId = lockedClinicId \?\? pickedClinicId/);
+  });
+
+  it('hides the clinic picker when locked', () => {
+    /* Offering a picker inside one clinic's own page would let an operator read
+       a different clinic's statement there — the kind of confusion that ends
+       with the wrong statement sent to a clinic. */
+    expect(ledger).toMatch(/\{!lockedClinicId && \(\s*<ClinicPicker/);
+  });
+
+  it('still shows the picker when not locked', () => {
+    /* The Analytics & Reports tab has to keep letting the operator choose. */
+    expect(ledger).toMatch(/lockedClinicId \?\? pickedClinicId/);
+    expect(ledger).toMatch(/onChange=\{setPickedClinicId\}/);
   });
 });

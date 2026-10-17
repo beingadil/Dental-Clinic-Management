@@ -11,6 +11,7 @@ import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from '../billing/PaymentProofModal';
 import { PaymentReceiptModal } from '../billing/PaymentReceiptModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
+import { GeneralLedgerView } from '../billing/GeneralLedgerView';
 import {
   Building2,
   X,
@@ -27,6 +28,7 @@ import {
   Printer,
   ChevronRight,
   Calendar,
+  BookOpen,
   Search,
   Maximize2,
   Minimize2
@@ -35,7 +37,7 @@ import {
 interface LabDetailModalProps {
   lab: DentalLab;
   onClose: () => void;
-  initialTab?: 'cases' | 'info' | 'contacts' | 'pricing';
+  initialTab?: 'cases' | 'ledger' | 'info' | 'contacts' | 'pricing';
 }
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
@@ -272,6 +274,12 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
         <div className="bg-slate-50 border-b border-slate-200 px-6 flex items-center gap-1 overflow-x-auto shrink-0 pt-1">
           {[
             { id: 'cases', label: `Clinic Cases (${caseQuery ? labCases.length : allLabCases.length})`, icon: FolderOpen },
+            /* The SAME General Ledger the Analytics & Reports tab renders, not a
+               second implementation of it. The tab it replaces was a bespoke
+               ledger table with its own payment index and row matcher — two
+               versions of the same numbers, free to disagree. One component, one
+               set of figures, locked to this clinic. */
+            { id: 'ledger', label: 'Account Ledger', icon: BookOpen },
             { id: 'info', label: 'General Info', icon: Building2 },
             { id: 'contacts', label: 'Contacts & Locations', icon: UserCheck },
             { id: 'pricing', label: 'Custom Pricing', icon: Tag },
@@ -640,6 +648,11 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
           )}
 
           {activeTab === 'contacts' && <LabContactsManager labId={lab.id} />}
+
+          {/* The clinic's own ledger: the shared General Ledger, pinned to this
+              clinic so the figures cannot be read against a different one. */}
+          {activeTab === 'ledger' && <GeneralLedgerView lockedClinicId={lab.id} />}
+
           {activeTab === 'pricing' && <LabPricingManager labId={lab.id} />}
         </div>
       </div>

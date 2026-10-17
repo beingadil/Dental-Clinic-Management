@@ -30,6 +30,17 @@ import { DataTable } from '../common/ui';
 import { DentalCase } from '../../types';
 
 interface GeneralLedgerViewProps {
+  /**
+   * Pin the ledger to ONE clinic and hide the picker.
+   *
+   * Set when the ledger is embedded in the clinic detail modal, where the clinic
+   * is already the subject — offering a picker there would let the operator read
+   * a different clinic's statement inside one clinic's page, which is the kind
+   * of confusion that turns into a wrong statement being sent to a clinic.
+   *
+   * Omitted on the Analytics & Reports tab, where picking a clinic is the job.
+   */
+  lockedClinicId?: string;
 }
 
 /** One row of the narration cell: the type badge, the headline and the
@@ -56,15 +67,17 @@ const NEEDS_CLINIC: ExportNotice = {
   text: 'Choose a clinic first — the ledger statement is prepared per clinic.',
 };
 
-export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
+export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClinicId }) => {
   const { labs, getLedgerEntries, brandingSettings, cases, invoices } = useApp();
 
   // Case drill-down state: which case's record is open from a ledger row.
   const [selectedCaseForModal, setSelectedCaseForModalLocal] = useState<DentalCase | null>(null);
 
-  // Clinic selection: starts empty — the user must actively pick a clinic;
-  // there is no consolidated "all clinics" mode.
-  const [selectedClinicId, setSelectedClinicId] = useState<string>('');
+  // Clinic selection: starts empty - the user must actively pick a clinic;
+  // there is no consolidated "all clinics" mode. When embedded in the clinic
+  // detail modal the clinic is already known, so it starts locked to that one.
+  const [pickedClinicId, setPickedClinicId] = useState<string>('');
+  const selectedClinicId = lockedClinicId ?? pickedClinicId;
 
   // Case/Job filter — searches case numbers, invoice numbers, patient names.
   const [caseFilter] = useState<string>('');
@@ -502,15 +515,18 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = () => {
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
 {/* Clinic picker — the shared searchable dropdown. It replaced a local copy
               that had drifted from the batch print dialog's; one component now
-              serves both, so the two cannot disagree on how a clinic is found. */}
-          <ClinicPicker
-            clinics={labs}
-            value={selectedClinicId || null}
-            onChange={setSelectedClinicId}
-            tone="blue"
-            compact
-            className="flex-1 min-w-[220px]"
-          />
+              serves both, so the two cannot disagree on how a clinic is found.
+              Hidden when the ledger is embedded in a clinic's own page. */}
+          {!lockedClinicId && (
+            <ClinicPicker
+              clinics={labs}
+              value={selectedClinicId || null}
+              onChange={setPickedClinicId}
+              tone="blue"
+              compact
+              className="flex-1 min-w-[220px]"
+            />
+          )}
 
           {/* The Case / Job / Invoice # box is gone.
 
