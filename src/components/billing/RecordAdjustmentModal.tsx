@@ -190,7 +190,7 @@ export const RecordAdjustmentModal: React.FC<RecordAdjustmentModalProps> = ({ la
           )}
 
           {error && (
-            <p className="text-[11px] text-rose-500 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</p>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
