@@ -61,6 +61,7 @@ export const LabListView: React.FC = () => {
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
+  const [openingBalance, setOpeningBalance] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   /* Only the clinic name and the doctor name are mandatory. Phone, email and
@@ -82,6 +83,13 @@ export const LabListView: React.FC = () => {
     if (address.trim() && (address.trim().length < 5 || address.trim().length > 500)) {
       errs.address = 'Address must be 5-500 characters — or leave it blank';
     }
+    const ob = openingBalance.trim();
+    if (ob !== '') {
+      const n = Number(ob);
+      if (!Number.isFinite(n) || n < 0 || n > 999999999) {
+        errs.openingBalance = 'Opening balance must be a non-negative amount';
+      }
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -96,7 +104,8 @@ export const LabListView: React.FC = () => {
       phone: phone.trim(),
       email: email.trim(),
       address: address.trim(),
-      notes: notes.trim()
+      notes: notes.trim(),
+      opening_balance: openingBalance.trim() === '' ? 0 : Number(openingBalance.trim())
     });
 
     setName('');
@@ -105,6 +114,7 @@ export const LabListView: React.FC = () => {
     setEmail('');
     setAddress('');
     setNotes('');
+    setOpeningBalance('');
     setShowCreateModal(false);
     setSelectedLab(newLab);
   };
@@ -604,6 +614,25 @@ export const LabListView: React.FC = () => {
                   className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:bg-white focus:border-indigo-600"
                 />
                 {errors.address && <p className="text-[11px] text-rose-500 mt-0.5">{errors.address}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Opening Balance (PKR) <span className="text-ink-muted">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={openingBalance}
+                  onChange={(e) => setOpeningBalance(e.target.value)}
+                  placeholder="0 — leave blank if the clinic starts at zero"
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
+                />
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Money the clinic already owed before it was entered into the system. Posts as a debit on the ledger.
+                </p>
+                {errors.openingBalance && <p className="text-[11px] text-rose-500 mt-0.5">{errors.openingBalance}</p>}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

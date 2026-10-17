@@ -193,7 +193,7 @@ interface AppContextType {
   deleteTemplate: (templateId: string) => void;
 
   // Labs
-  addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count'>) => DentalLab;
+  addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance'> & { opening_balance?: number }) => DentalLab;
   updateLab: (id: string, updates: Partial<DentalLab>) => void;
   deleteLab: (id: string) => void;
   /**
@@ -859,12 +859,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Derived Financial Summary for specific Clinic / Lab
   const getLabFinancialSummary = (labId: string): LabFinancialSummary =>
-    buildLabFinancialSummary({ labId, invoices, advancePayments, accountAdjustments });
+    buildLabFinancialSummary({ labId, invoices, advancePayments, accountAdjustments, labs });
 
   // Derived Comprehensive Double-Entry Ledger Engine (pure ledger domain)
   const getLedgerEntries = useCallback((filterLabId?: string): LedgerEntry[] =>
-    buildLedgerEntries({ invoices, advancePayments, accountAdjustments, filterLabId }),
-  [invoices, advancePayments, accountAdjustments]);
+    buildLedgerEntries({ invoices, advancePayments, accountAdjustments, labs, filterLabId }),
+  [invoices, advancePayments, accountAdjustments, labs]);
 
   // Cases CRUD
   const addCase = (caseData: Omit<DentalCase, 'id' | 'case_number' | 'created_at' | 'updated_at' | 'history'>) => {
@@ -1309,13 +1309,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Labs CRUD
-  const addLab = (labData: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count'>) => {
+  const addLab = (labData: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance'> & { opening_balance?: number }) => {
     const newLab: DentalLab = {
       ...labData,
       id: `lab-${Date.now()}`,
       rating: 5.0,
       reviews_count: 0,
-      created_at: getTodayStr()
+      created_at: getTodayStr(),
+      // A clinic without an explicit opening balance starts at zero. Making the
+      // field optional here (while required on the type) keeps the demo fixtures
+      // and any other caller that predates the feature from failing to compile.
+      opening_balance: (labData as Partial<DentalLab>).opening_balance ?? 0
     };
     setLabs((prev) => [newLab, ...prev]);
     return newLab;

@@ -1,5 +1,6 @@
 import type {
   DentalCase,
+  DentalLab,
   Invoice,
   AdvancePayment,
   AccountAdjustment,
@@ -136,8 +137,14 @@ export const buildLabFinancialSummary = (input: {
   invoices: Invoice[];
   advancePayments: AdvancePayment[];
   accountAdjustments: AccountAdjustment[];
+  /**
+   * Clinics, for their opening balances. The opening balance is a debt the
+   * clinic carried in before the system, so it adds to what is owed — the same
+   * as an unpaid invoice and for the same reason.
+   */
+  labs?: Pick<DentalLab, 'id' | 'opening_balance'>[];
 }): LabFinancialSummary => {
-  const { labId, invoices, advancePayments, accountAdjustments } = input;
+  const { labId, invoices, advancePayments, accountAdjustments, labs } = input;
 
   const labInvs = (invoices || []).filter((i) => i.lab_id === labId);
   const total_invoiced = labInvs.reduce((sum, inv) => sum + inv.final_amount, 0);
@@ -151,8 +158,14 @@ export const buildLabFinancialSummary = (input: {
   const total_credit_notes = clinicAdjs.filter((a) => a.type === 'credit_note').reduce((sum, a) => sum + a.amount, 0);
   const total_debit_adjustments = clinicAdjs.filter((a) => a.type === 'debit_adjustment' || a.type === 'refund').reduce((sum, a) => sum + a.amount, 0);
 
+  /* The opening balance is money the clinic already owed before it was entered
+     into the system. It is a debt like any unpaid invoice, so it adds to what
+     is owed — and it is read from the clinic rather than summed from rows so
+     that editing the field moves the balance with it. */
+  const opening_balance = (labs || []).find((l) => l.id === labId)?.opening_balance || 0;
+
   const unpaidInvoiceAmount = Math.max(0, total_invoiced - total_paid);
-  const net_balance = unpaidInvoiceAmount + total_debit_adjustments - advance_balance - total_credit_notes;
+  const net_balance = opening_balance + unpaidInvoiceAmount + total_debit_adjustments - advance_balance - total_credit_notes;
   const outstanding_balance = Math.max(0, net_balance);
 
   let payments_count = 0;
@@ -167,6 +180,7 @@ export const buildLabFinancialSummary = (input: {
     advance_balance,
     total_credit_notes,
     total_debit_adjustments,
+    opening_balance,
     outstanding_balance,
     net_balance,
     invoices_count: labInvs.length,
@@ -190,9 +204,19 @@ export const buildLedgerEntries = (input: {
   invoices: Invoice[];
   advancePayments: AdvancePayment[];
   accountAdjustments: AccountAdjustment[];
+  /**
+   * Clinics, for their opening balances.
+   *
+   * Only `opening_balance`, `created_at` and `name` are read, but the whole list
+   * is passed rather than a parallel array of balances so the caller already
+   * holding it has nothing extra to assemble — and so the entry can be dated at
+   * the clinic's own creation, which is what makes it sort ahead of every
+   * invoice and land in the statement's opening balance.
+   */
+  labs?: Pick<DentalLab, 'id' | 'name' | 'opening_balance' | 'created_at'>[];
   filterLabId?: string;
 }): LedgerEntry[] => {
-  const { invoices, advancePayments, accountAdjustments, filterLabId } = input;
+  const { invoices, advancePayments, accountAdjustments, labs, filterLabId } = input;
   try {
     type RawEvent = {
       date: string;
@@ -219,6 +243,35 @@ export const buildLedgerEntries = (input: {
     const targetInvoices = filterLabId ? (invoices || []).filter((i) => i.lab_id === filterLabId) : (invoices || []);
     const targetAdvances = filterLabId ? (advancePayments || []).filter((a) => a.lab_id === filterLabId) : (advancePayments || []);
     const targetAdjustments = filterLabId ? (accountAdjustments || []).filter((a) => a.lab_id === filterLabId) : (accountAdjustments || []);
+
+    /* 0. Opening balance -> Debit.
+
+       Dated at the clinic's own creation so it sorts ahead of every invoice,
+       which is what makes it land in the statement's opening balance rather
+       than appearing as a transaction on the day the clinic was keyed in. It
+       is derived from `DentalLab.opening_balance` rather than stored as a row,
+       so editing the field re-posts this entry and the two can never drift. */
+    (labs || []).forEach((lab) => {
+      const opening = lab.opening_balance || 0;
+      if (opening <= 0) return;
+      if (filterLabId && lab.id !== filterLabId) return;
+      const openDate = lab.created_at || getTodayStr();
+      const openTime = new Date(openDate).getTime();
+      rawEvents.push({
+        date: openDate,
+        timestamp: isNaN(openTime) ? 0 : openTime,
+        lab_id: lab.id,
+        lab_name: lab.name || 'Clinic',
+        entry_type: 'opening_balance',
+        reference_id: `opening-${lab.id}`,
+        reference_number: 'OPENING',
+        description: 'Opening balance',
+        debit: opening,
+        credit: 0,
+        notes: `Brought forward on ${openDate}`,
+        recorded_by: 'System'
+      });
+    });
 
     // 1. Invoices -> Debit (Increases Outstanding Receivable)
     targetInvoices.forEach((inv) => {

@@ -159,7 +159,9 @@ export const buildLabDeletionImpact = (
     addresses: c.labAddresses.filter((x) => x.lab_id === labId).length,
     pricingOverrides: c.pricingOverrides.filter((x) => x.lab_id === labId).length,
     reviews: c.labReviews.filter((x) => x.lab_id === labId).length,
-    totalBilled: sum(s.labInvoices.map((inv) => inv.final_amount || 0)),
+    totalBilled:
+      (c.labs.find((l) => l.id === labId)?.opening_balance || 0) +
+      sum(s.labInvoices.map((inv) => inv.final_amount || 0)),
     totalPaid: sum(
       s.labInvoices.flatMap((inv) => (inv.payments || []).map((p) => p.amount || 0))
     ),

@@ -171,6 +171,7 @@ export interface LabRow {
   reviews_count: number;
   created_at: string;
   updated_at?: string | null;
+  opening_balance?: number | null;
 }
 
 function labToDomain(row: LabRow): any {
@@ -188,6 +189,7 @@ function labToDomain(row: LabRow): any {
     rating: row.rating,
     reviews_count: row.reviews_count,
     created_at: row.created_at,
+    opening_balance: row.opening_balance ?? 0,
   };
 }
 

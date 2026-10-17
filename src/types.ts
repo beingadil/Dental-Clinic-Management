@@ -259,6 +259,16 @@ export interface DentalLab {
   rating: number;
   reviews_count: number;
   created_at: string;
+  /**
+   * Money the clinic already owed before it was entered into the system.
+   *
+   * Stored on the clinic rather than as a one-off adjustment row so it has a
+   * home that can be read and corrected: the ledger derives its opening entry
+   * from this field, which is what keeps the two from ever disagreeing. An
+   * adjustment row would work for the books but leave no editable record of
+   * what the starting figure was.
+   */
+  opening_balance: number;
 }
 
 export interface DoctorPreferredLab {
@@ -385,7 +395,8 @@ export type LedgerEntryType =
   | 'credit_note' 
   | 'write_off'
   | 'debit_adjustment' 
-  | 'refund';
+  | 'refund'
+  | 'opening_balance';
 
 export interface LedgerEntry {
   id: string;
@@ -425,6 +436,7 @@ export interface LabFinancialSummary {
   available_advance?: number;
   total_credit_notes: number;
   total_debit_adjustments: number;
+  opening_balance: number; // Debt the clinic carried in before the system
   outstanding_balance: number; // Due amount (max 0 if net credit)
   netOutstanding?: number;
   net_balance: number; // Debits - Credits (negative means clinic has credit surplus!)

@@ -137,7 +137,8 @@ describe('the clinic ledger is the shared General Ledger, not a second one', () 
      disagree, and the operator asked for "the same general ledger that we have
      in reports and analytics" — one component, one set of numbers. */
   it('renders GeneralLedgerView, locked to this clinic', () => {
-    expect(src).toMatch(/activeTab === 'ledger' && <GeneralLedgerView lockedClinicId=\{lab\.id\} \/>/);
+    expect(src).toMatch(/activeTab === 'ledger' && \(/);
+    expect(src).toMatch(/<GeneralLedgerView lockedClinicId=\{lab\.id\} \/>/);
   });
 
   it('offers the tab again, and still accepts it as an initial tab', () => {

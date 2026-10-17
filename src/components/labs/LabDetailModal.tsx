@@ -12,6 +12,7 @@ import { PaymentProofModal } from '../billing/PaymentProofModal';
 import { PaymentReceiptModal } from '../billing/PaymentReceiptModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
 import { GeneralLedgerView } from '../billing/GeneralLedgerView';
+import { RecordAdjustmentModal } from '../billing/RecordAdjustmentModal';
 import {
   Building2,
   X,
@@ -62,11 +63,13 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
   const [email, setEmail] = useState(lab.email);
   const [address, setAddress] = useState(lab.address);
   const [notes, setNotes] = useState(lab.notes || '');
+  const [openingBalance, setOpeningBalance] = useState(String(lab.opening_balance || 0));
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Delete typed confirmation state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [confirmInput, setConfirmInput] = useState('');
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
   // Cases-tab search box.
   const [caseSearch, setCaseSearch] = useState('');
@@ -180,6 +183,13 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
     if (address.trim() && (address.trim().length < 5 || address.trim().length > 500)) {
       errs.address = 'Address must be 5-500 characters — or leave it blank';
     }
+    const ob = openingBalance.trim();
+    if (ob !== '') {
+      const n = Number(ob);
+      if (!Number.isFinite(n) || n < 0 || n > 999999999) {
+        errs.openingBalance = 'Opening balance must be a non-negative amount';
+      }
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -194,7 +204,8 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       phone: phone.trim(),
       email: email.trim(),
       address: address.trim(),
-      notes: notes.trim()
+      notes: notes.trim(),
+      opening_balance: openingBalance.trim() === '' ? 0 : Number(openingBalance.trim())
     });
 
     setIsEditing(false);
@@ -578,6 +589,24 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Opening Balance (PKR) <span className="font-normal text-ink-muted">— money the clinic already owed before the system</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={openingBalance}
+                      onChange={(e) => setOpeningBalance(e.target.value)}
+                      className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Posts as a debit on the ledger. Changing it re-posts the opening entry, so the field and the ledger can never disagree.
+                    </p>
+                    {errors.openingBalance && <p className="text-[10px] text-rose-500 mt-0.5">{errors.openingBalance}</p>}
+                  </div>
+
                   <div className="flex justify-end gap-2">
                     <button
                       type="button"
@@ -630,6 +659,16 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                       <p className="text-slate-600">{lab.notes}</p>
                     </div>
                   )}
+
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+                    <div className="font-semibold text-amber-800">Opening Balance (PKR)</div>
+                    <div className="font-mono font-bold text-amber-900 text-sm">{formatPKR(lab.opening_balance || 0)}</div>
+                    <p className="text-amber-700">
+                      {(lab.opening_balance || 0) > 0
+                        ? 'Money the clinic already owed before it was entered into the system. Posts as a debit on the ledger.'
+                        : 'No opening balance — the clinic starts at zero.'}
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -651,7 +690,21 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
           {/* The clinic's own ledger: the shared General Ledger, pinned to this
               clinic so the figures cannot be read against a different one. */}
-          {activeTab === 'ledger' && <GeneralLedgerView lockedClinicId={lab.id} />}
+          {activeTab === 'ledger' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustmentModal(true)}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  Record Adjustment
+                </button>
+              </div>
+              <GeneralLedgerView lockedClinicId={lab.id} />
+            </div>
+          )}
 
           {activeTab === 'pricing' && <LabPricingManager labId={lab.id} />}
         </div>
@@ -734,6 +787,11 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
           caseData={cases.find((c) => c.id === selectedInvoiceModal.case_id || c.case_number === selectedInvoiceModal.case_number)}
           onClose={() => setSelectedInvoiceModal(null)}
         />
+      )}
+
+      {/* Record Adjustment Modal */}
+      {showAdjustmentModal && (
+        <RecordAdjustmentModal lab={lab} onClose={() => setShowAdjustmentModal(false)} />
       )}
 
       {/* Typed Confirmation DELETE Modal */}

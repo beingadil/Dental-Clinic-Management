@@ -1487,6 +1487,32 @@ export const MIGRATION_024_REMOVE_REVERSAL: Migration = {
   ],
 };
 
+/**
+ * 025 - opening balance on a clinic account.
+ *
+ * A clinic that already owed money before it was entered into the system has no
+ * way to record that starting debt. Without it the ledger opens at zero and the
+ * first invoice makes the balance look like it appeared from nowhere.
+ *
+ * Stored as a column on `labs` rather than as a one-off adjustment row so it has
+ * a home that can be read and corrected. The ledger derives its opening entry
+ * from this field, which is what keeps the two from ever disagreeing — an
+ * adjustment row would balance the books but leave no editable record of what
+ * the starting figure was.
+ *
+ * `ADD COLUMN` with a constant DEFAULT is enough here: unlike the reversal
+ * columns in 024 there is no CHECK constraint referencing this one, so no table
+ * rebuild is needed.
+ */
+export const MIGRATION_025_CLINIC_OPENING_BALANCE: Migration = {
+  version: 25,
+  name: 'clinic_opening_balance',
+  statements: [
+    `ALTER TABLE labs ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0 CHECK (opening_balance >= 0)`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '25')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1512,6 +1538,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_022_DROP_LEDGER_ENTRIES,
   MIGRATION_023_CATALOG_CATEGORIES,
   MIGRATION_024_REMOVE_REVERSAL,
+  MIGRATION_025_CLINIC_OPENING_BALANCE,
 ];
 
 /**
