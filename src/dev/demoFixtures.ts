@@ -50,7 +50,7 @@ type AppValue = ReturnType<typeof useApp>;
 
 
 /** The five clinics the fixture books work against. */
-const CLINICS: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance'>[] = [
+const CLINICS: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance' | 'opening_balance_type'>[] = [
   {
     name: 'Whitefield Dental Studio',
     contact_person: 'Dr. Imran Qureshi',

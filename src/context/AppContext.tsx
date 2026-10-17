@@ -193,7 +193,7 @@ interface AppContextType {
   deleteTemplate: (templateId: string) => void;
 
   // Labs
-  addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance'> & { opening_balance?: number }) => DentalLab;
+  addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance' | 'opening_balance_type'> & { opening_balance?: number; opening_balance_type?: 'debit' | 'credit' }) => DentalLab;
   updateLab: (id: string, updates: Partial<DentalLab>) => void;
   deleteLab: (id: string) => void;
   /**
@@ -1309,7 +1309,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Labs CRUD
-  const addLab = (labData: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance'> & { opening_balance?: number }) => {
+  const addLab = (labData: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance' | 'opening_balance_type'> & { opening_balance?: number; opening_balance_type?: 'debit' | 'credit' }) => {
     const newLab: DentalLab = {
       ...labData,
       id: `lab-${Date.now()}`,
@@ -1319,7 +1319,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // A clinic without an explicit opening balance starts at zero. Making the
       // field optional here (while required on the type) keeps the demo fixtures
       // and any other caller that predates the feature from failing to compile.
-      opening_balance: (labData as Partial<DentalLab>).opening_balance ?? 0
+      opening_balance: (labData as Partial<DentalLab>).opening_balance ?? 0,
+      opening_balance_type: (labData as Partial<DentalLab>).opening_balance_type ?? 'debit'
     };
     setLabs((prev) => [newLab, ...prev]);
     return newLab;

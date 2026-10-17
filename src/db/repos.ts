@@ -172,6 +172,7 @@ export interface LabRow {
   created_at: string;
   updated_at?: string | null;
   opening_balance?: number | null;
+  opening_balance_type?: string | null;
 }
 
 function labToDomain(row: LabRow): any {
@@ -190,6 +191,7 @@ function labToDomain(row: LabRow): any {
     reviews_count: row.reviews_count,
     created_at: row.created_at,
     opening_balance: row.opening_balance ?? 0,
+    opening_balance_type: (row.opening_balance_type as 'debit' | 'credit') ?? 'debit',
   };
 }
 

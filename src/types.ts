@@ -269,6 +269,11 @@ export interface DentalLab {
    * what the starting figure was.
    */
   opening_balance: number;
+  /**
+   * Whether the opening balance is a debit (clinic owes you) or a credit
+   * (you owe the clinic). Defaults to 'debit' — the common case.
+   */
+  opening_balance_type: 'debit' | 'credit';
 }
 
 export interface DoctorPreferredLab {

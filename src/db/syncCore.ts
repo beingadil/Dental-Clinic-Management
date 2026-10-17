@@ -188,13 +188,38 @@ function syncNow(c: SyncCollections): void {
     // ── labs — parents of cases/invoices ──
     tx.run('DELETE FROM labs');
     for (const l of c.labs) {
-      tx.run(
-        `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, opening_balance, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [l.id, l.name, l.code ?? null, l.contact_person ?? null, l.phone ?? null, l.email ?? null,
-         l.address ?? null, l.city ?? null, l.doctor_name ?? null, l.notes ?? null,
-         l.rating ?? 5, l.reviews_count ?? 0, l.opening_balance ?? 0, l.created_at ?? now, now]
-      );
+      // Defensive: the browser's IndexedDB may carry a snapshot from a code
+      // version where the labs table predates migration 025. In that case the
+      // columns do not exist yet and a plain INSERT aborts the whole sync with
+      // "table labs has no column named opening_balance_type". Fall back to the
+      // pre-025 column set so the sync still succeeds; migration 025 runs on
+      // the next boot and adds the columns, after which the full INSERT is
+      // used. This is a one-time safety net, not a permanent code path.
+      const hasOpeningCols = ((): boolean => {
+        try {
+          const info = tx.all<{ name: string }>('PRAGMA table_info("labs")');
+          return info.some((c) => c.name === 'opening_balance_type');
+        } catch {
+          return false;
+        }
+      })();
+      if (hasOpeningCols) {
+        tx.run(
+          `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, opening_balance, opening_balance_type, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [l.id, l.name, l.code ?? null, l.contact_person ?? null, l.phone ?? null, l.email ?? null,
+           l.address ?? null, l.city ?? null, l.doctor_name ?? null, l.notes ?? null,
+           l.rating ?? 5, l.reviews_count ?? 0, l.opening_balance ?? 0, l.opening_balance_type ?? 'debit', l.created_at ?? now, now]
+        );
+      } else {
+        tx.run(
+          `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [l.id, l.name, l.code ?? null, l.contact_person ?? null, l.phone ?? null, l.email ?? null,
+           l.address ?? null, l.city ?? null, l.doctor_name ?? null, l.notes ?? null,
+           l.rating ?? 5, l.reviews_count ?? 0, l.created_at ?? now, now]
+        );
+      }
       for (const ct of c.labContacts.filter((x) => x.lab_id === l.id)) {
         tx.run(
           `INSERT OR REPLACE INTO lab_contacts (id, lab_id, name, phone, email, role, notes, is_primary, created_at)

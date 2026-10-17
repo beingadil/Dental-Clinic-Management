@@ -245,7 +245,23 @@ export class SqliteEngine {
         // inside a transaction, so it has to be suspended here, outside it.
         if (m.rebuildsTable) this.run('PRAGMA foreign_keys = OFF;');
         this.transaction((tx) => {
-          for (const stmt of m.statements) tx.run(stmt);
+          for (const stmt of m.statements) {
+            try {
+              tx.run(stmt);
+            } catch (stmtErr) {
+              const msg = stmtErr instanceof Error ? stmtErr.message : String(stmtErr);
+              // Idempotency guard for ALTER TABLE ... ADD COLUMN. A database
+              // created by a code version that already had the column (because
+              // migration 001 was edited to include it) will throw "duplicate
+              // column name" when 025 tries to add it again. That is not an
+              // error — the column exists, which is what we wanted.
+              if (/duplicate column name/i.test(msg)) {
+                // column already there — nothing to do
+              } else {
+                throw stmtErr;
+              }
+            }
+          }
           // Verify what the rebuild preserved BEFORE committing. Without this a
           // rebuild that dropped a child table's rows would commit happily and
           // the loss would only surface as missing data much later.

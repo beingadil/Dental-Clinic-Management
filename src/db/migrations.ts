@@ -79,7 +79,7 @@ export const MIGRATION_001_INITIAL_SCHEMA: Migration = {
       created_at TEXT NOT NULL,
       updated_at TEXT
     )`,
-
+  
     `CREATE TABLE lab_contacts (
       id TEXT PRIMARY KEY,
       lab_id TEXT NOT NULL,
@@ -1508,7 +1508,13 @@ export const MIGRATION_025_CLINIC_OPENING_BALANCE: Migration = {
   version: 25,
   name: 'clinic_opening_balance',
   statements: [
-    `ALTER TABLE labs ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0 CHECK (opening_balance >= 0)`,
+    // ALTER TABLE ... ADD COLUMN in SQLite cannot add a column with a CHECK
+    // constraint that references the column in some versions, and the browser
+    // build (sql.js) is stricter than the desktop build about it. The
+    // application code validates both values, so the CHECK is dropped here and
+    // kept only in the CREATE TABLE for fresh databases (migration 001).
+    `ALTER TABLE labs ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0`,
+    `ALTER TABLE labs ADD COLUMN opening_balance_type TEXT NOT NULL DEFAULT 'debit'`,
     `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '25')`,
   ],
 };

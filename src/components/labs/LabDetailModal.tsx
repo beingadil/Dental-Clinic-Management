@@ -64,6 +64,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
   const [address, setAddress] = useState(lab.address);
   const [notes, setNotes] = useState(lab.notes || '');
   const [openingBalance, setOpeningBalance] = useState(String(lab.opening_balance || 0));
+  const [openingBalanceType, setOpeningBalanceType] = useState<'debit' | 'credit'>(lab.opening_balance_type || 'debit');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Delete typed confirmation state
@@ -205,7 +206,8 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       email: email.trim(),
       address: address.trim(),
       notes: notes.trim(),
-      opening_balance: openingBalance.trim() === '' ? 0 : Number(openingBalance.trim())
+      opening_balance: openingBalance.trim() === '' ? 0 : Number(openingBalance.trim()),
+      opening_balance_type: openingBalance.trim() === '' ? 'debit' : openingBalanceType
     });
 
     setIsEditing(false);
@@ -591,18 +593,46 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Opening Balance (PKR) <span className="font-normal text-ink-muted">— money the clinic already owed before the system</span>
+                      Opening Balance (PKR) <span className="font-normal text-ink-muted">— money owed before the system</span>
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={openingBalance}
-                      onChange={(e) => setOpeningBalance(e.target.value)}
-                      className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={openingBalance}
+                        onChange={(e) => setOpeningBalance(e.target.value)}
+                        className="flex-1 p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                      />
+                      <div className="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setOpeningBalanceType('debit')}
+                          className={`px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                            openingBalanceType === 'debit'
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                          }`}
+                        >
+                          Debit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOpeningBalanceType('credit')}
+                          className={`px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                            openingBalanceType === 'credit'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                          }`}
+                        >
+                          Credit
+                        </button>
+                      </div>
+                    </div>
                     <p className="text-[10px] text-slate-500 mt-0.5">
-                      Posts as a debit on the ledger. Changing it re-posts the opening entry, so the field and the ledger can never disagree.
+                      {openingBalanceType === 'debit'
+                        ? 'The clinic owed you this amount. Posts as a debit on the ledger.'
+                        : 'You owed the clinic this amount. Posts as a credit on the ledger.'}
                     </p>
                     {errors.openingBalance && <p className="text-[10px] text-rose-500 mt-0.5">{errors.openingBalance}</p>}
                   </div>
@@ -660,12 +690,36 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     </div>
                   )}
 
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
-                    <div className="font-semibold text-amber-800">Opening Balance (PKR)</div>
-                    <div className="font-mono font-bold text-amber-900 text-sm">{formatPKR(lab.opening_balance || 0)}</div>
-                    <p className="text-amber-700">
+                  <div className={`p-4 border rounded-xl text-xs space-y-1 ${
+                    (lab.opening_balance || 0) > 0
+                      ? (lab.opening_balance_type === 'credit' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200')
+                      : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className={`font-semibold text-xs ${
+                      (lab.opening_balance || 0) > 0
+                        ? (lab.opening_balance_type === 'credit' ? 'text-emerald-800' : 'text-amber-800')
+                        : 'text-slate-500'
+                    }`}>
+                      Opening Balance (PKR) — {(lab.opening_balance || 0) > 0
+                        ? (lab.opening_balance_type === 'credit' ? 'Credit' : 'Debit')
+                        : 'None'}
+                    </div>
+                    <div className={`font-mono font-bold text-sm ${
+                      (lab.opening_balance || 0) > 0
+                        ? (lab.opening_balance_type === 'credit' ? 'text-emerald-900' : 'text-amber-900')
+                        : 'text-slate-400'
+                    }`}>
+                      {formatPKR(lab.opening_balance || 0)}
+                    </div>
+                    <p className={`text-[11px] ${
+                      (lab.opening_balance || 0) > 0
+                        ? (lab.opening_balance_type === 'credit' ? 'text-emerald-700' : 'text-amber-700')
+                        : 'text-slate-500'
+                    }`}>
                       {(lab.opening_balance || 0) > 0
-                        ? 'Money the clinic already owed before it was entered into the system. Posts as a debit on the ledger.'
+                        ? (lab.opening_balance_type === 'credit'
+                          ? 'Money you already owed the clinic before the system. Posts as a credit on the ledger.'
+                          : 'Money the clinic already owed you before the system. Posts as a debit on the ledger.')
                         : 'No opening balance — the clinic starts at zero.'}
                     </p>
                   </div>

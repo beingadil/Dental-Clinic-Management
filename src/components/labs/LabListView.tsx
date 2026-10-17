@@ -62,6 +62,7 @@ export const LabListView: React.FC = () => {
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [openingBalance, setOpeningBalance] = useState('');
+  const [openingBalanceType, setOpeningBalanceType] = useState<'debit' | 'credit'>('debit');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   /* Only the clinic name and the doctor name are mandatory. Phone, email and
@@ -105,7 +106,8 @@ export const LabListView: React.FC = () => {
       email: email.trim(),
       address: address.trim(),
       notes: notes.trim(),
-      opening_balance: openingBalance.trim() === '' ? 0 : Number(openingBalance.trim())
+      opening_balance: openingBalance.trim() === '' ? 0 : Number(openingBalance.trim()),
+      opening_balance_type: openingBalance.trim() === '' ? 'debit' : openingBalanceType
     });
 
     setName('');
@@ -115,6 +117,7 @@ export const LabListView: React.FC = () => {
     setAddress('');
     setNotes('');
     setOpeningBalance('');
+    setOpeningBalanceType('debit');
     setShowCreateModal(false);
     setSelectedLab(newLab);
   };
@@ -620,17 +623,47 @@ export const LabListView: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Opening Balance (PKR) <span className="text-ink-muted">(optional)</span>
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={openingBalance}
-                  onChange={(e) => setOpeningBalance(e.target.value)}
-                  placeholder="0 — leave blank if the clinic starts at zero"
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={openingBalance}
+                    onChange={(e) => setOpeningBalance(e.target.value)}
+                    placeholder="0 — leave blank if the clinic starts at zero"
+                    className="flex-1 p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
+                  />
+                  <div className="flex rounded-xl border border-slate-200 overflow-hidden shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setOpeningBalanceType('debit')}
+                      className={`px-3 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+                        openingBalanceType === 'debit'
+                          ? 'bg-rose-50 text-rose-700 border-r border-slate-200'
+                          : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                      }`}
+                      title="The clinic owed you this amount before the system (debit)"
+                    >
+                      Debit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpeningBalanceType('credit')}
+                      className={`px-3 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+                        openingBalanceType === 'credit'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                      }`}
+                      title="You owed the clinic this amount before the system (credit)"
+                    >
+                      Credit
+                    </button>
+                  </div>
+                </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Money the clinic already owed before it was entered into the system. Posts as a debit on the ledger.
+                  {openingBalanceType === 'debit'
+                    ? 'Money the clinic already owed you. Posts as a debit on the ledger.'
+                    : 'Money you already owed the clinic. Posts as a credit on the ledger.'}
                 </p>
                 {errors.openingBalance && <p className="text-[11px] text-rose-500 mt-0.5">{errors.openingBalance}</p>}
               </div>

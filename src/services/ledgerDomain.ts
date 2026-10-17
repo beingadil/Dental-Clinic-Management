@@ -142,7 +142,7 @@ export const buildLabFinancialSummary = (input: {
    * clinic carried in before the system, so it adds to what is owed — the same
    * as an unpaid invoice and for the same reason.
    */
-  labs?: Pick<DentalLab, 'id' | 'opening_balance'>[];
+  labs?: Pick<DentalLab, 'id' | 'opening_balance' | 'opening_balance_type'>[];
 }): LabFinancialSummary => {
   const { labId, invoices, advancePayments, accountAdjustments, labs } = input;
 
@@ -158,11 +158,14 @@ export const buildLabFinancialSummary = (input: {
   const total_credit_notes = clinicAdjs.filter((a) => a.type === 'credit_note').reduce((sum, a) => sum + a.amount, 0);
   const total_debit_adjustments = clinicAdjs.filter((a) => a.type === 'debit_adjustment' || a.type === 'refund').reduce((sum, a) => sum + a.amount, 0);
 
-  /* The opening balance is money the clinic already owed before it was entered
-     into the system. It is a debt like any unpaid invoice, so it adds to what
-     is owed — and it is read from the clinic rather than summed from rows so
-     that editing the field moves the balance with it. */
-  const opening_balance = (labs || []).find((l) => l.id === labId)?.opening_balance || 0;
+  /* The opening balance is money the clinic already owed (debit) or that we
+     owed them (credit) before it was entered into the system. A debit adds to
+     what is owed; a credit subtracts. It is read from the clinic rather than
+     summed from rows so that editing the field moves the balance with it. */
+  const openingLab = (labs || []).find((l) => l.id === labId);
+  const openingAmt = openingLab?.opening_balance || 0;
+  const openingIsCredit = openingLab?.opening_balance_type === 'credit';
+  const opening_balance = openingIsCredit ? -openingAmt : openingAmt;
 
   const unpaidInvoiceAmount = Math.max(0, total_invoiced - total_paid);
   const net_balance = opening_balance + unpaidInvoiceAmount + total_debit_adjustments - advance_balance - total_credit_notes;
@@ -213,7 +216,7 @@ export const buildLedgerEntries = (input: {
    * the clinic's own creation, which is what makes it sort ahead of every
    * invoice and land in the statement's opening balance.
    */
-  labs?: Pick<DentalLab, 'id' | 'name' | 'opening_balance' | 'created_at'>[];
+  labs?: Pick<DentalLab, 'id' | 'name' | 'opening_balance' | 'opening_balance_type' | 'created_at'>[];
   filterLabId?: string;
 }): LedgerEntry[] => {
   const { invoices, advancePayments, accountAdjustments, labs, filterLabId } = input;
@@ -255,6 +258,7 @@ export const buildLedgerEntries = (input: {
       const opening = lab.opening_balance || 0;
       if (opening <= 0) return;
       if (filterLabId && lab.id !== filterLabId) return;
+      const isCredit = lab.opening_balance_type === 'credit';
       const openDate = lab.created_at || getTodayStr();
       const openTime = new Date(openDate).getTime();
       rawEvents.push({
@@ -265,9 +269,9 @@ export const buildLedgerEntries = (input: {
         entry_type: 'opening_balance',
         reference_id: `opening-${lab.id}`,
         reference_number: 'OPENING',
-        description: 'Opening balance',
-        debit: opening,
-        credit: 0,
+        description: isCredit ? 'Opening credit balance' : 'Opening balance',
+        debit: isCredit ? 0 : opening,
+        credit: isCredit ? opening : 0,
         notes: `Brought forward on ${openDate}`,
         recorded_by: 'System'
       });
