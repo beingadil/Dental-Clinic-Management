@@ -67,12 +67,13 @@ export const generateId = (prefix: string): string => {
  * Has money actually been received against this invoice?
  *
  * Reads the payment rows rather than `amount_paid`, which is a stored total
- * that can drift from them. A reversed payment does not count: it was undone,
- * so the invoice is unpaid again and belongs back in the allocation list rather
- * than on a screen of settled records.
+ * that can drift from them. A payment row exists only while the money is
+ * really there: deleting a voucher deletes the row, so the invoice falls back
+ * to unpaid on its own. There is no "reversed but still present" state — that
+ * flag is gone, and with it the ledger rows that used to survive a reversal.
  */
-export const hasLivePayment = (invoice: { payments?: { is_reversed?: boolean }[] }): boolean =>
-  (invoice.payments || []).some((p) => !p.is_reversed);
+export const hasLivePayment = (invoice: { payments?: unknown[] }): boolean =>
+  (invoice.payments || []).length > 0;
 
 /**
  * Validate that journal lines strictly balance (Sum of Debits === Sum of Credits)
@@ -433,44 +434,5 @@ export const buildAdjustmentJournal = (
     lines,
     created_at: getNowStamp(),
     created_by: creator
-  };
-};
-
-/**
- * Immutable Reversal: Post equal-and-opposite journal lines linked to original journal
- */
-export const buildReversalJournal = (
-  original: JournalEntry,
-  reason: string,
-  actor: string
-): JournalEntry => {
-  const compensatingLines: JournalLine[] = original.lines.map((l) => ({
-    id: generateId('jline'),
-    account_code: l.account_code,
-    account_name: l.account_name,
-    account_type: l.account_type,
-    debit: l.credit,
-    credit: l.debit
-  }));
-
-  assertJournalBalanced(compensatingLines);
-
-  return {
-    id: generateId('jrn'),
-    journal_number: `JRN-REV-${Date.now().toString(36).toUpperCase()}`,
-    date: getTodayStr(),
-    event_type: 'reversal',
-    reference_type: original.reference_type,
-    reference_id: original.reference_id,
-    reference_number: `REV-OF-${original.reference_number}`,
-    lab_id: original.lab_id,
-    lab_name: original.lab_name,
-    // A reversal reverses the same economic event: same case as the original.
-    case_id: original.case_id,
-    case_number: original.case_number,
-    description: `REVERSAL of ${original.journal_number} (${original.reference_number}): ${reason}`,
-    lines: compensatingLines,
-    created_at: getNowStamp(),
-    created_by: actor
   };
 };

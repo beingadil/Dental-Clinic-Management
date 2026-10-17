@@ -388,7 +388,7 @@ export const allocateAdvancesFifo = (
   let unallocatedNeeded = needed;
   const usedRefs: string[] = [];
   const next = advances.map((adv) => {
-    if (adv.lab_id !== clinicId || adv.remaining_amount <= 0 || unallocatedNeeded <= 0 || adv.is_reversed) {
+    if (adv.lab_id !== clinicId || adv.remaining_amount <= 0 || unallocatedNeeded <= 0) {
       return adv;
     }
     const take = Math.min(adv.remaining_amount, unallocatedNeeded);
@@ -424,7 +424,7 @@ export const applyAdvanceToInvoice = (inv: Invoice, toApply: number, slice: Paym
 /** How much advance credit a clinic can still spend. */
 export const availableAdvanceCredit = (advances: AdvancePayment[], clinicId: string): number =>
   advances
-    .filter((a) => a.lab_id === clinicId && a.remaining_amount > 0 && !a.is_reversed)
+    .filter((a) => a.lab_id === clinicId && a.remaining_amount > 0)
     .reduce((sum, a) => sum + a.remaining_amount, 0);
 
 // ────────────────────────────────────────────── credit note (V2)
@@ -542,9 +542,7 @@ export const recomputeInvoiceFromPayments = (
   inv: Invoice,
   updatedPayments: PaymentRecord[],
 ): Invoice => {
-  const activePaid = updatedPayments
-    .filter((p) => !p.is_reversed)
-    .reduce((sum, p) => sum + p.amount, 0);
+  const activePaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
   const newStatus = deriveInvoiceStatus(inv.final_amount, activePaid, inv.due_date, inv.credit_notes_total || 0);
   return {
     ...inv,

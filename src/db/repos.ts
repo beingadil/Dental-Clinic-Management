@@ -984,7 +984,6 @@ function invoiceToDomain(row: InvoiceRow, db: Db): any {
     [row.id]
   ).map((p) => ({
     ...p,
-    is_reversed: !!p.is_reversed,
     attachments: db.all('SELECT * FROM payment_attachments WHERE payment_id = ? ORDER BY uploaded_at', [p.id]),
   }));
   return {
@@ -1114,10 +1113,6 @@ export interface PaymentRow {
   advance_payment_id?: string | null;
   status: string;
   unapplied_amount: number;
-  is_reversed: number;
-  reversal_reason?: string | null;
-  reversed_at?: string | null;
-  reversed_by?: string | null;
   journal_id?: string | null;
   created_at: string;
 }
@@ -1125,7 +1120,6 @@ export interface PaymentRow {
 function paymentToDomain(row: PaymentRow, db: Db): any {
   return {
     ...row,
-    is_reversed: !!row.is_reversed,
     attachments: db.all('SELECT * FROM payment_attachments WHERE payment_id = ? ORDER BY uploaded_at', [row.id]),
     allocations: db.all('SELECT * FROM payment_allocations WHERE source_id = ? ORDER BY allocated_at', [row.id]),
   };
@@ -1148,13 +1142,13 @@ export const paymentsRepo = {
       tx.run(
         `INSERT INTO payments (id, payment_number, receipt_number, invoice_id, invoice_number, case_id, case_number, lab_id, lab_name,
                                amount, payment_method, payment_date, reference_number, notes, recorded_by, payment_type, advance_payment_id,
-                               status, unapplied_amount, is_reversed, journal_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                               status, unapplied_amount, journal_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, p.payment_number ?? null, p.receipt_number ?? null, p.invoice_id ?? null, p.invoice_number ?? null,
          p.case_id ?? null, p.case_number ?? null, p.lab_id ?? null, p.lab_name ?? null,
          p.amount, p.payment_method, p.payment_date, p.reference_number ?? null, p.notes ?? null, p.recorded_by,
          p.payment_type ?? 'invoice_payment', p.advance_payment_id ?? null, p.status ?? 'posted',
-         p.unapplied_amount ?? 0, p.is_reversed ? 1 : 0, p.journal_id ?? null, p.created_at ?? now()]
+         p.unapplied_amount ?? 0, p.journal_id ?? null, p.created_at ?? now()]
       );
       for (const att of p.attachments || []) {
         tx.run(
@@ -1178,8 +1172,8 @@ export const paymentsRepo = {
     const db = requireEngine();
     return db.withTransaction((tx) => {
       const allowed = ['payment_number', 'receipt_number', 'invoice_id', 'invoice_number', 'case_id', 'case_number', 'lab_id', 'lab_name',
-        'amount', 'payment_method', 'payment_date', 'reference_number', 'notes', 'status', 'unapplied_amount', 'is_reversed',
-        'reversal_reason', 'reversed_at', 'reversed_by', 'journal_id'] as const;
+        'amount', 'payment_method', 'payment_date', 'reference_number', 'notes', 'status', 'unapplied_amount',
+        'journal_id'] as const;
       const sets: string[] = [];
       const params: any[] = [];
       for (const key of allowed) {
@@ -1240,10 +1234,6 @@ export interface AdvanceRow {
   notes?: string | null;
   recorded_by: string;
   status: string;
-  is_reversed: number;
-  reversal_reason?: string | null;
-  reversed_at?: string | null;
-  reversed_by?: string | null;
   journal_id?: string | null;
   created_at: string;
 }
@@ -1251,7 +1241,6 @@ export interface AdvanceRow {
 function advanceToDomain(row: AdvanceRow, db: Db): any {
   return {
     ...row,
-    is_reversed: !!row.is_reversed,
     attachments: db.all('SELECT * FROM payment_attachments WHERE payment_id = ? ORDER BY uploaded_at', [row.id]),
     allocations: db.all(
       'SELECT * FROM advance_allocations WHERE advance_id = ? ORDER BY allocated_at',
@@ -1276,12 +1265,12 @@ export const advancePaymentsRepo = {
       const id = a.id || genId('adv');
       tx.run(
         `INSERT INTO advance_payments (id, payment_number, receipt_number, lab_id, lab_name, amount, allocated_amount, remaining_amount,
-                                       payment_method, payment_date, reference_number, notes, recorded_by, status, is_reversed, journal_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                       payment_method, payment_date, reference_number, notes, recorded_by, status, journal_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, a.payment_number, a.receipt_number ?? null, a.lab_id, a.lab_name, a.amount,
          a.allocated_amount ?? 0, a.remaining_amount ?? Math.max(0, (a.amount ?? 0) - (a.allocated_amount ?? 0)),
          a.payment_method, a.payment_date, a.reference_number ?? null, a.notes ?? null, a.recorded_by,
-         a.status ?? 'available', a.is_reversed ? 1 : 0, a.journal_id ?? null, a.created_at ?? now()]
+         a.status ?? 'available', a.journal_id ?? null, a.created_at ?? now()]
       );
       for (const att of a.attachments || []) {
         tx.run(
@@ -1304,7 +1293,7 @@ export const advancePaymentsRepo = {
     const db = requireEngine();
     return db.withTransaction((tx) => {
       const allowed = ['receipt_number', 'amount', 'allocated_amount', 'remaining_amount', 'payment_method', 'payment_date',
-        'reference_number', 'notes', 'status', 'is_reversed', 'reversal_reason', 'reversed_at', 'reversed_by', 'journal_id'] as const;
+        'reference_number', 'notes', 'status', 'journal_id'] as const;
       const sets: string[] = [];
       const params: any[] = [];
       for (const key of allowed) {
@@ -1364,10 +1353,6 @@ export interface AdjustmentRow {
   recorded_by: string;
   approved_by?: string | null;
   status: string;
-  is_reversed: number;
-  reversal_reason?: string | null;
-  reversed_at?: string | null;
-  reversed_by?: string | null;
   journal_id?: string | null;
   created_at: string;
 }
@@ -1375,7 +1360,6 @@ export interface AdjustmentRow {
 function adjustmentToDomain(row: AdjustmentRow, db: Db): any {
   return {
     ...row,
-    is_reversed: !!row.is_reversed,
     attachments: db.all(
       'SELECT * FROM payment_attachments WHERE payment_id = ? ORDER BY uploaded_at',
       [row.id]
@@ -1399,11 +1383,11 @@ export const adjustmentsRepo = {
       const id = a.id || genId('adj');
       tx.run(
         `INSERT INTO account_adjustments (id, adjustment_number, credit_note_number, lab_id, lab_name, type, amount, reason, date,
-                                          reference_number, invoice_id, invoice_number, notes, recorded_by, approved_by, status, is_reversed, journal_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                          reference_number, invoice_id, invoice_number, notes, recorded_by, approved_by, status, journal_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, a.adjustment_number, a.credit_note_number ?? null, a.lab_id, a.lab_name, a.type, a.amount, a.reason, a.date,
          a.reference_number ?? null, a.invoice_id ?? null, a.invoice_number ?? null, a.notes ?? null, a.recorded_by,
-         a.approved_by ?? null, a.status ?? 'posted', a.is_reversed ? 1 : 0, a.journal_id ?? null, a.created_at ?? now()]
+         a.approved_by ?? null, a.status ?? 'posted', a.journal_id ?? null, a.created_at ?? now()]
       );
       for (const att of a.attachments || []) {
         tx.run(
@@ -1418,7 +1402,7 @@ export const adjustmentsRepo = {
   update(id: string, updates: any): any | null {
     const db = requireEngine();
     return db.withTransaction((tx) => {
-      const allowed = ['status', 'is_reversed', 'reversal_reason', 'reversed_at', 'reversed_by', 'journal_id', 'approved_by'] as const;
+      const allowed = ['status', 'journal_id', 'approved_by'] as const;
       const sets: string[] = [];
       const params: any[] = [];
       for (const key of allowed) {

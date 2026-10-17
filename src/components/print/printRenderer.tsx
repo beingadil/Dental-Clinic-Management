@@ -551,7 +551,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               </table>
             </div>
           )}
-          {on(sections, 'paymentHistory') && (invoice.payments || []).filter((p) => !p.is_reversed).length > 0 && (
+          {on(sections, 'paymentHistory') && (invoice.payments || []).length > 0 && (
             <div className="mb-4">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Payment History</div>
               <table className="w-full border-collapse text-[10px]">
@@ -563,7 +563,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {invoice.payments.filter((p) => !p.is_reversed).map((p) => (
+                  {invoice.payments.map((p) => (
                     <tr key={p.id}>
                       <td className="border border-slate-300 px-2 py-1">{p.payment_date || '—'}</td>
                       <td className="border border-slate-300 px-2 py-1">{p.receipt_number || p.payment_number || '—'}</td>

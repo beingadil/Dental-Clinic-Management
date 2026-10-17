@@ -5,7 +5,6 @@ import {
   buildAdvanceDepositJournal,
   buildApplyAdvanceJournal,
   buildAdjustmentJournal,
-  buildReversalJournal,
 } from '../../src/services/financeDomain';
 import { Invoice, PaymentRecord, AdvancePayment, AccountAdjustment } from '../../src/types';
 
@@ -90,14 +89,6 @@ describe('journal builders — first-class Case/Job references', () => {
     const j = buildAdjustmentJournal(adj);
     expect(j.case_id).toBe('case-1');
     expect(j.case_number).toBe('DS-202');
-  });
-
-  it('reversal journal inherits the original journal’s case', () => {
-    const original = buildInvoiceJournal(baseInvoice());
-    const rev = buildReversalJournal(original, 'duplicate', 'Manager');
-    expect(rev.case_id).toBe(original.case_id);
-    expect(rev.case_number).toBe(original.case_number);
-    expect(rev.event_type).toBe('reversal');
   });
 
   it('every builder still produces balanced journals (debits == credits)', () => {

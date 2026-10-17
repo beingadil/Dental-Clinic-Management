@@ -6,9 +6,9 @@
  *
  * Matrix (decided):
  *   Super Admin, Lab Admin — everything, including destructive (void,
- *     reversal, restore, wipe, updates, users).
+ *     restore, wipe, updates, users).
  *   Billing Manager — every money POST (payment, advance, credit note,
- *     refund, bulk settle) but NOT invoice:void / reversal:post, and no
+ *     refund, bulk settle) but NOT invoice:void, and no
  *     system mutation.
  *   Technician — read-only money: no posts, no system mutation.
  */
@@ -20,8 +20,7 @@ export type BillingAction =
   | 'credit:issue'
   | 'refund:issue'
   | 'payment:bulk'
-  | 'invoice:void'
-  | 'reversal:post';
+  | 'invoice:void';
 
 export type SystemAction =
   | 'view'
@@ -43,7 +42,6 @@ const BILLING: Record<BillingAction, UserProfile['role'][]> = {
   'refund:issue': [...ADMIN_ROLES, 'Billing Manager'],
   'payment:bulk': [...ADMIN_ROLES, 'Billing Manager'],
   'invoice:void': ADMIN_ROLES,
-  'reversal:post': ADMIN_ROLES,
 };
 
 const SYSTEM: Record<SystemAction, UserProfile['role'][]> = {

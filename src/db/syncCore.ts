@@ -474,19 +474,17 @@ function syncNow(c: SyncCollections): void {
           // on the very next autosave, so the ledger lost the receipt side.
           `INSERT INTO payments (id, payment_number, receipt_number, invoice_id, invoice_number, case_id, case_number, lab_id, lab_name,
                                  amount, payment_method, payment_date, reference_number, notes, recorded_by, payment_type, status,
-                                 unapplied_amount, advance_payment_id, is_reversed, reversal_reason, reversed_at, reversed_by, journal_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 unapplied_amount, advance_payment_id, journal_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [pid, payNum, p.receipt_number || null, inv.id, inv.invoice_number,
            p.case_id || inv.case_id || null, p.case_number || inv.case_number || null,
            p.lab_id || inv.lab_id, p.lab_name || inv.lab_name,
            p.amount, p.payment_method, p.payment_date, p.reference_number || null, p.notes || null,
            p.recorded_by || 'System', p.payment_type || 'invoice_payment', p.status ?? 'posted',
-           // Without these the whole-table rebuild silently reset every
-           // reversal: is_reversed fell back to its DEFAULT 0 and the reason,
-           // timestamp and actor were dropped, so a reversed payment read back
-           // as live money after one debounce window (audit F6).
+           // Without these the whole-table rebuild silently reset the
+           // unapplied remainder and the journal link, so the ledger lost the
+           // receipt side on the very next autosave.
            p.unapplied_amount ?? 0, p.advance_payment_id ?? null,
-           p.is_reversed ? 1 : 0, p.reversal_reason ?? null, p.reversed_at ?? null, p.reversed_by ?? null,
            p.journal_id && knownJournalIds.has(p.journal_id) ? p.journal_id : (paymentJournalByPayment.get(pid) ?? null),
            p.created_at || p.payment_date || now]
         );
@@ -523,13 +521,12 @@ function syncNow(c: SyncCollections): void {
       const advNum = uniqueNumber(String(adv.payment_number || genId('ADV')), usedAdvanceNumbers);
       tx.run(
         `INSERT INTO advance_payments (id, payment_number, receipt_number, lab_id, lab_name, amount, allocated_amount, remaining_amount,
-                                       payment_method, payment_date, reference_number, notes, recorded_by, status, is_reversed,
-                                       reversal_reason, reversed_at, reversed_by, journal_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                       payment_method, payment_date, reference_number, notes, recorded_by, status,
+                                       journal_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [advId, advNum, adv.receipt_number || null, adv.lab_id, adv.lab_name, adv.amount,
          adv.allocated_amount ?? 0, adv.remaining_amount ?? 0, adv.payment_method, adv.payment_date,
          adv.reference_number || null, adv.notes || null, adv.recorded_by, adv.status ?? 'available',
-         adv.is_reversed ? 1 : 0, adv.reversal_reason ?? null, adv.reversed_at ?? null, adv.reversed_by ?? null,
          adv.journal_id ?? null, adv.created_at ?? now]
       );
       // Advance allocations. The table was cleared up front but never
@@ -561,14 +558,13 @@ function syncNow(c: SyncCollections): void {
       if (!liveLabIds.has(adj.lab_id)) continue; // account_adjustments.lab_id FK -> labs
       tx.run(
         `INSERT INTO account_adjustments (id, adjustment_number, credit_note_number, lab_id, lab_name, type, amount, reason, date,
-                                          reference_number, invoice_id, invoice_number, notes, recorded_by, approved_by, status, is_reversed,
-                                          reversal_reason, reversed_at, reversed_by, journal_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                          reference_number, invoice_id, invoice_number, notes, recorded_by, approved_by, status,
+                                          journal_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [adj.id, adj.adjustment_number, adj.credit_note_number || null, adj.lab_id, adj.lab_name,
          adj.type, adj.amount, adj.reason, adj.date, adj.reference_number || null,
          adj.invoice_id || null, adj.invoice_number || null, adj.notes || null, adj.recorded_by,
-         adj.approved_by ?? null, adj.status ?? 'posted', adj.is_reversed ? 1 : 0,
-         adj.reversal_reason ?? null, adj.reversed_at ?? null, adj.reversed_by ?? null,
+         adj.approved_by ?? null, adj.status ?? 'posted',
          adj.journal_id ?? null, adj.created_at ?? now]
       );
       for (const a of adj.attachments || []) {

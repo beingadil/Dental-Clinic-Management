@@ -39,7 +39,6 @@ export interface UnifiedTransaction {
   invoiceId?: string;
   invoiceNumber?: string;
   caseNumber?: string;
-  isReversed?: boolean;
   /**
    * Lower-cased haystack: everything that identifies this row, including the
    * fields of the invoice it settled.
@@ -112,7 +111,6 @@ export const buildUnifiedTransactions = (input: {
       invoiceId: pay.invoice_id,
       invoiceNumber: pay.invoice_number || matchedInv?.invoice_number,
       caseNumber: matchedInv?.case_number,
-      isReversed: pay.is_reversed,
       searchText: haystack([
         pay.payment_number,
         pay.receipt_number,
@@ -153,7 +151,6 @@ export const buildUnifiedTransactions = (input: {
       hasAttachments: !!adv.attachments && adv.attachments.length > 0,
       attachmentsCount: adv.attachments?.length || 0,
       rawAdvance: adv,
-      isReversed: adv.is_reversed,
       searchText: haystack([
         adv.payment_number,
         adv.receipt_number,
@@ -203,7 +200,6 @@ export const buildUnifiedTransactions = (input: {
       invoiceId: adj.invoice_id,
       invoiceNumber: adj.invoice_number || matchedInv?.invoice_number,
       caseNumber: matchedInv?.case_number,
-      isReversed: adj.is_reversed,
       searchText: haystack([
         adj.adjustment_number,
         adj.credit_note_number,

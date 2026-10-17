@@ -636,7 +636,7 @@ export const BillingView: React.FC = () => {
                    and restores the invoice's balance — the invoice itself is
                    never touched. */
                 render: (inv: Invoice) => {
-                  const vouchers = (inv.payments || []).filter((p) => !p.is_reversed);
+                  const vouchers = inv.payments || [];
                   if (vouchers.length === 0) return <span className="text-slate-400">—</span>;
                   return (
                     <div className="space-y-1">
@@ -858,7 +858,7 @@ export const BillingView: React.FC = () => {
         />
       )}
 
-      {/* B4: void = typed-phrase confirmation (ledger reversal + retired number) */}
+      {/* void = typed-phrase confirmation (invoice retired for good, number kept) */}
       <ConfirmDialog
         open={!!voidTarget}
         title={`Void invoice ${voidTarget?.invoice_number || ''}`}

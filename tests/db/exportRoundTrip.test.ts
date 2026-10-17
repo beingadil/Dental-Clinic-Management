@@ -199,7 +199,6 @@ async function buildSourceDatabase(SQL: any): Promise<{ engine: SqliteEngine; is
             amount: 13000, payment_method: 'bank', payment_date: T.day,
             reference_number: 'TRX-8891', notes: 'Bank transfer', recorded_by: 'Lab Admin',
             payment_type: 'invoice_payment', status: 'posted', unapplied_amount: 0,
-            is_reversed: 1, reversal_reason: 'Cheque bounced', reversed_at: T.now, reversed_by: 'Lab Admin',
             case_id: 'case-1', case_number: 'DS-0001', lab_id: 'lab-1', lab_name: 'Bright Smiles Clinic',
             created_at: T.now,
             attachments: [
@@ -234,7 +233,7 @@ async function buildSourceDatabase(SQL: any): Promise<{ engine: SqliteEngine; is
         id: 'adv-1', payment_number: 'ADV-0001', receipt_number: 'ADVR-1', lab_id: 'lab-1',
         lab_name: 'Bright Smiles Clinic', amount: 20000, allocated_amount: 8000, remaining_amount: 12000,
         payment_method: 'bank', payment_date: T.day, reference_number: 'ADV-TRX', notes: 'Prepayment',
-        recorded_by: 'Lab Admin', status: 'partially_allocated', is_reversed: 0,
+        recorded_by: 'Lab Admin', status: 'partially_allocated',
         created_at: T.now,
         allocations: [
           { id: 'aa-1', invoice_id: 'inv-2', amount: 8000, allocated_at: T.now, allocated_by: 'Lab Admin', notes: 'Applied to INV-0002' },
@@ -250,7 +249,7 @@ async function buildSourceDatabase(SQL: any): Promise<{ engine: SqliteEngine; is
         lab_name: 'Bright Smiles Clinic', type: 'credit_note', amount: 500, reason: 'Goodwill',
         date: T.day, reference_number: 'CN-REF', invoice_id: 'inv-1', invoice_number: 'INV-0001',
         notes: 'Agreed with the clinic', recorded_by: 'Lab Admin', approved_by: 'Lab Admin',
-        status: 'posted', is_reversed: 0, created_at: T.now,
+        status: 'posted', created_at: T.now,
         attachments: [
           { id: 'pa-3', file_name: 'note.txt', file_type: 'text/plain', file_size: '1 KB', file_url: 'blob:note', uploaded_at: T.now, uploaded_by: 'Lab Admin' },
         ],
@@ -484,10 +483,18 @@ describe('sql dump round trip', () => {
       expect(idx).toBeGreaterThanOrEqual(0);
       return importedSnap.rows[table].find((row) => row[sourceSnap.columns[table].indexOf('id')] === `TEXT:${id}`)?.[idx];
     };
-    // Reversal state on money documents (audit F6) — the whole point of a backup.
-    expect(cellOf('payments', 'pay-1', 'is_reversed')).toBe('NUM:1');
-    expect(cellOf('payments', 'pay-1', 'reversal_reason')).toBe('TEXT:Cheque bounced');
-    expect(cellOf('payments', 'pay-1', 'reversed_by')).toBe('TEXT:Lab Admin');
+    // Reversal is gone from the schema (migration 024), so a backup must not carry
+    // the dead columns either — and this is the check that would have caught it
+    // if the rebuild had been half-applied.
+    for (const table of ['payments', 'advance_payments', 'account_adjustments']) {
+      expect(sourceSnap.columns[table], table).not.toContain('is_reversed');
+      expect(sourceSnap.columns[table], table).not.toContain('reversal_reason');
+      expect(sourceSnap.columns[table], table).not.toContain('reversed_at');
+      expect(sourceSnap.columns[table], table).not.toContain('reversed_by');
+    }
+    // The voucher itself still round-trips intact.
+    expect(cellOf('payments', 'pay-1', 'reference_number')).toBe('TEXT:TRX-8891');
+    expect(cellOf('payments', 'pay-1', 'receipt_number')).toBe('TEXT:REC-0001');
     // Child rows that used to be dropped entirely. `case_teeth` has no `id`
     // column — its key is (case_id, tooth_number) — so it is checked directly.
     const toothCol = sourceSnap.columns.case_teeth.indexOf('tooth_number');

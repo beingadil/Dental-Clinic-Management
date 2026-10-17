@@ -303,10 +303,6 @@ export interface PaymentRecord {
   status?: PaymentStatusV2;
   allocations?: PaymentAllocation[];
   unapplied_amount?: number;
-  is_reversed?: boolean;
-  reversal_reason?: string;
-  reversed_at?: string;
-  reversed_by?: string;
   journal_id?: string;
 }
 
@@ -328,10 +324,6 @@ export interface AdvancePayment {
   attachments?: PaymentAttachment[];
   status?: AdvanceCreditStatus;
   allocations?: PaymentAllocation[];
-  is_reversed?: boolean;
-  reversal_reason?: string;
-  reversed_at?: string;
-  reversed_by?: string;
   journal_id?: string;
 }
 
@@ -341,7 +333,7 @@ export interface AccountAdjustment {
   credit_note_number?: string;
   lab_id: string;
   lab_name: string;
-  type: 'credit_note' | 'debit_adjustment' | 'refund' | 'write_off' | 'reversal';
+  type: 'credit_note' | 'debit_adjustment' | 'refund' | 'write_off';
   amount: number;
   reason: string;
   date: string;
@@ -356,11 +348,7 @@ export interface AccountAdjustment {
   approved_by?: string;
   created_at: string;
   attachments?: PaymentAttachment[];
-  status?: 'draft' | 'pending_approval' | 'posted' | 'reversed';
-  is_reversed?: boolean;
-  reversal_reason?: string;
-  reversed_at?: string;
-  reversed_by?: string;
+  status?: 'draft' | 'pending_approval' | 'posted';
   journal_id?: string;
 }
 
@@ -397,8 +385,7 @@ export type LedgerEntryType =
   | 'credit_note' 
   | 'write_off'
   | 'debit_adjustment' 
-  | 'refund'
-  | 'reversal';
+  | 'refund';
 
 export interface LedgerEntry {
   id: string;

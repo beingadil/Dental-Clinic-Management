@@ -71,7 +71,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
 
   const linkedCase = cases.find((c) => c.id === invoice.case_id);
   const creditNotes = accountAdjustments.filter(
-    (a) => a.invoice_id === invoice.id && !a.is_reversed
+    (a) => a.invoice_id === invoice.id
   );
 
   const totalPaid = invoice.amount_paid || 0;
@@ -388,9 +388,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                 {invoice.payments.map((pmt) => (
                   <div
                     key={pmt.id}
-                    className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
-                      pmt.is_reversed ? 'bg-rose-50/50 border-rose-200 opacity-60' : 'bg-white border-slate-200'
-                    }`}
+                    className="p-3 rounded-lg border text-xs flex items-center justify-between bg-white border-slate-200"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
@@ -398,28 +396,16 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                         <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 uppercase">
                           {pmt.payment_method}
                         </span>
-                        {pmt.is_reversed && (
-                          <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-700 uppercase">
-                            REVERSED
-                          </span>
-                        )}
                       </div>
                       <div className="text-[11px] text-slate-500 flex items-center gap-2">
                         <span>{pmt.payment_date}</span>
                         {pmt.reference_number && <span>• Ref: {pmt.reference_number}</span>}
                         <span>• Recorded by: {pmt.recorded_by}</span>
                       </div>
-                      {pmt.is_reversed && pmt.reversal_reason && (
-                        <div className="text-[11px] text-rose-700 italic">
-                          Reason: {pmt.reversal_reason}
-                        </div>
-                      )}
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <span className={`font-mono font-bold text-sm ${
-                        pmt.is_reversed ? 'text-ink-muted line-through' : 'text-emerald-700'
-                      }`}>
+                      <span className="font-mono font-bold text-sm text-emerald-700">
                         {formatPKR(pmt.amount)}
                       </span>
                       <div className="flex items-center gap-1">
@@ -431,16 +417,14 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                         >
                           <Receipt className="w-4 h-4" />
                         </button>
-                        {!pmt.is_reversed && (
-                          <button
-                            type="button"
-                            onClick={() => onDeletePayment(pmt)}
-                            className="p-1.5 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
-                            title="Delete Payment Entry" aria-label={`Delete payment ${pmt.payment_number || ''}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => onDeletePayment(pmt)}
+                          className="p-1.5 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                          title="Delete Payment Entry" aria-label={`Delete payment ${pmt.payment_number || ''}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   </div>

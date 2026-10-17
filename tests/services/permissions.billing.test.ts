@@ -30,11 +30,6 @@ describe('billing permission matrix (B3)', () => {
     ['Lab Admin', 'invoice:void', true],
     ['Billing Manager', 'invoice:void', false],
     ['Technician', 'invoice:void', false],
-    // reversal:post — admins only
-    ['Super Admin', 'reversal:post', true],
-    ['Lab Admin', 'reversal:post', true],
-    ['Billing Manager', 'reversal:post', false],
-    ['Technician', 'reversal:post', false],
   ];
 
   it.each(matrix)('%s %s → %s', (role, action, expected) => {
@@ -42,7 +37,7 @@ describe('billing permission matrix (B3)', () => {
   });
 
   it('denies everything for a missing user', () => {
-    for (const action of ['payment:record', 'invoice:void', 'reversal:post'] as BillingAction[]) {
+    for (const action of ['payment:record', 'invoice:void', 'refund:issue'] as BillingAction[]) {
       expect(canPost(null, action)).toBe(false);
     }
   });

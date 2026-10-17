@@ -159,7 +159,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
   // Selected clinic available advance wallet balance
   const clinicAdvanceWallet = useMemo(() => {
     return advancePayments
-      .filter((a) => a.lab_id === clinicId && a.remaining_amount > 0 && !a.is_reversed)
+      .filter((a) => a.lab_id === clinicId && a.remaining_amount > 0)
       .reduce((sum, a) => sum + a.remaining_amount, 0);
   }, [advancePayments, clinicId]);
 

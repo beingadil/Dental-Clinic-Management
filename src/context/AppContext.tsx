@@ -36,7 +36,6 @@ import {
 import {
   buildInvoiceJournal,
   buildPaymentJournal,
-  buildReversalJournal,
 } from '../services/financeDomain';
 import {
   computeQcMetrics,
@@ -974,11 +973,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updates.price !== undefined || updates.discount !== undefined || updates.final_price !== undefined
       || updates.lab_id !== undefined || updates.lab_name !== undefined || updates.delivery_date !== undefined) {
       // Repricing re-posts the books (audit F11): the old issuance journal is
-      // reversed and a fresh one is issued for the new amounts, so the ledger
-      // never drifts from the invoice.
+      // REPLACED by a fresh one for the new amounts, so the ledger never drifts
+      // from the invoice. It used to leave a compensating "reversal" journal
+      // behind instead, but the ledger never read those and the pair outlived
+      // the invoice it described. Replacing is the same accounting outcome with
+      // no orphan to go stale.
       const actor = user ? user.name : 'System';
       const repriceJournals: JournalEntry[] = [];
-      const repriceReversals: JournalEntry[] = [];
+      const staleJournalIds = new Set<string>();
       setInvoices((prev) =>
         prev.map((inv) => {
           if (inv.case_id !== id) return inv;
@@ -1002,7 +1004,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
           const priorJournal = journalEntries.find((j) => j.reference_type === 'invoice' && j.reference_id === inv.id);
           if (priorJournal) {
-            repriceReversals.push(buildReversalJournal(priorJournal, `Invoice ${inv.invoice_number} repriced from case edit`, actor));
+            staleJournalIds.add(priorJournal.id);
           }
           const newIssuance = buildInvoiceJournal(reissued, actor);
           reissued.journal_id = newIssuance.id;
@@ -1010,8 +1012,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return reissued;
         })
       );
-      if (repriceReversals.length > 0 || repriceJournals.length > 0) {
-        setJournalEntries((prev) => [...repriceJournals, ...repriceReversals, ...prev]);
+      if (staleJournalIds.size > 0 || repriceJournals.length > 0) {
+        setJournalEntries((prev) => [
+          ...repriceJournals,
+          ...prev.filter((j) => !staleJournalIds.has(j.id)),
+        ]);
       }
     }
   };
@@ -1111,26 +1116,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = cases.find((c) => c.id === id);
 
     // Money integrity: linked invoices must never vanish silently. Refuse while
-    // any of them carries an active payment (the same gate deleteInvoice
-    // enforces) and reverse each issuance journal before removing the rows.
+    // any of them carries a payment (the same gate deleteInvoice enforces).
+    // The message points at the only way out that exists — deleting the voucher.
     const linkedInvoices = invoices.filter((inv) => inv.case_id === id);
-    const activeInvoices = linkedInvoices.filter((inv) => (inv.payments || []).some((p) => !p.is_reversed));
-    if (activeInvoices.length > 0) {
+    const paidInvoices = linkedInvoices.filter((inv) => (inv.payments || []).length > 0);
+    if (paidInvoices.length > 0) {
       showToast(
-        `Cannot delete ${target ? target.case_number : 'case'}: invoice ${activeInvoices[0].invoice_number} has active payment(s). Reverse them first.`,
+        `Cannot delete ${target ? target.case_number : 'case'}: invoice ${paidInvoices[0].invoice_number} has a recorded payment. Delete the voucher from Billing first.`,
         'error'
       );
       return;
     }
 
     const actor = user ? user.name : 'Staff';
-    const reversalJournals: JournalEntry[] = [];
     const voidAudits: AuditEvent[] = [];
+    // The invoices go with the case, so their journals go too. This used to
+    // WRITE a compensating reversal journal and leave the original in place —
+    // and because the ledger never read either, the pair survived the invoice
+    // they described and was re-written on every save. Removing the row it
+    // belongs to is what actually retires the posting.
+    const doomedJournalIds = new Set<string>();
     linkedInvoices.forEach((inv) => {
       const origJournal = journalEntries.find((j) => j.reference_type === 'invoice' && j.reference_id === inv.id);
-      if (origJournal) {
-        reversalJournals.push(buildReversalJournal(origJournal, `Case ${target ? target.case_number : id} deleted — invoice ${inv.invoice_number} voided`, actor));
-      }
+      if (origJournal) doomedJournalIds.add(origJournal.id);
       voidAudits.push({
         id: `aud-${Date.now()}-${inv.id}`,
         timestamp: getNowStamp(),
@@ -1139,10 +1147,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         entity_type: 'Invoice',
         entity_id: inv.id,
         entity_ref: inv.invoice_number,
-        notes: `Voided with case ${target ? target.case_number : id} (PKR ${inv.final_amount.toLocaleString()}) — no active payments.`
+        notes: `Voided with case ${target ? target.case_number : id} (PKR ${inv.final_amount.toLocaleString()}) — no payments recorded.`
       });
     });
-    if (reversalJournals.length > 0) setJournalEntries((prev) => [...reversalJournals, ...prev]);
+    if (doomedJournalIds.size > 0) {
+      setJournalEntries((prev) => prev.filter((j) => !doomedJournalIds.has(j.id)));
+    }
     if (voidAudits.length > 0) setAuditEvents((prev) => [...voidAudits, ...prev]);
 
     setCases((prev) => prev.filter((c) => c.id !== id));
@@ -1508,31 +1518,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = invoices.find((inv) => inv.id === id);
     if (!target) return;
 
-    // Money integrity: an invoice with active (non-reversed) payments cannot
-    // silently vanish — its payments, allocations and journals must be dealt
-    // with through the reversal flow first.
-    const activePayments = (target.payments || []).filter((p) => !p.is_reversed);
-    if (activePayments.length > 0) {
+    // Money integrity: an invoice that has a recorded payment cannot silently
+    // vanish — the voucher has to be deleted from Billing first.
+    const recordedPayments = target.payments || [];
+    if (recordedPayments.length > 0) {
       showToast(
-        `Cannot void ${target.invoice_number}: it has ${activePayments.length} active payment(s). Reverse them first.`,
+        `Cannot void ${target.invoice_number}: it has ${recordedPayments.length} recorded payment(s). Delete the voucher from Billing first.`,
         'error'
       );
       return;
     }
 
-    // Voiding = removing the invoice AND reversing its issuance journal so the
-    // ledger stays balanced. The audit trail records who voided what, when.
+    // Voiding = removing the invoice AND retiring its issuance journal. It used
+    // to write a compensating reversal and KEEP the original, and since the
+    // ledger read neither, the pair outlived the invoice and was re-written on
+    // every save. Removing the posting is what keeps the books true.
     const actor = user ? user.name : 'Staff';
     const origJournal = journalEntries.find(
       (j) => j.reference_type === 'invoice' && j.reference_id === id
     );
     if (origJournal) {
-      const revJournal = buildReversalJournal(
-        origJournal,
-        `Invoice ${target.invoice_number} voided`,
-        actor
-      );
-      setJournalEntries((prev) => [revJournal, ...prev]);
+      setJournalEntries((prev) => prev.filter((j) => j.id !== origJournal.id));
     }
 
     const auditEvt: AuditEvent = {

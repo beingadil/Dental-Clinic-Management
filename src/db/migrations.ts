@@ -1293,6 +1293,200 @@ export const MIGRATION_023_CATALOG_CATEGORIES: Migration = {
   ],
 };
 
+/**
+ * 024 - remove the reversal concept, and clean up what it left behind.
+ *
+ * REVERSAL NEVER WORKED. `is_reversed` was read in ten places and written in
+ * none: no command, UI or migration ever set it, and no "reverse" action
+ * existed to call. What it did leave behind:
+ *
+ *  1. DEAD GATES. Voiding an invoice or deleting a case with money against it
+ *     refused with "Reverse them first" - pointing at a command that did not
+ *     exist. The only way out was deleting the voucher, which the message never
+ *     said.
+ *  2. A LEDGER THAT IGNORED IT. `buildLedgerEntries` never tested `is_reversed`,
+ *     so a reversed payment still emitted a full credit row. Separately the
+ *     General Ledger never read `journal_entries` at all, so a journal-level
+ *     reversal was invisible to it. Two ledger views, two different truths.
+ *  3. ORPHAN JOURNALS - the part that actually bit. Deleting a case voided its
+ *     invoice and wrote a compensating "reversal" journal while KEEPING the
+ *     original. The invoice row went away; both journal rows stayed. Because
+ *     `syncCore` rebuilds the journal tables wholesale from memory on every
+ *     save, the pair was re-inserted forever. Two entries for one deleted
+ *     invoice, re-appearing after every restart. That is the "technical
+ *     glitch" - and it is why the entries came back.
+ *
+ * THE FIX IS DELETION, NOT A COMPENSATING ENTRY. A posting is retired by
+ * removing the row it belongs to. `deleteCase`, `deleteInvoice` and the reprice
+ * path now do exactly that (see AppContext), so the gap cannot reopen.
+ *
+ * The four columns go with the concept. `ALTER TABLE ... DROP COLUMN` cannot
+ * run while a CHECK constraint references the column, and these tables carry
+ * `CHECK (is_reversed IN (0,1))`, so each is rebuilt with the 12-step
+ * procedure the engine already understands via `rebuildsTable: true`. Every
+ * CHECK, UNIQUE and FOREIGN KEY is carried across verbatim - the rebuild is
+ * only allowed to lose the four reversal columns and the two enum values that
+ * named a state this app can no longer be in.
+ *
+ * `status = 'reversed'` is filtered out of the copy rather than migrated. That
+ * state was only ever reachable through the flag that was never written, so
+ * the count is zero in practice; keeping the value in the CHECK would leave a
+ * reversal state behind, which is the whole thing being removed.
+ */
+export const MIGRATION_024_REMOVE_REVERSAL: Migration = {
+  version: 24,
+  name: 'remove_reversal',
+  rebuildsTable: true,
+  statements: [
+    // ── Orphan sweep, FIRST, against the schema as it stands today. A journal
+    // whose invoice, case or payment is gone describes an event that no longer
+    // exists. journal_lines cascades from journal_entries, but it is pruned
+    // explicitly first so the sweep is correct even on a database whose
+    // foreign_keys pragma was off when the orphans were written.
+    `DELETE FROM journal_lines WHERE journal_id IN (
+       SELECT j.id FROM journal_entries j
+       WHERE j.reference_type = 'invoice'
+         AND j.reference_id NOT IN (SELECT id FROM invoices)
+     )`,
+    `DELETE FROM journal_entries WHERE reference_type = 'invoice'
+       AND reference_id NOT IN (SELECT id FROM invoices)`,
+    `DELETE FROM journal_lines WHERE journal_id IN (
+       SELECT j.id FROM journal_entries j
+       WHERE j.case_id IS NOT NULL
+         AND j.case_id NOT IN (SELECT id FROM cases)
+     )`,
+    `DELETE FROM journal_entries WHERE case_id IS NOT NULL
+       AND case_id NOT IN (SELECT id FROM cases)`,
+    `DELETE FROM journal_lines WHERE journal_id IN (
+       SELECT j.id FROM journal_entries j
+       WHERE j.event_type = 'payment_received'
+         AND j.reference_id NOT IN (SELECT id FROM payments)
+     )`,
+    `DELETE FROM journal_entries WHERE event_type = 'payment_received'
+       AND reference_id NOT IN (SELECT id FROM payments)`,
+
+    // ── payments
+    `CREATE TABLE payments__new (
+      id TEXT PRIMARY KEY,
+      payment_number TEXT UNIQUE,
+      receipt_number TEXT,
+      invoice_id TEXT,
+      invoice_number TEXT,
+      case_id TEXT,
+      case_number TEXT,
+      lab_id TEXT,
+      lab_name TEXT,
+      amount REAL NOT NULL CHECK (amount > 0),
+      payment_method TEXT NOT NULL CHECK (payment_method IN ('cash','bank','cheque','advance')),
+      payment_date TEXT NOT NULL,
+      reference_number TEXT,
+      notes TEXT,
+      recorded_by TEXT NOT NULL,
+      payment_type TEXT CHECK (payment_type IN ('invoice_payment','advance_payment','advance_allocation','credit_note','debit_adjustment','refund')),
+      advance_payment_id TEXT,
+      status TEXT NOT NULL DEFAULT 'posted'
+        CHECK (status IN ('draft','pending_verification','posted','reconciled','failed')),
+      unapplied_amount REAL NOT NULL DEFAULT 0 CHECK (unapplied_amount >= 0),
+      journal_id TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+    )`,
+    `INSERT INTO payments__new SELECT
+      id, payment_number, receipt_number, invoice_id, invoice_number,
+      case_id, case_number, lab_id, lab_name,
+      amount, payment_method, payment_date, reference_number, notes, recorded_by,
+      payment_type, advance_payment_id,
+      status, unapplied_amount, journal_id, created_at
+      FROM payments WHERE is_reversed = 0 AND status <> 'reversed'`,
+    `DROP TABLE payments`,
+    `ALTER TABLE payments__new RENAME TO payments`,
+    // DROP TABLE takes the table's TRIGGERS with it. This one is the money
+    // attachment cascade from migration 016: without it, deleting a voucher
+    // left its receipt scans and slips behind on the attachments table forever.
+    `CREATE TRIGGER trg_payment_attachments_cascade_payment AFTER DELETE ON payments BEGIN
+       DELETE FROM payment_attachments WHERE owner_type = 'payment' AND payment_id = OLD.id;
+     END`,
+    // DROP TABLE took these with it. The UNIQUE constraints come back on their
+    // own (they are part of the CREATE TABLE), but explicit indexes do not, and
+    // `payments.invoice_id` is the hot path: every invoice drawer, statement and
+    // ledger build reads a payment by invoice.
+    `CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id)`,
+
+    // ── advance_payments
+    `CREATE TABLE advance_payments__new (
+      id TEXT PRIMARY KEY,
+      payment_number TEXT NOT NULL UNIQUE,
+      receipt_number TEXT,
+      lab_id TEXT NOT NULL,
+      lab_name TEXT NOT NULL,
+      amount REAL NOT NULL CHECK (amount > 0),
+      allocated_amount REAL NOT NULL DEFAULT 0 CHECK (allocated_amount >= 0),
+      remaining_amount REAL NOT NULL DEFAULT 0 CHECK (remaining_amount >= 0),
+      payment_method TEXT NOT NULL CHECK (payment_method IN ('cash','bank','cheque')),
+      payment_date TEXT NOT NULL,
+      reference_number TEXT,
+      notes TEXT,
+      recorded_by TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'available'
+        CHECK (status IN ('available','partially_allocated','fully_allocated','on_hold','refunded')),
+      journal_id TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (lab_id) REFERENCES labs(id)
+    )`,
+    `INSERT INTO advance_payments__new SELECT
+      id, payment_number, receipt_number, lab_id, lab_name,
+      amount, allocated_amount, remaining_amount,
+      payment_method, payment_date, reference_number, notes, recorded_by,
+      status, journal_id, created_at
+      FROM advance_payments WHERE is_reversed = 0 AND status <> 'reversed'`,
+    `DROP TABLE advance_payments`,
+    `ALTER TABLE advance_payments__new RENAME TO advance_payments`,
+    `CREATE TRIGGER trg_payment_attachments_cascade_advance AFTER DELETE ON advance_payments BEGIN
+       DELETE FROM payment_attachments WHERE owner_type = 'advance' AND payment_id = OLD.id;
+     END`,
+    `CREATE INDEX IF NOT EXISTS idx_adv_lab ON advance_payments(lab_id)`,
+
+    // ── account_adjustments
+    `CREATE TABLE account_adjustments__new (
+      id TEXT PRIMARY KEY,
+      adjustment_number TEXT NOT NULL UNIQUE,
+      credit_note_number TEXT,
+      lab_id TEXT NOT NULL,
+      lab_name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('credit_note','debit_adjustment','refund','write_off')),
+      amount REAL NOT NULL CHECK (amount > 0),
+      reason TEXT NOT NULL,
+      date TEXT NOT NULL,
+      reference_number TEXT,
+      invoice_id TEXT,
+      invoice_number TEXT,
+      notes TEXT,
+      recorded_by TEXT NOT NULL,
+      approved_by TEXT,
+      status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('draft','pending_approval','posted')),
+      journal_id TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (lab_id) REFERENCES labs(id)
+    )`,
+    // A type of 'reversal' was the other way the dead concept surfaced as a
+    // real row. That type does not exist any more, so those rows go.
+    `INSERT INTO account_adjustments__new SELECT
+      id, adjustment_number, credit_note_number, lab_id, lab_name,
+      type, amount, reason, date,
+      reference_number, invoice_id, invoice_number, notes, recorded_by, approved_by,
+      status, journal_id, created_at
+      FROM account_adjustments
+      WHERE is_reversed = 0 AND type <> 'reversal' AND status <> 'reversed'`,
+    `DROP TABLE account_adjustments`,
+    `ALTER TABLE account_adjustments__new RENAME TO account_adjustments`,
+    `CREATE TRIGGER trg_payment_attachments_cascade_adjustment AFTER DELETE ON account_adjustments BEGIN
+       DELETE FROM payment_attachments WHERE owner_type = 'adjustment' AND payment_id = OLD.id;
+     END`,
+
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '24')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1317,6 +1511,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_021_CATALOG_NEEDS_TEETH,
   MIGRATION_022_DROP_LEDGER_ENTRIES,
   MIGRATION_023_CATALOG_CATEGORIES,
+  MIGRATION_024_REMOVE_REVERSAL,
 ];
 
 /**

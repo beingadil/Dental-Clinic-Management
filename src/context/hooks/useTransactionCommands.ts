@@ -566,7 +566,7 @@ export function useTransactionCommands(deps: {
     if (nothingToDo) return true;
 
     const settledByOthers = (invoice.payments || [])
-      .filter((p) => p.id !== edited.id && !p.is_reversed)
+      .filter((p) => p.id !== edited.id)
       .reduce((sum, p) => sum + p.amount, 0);
     const invoiceCeiling = Math.max(0, invoice.final_amount - (invoice.credit_notes_total || 0));
     if (amountOf + settledByOthers > invoiceCeiling + 0.001) return false;
@@ -590,7 +590,7 @@ export function useTransactionCommands(deps: {
     if (journal) {
       const liveRows = invoices
         .flatMap((inv) => inv.payments || [])
-        .filter((p) => !p.is_reversed && receiptNumberOf(p.payment_number) === receiptNumber)
+        .filter((p) => receiptNumberOf(p.payment_number) === receiptNumber)
         .map((p) => (p.id === edited.id ? { ...p, ...applied, amount: amountOf } : p));
       const unapplied = Math.max(0, roundMoney(edited.unapplied_amount || 0));
       const allocations: PaymentAllocation[] = liveRows.map((p) => {

@@ -102,7 +102,7 @@ const receiptJournal = (amount = 10000): JournalEntry => ({
 
 /** The invoice balance a set of stored payments adds up to. */
 const paidOf = (inv: Invoice) =>
-  (inv.payments || []).filter((p) => !p.is_reversed).reduce((sum, p) => sum + p.amount, 0);
+  (inv.payments || []).reduce((sum, p) => sum + p.amount, 0);
 
 /**
  * The command hook with its own state, so each test reads the state the command
