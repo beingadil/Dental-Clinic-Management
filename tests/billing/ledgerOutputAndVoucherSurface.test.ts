@@ -32,28 +32,32 @@ const ledger = readFileSync(
 const saveFile = readFileSync(resolve(process.cwd(), 'src/lib/saveFile.ts'), 'utf8');
 
 describe('print and export are different actions', () => {
-  it('Print opens the Windows print dialog', () => {
-    expect(ledger).toMatch(/void printCurrentDocument\(\)/);
+  it('has no Print button — printing is left to the browser', () => {
+    /* The operator asked for the Print button to be removed from here. The
+       preview below IS the document, and Ctrl+P prints it; a second button
+       opening the same dialog was one more route to the same place. This test
+       exists so the button cannot quietly come back. */
+    expect(ledger).not.toMatch(/Print ledger statement/);
+    expect(ledger).not.toMatch(/void printCurrentDocument\(\)/);
+    expect(ledger).not.toMatch(/const handlePrint/);
+    expect(ledger).not.toMatch(/<Printer/);
   });
 
   it('Export PDF is the one that saves a file', () => {
     expect(ledger).toMatch(/const handleExportPDF = \(\) => saveStatement\(/);
   });
 
-  it('Print opens the preview first, so the printable DOM exists', () => {
-    /* The blank-page bug: `.print-flow` is only mounted with the preview, and
-       the print stylesheet drops every sibling of it. */
-    const i = ledger.indexOf('const handlePrint');
-    const body = ledger.slice(i, i + 600);
-    expect(body).toMatch(/setIsPreviewActive\(true\)/);
-    expect(body.indexOf('setIsPreviewActive(true)')).toBeLessThan(
-      body.indexOf('printCurrentDocument'),
-    );
+  it('still offers the preview the document prints from', () => {
+    /* Removing the Print button must not remove the preview: the printable DOM
+       lives in `.print-flow` and is only mounted with it, so this is what makes
+       Ctrl+P produce pages rather than a blank sheet. */
+    expect(ledger).toMatch(/setIsPreviewActive\(true\)/);
+    expect(ledger).toMatch(/\{isPreviewActive && \(/);
   });
 
-  it('Print still refuses without a clinic', () => {
-    const i = ledger.indexOf('const handlePrint');
-    expect(ledger.slice(i, i + 400)).toMatch(/NEEDS_CLINIC/);
+  it('refuses to export without a clinic', () => {
+    const i = ledger.indexOf('const saveStatement');
+    expect(ledger.slice(i, i + 1200)).toMatch(/NEEDS_CLINIC/);
   });
 
   it('builds the exported PDF in one place', () => {

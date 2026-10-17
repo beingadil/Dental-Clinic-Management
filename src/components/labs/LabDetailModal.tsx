@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getDaysOffsetStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
-import { DentalLab, DentalCase, PaymentRecord, Invoice, LedgerEntry } from '../../types';
+import { DentalLab, DentalCase, PaymentRecord, Invoice } from '../../types';
 import { LabContactsManager } from './LabContactsManager';
 import { LabPricingManager } from './LabPricingManager';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
@@ -11,30 +11,23 @@ import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from '../billing/PaymentProofModal';
 import { PaymentReceiptModal } from '../billing/PaymentReceiptModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
-import { DataTable } from '../common/ui';
-import { 
-  Building2, 
-  X, 
-  Trash2, 
-  Edit2, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  FolderOpen, 
-  DollarSign, 
-  ShieldAlert, 
-  UserCheck, 
+import {
+  Building2,
+  X,
+  Trash2,
+  Edit2,
+  Phone,
+  Mail,
+  MapPin,
+  FolderOpen,
+  ShieldAlert,
+  UserCheck,
   Tag,
   PlusCircle,
   Printer,
   ChevronRight,
   Calendar,
-  BookOpen,
-  Receipt,
-  Image as ImageIcon,
-  ArrowUpRight,
-  ArrowDownLeft,
-  FileText,
+  Search,
   Maximize2,
   Minimize2
 } from 'lucide-react';
@@ -42,30 +35,11 @@ import {
 interface LabDetailModalProps {
   lab: DentalLab;
   onClose: () => void;
-  initialTab?: 'cases' | 'ledger' | 'info' | 'contacts' | 'pricing';
+  initialTab?: 'cases' | 'info' | 'contacts' | 'pricing';
 }
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
-  const { cases, invoices, updateLab, deleteLab, reassignLabRecords, labs, getLabFinancialSummary, getLedgerEntries, allPayments } = useApp();
-
-  /* Payment lookup as an index. The ledger table used to `.find()` over every
-     payment for every ledger row, so opening a lab with a few hundred entries
-     did rows x payments comparisons per render. First match wins per key, as
-     `.find` did. */
-  const paymentIndex = useMemo(() => {
-    type PaymentRow = (typeof allPayments)[number];
-    const byId = new Map<string, PaymentRow>();
-    const byNumber = new Map<string, PaymentRow>();
-    const byBaseNumber = new Map<string, PaymentRow>();
-    for (const p of allPayments) {
-      if (p.id && !byId.has(p.id)) byId.set(p.id, p);
-      if (p.payment_number && !byNumber.has(p.payment_number)) byNumber.set(p.payment_number, p);
-      // "-D2"/"-D3" suffixes come from the duplicate-number healer in syncCore.
-      const base = (p.payment_number || '').replace(/-D?\d+$/, '');
-      if (base && !byBaseNumber.has(base)) byBaseNumber.set(base, p);
-    }
-    return { byId, byNumber, byBaseNumber };
-  }, [allPayments]);
+  const { cases, invoices, updateLab, deleteLab, labDeletionImpact } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing'>(initialTab);
   const [isFullScreen, setIsFullScreen] = useState(true);
@@ -77,10 +51,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
   const [selectedProofPayment, setSelectedProofPayment] = useState<PaymentRecord | null>(null);
   const [selectedReceiptPayment, setSelectedReceiptPayment] = useState<{ payment: PaymentRecord; invoice?: Invoice } | null>(null);
   const [selectedInvoiceModal, setSelectedInvoiceModal] = useState<Invoice | null>(null);
-
-  // Financial summary & ledger for this specific lab
-  const labFinancials = useMemo(() => getLabFinancialSummary(lab.id), [getLabFinancialSummary, lab.id, invoices]);
-  const labLedger = useMemo(() => getLedgerEntries(lab.id), [getLedgerEntries, lab.id, invoices]);
 
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
@@ -96,8 +66,38 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [confirmInput, setConfirmInput] = useState('');
 
-  // Filter cases for this lab and ALWAYS sort MOST RECENT FIRST
-  const labCases = cases
+  // Cases-tab search box.
+  const [caseSearch, setCaseSearch] = useState('');
+
+  /* What the delete will destroy. Read only while the dialog is open, so the
+     counts are computed at the moment of the decision rather than whenever the
+     modal happened to render. */
+  const deletionImpact = useMemo(
+    () => (deleteModalOpen ? labDeletionImpact(lab.id) : null),
+    [deleteModalOpen, labDeletionImpact, lab.id]
+  );
+
+  /* Rows shown in the confirmation, in the order an operator would think about
+     them: the work, then the money, then the supporting records. Zero-count
+     rows are filtered at render — a list of seven zeroes is noise. */
+  const impactRows = useMemo(() => {
+    if (!deletionImpact) return [];
+    return [
+      { label: 'Case jobs', count: deletionImpact.cases, money: 0 },
+      { label: 'Invoices', count: deletionImpact.invoices, money: deletionImpact.totalBilled },
+      { label: 'Payments (vouchers)', count: deletionImpact.payments, money: deletionImpact.totalPaid },
+      { label: 'Advance payments', count: deletionImpact.advances, money: 0 },
+      { label: 'Adjustments & credit notes', count: deletionImpact.adjustments, money: deletionImpact.totalAdjustments },
+      { label: 'Ledger entries', count: deletionImpact.journals, money: 0 },
+      { label: 'Contacts', count: deletionImpact.contacts, money: 0 },
+      { label: 'Addresses', count: deletionImpact.addresses, money: 0 },
+      { label: 'Custom pricing rules', count: deletionImpact.pricingOverrides, money: 0 },
+      { label: 'Reviews', count: deletionImpact.reviews, money: 0 },
+    ];
+  }, [deletionImpact]);
+
+  // All cases for this lab, ALWAYS sorted MOST RECENT FIRST
+  const allLabCases = cases
     .filter((c) => c.lab_id === lab.id)
     .sort((a, b) => {
       const timeA = new Date(a.created_at || a.delivery_date).getTime();
@@ -105,10 +105,59 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       return timeB - timeA; // Descending: Most recent first
     });
 
+  /* Search across everything an operator might actually type.
+
+     Two forms of each case are indexed: the text as written, and a
+     punctuation-free copy. Every typed word must match at least one of them —
+     that is what lets "ds0123" find "DS-0123" while "ds-0123" still matches
+     directly. An earlier version tried the punctuation-free copy only for
+     all-digit queries, which meant "ds0123" (letters AND digits, the common
+     case) silently found nothing while "0123" worked. That is the single most
+     common way a search box ends up looking broken to the person using it.
+
+     Matching is AND across words: "ali pfm" narrows, rather than widening the
+     result set every time another word is added. */
+  const caseHaystack = useMemo(() => {
+    const index = new Map<string, { plain: string; bare: string }>();
+    for (const c of allLabCases) {
+      const text = [
+        c.case_number,
+        c.patient_name,
+        c.doctor_name,
+        c.case_type_name,
+        c.shade,
+        c.status,
+        c.priority,
+        c.delivery_date,
+        (c.selected_teeth || []).map((t) => `#${t}`).join(' '),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      index.set(c.id, { plain: text, bare: text.replace(/[^a-z0-9]/g, '') });
+    }
+    return index;
+  }, [allLabCases]);
+
+  const caseQuery = caseSearch.trim().toLowerCase();
+  const caseQueryTokens = caseQuery.split(/\s+/).filter(Boolean);
+
+  const labCases = useMemo(() => {
+    if (caseQueryTokens.length === 0) return allLabCases;
+    return allLabCases.filter((c) => {
+      const entry = caseHaystack.get(c.id);
+      if (!entry) return false;
+      return caseQueryTokens.every((token) => {
+        if (entry.plain.includes(token)) return true;
+        const bareToken = token.replace(/[^a-z0-9]/g, '');
+        return bareToken.length > 0 && entry.bare.includes(bareToken);
+      });
+    });
+  }, [allLabCases, caseHaystack, caseQuery]);
+
   const labInvoices = invoices.filter((inv) => inv.lab_id === lab.id);
   const totalBilled = labInvoices.reduce((sum, inv) => sum + inv.final_amount, 0);
-  const totalPaid = labInvoices.reduce((sum, inv) => sum + inv.amount_paid, 0);
-  const totalUnpaid = totalBilled - totalPaid;
+  const totalUnpaid = totalBilled - labInvoices.reduce((sum, inv) => sum + inv.amount_paid, 0);
 
   /* Same contract as the create form: only clinic name + doctor name are
      required, the rest are optional and format-checked only when filled. */
@@ -151,23 +200,10 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
   const handleDeleteConfirmed = () => {
     if (confirmInput.trim() !== 'DELETE') return;
-    // Integrity guard: never orphan cases under a deleted clinic. Bulk
-    // re-assignment (audit C3) moves them to the clinic the operator picks,
-    // instead of forcing one-by-one case edits.
-    if (labCases.length > 0) {
-      const targets = labs.filter((l) => l.id !== lab.id);
-      if (targets.length === 0) {
-        alert('This is the only clinic. Create another clinic before deleting this one.');
-        return;
-      }
-      const picked = prompt(
-        `${lab.name} still has ${labCases.length} case(s).\nWhich clinic should take them? Enter a number:\n` +
-          targets.map((l, i) => `${i + 1}. ${l.name}`).join('\n')
-      );
-      const index = Number(picked) - 1;
-      if (!picked || !Number.isInteger(index) || index < 0 || index >= targets.length) return;
-      if (!reassignLabRecords(lab.id, targets[index].id)) return;
-    }
+    // No re-assignment step any more: the clinic and everything under it are
+    // destroyed together. What replaced it is the impact list in the dialog —
+    // the operator sees every case, invoice and payment that is about to go,
+    // with the money totalled, BEFORE typing DELETE.
     deleteLab(lab.id);
     setDeleteModalOpen(false);
     onClose();
@@ -192,22 +228,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
-  };
-
-  /* Per-row payment/invoice match lookup for the ledger table. The rows used
-     to compute these once per <tr>; DataTable asks each column for its own
-     cell, so the same lookup became a helper the cells call. Every branch is
-     still an index hit, not a scan. */
-  const ledgerRowMeta = (entry: LedgerEntry) => {
-    const isDebit = entry.entry_type === 'invoice';
-    const isCredit = entry.entry_type === 'payment';
-    const matchedPayment = isCredit
-      ? paymentIndex.byId.get(entry.reference_id) ??
-        paymentIndex.byNumber.get(entry.reference_number) ??
-        paymentIndex.byBaseNumber.get(entry.reference_number)
-      : undefined;
-    const matchedInvoice = isDebit ? invoices.find(i => i.id === entry.reference_id || i.invoice_number === entry.reference_number) : undefined;
-    return { isDebit, isCredit, matchedPayment, matchedInvoice };
   };
 
   return (
@@ -251,15 +271,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
         {/* Tab Navigation - Single Solid Color Architecture */}
         <div className="bg-slate-50 border-b border-slate-200 px-6 flex items-center gap-1 overflow-x-auto shrink-0 pt-1">
           {[
-            { id: 'cases', label: `Clinic Cases (${labCases.length})`, icon: FolderOpen },
-            { 
-              id: 'ledger', 
-              label: 'Account Ledger & Statements', 
-              icon: BookOpen,
-              badge: (labFinancials?.outstanding_balance || 0) > 0 
-                ? `Due ${formatPKR(labFinancials?.outstanding_balance || 0)}` 
-                : undefined 
-            },
+            { id: 'cases', label: `Clinic Cases (${caseQuery ? labCases.length : allLabCases.length})`, icon: FolderOpen },
             { id: 'info', label: 'General Info', icon: Building2 },
             { id: 'contacts', label: 'Contacts & Locations', icon: UserCheck },
             { id: 'pricing', label: 'Custom Pricing', icon: Tag },
@@ -278,11 +290,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               >
                 <Icon className="w-4 h-4" />
                 <span>{tab.label}</span>
-                {tab.badge && (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-800">
-                    {tab.badge}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -301,7 +308,8 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     All Cases for {lab.name}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Showing all registered cases sorted with the most recent case first
+                    Sorted with the most recent case first. Search by patient, case number, doctor,
+                    material, shade or delivery date.
                   </p>
                 </div>
                 <button
@@ -314,18 +322,70 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 </button>
               </div>
 
+              {/* Search. Matched against case number, patient, doctor, material,
+                  shade, status, priority, teeth and delivery date at once, so the
+                  operator does not have to know which column a value lives in. */}
+              {allLabCases.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted pointer-events-none" />
+                    <input
+                      type="search"
+                      value={caseSearch}
+                      onChange={(e) => setCaseSearch(e.target.value)}
+                      placeholder="Search cases — patient, case number, doctor, material, shade…"
+                      aria-label="Search cases for this clinic"
+                      className="w-full pl-9 pr-9 py-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:border-slate-500 focus:ring-2 focus:ring-slate-200 outline-none"
+                    />
+                    {caseSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCaseSearch('')}
+                        aria-label="Clear search"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded text-ink-muted hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {caseQuery && (
+                    <span className="text-xs font-semibold text-slate-600 whitespace-nowrap tabular-nums">
+                      {labCases.length} of {allLabCases.length}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Case Cards List */}
               {labCases.length === 0 ? (
-                <div className="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
-                  <p className="text-xs text-slate-500 font-medium">No dental cases currently recorded for this lab.</p>
-                  <button
-                    type="button"
-                    onClick={() => setIsCreatingNewCase(true)}
-                    className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800 cursor-pointer inline-flex items-center gap-1.5"
-                  >
-                    <PlusCircle className="w-4 h-4" /> Create First Case
-                  </button>
-                </div>
+                allLabCases.length === 0 ? (
+                  <div className="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
+                    <p className="text-xs text-slate-500 font-medium">No dental cases currently recorded for this lab.</p>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingNewCase(true)}
+                      className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800 cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <PlusCircle className="w-4 h-4" /> Create First Case
+                    </button>
+                  </div>
+                ) : (
+                  /* Empty because the search matched nothing — a different state
+                     from "this clinic has no cases", and offering "Create First
+                     Case" here would be wrong. */
+                  <div className="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
+                    <p className="text-xs text-slate-600 font-medium">
+                      No case matches <span className="font-mono font-bold text-slate-900">"{caseSearch.trim()}"</span>.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setCaseSearch('')}
+                      className="px-4 py-2 bg-white text-slate-700 border border-slate-300 text-xs font-semibold rounded-xl hover:bg-slate-50 cursor-pointer"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                )
               ) : (
                 <div className="space-y-3">
                   {labCases.map((c, index) => {
@@ -347,6 +407,14 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-mono font-bold text-sm text-slate-900">
                                 {c.case_number}
+                              </span>
+                              {/* Patient name is what the operator is usually
+                                  looking for — the case number rarely is. It
+                                  sits beside the case number so the card reads
+                                  as "whose job is this" at a glance, and it is
+                                  searchable along with everything else. */}
+                              <span className="text-sm font-semibold text-slate-800">
+                                {c.patient_name || <span className="text-ink-muted font-normal">No patient name</span>}
                               </span>
                               {isLatest && (
                                 <span className="px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-md">
@@ -409,256 +477,6 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   })}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* TAB 2: FINANCIAL LEDGER & STATEMENTS */}
-          {activeTab === 'ledger' && (
-            <div className="space-y-6">
-              
-              {/* Financial KPI Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-                  <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wider block">Total Billed (Debits)</span>
-                  <div className="text-lg font-bold font-mono text-slate-900 mt-0.5">
-                    {formatPKR(labFinancials?.total_invoiced || 0)}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Gross clinic charges</span>
-                </div>
-
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Total Collected</span>
-                  <div className="text-lg font-bold font-mono text-emerald-700 mt-0.5">
-                    {formatPKR(labFinancials?.total_paid || 0)}
-                  </div>
-                  <span className="text-[10px] text-ink-success">Credits settled</span>
-                </div>
-
-                <div className={`p-3.5 rounded-xl border ${(labFinancials?.outstanding_balance || 0) > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider block ${(labFinancials?.outstanding_balance || 0) > 0 ? 'text-amber-700' : 'text-slate-500'}`}>
-                    Net Outstanding
-                  </span>
-                  <div className={`text-lg font-bold font-mono mt-0.5 ${(labFinancials?.outstanding_balance || 0) > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
-                    {formatPKR(labFinancials?.outstanding_balance || 0)}
-                  </div>
-                  <span className="text-[10px] text-slate-500">
-                    {(labFinancials?.outstanding_balance || 0) > 0 ? 'Due for collection' : 'Zero balance'}
-                  </span>
-                </div>
-
-                <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl">
-                  <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Invoices Status</span>
-                  <div className="text-lg font-bold font-mono text-indigo-700 mt-0.5">
-                    {labFinancials?.unpaid_invoices_count || 0} <span className="text-xs font-semibold">Unpaid</span>
-                  </div>
-                  <span className="text-[10px] text-indigo-600">Of {labFinancials?.invoices_count || 0} total invoices</span>
-                </div>
-              </div>
-
-              {/* Outstanding Invoices Quick Pay Section */}
-              {labInvoices.filter(i => i.payment_status !== 'paid').length > 0 && (
-                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <Receipt className="w-4 h-4 text-ink-warning" />
-                      <span>Pending Unpaid Invoices ({labInvoices.filter(i => i.payment_status !== 'paid').length})</span>
-                    </h4>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {labInvoices.filter(i => i.payment_status !== 'paid').map(inv => {
-                      const rem = (inv.final_amount || 0) - (inv.amount_paid || 0);
-                      return (
-                        <div key={inv.id} className="p-3 bg-white rounded-lg border border-amber-200 shadow-2xs flex items-center justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-xs text-slate-900">{inv.invoice_number}</span>
-                              <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-bold uppercase">{inv.payment_status}</span>
-                            </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">Case {inv.case_number} • {formatDoctorName(inv.doctor_name)}</p>
-                            <p className="text-xs font-bold text-amber-700 mt-0.5">Due: {formatPKR(rem)}</p>
-                          </div>
-                          {/* Billing & Invoices is the only place a payment is
-                              recorded. This button states that instead of opening a
-                              fourth copy of the recorder — see financeTabs.ts. */}
-                          <span
-                            title="Record this payment in Billing & Invoices"
-                            className="px-3 py-1.5 bg-fill-success text-white font-bold text-xs rounded-lg shadow-2xs flex items-center gap-1 shrink-0 cursor-default"
-                          >
-                            <DollarSign className="w-3.5 h-3.5" />
-                            <span>Record in Billing</span>
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Lab Ledger Table */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                    Full Account Transaction Ledger
-                  </h4>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    {labLedger.length} total transaction events
-                  </span>
-                </div>
-
-                {/* DataTable owns the <thead>, the ds-th header row and the
-                    horizontal-scroll wrapper; the card above stays put. The
-                    `!` on the narrow columns is Tailwind's important suffix —
-                    DataTable's default `px-3` is emitted later in the
-                    stylesheet, so without it it would beat `px-2.5`/`px-2`. */}
-                <DataTable<LedgerEntry>
-                  data={labLedger}
-                  rowKey={(entry) => entry.id}
-                  emptyState={
-                    <div className="p-8 text-center text-xs text-ink-muted">
-                      No ledger transactions recorded for this clinic yet.
-                    </div>
-                  }
-                  columns={[
-                    {
-                      header: 'Date',
-                      className: 'py-2.5 px-3 text-slate-600 font-medium whitespace-nowrap',
-                      render: (entry: LedgerEntry) => entry.date,
-                    },
-                    {
-                      header: 'Type',
-                      className: 'py-2.5 px-2.5! whitespace-nowrap',
-                      render: (entry: LedgerEntry) => {
-                        const isDebit = entry.entry_type === 'invoice';
-                        return isDebit ? (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            <ArrowUpRight className="w-2.5 h-2.5" /> Billed
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <ArrowDownLeft className="w-2.5 h-2.5" /> {entry.payment_method || 'Payment'}
-                          </span>
-                        );
-                      },
-                    },
-                    {
-                      header: 'Ref #',
-                      className: 'py-2.5 px-2.5! font-mono font-bold text-slate-900 whitespace-nowrap',
-                      render: (entry: LedgerEntry) => entry.reference_number,
-                    },
-                    {
-                      header: 'Case #',
-                      className: 'py-2.5 px-2.5! font-mono text-indigo-600 whitespace-nowrap',
-                      render: (entry: LedgerEntry) => entry.case_number || '—',
-                    },
-                    {
-                      header: 'Description',
-                      className: 'py-2.5 px-2.5! text-slate-700 max-w-[200px] truncate',
-                      render: (entry: LedgerEntry) => entry.description,
-                    },
-                    {
-                      header: 'Debit (PKR)',
-                      align: 'right',
-                      className: 'py-2.5 px-2.5! font-bold text-indigo-600 whitespace-nowrap',
-                      render: (entry: LedgerEntry) => (entry.debit > 0 ? formatPKR(entry.debit) : '—'),
-                    },
-                    {
-                      header: 'Credit (PKR)',
-                      align: 'right',
-                      className: 'py-2.5 px-2.5! font-bold text-ink-success whitespace-nowrap',
-                      render: (entry: LedgerEntry) => (entry.credit > 0 ? formatPKR(entry.credit) : '—'),
-                    },
-                    {
-                      header: 'Balance (PKR)',
-                      align: 'right',
-                      className: 'py-2.5 px-3 font-bold font-mono whitespace-nowrap',
-                      render: (entry: LedgerEntry) => (
-                        <span className={entry.running_balance > 0 ? 'text-slate-900' : 'text-ink-success'}>
-                          {formatPKR(entry.running_balance || 0)}
-                        </span>
-                      ),
-                    },
-                    {
-                      header: 'Proof',
-                      align: 'center',
-                      className: 'py-2.5 px-2! whitespace-nowrap',
-                      render: (entry: LedgerEntry) => {
-                        const { matchedPayment } = ledgerRowMeta(entry);
-                        return (entry.attachments && entry.attachments.length > 0) || (matchedPayment?.attachments && matchedPayment.attachments.length > 0) ? (
-                          <button
-                            onClick={() => {
-                              const payObj = matchedPayment || {
-                                id: entry.reference_id,
-                                payment_number: entry.reference_number,
-                                invoice_id: '',
-                                invoice_number: '',
-                                amount: entry.credit,
-                                payment_method: entry.payment_method || 'bank',
-                                payment_date: entry.date,
-                                recorded_by: entry.recorded_by || 'Staff',
-                                attachments: entry.attachments || []
-                              };
-                              setSelectedProofPayment(payObj);
-                            }}
-                            className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
-                            title="View Attached Proof"
-                          >
-                            <ImageIcon className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <span className="text-slate-300 text-[10px]">—</span>
-                        );
-                      },
-                    },
-                    {
-                      header: 'Voucher',
-                      align: 'center',
-                      className: 'py-2.5 px-2! whitespace-nowrap',
-                      render: (entry: LedgerEntry) => {
-                        const { isDebit, isCredit, matchedPayment, matchedInvoice } = ledgerRowMeta(entry);
-                        return (
-                          <>
-                            {isDebit && matchedInvoice && (
-                              <button
-                                onClick={() => setSelectedInvoiceModal(matchedInvoice)}
-                                className="p-1 text-ink-muted hover:text-indigo-600 rounded"
-                                title="View Invoice"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                            {isCredit && (
-                              <button
-                                onClick={() => {
-                                  const payObj = matchedPayment || {
-                                    id: entry.reference_id,
-                                    payment_number: entry.reference_number,
-                                    invoice_id: '',
-                                    invoice_number: '',
-                                    lab_id: lab.id,
-                                    lab_name: lab.name,
-                                    amount: entry.credit,
-                                    payment_method: entry.payment_method || 'cash',
-                                    payment_date: entry.date,
-                                    notes: entry.notes,
-                                    recorded_by: entry.recorded_by || 'Staff',
-                                    attachments: entry.attachments || []
-                                  };
-                                  setSelectedReceiptPayment({ payment: payObj, invoice: matchedInvoice });
-                                }}
-                                className="p-1 text-ink-muted hover:text-ink-success rounded"
-                                title="View Receipt Slip"
-                              >
-                                <Receipt className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </>
-                        );
-                      },
-                    },
-                  ]}
-                />
-              </div>
-
             </div>
           )}
 
@@ -811,14 +629,9 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               <div className="border-t border-slate-200 pt-4 flex justify-between items-center">
                 <span className="text-xs text-ink-danger font-semibold">Danger Zone</span>
                 <button
-                  onClick={() => setDeleteModalOpen(true)}
-                  disabled={labCases.length > 0}
-                  title={
-                    labCases.length > 0
-                      ? `This clinic has ${labCases.length} case${labCases.length === 1 ? '' : 's'} — resolve or reassign them before deleting`
-                      : 'Delete this clinic record'
-                  }
-                  className="px-3 py-1.5 bg-rose-50 text-ink-danger hover:bg-rose-100 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={() => { setDeleteModalOpen(true); setConfirmInput(""); }}
+                  title="Delete this clinic and everything linked to it"
+                  className="px-3 py-1.5 bg-rose-50 text-ink-danger hover:bg-rose-100 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" /> Delete Clinic Record
                 </button>
@@ -916,16 +729,49 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
           <div className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-ink-danger">
               <ShieldAlert className="w-6 h-6 shrink-0" />
-              <h3 className="font-bold text-base text-slate-900">Type DELETE to Confirm</h3>
+              <h3 className="font-bold text-base text-slate-900">
+                Delete {lab.name} and everything under it?
+              </h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              This action cannot be undone. All associated clinic contacts and custom pricing overrides will be permanently removed.
+              This permanently erases the clinic. Its case jobs, invoices and any recorded payments go
+              with it. Nothing is kept in an archive and there is no undo.
             </p>
-            {labCases.length > 0 && (
-              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2.5 leading-relaxed">
-                This clinic still has <strong>{labCases.length}</strong> linked case{labCases.length === 1 ? '' : 's'} — deleting is blocked to protect case history. Resolve or reassign the cases first.
-              </p>
+
+            {/* What is about to be destroyed, before it is. A count alone does
+                not convey what is at stake, so the money is totalled here. */}
+            {deletionImpact && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50/60 overflow-hidden">
+                <div className="px-3 py-2 border-b border-rose-200 bg-rose-100/60">
+                  <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
+                    Will be permanently deleted
+                  </span>
+                </div>
+                <dl className="divide-y divide-rose-100">
+                  {impactRows.filter((r) => r.count > 0).map((row) => (
+                    <div key={row.label} className="px-3 py-1.5 flex items-center justify-between gap-3">
+                      <dt className="text-xs text-slate-700">{row.label}</dt>
+                      <dd className="text-xs font-mono font-bold text-slate-900 tabular-nums">
+                        {row.count}
+                        {row.money ? ` · ${formatPKR(row.money)}` : ''}
+                      </dd>
+                    </div>
+                  ))}
+                  {impactRows.every((r) => r.count === 0) && (
+                    <div className="px-3 py-2 text-xs text-slate-600">
+                      Nothing else is linked to this clinic.
+                    </div>
+                  )}
+                </dl>
+                {deletionImpact.payments > 0 && (
+                  <p className="px-3 py-2 border-t border-rose-200 text-[11px] text-rose-800 leading-relaxed">
+                    {formatPKR(deletionImpact.totalPaid)} of recorded payments will be erased from the
+                    ledger with no record left. Export a backup first if you may need them.
+                  </p>
+                )}
+              </div>
             )}
+
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Type <span className="text-ink-danger font-mono">DELETE</span> below:
@@ -941,7 +787,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setDeleteModalOpen(false)}
+                onClick={() => { setDeleteModalOpen(false); setConfirmInput(''); }}
                 className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
               >
                 Cancel
@@ -952,7 +798,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 onClick={handleDeleteConfirmed}
                 className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer"
               >
-                Permanently Delete Lab
+                Permanently Delete Clinic
               </button>
             </div>
           </div>

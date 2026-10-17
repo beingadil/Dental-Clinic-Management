@@ -60,6 +60,8 @@ import {
   buildLedgerEntries,
 } from '../services/ledgerDomain';
 import { nextReservedInvoiceNumber } from '../services/invoiceNumbering';
+import { buildLabDeletionImpact, applyLabDeletion } from '../services/labDeletion';
+import type { LabDeletionImpact } from '../services/labDeletion';
 import { applyBrandColor } from '../services/brandingTheme';
 import { readNotificationCadence, readEscalationRule, NOTIFICATION_CONFIG_CHANGED } from '../services/notificationSettings';
 import { useTransactionCommands } from './hooks/useTransactionCommands';
@@ -98,6 +100,13 @@ import type { UserRow } from '../db/repos';
 // Shared hydration helpers (mirror, dbRows, groupers) live in ./hooks/domainState
 // so every domain hook and this context share ONE dbMirror instance.
 export const DEFAULT_BRANDING = DEFAULT_BRANDING_SETTINGS;
+
+/**
+ * Exactly what a clinic delete would take with it. Defined in
+ * `services/labDeletion` next to the cascade that computes it, so the dialog and
+ * the deletion cannot disagree about what is being destroyed.
+ */
+export type { LabDeletionImpact } from '../services/labDeletion';
 
 interface AppContextType {
   // Navigation & User
@@ -187,6 +196,16 @@ interface AppContextType {
   addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count'>) => DentalLab;
   updateLab: (id: string, updates: Partial<DentalLab>) => void;
   deleteLab: (id: string) => void;
+  /**
+   * What a clinic delete would destroy, computed without performing it.
+   *
+   * The delete is a hard, unrecoverable cascade, so the confirmation dialog has
+   * to be able to say exactly what is about to go — counts AND money totals —
+   * before the operator types DELETE. Reading the same collections the cascade
+   * will read is what keeps the warning honest: one source, so the list cannot
+   * drift from what actually happens.
+   */
+  labDeletionImpact: (id: string) => LabDeletionImpact;
   reassignLabRecords: (fromLabId: string, toLabId: string) => boolean;
   addLabContact: (contact: Omit<LabContact, 'id'>) => void;
   deleteLabContact: (id: string) => void;
@@ -1306,25 +1325,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLabs((prev) => prev.map((l) => (l.id === id ? { ...l, ...updates } : l)));
   };
 
-  const deleteLab = (id: string) => {
-    // FK integrity: cases/invoices/advances/adjustments reference the lab with
-    // no cascade. Removing it while any row still points here aborts the whole
-    // SQLite sync transaction — refuse and ask for a re-assignment first.
-    const referenced =
-      cases.some((c) => c.lab_id === id) ||
-      invoices.some((inv) => inv.lab_id === id) ||
-      advancePayments.some((a) => a.lab_id === id) ||
-      accountAdjustments.some((adj) => adj.lab_id === id);
-    if (referenced) {
-      showToast('Cannot delete this clinic: cases, invoices or transactions still reference it.', 'error');
-      return;
-    }
-    setLabs((prev) => prev.filter((l) => l.id !== id));
-    setLabContacts((prev) => prev.filter((lc) => lc.lab_id !== id));
-    setLabAddresses((prev) => prev.filter((la) => la.lab_id !== id));
-    setPricingOverrides((prev) => prev.filter((po) => po.lab_id !== id));
-    setLabReviews((prev) => prev.filter((lr) => lr.lab_id !== id));
-  };
+  /**
+ * Reads the same collections the cascade will read, so the warning the operator
+ * sees cannot drift from what actually happens.
+ */
+const labDeletionImpact = (id: string): LabDeletionImpact =>
+  buildLabDeletionImpact(labDeletionCollections(), id);
+
+/** The collections the cascade reads, gathered once per call. */
+const labDeletionCollections = () => ({
+  labs, cases, invoices, advancePayments, accountAdjustments, journalEntries,
+  labContacts, labAddresses, pricingOverrides, labReviews, doctorPreferences,
+  qcInspections, caseNotes, caseAttachments, notifications, savedVouchers,
+  reconciliationItems,
+});
+
+/**
+ * Hard delete with a full cascade.
+ *
+ * This used to REFUSE whenever a case, invoice or transaction still pointed at
+ * the clinic, which made the delete button useless in practice: every real
+ * clinic has history, so it was almost never deletable. The operator asked for
+ * the opposite — delete the clinic and let its case jobs and invoices go with it
+ * — with the destruction itemised first (see `labDeletionImpact`).
+ *
+ * The cascade itself lives in `services/labDeletion` as a pure function. That is
+ * not an aesthetic choice: `syncCore.syncNow` wipes and re-inserts every table
+ * from React state on each save, so a row left behind in state simply comes
+ * back. Missing one collection means the data is resurrected, or the rebuild
+ * aborts on a foreign key — so the logic has to be exhaustively testable, and
+ * it cannot be, spread across a dozen `useState` setters.
+ */
+const deleteLab = (id: string) => {
+  const before = labDeletionCollections();
+  const lab = before.labs.find((l) => l.id === id);
+  if (!lab) return;
+
+  const impact = buildLabDeletionImpact(before, id);
+  const actor = user ? user.name : 'Staff';
+  const after = applyLabDeletion(before, id);
+
+  // One audit row, written so the trail outlives the data. Deleting the
+  // documents must not delete the record that they were deleted.
+  setAuditEvents((prev) => [
+    {
+      id: `aud-${Date.now()}-lab-${id}`,
+      timestamp: getNowStamp(),
+      actor,
+      action: 'CLINIC_DELETED',
+      entity_type: 'DentalLab',
+      entity_id: id,
+      entity_ref: lab.name,
+      notes:
+        `Deleted ${lab.name} with ${impact.cases} case(s), ${impact.invoices} invoice(s), ` +
+        `${impact.payments} payment(s), ${impact.advances} advance(s), ${impact.adjustments} adjustment(s). ` +
+        `Billed PKR ${impact.totalBilled.toLocaleString()}, paid PKR ${impact.totalPaid.toLocaleString()}.`,
+    },
+    ...prev,
+  ]);
+
+  setLabs(after.labs);
+  setCases(after.cases);
+  setInvoices(after.invoices);
+  setAdvancePayments(after.advancePayments);
+  setAccountAdjustments(after.accountAdjustments);
+  setJournalEntries(after.journalEntries);
+  setLabContacts(after.labContacts);
+  setLabAddresses(after.labAddresses);
+  setPricingOverrides(after.pricingOverrides);
+  setLabReviews(after.labReviews);
+  setDoctorPreferences(after.doctorPreferences);
+  setQcInspections(after.qcInspections);
+  setCaseNotes(after.caseNotes);
+  setCaseAttachments(after.caseAttachments);
+  setNotifications(after.notifications);
+  setSavedVouchers(after.savedVouchers);
+  setReconciliationItems(after.reconciliationItems);
+
+  showToast(
+    `${lab.name} deleted — ${impact.cases} case(s) and ${impact.invoices} invoice(s) removed with it.`,
+    'success'
+  );
+};
 
   // Bulk clinic re-assignment (audit C3): deleting a clinic is blocked while
   // cases/invoices reference it, so this moves the case records (and their
@@ -1714,6 +1796,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addLab,
         updateLab,
         deleteLab,
+        labDeletionImpact,
         reassignLabRecords,
         addLabContact,
         deleteLabContact,
