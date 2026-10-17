@@ -62,8 +62,20 @@ contrast-audit.txt
 # Quarantined files kept for security analysis (never commit)
 .quarantine/
 
-# Agent working notes and design rationale — internal only, never shipped.
+# Agent working notes and design rationale ï¿½ internal only, never shipped.
 # .planning/2026-10-06-backup-restore/audit.md was previously tracked; untracked so the
 # repo carries shipped code only.
 .planning/
 DESIGN.md
+
+# Locally installed agent skills (brag, brag-slim). 16 MB of bundled audio
+# assets per install, and regenerable via the skills CLI.
+# Only the skills dir is ignored, so a tracked .opencode/opencode.json still works.
+.opencode/skills/
+
+# /brag output - rendered launch videos, storyboards, plans, and share copy.
+# Covers both brag-output/ and the timestamped brag-output-YYYY-MM-DD-HHMMSS/
+# the skill writes to avoid clobbering earlier runs, plus any stray render
+# dropped elsewhere in the tree. Generated media, never committed.
+brag-output*/
+brag.mp4
