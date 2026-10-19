@@ -79,3 +79,9 @@ DESIGN.md
 # dropped elsewhere in the tree. Generated media, never committed.
 brag-output*/
 brag.mp4
+
+# Hackathon submission assets - screenshots, the explainer video and the
+# profile README. These are published to Google Drive and referenced by URL
+# rather than committed: the video is ~4.6 MB and the screenshots add ~4 MB
+# of binaries that a reviewer never needs to clone.
+hackathon-assets/

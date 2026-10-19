@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest something Dental Solutions should do
+title: ''
+labels: enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion.
+
+        The more context on the real workflow behind it, the better — this
+        project is built around how dental labs actually run, so "here is the
+        bench sequence and here is where it breaks" is worth more than a feature
+        name.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The workflow, not the feature. What does the operator do today, and what does it cost them?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried instead?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this belong to?
+      options:
+        - Case intake & FDI charting
+        - Production workflow
+        - Printing (job slips, invoices, statements)
+        - Billing, payments & ledger
+        - Catalog & pricing
+        - Clinics & labs
+        - Settings, backup & updates
+        - Something else
+    validations:
+      required: true

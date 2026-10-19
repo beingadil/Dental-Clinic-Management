@@ -153,7 +153,18 @@
 
 ## Recording checklist
 
-1. Log in with a demo account that has realistic seed data (clinics, cases in every status, invoices, payments).
+1. Seed the demo dataset first. The app ships with zero accounts, so on first run
+   create an administrator through the setup screen, then run the dev-only
+   fixture in the browser console:
+
+   ```js
+   await __dentalDemo.seed()
+   ```
+
+   It books 5 clinics, 25 cases across every workflow stage, 25 invoices and
+   payment records. `__dentalDemo.status()` prints what is on the board.
+   Fixtures are excluded from production builds, so this only works on
+   `npm run dev`.
 2. Pre-open each screen once so chunks are cached and transitions are instant.
 3. Hide the OS clock/notifications; use a neutral cursor.
 4. Record each scene as a separate take; stitch in the editor. Easier to re-record one scene than the whole video.

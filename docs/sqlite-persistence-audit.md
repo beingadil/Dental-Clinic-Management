@@ -1,4 +1,4 @@
-# SQLite persistence & data-integrity audit — Freebuff Desktop
+# SQLite persistence & data-integrity audit — Dental Solutions
 
 **Date:** 2026-10-06 · **Scope:** every persistence path in the app — schema, migrations,
 engine, repos, the React→SQLite sync, autosave, backup/restore, `.sql` export & import,

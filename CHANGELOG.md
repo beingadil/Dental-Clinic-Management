@@ -6,6 +6,60 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Live demo site.** The web build is published to GitHub Pages at
+  https://beingadil.github.io/Dental-Clinic-Management/ so a reviewer can click
+  into the running application without installing anything. It is served from a
+  dedicated `gh-pages-site` branch, not from `gh-pages` - that branch carries
+  `update-manifest.json`, which the desktop app's auto-updater fetches from
+  `raw.githubusercontent.com`, and publishing the site there would delete the
+  manifest and break the in-app updater for every installed copy.
+- **`CONTRIBUTING.md`, `SECURITY.md` and `CODE_OF_CONDUCT.md`.** The gates a
+  change has to pass, the controls already in place and how to report a
+  vulnerability privately, instead of leaving a reviewer to infer them from the
+  CI file.
+- **Issue and pull-request templates.** A bug report asks for the version and
+  the area, and both carry an explicit reminder not to paste real patient,
+  clinic or payment data into a public thread.
+- **Profile README** at https://github.com/beingadil - who this account is and
+  what it builds.
+
+### Changed
+- **README rewritten for a first-time reader.** It now leads with the problem
+  and the idea, explains why a case's identity is its charted teeth and shade
+  rather than a free-text note, and points judges at the live demo, the
+  Windows installer and the Google Drive folder of screenshots and the
+  explainer video.
+- **The build is now subpath-aware.** The WASM path is derived from
+  `import.meta.env.BASE_URL` and the public base path is read from
+  `PUBLIC_BASE_PATH` (default `/`). Previously the app could only be served
+  from a domain root, and a root-absolute `/vendor/sql-wasm.wasm` 404s under
+  `/<repo>/` with the same misleading failure mode already documented in the
+  code: the 404 body is parsed as WASM and boot fails with "expected magic
+  word 00 61 73 6d".
+- **Repository description, homepage and 15 topics set** so the project is
+  discoverable rather than a nameless repo.
+
+### Removed
+- **Stale UI audit reports** (`reports/impeccable-*.md`, dated 2026-10-09/10).
+  They were accurate when written, and every finding in them has since been
+  fixed - but a reader arriving cold would see a 13/20 score and a list of
+  P1/P2 defects that no longer exist, with no way to tell which are open. The
+  contrast problems they found are now enforced permanently by
+  `npm run audit:contrast` in CI, which is a stronger guarantee than a
+  one-off report.
+- **An internal agent working plan** (`docs/superpowers/plans/`). It referred
+  to a "sponsored run" and to "agentic workers" - internal working material
+  that a public repository should not carry.
+- **A leftover codename** from the audit document title, which still read
+  "Freebuff Desktop" rather than the product name.
+
+### Fixed
+- **The explainer-video script told the operator to "log in with a demo
+  account".** The app has shipped with zero accounts since v2.0.0, so that
+  instruction could not be followed. It now documents the actual first-run
+  setup and the dev-only fixture call that seeds the demo dataset.
+
 ## [2.25.0] - 2026-10-15
 
 The nav rail, header bar and dashboard had each grown their own palette, meeting
