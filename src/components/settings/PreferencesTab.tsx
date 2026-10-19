@@ -305,6 +305,68 @@ export const PreferencesTab: React.FC = () => {
           </select>
         </div>
 
+        {/* Professional settings */}
+        <div className="md:col-span-2 pt-4 border-t border-slate-100">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">Professional Settings</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Date Format</label>
+              <select
+                value={userPreferences?.date_format || 'DD/MM/YYYY'}
+                onChange={(e) => updateUserPreferences({ date_format: e.target.value as any })}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              >
+                <option value="DD/MM/YYYY">DD/MM/YYYY (31/12/2026)</option>
+                <option value="MM/DD/YYYY">MM/DD/YYYY (12/31/2026)</option>
+                <option value="YYYY-MM-DD">YYYY-MM-DD (2026-12-31)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Number Format</label>
+              <select
+                value={userPreferences?.number_format || '1,000.00'}
+                onChange={(e) => updateUserPreferences({ number_format: e.target.value as any })}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              >
+                <option value="1,000.00">1,000.00 (comma thousands, dot decimal)</option>
+                <option value="1.000,00">1.000,00 (dot thousands, comma decimal)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Time Zone</label>
+              <select
+                value={userPreferences?.time_zone || 'local'}
+                onChange={(e) => updateUserPreferences({ time_zone: e.target.value })}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              >
+                <option value="local">Local (device time zone)</option>
+                <option value="Asia/Karachi">Asia/Karachi (PKT, UTC+5)</option>
+                <option value="Asia/Dubai">Asia/Dubai (GST, UTC+4)</option>
+                <option value="Europe/London">Europe/London (GMT/BST)</option>
+                <option value="America/New_York">America/New_York (EST/EDT)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Auto-Backup Interval</label>
+              <select
+                value={String(userPreferences?.auto_backup_interval_min ?? 0)}
+                onChange={(e) => updateUserPreferences({ auto_backup_interval_min: Number(e.target.value) })}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              >
+                <option value="0">Off (manual only)</option>
+                <option value="15">Every 15 minutes</option>
+                <option value="30">Every 30 minutes</option>
+                <option value="60">Every hour</option>
+                <option value="1440">Daily</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <DashboardLayoutCard />
 
         <div>

@@ -14,7 +14,6 @@ import {
   User,
   Printer,
   ArrowUpCircle,
-  Bell,
 } from 'lucide-react';
 import { TabsNav } from '../common/ui';
 import { canManageSystem, type SystemAction } from '../../services/permissions';
@@ -26,7 +25,7 @@ import { TestingTab } from './TestingTab';
 import { PreferencesTab } from './PreferencesTab';
 import { PrintTab } from './PrintTab';
 import { UpdatesTab } from './UpdatesTab';
-import { NotificationsTab } from './NotificationsTab';
+
 
 /** Settings container (P3 split): header, tabs, shared backupMessage +
     liveTableStats; each tab lives in its own file. */
@@ -38,7 +37,7 @@ export const SettingsView: React.FC = () => {
   // re-checks at its action sites too (hiding is not enforcement).
   const may = (a: SystemAction) => canManageSystem(user, a) || (isAdmin && a !== 'users:manage');
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates' | 'notifications'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates'>('branding');
   /* Shared by BackupTab and TestingTab, so it lives here rather than in either
      tab. `useTransientMessage` owns the timer: the old version set it with a
      bare `setTimeout(() => setBackupMessage(null), N)` inside two async
@@ -86,7 +85,7 @@ export const SettingsView: React.FC = () => {
   const tabDefs = [
     { id: 'branding', label: 'Branding & Identity', icon: Palette, group: 'Identity & Print', allowed: may('branding:edit') },
     { id: 'print', label: 'Print & Documents', icon: Printer, group: 'Identity & Print', allowed: may('print:edit') },
-    { id: 'notifications', label: 'Notifications & Templates', icon: Bell, group: 'Identity & Print', allowed: true },
+
     { id: 'account', label: 'My Account & Security', icon: User, group: 'Account & Access', allowed: true },
     { id: 'preferences', label: 'Application Defaults', icon: Sliders, group: 'Account & Access', allowed: true },
     { id: 'backup', label: 'Database & Backup', icon: Database, group: 'Data & System', allowed: may('backup:restore') },
@@ -208,7 +207,7 @@ export const SettingsView: React.FC = () => {
       {activeTab === 'preferences' && <PreferencesTab />}
       {activeTab === 'print' && may('print:edit') && <PrintTab />}
       {activeTab === 'updates' && <UpdatesTab />}
-      {activeTab === 'notifications' && <NotificationsTab />}
+      
         </div>
       </div>
     </div>

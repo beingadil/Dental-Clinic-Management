@@ -564,6 +564,14 @@ export interface UserPreferences {
   ui_zoom?: number;
   /** Interface theme. 'system' follows the OS/browser preference. */
   theme_mode?: 'light' | 'dark' | 'system';
+  /** Display time zone for timestamps. 'local' follows the device. */
+  time_zone?: string;
+  /** Auto-backup interval in minutes (0 = off). */
+  auto_backup_interval_min?: number;
+  /** Date display format. */
+  date_format?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+  /** Number display format. */
+  number_format?: '1,000.00' | '1.000,00';
 
   /** Active dashboard layout: 'default' or the name of a saved arrangement
    *  (registry lives beside this key in the per-user preferences blob, written
