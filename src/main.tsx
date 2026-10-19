@@ -17,7 +17,13 @@ applyStoredTheme();
 // sql.js WASM is vendored into public/vendor/ and served as a static asset.
 // (The bundler `?url` import rewrote inconsistently between dev/preview, which
 // produced 404 → HTML fallback → 'expected magic word 00 61 73 6d' crashes.)
-const WASM_URL = '/vendor/sql-wasm.wasm';
+//
+// The path is built from `import.meta.env.BASE_URL` rather than hardcoded to
+// '/': a root-absolute URL 404s the moment the app is hosted under a
+// subpath (GitHub Pages serves a project site at /<repo>/), and the failure
+// mode is the same misleading "expected magic word" WASM error. BASE_URL is
+// '/' for the default build and the desktop shell, so nothing changes there.
+const WASM_URL = `${import.meta.env.BASE_URL}vendor/sql-wasm.wasm`;
 
 // Global uncaught error & promise rejection safety guards
 if (typeof window !== 'undefined') {

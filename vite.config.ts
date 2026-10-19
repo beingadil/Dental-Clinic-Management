@@ -6,6 +6,11 @@ import pkg from './package.json';
 
 export default defineConfig(() => {
   return {
+    // Public base path. '/' for the default build and the desktop shell;
+    // set to '/<repo>/' for a GitHub Pages project site, which serves the
+    // app from a subpath. Every emitted asset URL is rewritten from this,
+    // and `import.meta.env.BASE_URL` is the same value at runtime.
+    base: process.env.PUBLIC_BASE_PATH || '/',
     // Single source of truth for the app version: injected from package.json
     // at build time. A hardcoded duplicate previously drifted (stuck at
     // 2.10.0) and put already-updated installs into an endless update loop.
