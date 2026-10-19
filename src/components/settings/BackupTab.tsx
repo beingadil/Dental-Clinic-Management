@@ -44,6 +44,7 @@ import {
   RotateCcw,
   FileCode,
   Check,
+  ChevronDown,
 } from 'lucide-react';
 
 /** TAB: BACKUP & RESTORE (+ boot integrity self-check) — extracted from
@@ -372,40 +373,55 @@ export const BackupTab: React.FC<{
     : '';
 
   return (      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
-      {/* DATABASE STATUS — location, schema version, last-save verdict. */}
-      {dbStatus && (
-        <div className={`p-4 rounded-2xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
-          dbStatus.saveError
-            ? 'bg-rose-50 border-rose-300 text-rose-900'
-            : 'bg-slate-50 border-slate-200 text-slate-700'
-        }`}>
-          <div className="flex items-center gap-2 min-w-0">
+      {/* DIAGNOSTICS — collapsed by default so the primary actions (export,
+          import, restore) stay in view. Three separate cards stacked here made
+          the page look like a dashboard of warnings; a single toggle keeps the
+          diagnostics one click away without crowding the actions. */}
+      <details className="group rounded-2xl border border-slate-200 bg-slate-50/60">
+        <summary className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center gap-2.5">
             <Database className="w-4 h-4 text-indigo-600 shrink-0" />
-            <div className="min-w-0">
-              <span className="font-bold block">Database status{dbStatus.saveError ? ' — LAST SAVE FAILED' : ''}</span>
-              <span className="text-[11px] font-mono break-all">
-                {dbStatus.path ?? 'Browser local storage (no file on this device)'} · schema v{dbStatus.schemaVersion}
-              </span>
-            </div>
-          </div>
-          {dbStatus.saveError ? (
-            <span className="font-semibold">{dbStatus.saveError} — data is live in memory only; export a backup now.</span>
-          ) : (
-            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full whitespace-nowrap">
-              Last save OK
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Diagnostics</span>
+            <span className="text-[11px] text-slate-500">
+              {dbStatus?.saveError ? 'Last save failed' : 'Database status, save health, integrity check'}
             </span>
+          </div>
+          <ChevronDown className="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="px-4 pb-4 pt-1 space-y-3">
+          {/* DATABASE STATUS — location, schema version, last-save verdict. */}
+          {dbStatus && (
+            <div className={`p-4 rounded-2xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
+              dbStatus.saveError
+                ? 'bg-rose-50 border-rose-300 text-rose-900'
+                : 'bg-slate-50 border-slate-200 text-slate-700'
+            }`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Database className="w-4 h-4 text-indigo-600 shrink-0" />
+                <div className="min-w-0">
+                  <span className="font-bold block">Database status{dbStatus.saveError ? ' — LAST SAVE FAILED' : ''}</span>
+                  <span className="text-[11px] font-mono break-all">
+                    {dbStatus.path ?? 'Browser local storage (no file on this device)'} · schema v{dbStatus.schemaVersion}
+                  </span>
+                </div>
+              </div>
+              {dbStatus.saveError ? (
+                <span className="font-semibold">{dbStatus.saveError} — data is live in memory only; export a backup now.</span>
+              ) : (
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+                  Last save OK
+                </span>
+              )}
+            </div>
           )}
+
+          {/* SAVE & SYNC HEALTH — the persisted failure journal. */}
+          <PersistenceHealthPanel />
+
+          {/* BOOT INTEGRITY SELF-CHECK */}
+          <IntegrityPanel />
         </div>
-      )}
-
-      {/* SAVE & SYNC HEALTH — the persisted failure journal. Every failed save
-          and sync with its cause, so "is my data actually being written?" is
-          answerable inside the app instead of only in a console.error. */}
-      <PersistenceHealthPanel />
-
-      {/* BOOT INTEGRITY SELF-CHECK — verify FK pragma, orphan rows, ledger
-          balance; computed at boot by AppContext, surfaced here. */}
-      <IntegrityPanel />
+      </details>
 
       <TransientBanner message={backupMessage} className="p-4 rounded-2xl text-xs font-semibold shadow-xs" />
 
