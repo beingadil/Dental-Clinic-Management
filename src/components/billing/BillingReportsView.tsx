@@ -12,19 +12,21 @@ import {
   formatMonthLabel,
   monthlyStatementCsvRows,
 } from '../../services/monthlyStatement';
-import { 
-  BarChart3, 
-  BookmarkCheck, 
+import {
+  BarChart3,
+  BookmarkCheck,
   BookOpen,
-  Download, 
-  Printer, 
-  Trash2, 
-  Search, 
-  Calendar, 
+  Download,
+  Printer,
+  Trash2,
+  Search,
+  Calendar,
   Building2,
   FileText,
-  FileCheck
+  FileCheck,
+  CalendarDays
 } from 'lucide-react';
+import { DailyReportView } from './DailyReportView';
 
 interface BillingReportsViewProps {
   onPrintInvoice: (invoice: Invoice) => void;
@@ -40,7 +42,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 }) => {
   const { invoices, cases, savedVouchers, deleteSavedVoucher, advancePayments, accountAdjustments } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers'>('monthly');
+  const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
   const [voucherSearch, setVoucherSearch] = useState<string>('');
   // Saved-voucher list defaults to TODAY like the other billing tabs; rewind the
   // picker (or clear it for All Time) to audit earlier vouchers.
@@ -126,6 +128,18 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               {savedVouchers.length}
             </span>
           </button>
+
+          <button
+            onClick={() => setActiveSubTab('daily')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'daily'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Daily Lab Report</span>
+          </button>
         </div>
 
         {activeSubTab === 'monthly' && (
@@ -161,6 +175,9 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Sub-Tab 3: Daily Lab Report — the end-of-day production sheet. */}
+      {activeSubTab === 'daily' && <DailyReportView />}
 
       {/* Sub-Tab 1: Monthly Breakdown */}
       {activeSubTab === 'monthly' && (
