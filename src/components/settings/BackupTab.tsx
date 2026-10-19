@@ -25,21 +25,15 @@ import {
   SqlDumpAnalysis,
 } from '../../services/sqlDumpImport';
 import {
-  getBackupSchedule,
-  saveBackupSchedule,
   getBackupRuns,
-  runScheduledBackup,
-  isDesktopShell as isDesktopShellForBackups,
-  BackupScheduleState,
   BackupRun,
 } from '../../services/backupScheduler';
-import { runRestoreDrill, RestoreDrillResult } from '../../services/restoreDrill';
+
 import { PersistenceHealthPanel } from './PersistenceHealthPanel';
 import { initEngineFromBytes, getDatabase } from '../../db';
 import { getDesktopDatabasePath, getLastSaveError } from '../../db/persistence';
 import {
   Settings,
-  ShieldCheck,
   Database,
   Download,
   Upload,
@@ -49,7 +43,6 @@ import {
   XCircle,
   RotateCcw,
   FileCode,
-  X,
   Check,
 } from 'lucide-react';
 
@@ -76,34 +69,7 @@ export const BackupTab: React.FC<{
     getBackupData,
   } = useApp();
 
-  const [backupSchedule, setBackupSchedule] = useState<BackupScheduleState>(() => getBackupSchedule());
-  const [backupRuns, setBackupRuns] = useState<BackupRun[]>(() => getBackupRuns());
-  const [backupBusy, setBackupBusy] = useState(false);
-  const handleBackupScheduleChange = (patch: Partial<BackupScheduleState>) => {
-    setBackupSchedule(saveBackupSchedule(patch));
-  };
-  const handleRunBackupNow = async () => {
-    setBackupBusy(true);
-    try {
-      await runScheduledBackup('manual', true);
-      setBackupSchedule(getBackupSchedule());
-      setBackupRuns(getBackupRuns());
-    } finally {
-      setBackupBusy(false);
-    }
-  };
-
-  // Restore drill — proves the backup→restore pipeline on a temp engine
-  const [drillBusy, setDrillBusy] = useState(false);
-  const [drillResult, setDrillResult] = useState<RestoreDrillResult | null>(null);
-  const handleRestoreDrill = async () => {
-    setDrillBusy(true);
-    try {
-      setDrillResult(await runRestoreDrill());
-    } finally {
-      setDrillBusy(false);
-    }
-  };
+  const [backupRuns] = useState<BackupRun[]>(() => getBackupRuns());
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   // The .sql dump importer has its own input and its own pending state: a
@@ -718,94 +684,6 @@ export const BackupTab: React.FC<{
         </div>
       )}
 
-      {/* Automatic backups */}
-      <div className="p-6 bg-white border border-slate-200 rounded-2xl space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2 text-slate-900 font-bold text-sm uppercase tracking-wider">
-            <ShieldCheck className="w-4 h-4 text-ink-success" /> Automatic Backups
-          </div>
-          {backupSchedule.lastRun ? (
-            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-              Last automatic backup: {new Date(backupSchedule.lastRun).toLocaleString()}
-            </span>
-          ) : (
-            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
-              No automatic backup yet — runs shortly after first launch
-            </span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Backup frequency</label>
-            <select
-              value={backupSchedule.frequency}
-              onChange={(e) => handleBackupScheduleChange({ frequency: e.target.value as BackupScheduleState['frequency'] })}
-              className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl"
-            >
-              <option value="off">Off (manual only)</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Keep last (copies)</label>
-            <select
-              value={backupSchedule.keep}
-              onChange={(e) => handleBackupScheduleChange({ keep: Number(e.target.value) })}
-              className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl"
-            >
-              <option value="3">3</option>
-              <option value="7">7</option>
-              <option value="14">14</option>
-              <option value="30">30</option>
-            </select>
-          </div>
-
-          <button
-            onClick={handleRunBackupNow}
-            disabled={backupBusy}
-            className="w-full py-2.5 bg-fill-success hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <Database className="w-4 h-4" />
-            <span>{backupBusy ? 'Backing up…' : 'Back Up Now'}</span>
-          </button>
-
-          <button
-            onClick={handleRestoreDrill}
-            disabled={drillBusy}
-            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-300" />
-            <span>{drillBusy ? 'Verifying…' : 'Verify Restore'}</span>
-          </button>
-        </div>
-
-        {drillResult && (
-          <div className={`p-3 rounded-xl text-xs font-semibold flex items-start gap-2 border ${
-            drillResult.ok
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}>
-            {drillResult.ok ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />}
-            <div>
-              <span className="font-bold">{drillResult.ok ? 'Restore drill PASSED' : 'Restore drill FAILED'}</span>
-              <span className="block font-normal">{drillResult.detail}</span>
-            </div>
-            <button onClick={() => setDrillResult(null)} className="ml-auto text-ink-muted hover:text-slate-600 p-0.5">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        <p className="text-[11px] text-slate-500 leading-relaxed">
-          {isDesktopShellForBackups() ? (
-            <>Automatic backups are timestamped copies of the live SQLite file stored in the app data folder — zero-click recovery points. Oldest copies beyond the retention count are pruned automatically.</>
-          ) : (
-            <>In the browser the latest automatic backup is kept as a verified snapshot in local storage. For off-machine safety, export a <code>.dentalbackup</code> file regularly.</>
-          )}
-        </p>
 
         {backupRuns.length > 0 && (
           <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-100">
@@ -836,7 +714,6 @@ export const BackupTab: React.FC<{
           </div>
         )}
       </div>
-    </div>
   );
 };
 

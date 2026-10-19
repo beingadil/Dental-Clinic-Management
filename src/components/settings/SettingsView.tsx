@@ -12,7 +12,6 @@ import {
   Trash2,
   Sliders,
   User,
-  Users,
   Printer,
   ArrowUpCircle,
   Bell,
@@ -89,7 +88,6 @@ export const SettingsView: React.FC = () => {
     { id: 'print', label: 'Print & Documents', icon: Printer, group: 'Identity & Print', allowed: may('print:edit') },
     { id: 'notifications', label: 'Notifications & Templates', icon: Bell, group: 'Identity & Print', allowed: true },
     { id: 'account', label: 'My Account & Security', icon: User, group: 'Account & Access', allowed: true },
-    { id: 'users', label: 'User Management', icon: Users, group: 'Account & Access', allowed: may('users:manage') },
     { id: 'preferences', label: 'Application Defaults', icon: Sliders, group: 'Account & Access', allowed: true },
     { id: 'backup', label: 'Database & Backup', icon: Database, group: 'Data & System', allowed: may('backup:restore') },
     { id: 'testing', label: 'System Reset', icon: Trash2, group: 'Data & System', allowed: may('data:wipe') },
@@ -190,8 +188,16 @@ export const SettingsView: React.FC = () => {
       <TransientBanner message={backupMessage} />
 
       {activeTab === 'branding' && may('branding:edit') && <BrandingTab />}
-      {activeTab === 'account' && <AccountTab />}
-      {activeTab === 'users' && may('users:manage') && <UsersTab />}
+      {activeTab === 'account' && (
+        <>
+          <AccountTab />
+          {may('users:manage') && (
+            <div className='mt-6'>
+              <UsersTab />
+            </div>
+          )}
+        </>
+      )}
       {activeTab === 'backup' && may('backup:restore') && (
         <BackupTab
           backupMessage={backupMessage}
