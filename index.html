@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dental Solutions Web</title>
+    <link rel="icon" type="image/svg+xml" href="/Dental-Clinic-Management/icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/Dental-Clinic-Management/icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/Dental-Clinic-Management/icons/icon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/Dental-Clinic-Management/icons/icon-180.png" />
+    <meta name="theme-color" content="#4f46e5" />
+    <!-- Theme boot. The app loads a WASM database before it can read SQLite, so
+         the persisted theme has to be applied from the localStorage mirror
+         BEFORE first paint or every launch flashes light→dark. This inline
+         script is intentionally tiny and dependency-free; src/theme/theme.ts
+         owns the same key and stays the single source of truth for behaviour. -->
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('dental.theme.mode');
+          if (m !== 'light' && m !== 'dark' && m !== 'system') m = 'system';
+          var dark =
+            m === 'dark' ||
+            (m === 'system' &&
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.toggle('dark', dark);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', dark ? '#0b1220' : '#4f46e5');
+        } catch (e) {
+          /* storage blocked — fall through to light, which always paints */
+        }
+      })();
+    </script>
+    <meta name="referrer" content="no-referrer" />
+    <!-- Offline-first SPA: no remote scripts, no frames, no form posts. The
+         same policy is enforced for the desktop build in tauri.conf.json
+         (which keeps frame-ancestors — it is header-delivered there). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com https://beingadil.github.io https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="description" content="Offline-first dental laboratory case, lab, billing, reporting, and notification management system." />
+    <meta property="og:title" content="Dental Solutions Web" />
+    <meta property="og:description" content="Offline-first dental laboratory case, lab, billing, reporting, and notification management system." />
+    <script type="module" crossorigin src="/Dental-Clinic-Management/assets/index-DsBI0UVf.js"></script>
+    <link rel="modulepreload" crossorigin href="/Dental-Clinic-Management/assets/react-core--fLnAug_.js">
+    <link rel="modulepreload" crossorigin href="/Dental-Clinic-Management/assets/db-engine-DbhBtxnj.js">
+    <link rel="modulepreload" crossorigin href="/Dental-Clinic-Management/assets/icons-C_L3OdC7.js">
+    <link rel="stylesheet" crossorigin href="/Dental-Clinic-Management/assets/index-u22p41Qn.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+
