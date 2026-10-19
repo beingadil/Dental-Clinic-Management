@@ -20,8 +20,24 @@ const { SAVED_VOUCHERS, JOURNAL_ENTRIES } = vi.hoisted(() => {
      the current day, so a fixture pinned to a fixed date silently filtered
      itself out of its own list — this test passed on the day it was written and
      failed every day after, which is the worst possible failure mode for a test.
-     Computed inside the factory because vi.hoisted runs before module scope. */
-  const today = new Date().toISOString().slice(0, 10);
+
+     TODAY has to be the LOCAL calendar day, not the UTC day. The voucher list
+     is scoped by `todayISO()` (the operator's local day, see
+     src/utils/dateUtils.ts) and the fixture has to land inside that same
+     window. `new Date().toISOString().slice(0, 10)` is the UTC day, and
+     between 00:00 and 05:00 in PKT the two differ by one — so the fixture was
+     stamped YESTERDAY and the list rendered empty, exactly like the production
+     bug this module documents. That is why the suite failed at 00:30 local and
+     passed at 19:30 local: same code, same day, different clock. The fix is
+     the same rule the product follows — use the shared local-day helper
+     instead of re-deriving the day from `toISOString()`.
+
+     Computed inside the factory because vi.hoisted runs before module scope —
+     which is also why the local-date arithmetic is inlined here rather than
+     imported: an import is not available inside a hoisted factory. It is the
+     same rule as `getDateStr()` in src/utils/dateUtils.ts, written out. */
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   return {
   SAVED_VOUCHERS: [
     {
