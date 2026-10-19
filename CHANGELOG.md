@@ -6,6 +6,35 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **The odontogram perf test measured the machine, not the memo boundary.** The
+  CI run on `676c076` failed at "Tests (vitest)" with
+  `expected 1.3222812500000032 to be less than 1.2089114300000006` — a
+  wall-clock assertion comparing two benchmark arms. The stable arm does
+  almost no work (React.memo short-circuits the chart), so its measured time
+  is a *floor*: a render pass plus the harness's own per-iteration overhead.
+  That floor does not shrink under contention, while the churned arm's time is
+  real chart-render work — so under load the **ratio shrinks** even as the
+  absolute saving grows. On the contended CI runner it fell to 4.6x and the
+  old `/5` threshold missed by 9%. The arms were also measured in the wrong
+  order, so the first one paid the whole cold-start cost of the chart's
+  render path: in the broken-memo case that made the "fast" arm measure
+  111ms against the "slow" arm's 36ms. Both arms are now warmed before
+  either is measured, the trials are interleaved, and the fastest trial of
+  each is taken (contention can only slow a sample, never speed it up). The
+  comparison is made against the churned arm with a 2x floor, and the absolute
+  saving is asserted in units of one chart render so the threshold moves with
+  the machine. The load-independent render-count gate is unchanged.
+- **`voucherJournalLink.test.tsx` stamped its fixture with the UTC day**
+  (`new Date().toISOString().slice(0, 10)`) while the voucher list it
+  renders into is scoped by `todayISO()` — the operator's *local* day. Between
+  00:00 and 05:00 in PKT the two differ by a day, so the fixture was stamped
+  yesterday, fell outside the list's own Today window, and the list rendered
+  empty. This is the same bug the product documents in `src/utils/dateUtils.ts`,
+  reintroduced in a test: the suite failed at 00:30 local and passed at 19:30
+  local — same code, same day, different clock. The fixture now uses the local
+  calendar day.
+
 ### Added
 - **Live demo site.** The web build is published to GitHub Pages at
   https://beingadil.github.io/Dental-Clinic-Management/ so a reviewer can click
