@@ -86,7 +86,15 @@ interface GithubReleaseInfo {
  */
 const quietFetch = async (url: string): Promise<Response | null> => {
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    // A hung fetch (slow DNS, captive portal, no route) used to leave the
+    // spinner on "Checking for updates..." forever, because nothing upstream
+    // timed it out. 8 s is long enough for a real GitHub response and short
+    // enough that a dead network fails fast into the "up to date / offline"
+    // state instead of looking like a stuck loader.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    clearTimeout(timer);
     if (res.ok) return res;
   } catch { /* expected offline / blocked — try the next source */ }
   return null;

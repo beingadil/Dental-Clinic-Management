@@ -124,6 +124,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
     : '';
 
   const headline: Record<string, string> = {
+    checking: 'Checking for updates',
     downloading: 'Installing the update automatically',
     verifying: 'Verifying the installer',
     backing_up: 'Backing up your data',
@@ -160,8 +161,10 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
               <ArrowUpCircle className="w-4 h-4" />
             ) : failed ? (
               <TriangleAlert className="w-4 h-4 text-ink-danger" />
-            ) : (
+            ) : floating ? (
               <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+            ) : (
+              <ArrowUpCircle className="w-4 h-4 text-indigo-600" />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -210,7 +213,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
           )}
 
           {/* Step list — inline layout only, so the floating card stays compact */}
-          {!floating && (
+          {!floating && phase.state !== 'checking' && (
             <ul className="space-y-1.5">
               {steps.map((s) => (
                 <li key={s.key} className="flex items-center gap-2 text-[11px]">
