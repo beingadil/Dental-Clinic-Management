@@ -4,6 +4,7 @@ import { Header } from './components/common/Header';
 import { AutoUpdatePanel } from './components/common/AutoUpdatePanel';
 import { SyncStatusBanner } from './components/common/SyncStatusBanner';
 import { SaveFailureBanner } from './components/common/SaveFailureBanner';
+import { ConnectivityStatus } from './components/common/ConnectivityStatus';
 import { Sidebar } from './components/common/Sidebar';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
@@ -116,6 +117,13 @@ const MainAppContent: React.FC = () => {
             difference between "your changes are in memory only" and losing
             them at close. Cleared by the next successful save. */}
         <SaveFailureBanner />
+
+        {/* Connectivity + last-save status. Quiet when healthy, loud when offline
+            or when the last save failed. Lives above the header so it is visible
+            from every view without scrolling. */}
+        <div className="px-3 pt-2 sm:px-4 lg:px-5">
+          <ConnectivityStatus />
+        </div>
 
         {/* Top Header */}
         <Header />

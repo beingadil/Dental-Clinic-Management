@@ -1,5 +1,5 @@
 import React, { ErrorInfo, ReactNode } from 'react';
-import { AlertOctagon, RotateCcw } from 'lucide-react';
+import { AlertOctagon, RotateCcw, Copy, Check } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
@@ -8,23 +8,41 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorInfo: ErrorInfo | null;
+  copied: boolean;
 }
 
+/**
+ * ErrorBoundary with a "copy error details" button.
+ *
+ * The previous version showed the error message in a <pre> and offered
+ * "Try Again" and "Reload". That is enough to recover, but not enough to
+ * REPORT: an operator who hits a crash has no way to tell the developer what
+ * happened, and the message alone ("Cannot read properties of undefined") is
+ * usually not enough to find the cause. The component stack and the full stack
+ * trace are the parts that matter, and they were being discarded.
+ *
+ * The "copy" button puts the whole thing on the clipboard in a format that
+ * can be pasted into an issue or an email without further editing.
+ */
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
       hasError: false,
-      error: null
+      error: null,
+      errorInfo: null,
+      copied: false
     };
   }
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.warn('ErrorBoundary handled error in component tree:', error?.message || error, errorInfo);
+    this.setState({ errorInfo });
   }
 
   private handleReload = () => {
@@ -32,7 +50,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   };
 
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, errorInfo: null, copied: false });
   };
 
   private handleClearData = () => {
@@ -50,8 +68,39 @@ export class ErrorBoundary extends React.Component<Props, State> {
     window.location.reload();
   };
 
+  private handleCopy = async () => {
+    const { error, errorInfo } = this.state;
+    if (!error) return;
+    const text = [
+      'Dental Solutions — error report',
+      '================================',
+      `Time: ${new Date().toISOString()}`,
+      `URL: ${typeof window !== 'undefined' ? window.location.href : '(unknown)'}`,
+      `User agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : '(unknown)'}`,
+      '',
+      'Error:',
+      error.name + ': ' + (error.message || String(error)),
+      '',
+      'Stack:',
+      error.stack || '(no stack)',
+      '',
+      'Component stack:',
+      errorInfo?.componentStack || '(no component stack)',
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      this.setState({ copied: true });
+      window.setTimeout(() => this.setState({ copied: false }), 2500);
+    } catch {
+      // Clipboard API unavailable (insecure context, or permission denied).
+      // Fall back to a prompt so the text is still selectable.
+      window.prompt('Copy the error details below:', text);
+    }
+  };
+
   public render() {
     if (this.state.hasError) {
+      const { error, copied } = this.state;
       return (
         <div className="min-h-[400px] flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-8 text-center">
@@ -62,9 +111,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <p className="text-sm text-slate-600 mb-6 leading-relaxed">
               The workstation encountered an unexpected runtime condition in this module. Your data in storage is intact.
             </p>
-            {this.state.error && (
+            {error && (
               <pre className="text-left text-xs bg-slate-50 border border-slate-200 p-3 rounded-lg text-slate-700 overflow-x-auto mb-6 max-h-32">
-                {this.state.error.message || String(this.state.error)}
+                {error.message || String(error)}
               </pre>
             )}
             <div className="flex flex-wrap gap-3 justify-center">
@@ -80,6 +129,13 @@ export class ErrorBoundary extends React.Component<Props, State> {
               >
                 <RotateCcw className="w-4 h-4" />
                 Reload Application
+              </button>
+              <button
+                onClick={this.handleCopy}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                {copied ? 'Copied' : 'Copy error details'}
               </button>
             </div>
             <div className="mt-4 pt-4 border-t border-slate-100">
@@ -98,4 +154,3 @@ export class ErrorBoundary extends React.Component<Props, State> {
     return this.props.children;
   }
 }
-
