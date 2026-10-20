@@ -274,6 +274,243 @@
   }
 }
 
+/* ── The first-run stage ───────────────────────────────────────────────────
+ * A cinematographer's rig, rebuilt in CSS, for the one surface in this app
+ * that is allowed to be atmospheric: the screen a new terminal opens on.
+ *
+ * Four layers, in the order a camera would meet them:
+ *   1. the backdrop   — the seamless (the page's own surface)
+ *   2. the key light  — ONE source, high and off to the right, so the
+ *                       console is lit and the title falls off into the frame
+ *   3. the vignette   — the corners let go
+ *   4. the grain      — the app's existing atmosphere, over everything
+ *
+ * The key light and the vignette are painted from custom properties, so the
+ * same rig lights the same scene two ways: high-key on the pale surface,
+ * low-key on the dark one. The shape never changes; the light does. The
+ * counterparts live in src/theme/dark.css.
+ *
+ * NOTHING HERE CARRIES INK. The whole rig sits behind the content at z-index
+ * -1, so every word is still graded against a real token surface by the
+ * contrast audit rather than against a gradient. That is the same rule the
+ * ambient wash and the auth hero already follow.
+ */
+.auth-stage {
+  --auth-key-light: rgba(255, 255, 255, 0.92);
+  --auth-vignette: rgba(15, 23, 42, 0.13);
+  --auth-glass-fill: rgba(255, 255, 255, 0.42);
+  --auth-glass-edge: rgba(255, 255, 255, 0.9);
+  --auth-glass-sheen: rgba(255, 255, 255, 0.85);
+  --auth-glass-shadow: rgba(15, 23, 42, 0.4);
+  --auth-glass-solid: #ffffff;
+  --auth-chip-fill: rgba(255, 255, 255, 0.5);
+  position: relative;
+  isolation: isolate;
+}
+
+.auth-stage-lighting {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* The lamp never sits perfectly still. A very slow drift, far below the
+     threshold of distraction, so the frame feels lit rather than printed. */
+  animation: auth-light-drift 38s ease-in-out infinite;
+}
+
+/* The key light: a shaft from above the frame, and the pool where it lands.
+   The pool is tight and sits over the console, so the pane of glass has
+   something bright to refract without the light blowing out the words on
+   it. */
+.auth-stage-lighting::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    conic-gradient(
+      from 166deg at 64% -18%,
+      transparent 0deg,
+      var(--auth-key-light) 10deg,
+      var(--auth-key-light) 26deg,
+      transparent 40deg
+    ),
+    radial-gradient(38% 42% at 70% 42%, var(--auth-key-light) 0%, transparent 72%);
+  /* The lamp warming up: the light converges into place and comes up to
+     strength. One shot, on load, and never again. */
+  animation: auth-light-up 1.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* The auth stage runs its own key light, so the app-wide aurora steps back
+   here. Two glows fighting each other is what makes a stage look like a
+   gradient instead of a lit room — and the glass pane needs a QUIET room
+   to refract, or the words on it lose their contrast to the light behind
+   them. */
+.auth-stage.app-atmos::before {
+  opacity: 0.42;
+}
+
+/* The vignette: the edges of the frame fall away so the subject holds the
+   eye. This is the layer that reads in the light theme, where a white pool on
+   a pale surface is invisible and a soft shadow is not. */
+.auth-stage-lighting::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(124% 98% at 50% 40%, transparent 32%, var(--auth-vignette) 100%);
+}
+
+/* ── The matte ────────────────────────────────────────────────────────────
+ * The hairlines above and below the stage, and the slate header that sits on
+ * the top one. Type only: every colour here is a utility on the element, so
+ * the contrast audit grades the rail like everything else.
+ */
+.auth-rail-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The build number is a number, not a label. It keeps the slate's tracking
+   but not its capitals, because "V2.28.2" is not a version anyone writes. */
+.auth-rail-version {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+/* The tally light. On a set, the light that says "we are rolling". Here it
+   says the terminal is live and waiting for an operator. */
+.auth-tally {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-brand-600);
+  animation: auth-tally-breathe 3.8s ease-in-out infinite;
+}
+
+/* ── Title card ───────────────────────────────────────────────────────────
+ * A title, set the way a title card is set: one name, large, tight, and
+ * given room to breathe. The tracking settles as it fades in, so the name
+ * arrives rather than appearing.
+ */
+.auth-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  animation: fade-in-soft 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.08s both;
+}
+
+.auth-title {
+  font-size: clamp(2.5rem, 5.4vw, 4.35rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+  animation: auth-title-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.14s both;
+}
+
+.auth-logline {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  animation: fade-in-soft 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.22s both;
+}
+
+.auth-spec {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  animation: fade-in-soft 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.3s both;
+}
+
+/* The console rises out of the dark a beat after the title has landed. */
+.auth-console {
+  animation: auth-console-in 0.78s cubic-bezier(0.16, 1, 0.3, 1) 0.26s both;
+}
+
+/* A field label, set the way an instrument labels its switches: small,
+   tracked out, and spoken in caps by nobody. The colour is a utility on the
+   element, not here — the contrast audit grades the rail and the fields off
+   the element's own class list, and a colour declared in this file would be
+   invisible to it. */
+.auth-field-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  display: block;
+}
+
+/* The lamp coming up, and the light settling into its focus. */
+@keyframes auth-light-up {
+  from {
+    opacity: 0;
+    transform: scale(1.07);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* The frame breathing. Translation only, so it never costs a repaint. */
+@keyframes auth-light-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-1.1%, 0.7%, 0);
+  }
+}
+
+/* The tally light, breathing slowly enough to read as a state and not a
+   notification. */
+@keyframes auth-tally-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+/* The name arriving: tracking closes and the word rises into place. */
+@keyframes auth-title-in {
+  from {
+    opacity: 0;
+    letter-spacing: 0.05em;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    letter-spacing: -0.03em;
+    transform: none;
+  }
+}
+
+@keyframes auth-console-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Subtle futuristic visual utilities */
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);
@@ -359,15 +596,62 @@
   opacity: 0.85;
 }
 
-/* The front door: an outer tray holding an opaque core, so the sign-in card
- * reads as machined hardware rather than a form floating on a blank page. The
- * core keeps its `bg-white` utility on purpose — that is the pairing the
- * contrast audit grades and the token layer remaps in dark mode. Only the tray,
- * which holds no ink, is painted here. */
-.login-tray {
-  background: rgba(15, 23, 42, 0.035);
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  box-shadow: 0 24px 60px -28px rgba(15, 23, 42, 0.22);
+/* ── The frosted pane ─────────────────────────────────────────────────────
+ * The console is a sheet of glass, not a card. The light and the aurora
+ * behind it are refracted through it, so the panel carries the colour of
+ * the room it stands in.
+ *
+ * Real frosted glass is three things at once, and all three are here:
+ *   1. a TRANSLUCENT fill, so what is behind shows through;
+ *   2. a BACKDROP BLUR, so what shows through is out of focus;
+ *   3. a REFRACTED EDGE — a hairline and an inner highlight, which is what
+ *      the eye actually reads as "a pane of glass with a thickness".
+ *
+ * The blur is the part that earns the look. `backdrop-filter` is not a
+ * filter applied to the panel; it re-samples what is painted BEHIND it, so
+ * the refraction is real rather than a painted approximation. The fill
+ * stays translucent so there is something for it to refract.
+ *
+ * The INK SITS ON THE PANE, NOT ON THE ROOM. Every colour in the console
+ * is a token utility on the element, and the pane is a controlled alpha over
+ * a deliberately quiet part of the stage — so the contrast audit grades the
+ * words against a surface it can reason about, and the ratio that measures
+ * is the ratio that ships.
+ *
+ * Under `prefers-reduced-transparency` the glass becomes a solid pane and
+ * the blur is dropped: a sheet of glass you cannot see through is a sheet
+ * of glass nobody asked for.
+ */
+.auth-glass {
+  position: relative;
+  background: var(--auth-glass-fill);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--auth-glass-edge);
+  box-shadow:
+    0 44px 96px -48px var(--auth-glass-shadow),
+    inset 0 1px 0 var(--auth-glass-sheen);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .auth-glass,
+  .auth-chip {
+    background: var(--auth-glass-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* A small frosted chip — the rail's controls are panes of glass too, at chip
+   scale, so the console does not read as the only glass object on the stage.
+   The ink on it is a utility on the element, so the contrast audit grades it
+   like everything else. */
+.auth-chip {
+  background: var(--auth-chip-fill);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid var(--auth-glass-edge);
+  box-shadow: inset 0 1px 0 var(--auth-glass-sheen);
 }
 
 /*
@@ -545,6 +829,21 @@
   .animate-ping,
   .animate-pulse,
   .animate-bounce {
+    animation: none !important;
+  }
+
+  /* The first-run stage. The lamp still lights — it simply arrives already
+     lit instead of warming up, and the frame stops breathing. `animation:
+     none` on the ::before leaves opacity at its default (1), so the light is
+     present rather than absent. */
+  .auth-stage-lighting,
+  .auth-stage-lighting::before,
+  .auth-tally,
+  .auth-eyebrow,
+  .auth-title,
+  .auth-logline,
+  .auth-spec,
+  .auth-console {
     animation: none !important;
   }
 
