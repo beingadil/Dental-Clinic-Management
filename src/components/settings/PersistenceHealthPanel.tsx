@@ -139,7 +139,21 @@ export function PersistenceHealthPanel() {
       a.href = url;
       a.download = `persistence-failures-${new Date().toISOString().slice(0, 10)}.txt`;
       a.click();
-      URL.revokeObjectURL(url);
+      /* The URL is NOT revoked here. A blob URL points at a snapshot the
+         browser holds, and the download reads it when the download STARTS —
+         not when the link is clicked. Revoking on the spot can hand the
+         browser an empty file. It is released when the document goes away. */
+      window.addEventListener(
+        'pagehide',
+        () => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch {
+            /* already released */
+          }
+        },
+        { once: true }
+      );
     }
   };
 

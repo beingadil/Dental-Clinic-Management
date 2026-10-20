@@ -92,8 +92,8 @@ export function buildStandaloneHtml(
  * Routed through saveTextFile: the previous Blob-URL + `<a download>` click is
  * silently ignored by the Tauri shell (no download handler was ever
  * registered), so "Save & Download" produced nothing on the installed build. On
- * web this is unchanged — a browser download, now with a deferred
- * revokeObjectURL so the download cannot be cancelled mid-flight.
+ * web this is unchanged — a browser download, whose blob URL is held until the
+ * document goes away so the download cannot be cancelled mid-flight.
  */
 export function downloadStandaloneHtml(html: string, filename: string): void {
   void saveFile(filename, html, {
