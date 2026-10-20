@@ -128,19 +128,21 @@ export const DailyReportView: React.FC = () => {
       {/* Controls — screen only. The printed sheet carries the window in its
           own header instead. */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <label className="flex items-center gap-1.5 text-[11px] text-slate-600 whitespace-nowrap cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(e) => setIncludeArchived(e.target.checked)}
+            className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+          />
+          Include archived
+        </label>
+        {/* The date window sits NEXT TO the export, because it is the
+            export's window: you choose the period, then take the document for
+            it. They were on opposite ends of the card, so the control that
+            decides what the button produces was nowhere near the button. */}
         <div className="flex items-center gap-2">
           <DatePickerRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-600 whitespace-nowrap cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
-              className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-            />
-            Include archived
-          </label>
-        </div>
-        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleExportPDF}
