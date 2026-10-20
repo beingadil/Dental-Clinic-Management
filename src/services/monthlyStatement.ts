@@ -315,46 +315,6 @@ export const filterMonthlyStatements = (
     .filter((block) => block.rows.length > 0);
 };
 
-/** Flat CSV rows for the monthly statement, one line per clinic per month. */
-export const monthlyStatementCsvRows = (
-  blocks: MonthlyStatementBlock[]
-): (string | number)[][] => {
-  const header = [
-
-    'Month',
-    'Dental Clinic',
-    'Cases Billed',
-    'Billed (PKR)',
-    'Collected (PKR)',
-    'Advance Received (PKR)',
-    'Advance Applied (PKR)',
-    'Credit Notes (PKR)',
-    'Debit Adjustments (PKR)',
-    'Opening Balance (PKR)',
-    'Closing Balance (PKR)',
-    'Advance Credit (PKR)',
-    'Remaining Due (PKR)',
-  ];
-  const rows = blocks.flatMap((block) =>
-    block.rows.map((r) => [
-      block.month,
-      r.lab_name,
-      r.cases_billed,
-      r.billed,
-      r.collected,
-      r.advance_received,
-      r.advance_applied,
-      r.credit_notes,
-      r.debit_adjustments,
-      r.opening_balance,
-      r.closing_balance,
-      r.advance_credit,
-      r.remaining,
-    ])
-  );
-  return [header, ...rows];
-};
-
 /* ---------- the workbook ---------- */
 
 /** The statement's money columns, in the order they read. */
