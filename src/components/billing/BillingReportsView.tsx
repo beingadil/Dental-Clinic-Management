@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, SavedVoucher, DentalLab } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
@@ -14,6 +14,9 @@ import {
   filterMonthlyStatements,
   formatMonthLabel,
   monthlyStatementWorkbook,
+  statementColumns,
+  type MonthlyClinicRow,
+  type StatementColumnKey,
 } from '../../services/monthlyStatement';
 import {
   BarChart3,
@@ -53,6 +56,8 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     labs,
     brandingSettings,
     showToast,
+    userPreferences,
+    updateUserPreferences,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
@@ -79,10 +84,36 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
      remembers to tick it. Empty means "every clinic". */
   const [excludedLabIds, setExcludedLabIds] = useState<string[]>([]);
 
+  /* How many columns the statement shows.
+     The full set is twelve, which is more than a laptop screen shows at once.
+     COMPACT shows the seven a reader needs to read the statement at all; FULL
+     shows every column, for the months a reader is auditing. The choice is
+     remembered, because switching it on every visit is a tax. */
+  const [compactStatement, setCompactStatement] = useState<boolean>(
+    () => userPreferences?.statement_columns !== 'full',
+  );
+  useEffect(() => {
+    if (userPreferences?.statement_columns === undefined) return;
+    setCompactStatement(userPreferences.statement_columns !== 'full');
+  }, [userPreferences?.statement_columns]);
+
   const visibleBlocks = useMemo(
     () => filterMonthlyStatements(monthlyBlocks, excludedLabIds),
     [monthlyBlocks, excludedLabIds]
   );
+
+  /** The whole statement in one line, for the scope on screen. */
+  const statementTotals = useMemo(() => {
+    const sum = (pick: (b: (typeof visibleBlocks)[number]) => number) =>
+      visibleBlocks.reduce((acc, b) => acc + pick(b), 0);
+    return {
+      months: visibleBlocks.length,
+      clinics: visibleBlocks.length ? visibleBlocks[0].totals.clinics : 0,
+      billed: sum((b) => b.totals.billed),
+      collected: sum((b) => b.totals.collected),
+      remaining: sum((b) => b.totals.remaining),
+    };
+  }, [visibleBlocks]);
 
   /* Every clinic that appears in the statement, whether or not it is still in
      the clinic list — a deleted clinic can still have months of history, and
@@ -124,50 +155,180 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     setExcludedLabIds(statementClinics.map((c) => c.id).filter((id) => !chosen.has(id)));
   };
 
-  /** The whole statement in one line of figures, for the scope on screen. */
-  const statementTotals = useMemo(() => {
-    const sum = (pick: (b: (typeof visibleBlocks)[number]) => number) =>
-      visibleBlocks.reduce((acc, b) => acc + pick(b), 0);
-    return {
-      months: visibleBlocks.length,
-      clinics: visibleBlocks.length ? visibleBlocks[0].totals.clinics : 0,
-      billed: sum((b) => b.totals.billed),
-      collected: sum((b) => b.totals.collected),
-      remaining: sum((b) => b.totals.remaining),
-    };
-  }, [visibleBlocks]);
+  /**
+   * The statement's columns come from the one declaration the PDF and the
+   * workbook also read, so a heading can never be spelled one way on the
+   * screen and another way in the file. The renderers are per-column
+   * because that is where the presentation lives — a zero is worth less
+   * than a figure, and the money columns are coloured by what they mean.
+   */
+  const columnRenderers: Record<
+    StatementColumnKey,
+    { className: string; render: (r: MonthlyClinicRow) => React.ReactNode }
+  > = {
+    clinic: {
+      className: 'py-2.5 px-3 font-bold text-slate-800 min-w-[190px]',
+      render: (r) => (
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+          <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
+          <span>{r.lab_name}</span>
+        </span>
+      ),
+    },
+    cases: {
+      className: 'py-2.5 px-3 font-semibold text-slate-600',
+      render: (r) => r.cases_billed,
+    },
+    billed: {
+      className: 'py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap',
+      render: (r) => formatPKR(r.billed),
+    },
+    collected: {
+      className: 'py-2.5 px-3 font-bold text-ink-success whitespace-nowrap',
+      render: (r) => formatPKR(r.collected),
+    },
+    advanceIn: {
+      className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
+      render: (r) => (
+        <span className={r.advance_received > 0 ? 'text-sky-600' : 'text-ink-muted'}>
+          {formatPKR(r.advance_received)}
+        </span>
+      ),
+    },
+    advanceUsed: {
+      className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
+      render: (r) => (
+        <span className={r.advance_applied > 0 ? 'text-sky-700' : 'text-ink-muted'}>
+          {formatPKR(r.advance_applied)}
+        </span>
+      ),
+    },
+    credits: {
+      className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
+      render: (r) => (
+        <span className={r.credit_notes > 0 ? 'text-ink-danger' : 'text-ink-muted'}>
+          {formatPKR(r.credit_notes)}
+        </span>
+      ),
+    },
+    debits: {
+      className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
+      render: (r) => (
+        <span className={r.debit_adjustments > 0 ? 'text-amber-700' : 'text-ink-muted'}>
+          {formatPKR(r.debit_adjustments)}
+        </span>
+      ),
+    },
+    opening: {
+      className: 'py-2.5 px-3 text-slate-500 whitespace-nowrap',
+      render: (r) => formatPKR(r.opening_balance),
+    },
+    closing: {
+      className: 'py-2.5 px-3 font-bold whitespace-nowrap',
+      render: (r) => (
+        <span className={r.closing_balance < 0 ? 'text-ink-success' : 'text-slate-900'}>
+          {formatPKR(r.closing_balance)}
+        </span>
+      ),
+    },
+    advanceCredit: {
+      className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
+      render: (r) => (
+        <span className={r.advance_credit > 0 ? 'text-sky-700' : 'text-ink-muted'}>
+          {formatPKR(r.advance_credit)}
+        </span>
+      ),
+    },
+    due: {
+      className: 'py-2.5 px-3 font-bold whitespace-nowrap',
+      render: (r) => (
+        <span className={r.remaining > 0 ? 'text-ink-warning' : 'text-ink-muted'}>
+          {formatPKR(r.remaining)}
+        </span>
+      ),
+    },
+  };
 
-  // Export the Monthly Statement as an Excel workbook. Real cells, real
-  // numbers, one sheet per month — a CSV cannot be summed, sorted or charted
-  // once the figures arrive as text.
-  const handleExportMonthlyExcel = async () => {
-    try {
-      const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
-      const scopeLabel = excludedLabIds.length
-        ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
-        : `All ${statementClinics.length} clinics`;
-      const periodLabel = visibleBlocks.length
-        ? `${formatMonthLabel(visibleBlocks[visibleBlocks.length - 1].month)} — ${formatMonthLabel(
-            visibleBlocks[0].month,
-          )}`
-        : 'No activity';
-      const bytes = monthlyStatementWorkbook(visibleBlocks, {
+  const visibleColumns = statementColumns(compactStatement);
+
+  /** Switch the column set, and remember it. */
+  const setColumnMode = (compact: boolean) => {
+    setCompactStatement(compact);
+    updateUserPreferences({ statement_columns: compact ? 'compact' : 'full' });
+  };
+
+  /** The figure a column holds for a clinic row, formatted once for print. */
+  const figureFor = (c: (typeof visibleColumns)[number], r: MonthlyClinicRow): string =>
+    c.key === 'cases' ? String(c.value(r)) : formatPKR(c.value(r));
+
+  /**
+   * The statement as the PDF and the workbook want it: the same columns, the
+   * same headings, and the figures formatted ONCE — so the document and the
+   * screen can never print different numbers.
+   */
+  const buildPrintableMonths = () =>
+    visibleBlocks.map((b) => {
+      const totals = b.totals as unknown as MonthlyClinicRow;
+      return {
+        month: b.month,
+        label: formatMonthLabel(b.month),
+        rows: b.rows.map((r) => [
+          r.lab_name,
+          ...visibleColumns.slice(1).map((c) => figureFor(c, r)),
+        ]),
+        totals: [
+          'MONTH TOTAL',
+          ...visibleColumns.slice(1).map((c) => figureFor(c, totals)),
+        ],
+        headline: [
+          { label: 'Billed', value: formatPKR(b.totals.billed) },
+          { label: 'Collected', value: formatPKR(b.totals.collected) },
+          { label: 'Due', value: formatPKR(b.totals.remaining) },
+        ],
+      };
+    });
+
+  /**
+   * The statement as a document: the same columns, the same headings, and
+   * the figures formatted ONCE — so the document and the screen can never
+   * print different numbers.
+   */
+  const buildMonthlyDocument = () => {
+    const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
+    const scopeLabel = excludedLabIds.length
+      ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
+      : `All ${statementClinics.length} clinics`;
+    const periodLabel = visibleBlocks.length
+      ? `${formatMonthLabel(visibleBlocks[visibleBlocks.length - 1].month)} — ${formatMonthLabel(
+          visibleBlocks[0].month,
+        )}`
+      : 'No activity';
+    const result = buildMonthlyStatementPdf(
+      buildPrintableMonths(),
+      {
         labName,
         periodLabel,
-        scopeLabel,
         generatedOn: getTodayStr(),
-      });
-      const outcome = await saveFile(
-        `Monthly_Statement_${getTodayStr()}.xlsx`,
-        bytes,
-        {
-          extension: '.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          dialogTitle: 'Save the statement as an Excel workbook',
-        }
-      );
+        scopeLabel,
+      },
+      visibleColumns.map((c) => ({
+        key: c.key,
+        label: c.label,
+        w: c.width,
+        align: c.align,
+        strong: c.strong,
+      })),
+    );
+    const fileName = `Monthly_Statement_${visibleBlocks.length ? visibleBlocks[0].month : 'none'}.pdf`;
+    return { fileName, pdf: result.pdf };
+  };
+
+  const handleExportMonthlyPDF = async () => {
+    try {
+      const { fileName, pdf } = buildMonthlyDocument();
+      const outcome = await downloadPdf(fileName, pdf, 'PDF document');
       if (outcome.status === 'error') {
-        showToast(`Could not save the workbook: ${outcome.message}`, 'error');
+        showToast(`Could not save the PDF: ${outcome.message}`, 'error');
       } else if (outcome.status === 'saved' && outcome.location === 'downloads') {
         showToast(`Saved ${outcome.path} to your browser's downloads folder.`, 'info');
       }
@@ -180,66 +341,33 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
   };
 
   /**
-   * The statement as a document: the same rows the screen shows, as a real
-   * vector PDF with selectable text and one month per page. Not a picture of
-   * the table, and not the browser's print dialog.
+   * The statement as an Excel workbook: a summary sheet and one sheet per
+   * month, with the same columns the screen shows and the figures as real
+   * numbers, so a cell can be summed, sorted and charted.
    */
-  const buildMonthlyDocument = () => {
-    const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
-    const months = visibleBlocks.map((b) => ({
-      month: b.month,
-      label: formatMonthLabel(b.month),
-      rows: b.rows.map((r) => ({
-        clinicName: r.lab_name,
-        casesBilled: r.cases_billed,
-        billed: r.billed,
-        collected: r.collected,
-        advanceReceived: r.advance_received,
-        advanceApplied: r.advance_applied,
-        creditNotes: r.credit_notes,
-        debitAdjustments: r.debit_adjustments,
-        openingBalance: r.opening_balance,
-        closingBalance: r.closing_balance,
-        advanceCredit: r.advance_credit,
-        remaining: r.remaining,
-      })),
-      totals: {
-        casesBilled: b.totals.cases_billed,
-        billed: b.totals.billed,
-        collected: b.totals.collected,
-        advanceReceived: b.totals.advance_received,
-        advanceApplied: b.totals.advance_applied,
-        creditNotes: b.totals.credit_notes,
-        debitAdjustments: b.totals.debit_adjustments,
-        openingBalance: b.totals.opening_balance,
-        closingBalance: b.totals.closing_balance,
-        advanceCredit: b.totals.advance_credit,
-        remaining: b.totals.remaining,
-      },
-    }));
-    // Newest first on screen, so the period reads oldest → newest.
-    const periodLabel = months.length
-      ? `${months[months.length - 1].label} — ${months[0].label}`
-      : 'No activity';
-    const scopeLabel = excludedLabIds.length
-      ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
-      : `All ${statementClinics.length} clinics`;
-    const result = buildMonthlyStatementPdf(months, {
-      labName,
-      periodLabel,
-      generatedOn: getTodayStr(),
-      scopeLabel,
-    });
-    const fileName = `Monthly_Statement_${months.length ? months[0].month : 'none'}.pdf`;
-    return { fileName, pdf: result.pdf };
-  };
-
-  const handleExportMonthlyPDF = async () => {
+  const handleExportMonthlyExcel = async () => {
     try {
-      const { fileName, pdf } = buildMonthlyDocument();
-      const outcome = await downloadPdf(fileName, pdf, 'PDF document');
+      const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
+      const scopeLabel = excludedLabIds.length
+        ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
+        : `All ${statementClinics.length} clinics`;
+      const periodLabel = visibleBlocks.length
+        ? `${formatMonthLabel(visibleBlocks[visibleBlocks.length - 1].month)} — ${formatMonthLabel(
+            visibleBlocks[0].month,
+          )}`
+        : 'No activity';
+      const bytes = monthlyStatementWorkbook(
+        visibleBlocks,
+        { labName, periodLabel, scopeLabel, generatedOn: getTodayStr() },
+        compactStatement,
+      );
+      const outcome = await saveFile(`Monthly_Statement_${getTodayStr()}.xlsx`, bytes, {
+        extension: '.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: 'Save the statement as an Excel workbook',
+      });
       if (outcome.status === 'error') {
-        showToast(`Could not save the PDF: ${outcome.message}`, 'error');
+        showToast(`Could not save the workbook: ${outcome.message}`, 'error');
       } else if (outcome.status === 'saved' && outcome.location === 'downloads') {
         showToast(`Saved ${outcome.path} to your browser's downloads folder.`, 'info');
       }
@@ -329,6 +457,43 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
         {activeSubTab === 'monthly' && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            {/* How many columns the statement shows.
+                Twelve is more than a laptop screen shows at once, so the
+                default is the seven a reader needs; FULL is for auditing a
+                month. The choice is remembered, and the exported document
+                follows it — the file an operator sends is the file they were
+                reading. */}
+            <div
+              role="group"
+              aria-label="Columns shown"
+              className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 self-start"
+            >
+              {(
+                [
+                  { key: 'compact', label: 'Compact' },
+                  { key: 'full', label: 'Full' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setColumnMode(opt.key === 'compact')}
+                  title={
+                    opt.key === 'compact'
+                      ? 'The columns a reader needs'
+                      : 'Every column, for auditing a month'
+                  }
+                  aria-pressed={compactStatement === (opt.key === 'compact')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
+                    compactStatement === (opt.key === 'compact')
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             <ClinicFilter
               clinics={statementClinics}
               selected={selectedLabIds}
@@ -439,8 +604,15 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       AFTER the closing </table>, so the totals row stopped being a
                       row of the table — which is exactly what
                       billingReportsMonthly.test.tsx asserts against
-                      (`within(table).getByText('Month Total').closest('tr')`).
+                      (`within(table).getByText('Month total').closest('tr')`).
                       `tfoot` now renders inside the table, so it can.
+
+                      The columns are the model's, not this file's: the headings,
+                      which of them are core, and which are the ones a reader
+                      must see are all declared once in services/monthlyStatement,
+                      and the PDF and the workbook read the same declaration.
+                      That is what lets the Compact view, the printed page and
+                      the spreadsheet agree.
 
                       The totals row is a ruled line, not a second black slab:
                       the month header is already the band's job, and two of
@@ -452,129 +624,28 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                     tfoot={
                       <tr className="border-t-2 border-slate-300 bg-white font-bold text-[11px] uppercase tracking-wider text-slate-600">
                         <td className="ds-sticky-col py-2.5 px-3">Month total</td>
-                        <td className="py-2.5 px-3 text-center">{t.cases_billed}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-slate-900">{formatPKR(t.billed)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-success">{formatPKR(t.collected)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-info">{formatPKR(t.advance_received)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-info">{formatPKR(t.advance_applied)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-danger">{formatPKR(t.credit_notes)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-warning">{formatPKR(t.debit_adjustments)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-muted">{formatPKR(t.opening_balance)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-slate-900">{formatPKR(t.closing_balance)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-info">{formatPKR(t.advance_credit)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-warning">{formatPKR(t.remaining)}</td>
+                        {visibleColumns.slice(1).map((c) => (
+                          <td
+                            key={c.key}
+                            className={`py-2.5 px-3 ${
+                              c.align === 'right' ? 'text-right whitespace-nowrap' : ''
+                            } ${columnRenderers[c.key].className.replace(/py-2\.5 px-3 ?/, '')}`}
+                          >
+                            {c.key === 'cases'
+                              ? t.cases_billed
+                              : formatPKR(c.value(t as unknown as MonthlyClinicRow))}
+                          </td>
+                        ))}
                       </tr>
                     }
-                    columns={[
-                      {
-                        header: 'Dental Clinic',
-                        className: 'py-2.5 px-3 font-bold text-slate-800 min-w-[190px]',
-                        render: (r) => (
-                          <span className="flex items-center gap-1.5 whitespace-nowrap">
-                            <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
-                            <span>{r.lab_name}</span>
-                          </span>
-                        ),
-                      },
-                      {
-                        header: 'Cases Billed',
-                        align: 'center',
-                        className: 'py-2.5 px-3 font-semibold text-slate-600',
-                        render: (r) => r.cases_billed,
-                      },
-                      {
-                        header: 'Billed (Dr)',
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap',
-                        render: (r) => formatPKR(r.billed),
-                      },
-                      {
-                        header: 'Collected (Cr)',
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-bold text-ink-success whitespace-nowrap',
-                        render: (r) => formatPKR(r.collected),
-                      },
-                      {
-                        header: <span title="Advance deposits banked this month">Advance In</span>,
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
-                        /* Zero-emphasis on a money figure is decided per row,
-                           so it rides on the cell content, not the column. */
-                        render: (r) => (
-                          <span className={r.advance_received > 0 ? 'text-sky-600' : 'text-ink-muted'}>
-                            {formatPKR(r.advance_received)}
-                          </span>
-                        ),
-                      },
-                      {
-                        header: <span title="Advance credit spent against invoices this month">Advance Used</span>,
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
-                        render: (r) => (
-                          <span className={r.advance_applied > 0 ? 'text-sky-700' : 'text-ink-muted'}>
-                            {formatPKR(r.advance_applied)}
-                          </span>
-                        ),
-                      },
-                      {
-                        header: 'Credit Notes',
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
-                        render: (r) => (
-                          <span className={r.credit_notes > 0 ? 'text-ink-danger' : 'text-ink-muted'}>
-                            {formatPKR(r.credit_notes)}
-                          </span>
-                        ),
-                      },
-                      {
-                        header: 'Debit Adj.',
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
-                        render: (r) => (
-                          <span className={r.debit_adjustments > 0 ? 'text-amber-700' : 'text-ink-muted'}>
-                            {formatPKR(r.debit_adjustments)}
-                          </span>
-                        ),
-                      },
-                      {
-                        header: <span title="Balance brought forward from the previous month">Opening (B/F)</span>,
-                        align: 'right',
-                        className: 'py-2.5 px-3 text-slate-500 whitespace-nowrap',
-                        render: (r) => formatPKR(r.opening_balance),
-                      },
-                      {
-                        header: <span title="Closing balance carried into the next month">Closing (C/F)</span>,
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-bold whitespace-nowrap',
-                        render: (r) => (
-                          <span className={r.closing_balance < 0 ? 'text-ink-success' : 'text-slate-900'}>
-                            {formatPKR(r.closing_balance)}
-                          </span>
-                        ),
-                      },
-                      {
-                        header: <span title="Unallocated advance wallet at month end">Advance Credit</span>,
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
-                        render: (r) => (
-                          <span className={r.advance_credit > 0 ? 'text-sky-700' : 'text-ink-muted'}>
-                            {formatPKR(r.advance_credit)}
-                          </span>
-                        ),
-                      },
-                      {
-                        header: <span title="Still owed by the clinic at month end">Remaining Due</span>,
-                        align: 'right',
-                        className: 'py-2.5 px-3 font-bold whitespace-nowrap',
-                        render: (r) => (
-                          <span className={r.remaining > 0 ? 'text-ink-warning' : 'text-ink-muted'}>
-                            {formatPKR(r.remaining)}
-                          </span>
-                        ),
-                      },
-                    ]}
+                    columns={visibleColumns.map((c) => ({
+                      header: c.label,
+                      align: c.align,
+                      className: columnRenderers[c.key].className,
+                      render: columnRenderers[c.key].render,
+                    }))}
                   />
-                </div>
+</div>
               );
             })
           )}

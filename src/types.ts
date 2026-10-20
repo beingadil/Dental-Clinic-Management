@@ -564,6 +564,15 @@ export interface UserPreferences {
   ui_zoom?: number;
   /** Interface theme. 'system' follows the OS/browser preference. */
   theme_mode?: 'light' | 'dark' | 'system';
+  /**
+   * How many columns the monthly statement shows.
+   *
+   * 'compact' (the default) shows the seven a reader needs to read the
+   * statement at all; 'full' shows all twelve, for the months being audited.
+   * The screen, the PDF and the workbook all read this one setting, so the
+   * document an operator exports is the document they were reading.
+   */
+  statement_columns?: 'compact' | 'full';
   /** Display time zone for timestamps. 'local' follows the device. */
   time_zone?: string;
   /** Auto-backup interval in minutes (0 = off). */

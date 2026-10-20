@@ -315,38 +315,175 @@ export const filterMonthlyStatements = (
     .filter((block) => block.rows.length > 0);
 };
 
-/* ---------- the workbook ---------- */
+/** The statement's columns, declared once. */
+export interface StatementColumn {
+  key: StatementColumnKey;
+  /** The heading, exactly as it appears on the screen, in the PDF and in the workbook. */
+  label: string;
+  /** Share of the width, for the PDF. */
+  width: number;
+  align: 'left' | 'right';
+  /**
+   * A CORE column is one a reader needs to read the statement at all; the
+   * rest are detail. The Compact view shows the core columns and the Full
+   * view shows all of them.
+   */
+  core: boolean;
+  /**
+   * A STRONG column is one the reader must see: the charge, the balance
+   * carried forward, and what is still owed. The PDF sets these in bold, and
+   * the screen sets them in the heavier weight — one rule, two renderers.
+   */
+  strong: boolean;
+  /** The figure in this column for a clinic row. */
+  value: (r: MonthlyClinicRow) => number;
+}
 
-/** The statement's money columns, in the order they read. */
-const STATEMENT_COLUMNS = [
-  'Dental Clinic',
-  'Cases Billed',
-  'Billed (PKR)',
-  'Collected (PKR)',
-  'Advance In (PKR)',
-  'Advance Used (PKR)',
-  'Credit Notes (PKR)',
-  'Debit Adj. (PKR)',
-  'Opening (PKR)',
-  'Closing (PKR)',
-  'Advance Credit (PKR)',
-  'Remaining Due (PKR)',
-] as const;
+export type StatementColumnKey =
+  | 'clinic'
+  | 'cases'
+  | 'billed'
+  | 'collected'
+  | 'advanceIn'
+  | 'advanceUsed'
+  | 'credits'
+  | 'debits'
+  | 'opening'
+  | 'closing'
+  | 'advanceCredit'
+  | 'due';
 
-/** The figures of one clinic row, in STATEMENT_COLUMNS order (skipping the name). */
-const rowFigures = (r: MonthlyClinicRow): number[] => [
-  r.cases_billed,
-  r.billed,
-  r.collected,
-  r.advance_received,
-  r.advance_applied,
-  r.credit_notes,
-  r.debit_adjustments,
-  r.opening_balance,
-  r.closing_balance,
-  r.advance_credit,
-  r.remaining,
+/**
+ * THE TABLE, DECLARED ONCE.
+ *
+ * The screen, the PDF and the workbook all draw the same table, and they used
+ * to declare it three times: twelve headings in one place, twelve SHORT
+ * headings plus a legend explaining them in another, and twelve spreadsheet
+ * headers in a third. They drifted — the PDF needed a legend because its
+ * headings were abbreviations the other two did not use, so a document had
+ * to be read alongside a key; and a column could be renamed in one place
+ * and not the others.
+ *
+ * Now there is one table. The PDF prints the same headings the screen
+ * prints, so it needs no legend; the workbook prints the same headings
+ * again; and `core` is what the Compact view shows.
+ */
+export const STATEMENT_COLUMNS: readonly StatementColumn[] = [
+  {
+    key: 'clinic',
+    label: 'Dental Clinic',
+    width: 0.155,
+    align: 'left',
+    core: true,
+    strong: false,
+    value: () => 0,
+  },
+  {
+    key: 'cases',
+    label: 'Cases Billed',
+    width: 0.05,
+    align: 'right',
+    core: true,
+    strong: false,
+    value: (r) => r.cases_billed,
+  },
+  {
+    key: 'billed',
+    label: 'Billed (Dr)',
+    width: 0.095,
+    align: 'right',
+    core: true,
+    strong: true,
+    value: (r) => r.billed,
+  },
+  {
+    key: 'collected',
+    label: 'Collected (Cr)',
+    width: 0.095,
+    align: 'right',
+    core: true,
+    strong: false,
+    value: (r) => r.collected,
+  },
+  {
+    key: 'advanceIn',
+    label: 'Advance In',
+    width: 0.075,
+    align: 'right',
+    core: false,
+    strong: false,
+    value: (r) => r.advance_received,
+  },
+  {
+    key: 'advanceUsed',
+    label: 'Advance Used',
+    width: 0.075,
+    align: 'right',
+    core: false,
+    strong: false,
+    value: (r) => r.advance_applied,
+  },
+  {
+    key: 'credits',
+    label: 'Credit Notes',
+    width: 0.075,
+    align: 'right',
+    core: false,
+    strong: false,
+    value: (r) => r.credit_notes,
+  },
+  {
+    key: 'debits',
+    label: 'Debit Adj.',
+    width: 0.075,
+    align: 'right',
+    core: false,
+    strong: false,
+    value: (r) => r.debit_adjustments,
+  },
+  {
+    key: 'opening',
+    label: 'Opening (B/F)',
+    width: 0.085,
+    align: 'right',
+    core: true,
+    strong: false,
+    value: (r) => r.opening_balance,
+  },
+  {
+    key: 'closing',
+    label: 'Closing (C/F)',
+    width: 0.085,
+    align: 'right',
+    core: true,
+    strong: true,
+    value: (r) => r.closing_balance,
+  },
+  {
+    key: 'advanceCredit',
+    label: 'Advance Credit',
+    width: 0.075,
+    align: 'right',
+    core: false,
+    strong: false,
+    value: (r) => r.advance_credit,
+  },
+  {
+    key: 'due',
+    label: 'Remaining Due',
+    width: 0.085,
+    align: 'right',
+    core: true,
+    strong: true,
+    value: (r) => r.remaining,
+  },
 ];
+
+/** The columns to show: the core ones, or all of them. */
+export const statementColumns = (coreOnly: boolean): StatementColumn[] =>
+  STATEMENT_COLUMNS.filter((c) => !coreOnly || c.core);
+
+/* ---------- the workbook ---------- */
 
 /**
  * The monthly statement as an Excel workbook.
@@ -357,6 +494,10 @@ const rowFigures = (r: MonthlyClinicRow): number[] => [
  * sorted and charted; a spreadsheet that cannot do arithmetic is a picture
  * of a spreadsheet.
  *
+ * The columns come from the one declaration the screen and the PDF use
+ * (STATEMENT_COLUMNS), so a heading can never be spelled one way on the
+ * screen and another way in the file.
+ *
  * The grand total deliberately leaves the balance columns blank. The flows
  * (billed, collected, advances, notes) add up across months; the balances
  * (opening, closing, due) do not, because each month opens where the last
@@ -365,8 +506,10 @@ const rowFigures = (r: MonthlyClinicRow): number[] => [
 export const monthlyStatementWorkbook = (
   blocks: MonthlyStatementBlock[],
   meta: { labName: string; periodLabel: string; scopeLabel: string; generatedOn: string },
+  coreOnly = false,
 ): Uint8Array => {
-  const widths = [30, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16];
+  const columns = statementColumns(coreOnly);
+  const widths = [30, ...columns.slice(1).map((c) => (c.key === 'cases' ? 12 : 16))];
 
   /* The document's own title block, so the workbook says what it is when it
      is opened. A sheet that begins with a header row and no title is a
@@ -376,40 +519,35 @@ export const monthlyStatementWorkbook = (
     [{ value: 'Monthly Statement', style: XL.totalLabel }],
     [{ value: `Period: ${meta.periodLabel}` }],
     [{ value: `Clinics: ${meta.scopeLabel}` }],
+    [{ value: 'All amounts in PKR' }],
     [{ value: `Generated: ${meta.generatedOn}` }],
     [{ value: '' }],
   ];
+
+  const moneyStyle = (key: StatementColumnKey) =>
+    key === 'cases' ? XL.count : XL.money;
+
+  /* The summary sheet is the statement BY MONTH, so it does not carry the
+     clinic column — it carries the clinic COUNT instead, and then the same
+     money columns the month sheets carry. */
+  const summaryColumns = columns.slice(1);
 
   const summaryRows: XlsxCell[][] = [
     [
       { value: 'Month', style: XL.header },
       { value: 'Clinics', style: XL.header },
-      { value: 'Cases Billed', style: XL.header },
-      { value: 'Billed (PKR)', style: XL.header },
-      { value: 'Collected (PKR)', style: XL.header },
-      { value: 'Advance In (PKR)', style: XL.header },
-      { value: 'Advance Used (PKR)', style: XL.header },
-      { value: 'Credit Notes (PKR)', style: XL.header },
-      { value: 'Debit Adj. (PKR)', style: XL.header },
-      { value: 'Opening (PKR)', style: XL.header },
-      { value: 'Closing (PKR)', style: XL.header },
-      { value: 'Advance Credit (PKR)', style: XL.header },
-      { value: 'Remaining Due (PKR)', style: XL.header },
+      ...summaryColumns.map((c) => ({ value: c.label, style: XL.header })),
     ],
     ...blocks.map((block) => [
       { value: formatMonthLabel(block.month) },
       { value: block.totals.clinics, style: XL.count },
-      { value: block.totals.cases_billed, style: XL.count },
-      { value: block.totals.billed, style: XL.money },
-      { value: block.totals.collected, style: XL.money },
-      { value: block.totals.advance_received, style: XL.money },
-      { value: block.totals.advance_applied, style: XL.money },
-      { value: block.totals.credit_notes, style: XL.money },
-      { value: block.totals.debit_adjustments, style: XL.money },
-      { value: block.totals.opening_balance, style: XL.money },
-      { value: block.totals.closing_balance, style: XL.money },
-      { value: block.totals.advance_credit, style: XL.money },
-      { value: block.totals.remaining, style: XL.money },
+      ...summaryColumns.map((c) => ({
+        value:
+          c.key === 'cases'
+            ? block.totals.cases_billed
+            : c.value(block.totals as unknown as MonthlyClinicRow),
+        style: moneyStyle(c.key),
+      })),
     ]),
   ];
 
@@ -417,20 +555,24 @@ export const monthlyStatementWorkbook = (
   if (blocks.length > 0) {
     const sum = (pick: (b: MonthlyStatementBlock) => number) =>
       roundMoney(blocks.reduce((acc, b) => acc + pick(b), 0));
+    const isBalance = (key: StatementColumnKey) =>
+      key === 'opening' || key === 'closing' || key === 'due';
     summaryRows.push([
       { value: 'TOTAL', style: XL.totalLabel },
       { value: '', style: XL.totalLabel },
-      { value: blocks.reduce((a, b) => a + b.totals.cases_billed, 0), style: XL.totalCount },
-      { value: sum((b) => b.totals.billed), style: XL.totalMoney },
-      { value: sum((b) => b.totals.collected), style: XL.totalMoney },
-      { value: sum((b) => b.totals.advance_received), style: XL.totalMoney },
-      { value: sum((b) => b.totals.advance_applied), style: XL.totalMoney },
-      { value: sum((b) => b.totals.credit_notes), style: XL.totalMoney },
-      { value: sum((b) => b.totals.debit_adjustments), style: XL.totalMoney },
-      { value: '', style: XL.totalMoney },
-      { value: '', style: XL.totalMoney },
-      { value: '', style: XL.totalMoney },
-      { value: '', style: XL.totalMoney },
+      ...summaryColumns.map((c) => {
+        if (c.key === 'cases') {
+          return {
+            value: blocks.reduce((a, b) => a + b.totals.cases_billed, 0),
+            style: XL.totalCount,
+          };
+        }
+        if (isBalance(c.key)) return { value: '', style: XL.totalMoney };
+        return {
+          value: sum((b) => c.value(b.totals as unknown as MonthlyClinicRow)),
+          style: XL.totalMoney,
+        };
+      }),
     ]);
   }
 
@@ -446,27 +588,19 @@ export const monthlyStatementWorkbook = (
       freezeRows: 1,
       widths,
       rows: [
-        STATEMENT_COLUMNS.map((h) => ({ value: h as string, style: XL.header })),
+        columns.map((c) => ({ value: c.label, style: XL.header })),
         ...block.rows.map((r) => [
           { value: r.lab_name },
-          ...rowFigures(r).map((v, i) => ({
-            value: v,
-            style: i === 0 ? XL.count : XL.money,
-          })),
+          ...columns
+            .slice(1)
+            .map((c) => ({ value: c.value(r), style: moneyStyle(c.key) })),
         ]),
         [
           { value: 'MONTH TOTAL', style: XL.totalLabel },
-          { value: block.totals.cases_billed, style: XL.totalCount },
-          { value: block.totals.billed, style: XL.totalMoney },
-          { value: block.totals.collected, style: XL.totalMoney },
-          { value: block.totals.advance_received, style: XL.totalMoney },
-          { value: block.totals.advance_applied, style: XL.totalMoney },
-          { value: block.totals.credit_notes, style: XL.totalMoney },
-          { value: block.totals.debit_adjustments, style: XL.totalMoney },
-          { value: block.totals.opening_balance, style: XL.totalMoney },
-          { value: block.totals.closing_balance, style: XL.totalMoney },
-          { value: block.totals.advance_credit, style: XL.totalMoney },
-          { value: block.totals.remaining, style: XL.totalMoney },
+          ...columns.slice(1).map((c) => ({
+            value: c.value(block.totals as unknown as MonthlyClinicRow),
+            style: c.key === 'cases' ? XL.totalCount : XL.totalMoney,
+          })),
         ],
       ],
     })),
@@ -474,3 +608,4 @@ export const monthlyStatementWorkbook = (
 
   return buildXlsx(sheets);
 };
+;

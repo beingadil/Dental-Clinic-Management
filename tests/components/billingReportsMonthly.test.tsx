@@ -150,6 +150,10 @@ const { INVOICES, ADVANCES, ADJUSTMENTS } = vi.hoisted(() => {
   return { INVOICES: invoices, ADVANCES: advances, ADJUSTMENTS: adjustments };
 });
 
+/* Mutable so a test can ask for the COMPACT view (the default) or the full
+   one, without a second mock of the whole app. */
+const PREFS = vi.hoisted(() => ({ statement_columns: 'full' as 'compact' | 'full' }));
+
 vi.mock('../../src/context/AppContext', () => ({
   useApp: () => ({
     invoices: INVOICES,
@@ -161,6 +165,11 @@ vi.mock('../../src/context/AppContext', () => ({
     labs: [],
     brandingSettings: { appName: 'Dental Solutions', lab_name: 'Dental Lab' },
     showToast: () => {},
+    /* The statement opens in COMPACT — seven columns, the ones a reader needs.
+       These tests are about the DETAIL columns, so the mock asks for the full
+       set; the Compact view has its own test below. */
+    userPreferences: { statement_columns: PREFS.statement_columns },
+    updateUserPreferences: () => {},
   }),
 }));
 
@@ -191,6 +200,7 @@ const renderReports = () =>
 
 afterEach(() => {
   cleanup();
+  PREFS.statement_columns = 'full';
   downloadCSV.mockClear();
   downloadPdf.mockClear();
   saveFile.mockClear();
@@ -288,6 +298,44 @@ describe('BillingReportsView monthly statement', () => {
     // workbook over a CSV.
     expect(xml).toContain('<v>37000</v>'); // March closing balance
     expect(xml).toContain('<v>5000</v>'); // March advance credit
+  });
+});
+
+describe('the compact view', () => {
+  /* Twelve columns is more than a laptop screen shows at once, so the
+     statement opens on the seven a reader needs. The choice is remembered,
+     and the exported document follows it — the file an operator sends is
+     the file they were reading. */
+  it('shows only the columns a reader needs', () => {
+    PREFS.statement_columns = 'compact';
+    renderReports();
+    const headers = within(tables()[0])
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent!.trim());
+    expect(headers).toContain('Dental Clinic');
+    expect(headers).toContain('Billed (Dr)');
+    expect(headers).toContain('Collected (Cr)');
+    expect(headers).toContain('Closing (C/F)');
+    expect(headers).toContain('Remaining Due');
+    expect(headers).toContain('Opening (B/F)');
+    // The detail columns are the ones the Compact view leaves out.
+    expect(headers).not.toContain('Advance In');
+    expect(headers).not.toContain('Credit Notes');
+    expect(headers).not.toContain('Advance Credit');
+  });
+
+  it('exports the same columns it shows', async () => {
+    PREFS.statement_columns = 'compact';
+    renderReports();
+    fireEvent.click(screen.getByLabelText('Export the monthly statement as an Excel workbook'));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    const [, bytes] = saveFile.mock.calls[0] as unknown as [string, Uint8Array];
+    const xml = new TextDecoder().decode(bytes);
+    // The core columns are there...
+    expect(xml).toContain('Remaining Due');
+    // ...and the detail ones are not, because the document is the one on screen.
+    expect(xml).not.toContain('Credit Notes');
+    expect(xml).not.toContain('Advance Used');
   });
 });
 
