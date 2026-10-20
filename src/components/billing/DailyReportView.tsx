@@ -102,9 +102,16 @@ export const DailyReportView: React.FC = () => {
       const outcome = await downloadPdf(fileName, pdf, 'PDF document');
       /* Only the unhappy paths are announced. A successful save is confirmed
          by the chooser the operator just dismissed; a banner on top of that is
-         noise. Cancelling says nothing — they chose that. */
+         noise. Cancelling says nothing — they chose that.
+
+         The one success worth saying is the one where there was no chooser:
+         the file went to the browser's own download folder, and the operator
+         would otherwise be hunting the filesystem for a dialog that was
+         never going to appear. */
       if (outcome.status === 'error') {
         showToast(`Could not save the PDF: ${outcome.message}`, 'error');
+      } else if (outcome.status === 'saved' && outcome.location === 'downloads') {
+        showToast(`Saved ${outcome.path} to your browser's downloads folder.`, 'info');
       }
     } catch (e) {
       showToast(
