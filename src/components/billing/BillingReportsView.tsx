@@ -24,7 +24,6 @@ import {
   Printer,
   Trash2,
   Search,
-  Calendar,
   Building2,
   FileText,
   FileCheck,
@@ -426,32 +425,14 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               const t = block.totals;
               return (
                 <div key={block.month} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                  {/* Month header */}
-                  <div className="bg-slate-900 text-white px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-indigo-400" />
-                      <span className="font-bold text-sm">{formatMonthLabel(block.month)}</span>
-                      <span className="text-xs text-slate-300 font-normal">
-                        ({t.clinics} Active Clinics)
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                      <span>Billed: <strong>{formatPKR(t.billed)}</strong></span>
-                      <span className="text-emerald-400">Collected: <strong>{formatPKR(t.collected)}</strong></span>
-                      {t.advance_received > 0 && (
-                        <span className="text-sky-400">Advance In: <strong>{formatPKR(t.advance_received)}</strong></span>
-                      )}
-                      {t.advance_credit > 0 && (
-                        <span className="text-sky-300">Advance Held: <strong>{formatPKR(t.advance_credit)}</strong></span>
-                      )}
-                      <span className={t.closing_balance < 0 ? 'text-emerald-400' : 'text-white'}>
-                        Closing: <strong>{formatPKR(t.closing_balance)}</strong>
-                      </span>
-                      <span className={t.remaining > 0 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
-                        Remaining: <strong>{formatPKR(t.remaining)}</strong>
-                      </span>
-                    </div>
-                  </div>
+                <div className="flex items-baseline gap-2 px-5 pt-4 pb-1">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {formatMonthLabel(block.month)}
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    {t.clinics} active {t.clinics === 1 ? 'clinic' : 'clinics'}
+                  </span>
+                </div>
 
                   {/* Clinics Table. The "Month Total" row used to be why this stayed hand-rolled:
                       DataTable had no <tfoot> slot, and its `footer` prop renders
@@ -459,25 +440,29 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       row of the table — which is exactly what
                       billingReportsMonthly.test.tsx asserts against
                       (`within(table).getByText('Month Total').closest('tr')`).
-                      `tfoot` now renders inside the table, so it can. */}
+                      `tfoot` now renders inside the table, so it can.
+
+                      The totals row is a ruled line, not a second black slab:
+                      the month header is already the band's job, and two of
+                      them in one card is one too many. */}
                   <DataTable
                     data={block.rows}
                     rowKey={(r) => r.lab_id}
                     stickyFirstColumn
                     tfoot={
-                      <tr className="bg-slate-900 text-white font-bold text-[11px] uppercase tracking-wider">
-                        <td className="ds-sticky-col bg-slate-900 py-2.5 px-3">Month Total</td>
+                      <tr className="border-t-2 border-slate-300 bg-white font-bold text-[11px] uppercase tracking-wider text-slate-600">
+                        <td className="ds-sticky-col py-2.5 px-3">Month total</td>
                         <td className="py-2.5 px-3 text-center">{t.cases_billed}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">{formatPKR(t.billed)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-emerald-300">{formatPKR(t.collected)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_received)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_applied)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-rose-300">{formatPKR(t.credit_notes)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-amber-300">{formatPKR(t.debit_adjustments)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-slate-300">{formatPKR(t.opening_balance)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">{formatPKR(t.closing_balance)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_credit)}</td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-amber-300">{formatPKR(t.remaining)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-slate-900">{formatPKR(t.billed)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-success">{formatPKR(t.collected)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-info">{formatPKR(t.advance_received)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-info">{formatPKR(t.advance_applied)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-danger">{formatPKR(t.credit_notes)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-warning">{formatPKR(t.debit_adjustments)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-muted">{formatPKR(t.opening_balance)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-slate-900">{formatPKR(t.closing_balance)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-info">{formatPKR(t.advance_credit)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-ink-warning">{formatPKR(t.remaining)}</td>
                       </tr>
                     }
                     columns={[
@@ -716,7 +701,9 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
 /* ── Small presentational pieces ──────────────────────────────────────────── */
 
-/** One figure in the statement's summary strip. */
+/**
+ * One figure, in the statement's own language: a small label over a number.
+ */
 const Stat: React.FC<{
   label: string;
   value: string;

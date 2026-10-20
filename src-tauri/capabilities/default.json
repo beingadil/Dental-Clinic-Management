@@ -1,16 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default window capabilities: core event/window access plus the custom database and file-checksum commands. The four window mutation permissions are what `core:window:default` deliberately leaves out: the header's window controls (minimize / maximize / close) and the close-request flush in persistence.ts, which force-destroys the window after saving the pending SQLite write. Without them every one of those calls rejects at runtime and the app cannot be closed. `core:webview:allow-internal-toggle-devtools` was removed: nothing in src/ ever called toggleDevtools, so the grant did nothing except let any injected script open devtools against a database of patient records. `tests/lib/tauriWindowPermissions.test.ts` now fails the suite for an unjustified permission, so it cannot be reintroduced by accident. tauri-plugin-single-instance (v2.5.3) is registered in lib.rs and deliberately has NO entry in this list: it ships no IPC command — it takes a per-process named mutex from the OS and kills the second process before it ever reaches Builder::run — so tauri-build generates no permission to grant. Adding one is not redundant, it is a build error ('Permission single-instance:default not found', checked against the permission list tauri-build emits for this app: core:*, dialog:*, opener:*). The protection is entirely Rust-side; do not add `single-instance:default` to 'fix' what looks like a missing grant.",
+  "description": "Default window capabilities: core event access plus the custom database and file-checksum commands. The window-mutation permissions are what `core:window:default` deliberately leaves out: the close-request flush in persistence.ts, which force-destroys the window after saving the pending SQLite write. Without it that call rejects at runtime and the window cannot be closed. The header's own minimise / maximise / close buttons were removed — the OS title bar already owns them, and granting the webview the power to move or close the window as well only widened what an injected script could reach. `core:webview:allow-internal-toggle-devtools` was removed for the same reason: nothing in src/ ever called toggleDevtools, so the grant did nothing except let any injected script open devtools against a database of patient records. `tests/lib/tauriWindowPermissions.test.ts` now fails the suite for an unjustified permission, so it cannot be reintroduced by accident. tauri-plugin-single-instance (v2.5.3) is registered in lib.rs and deliberately has NO entry in this list: it ships no IPC command — it takes a per-process named mutex from the OS and kills the second process before it ever reaches Builder::run — so tauri-build generates no permission to grant. Adding one is not redundant, it is a build error ('Permission single-instance:default not found', checked against the permission list tauri-build emits for this app: core:*, dialog:*, opener:*). The protection is entirely Rust-side; do not add `single-instance:default` to 'fix' what looks like a missing grant.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:event:default",
-    "core:window:default",
-    "core:window:allow-close",
     "core:window:allow-destroy",
-    "core:window:allow-minimize",
-    "core:window:allow-toggle-maximize",
     "dialog:default"
   ],
   "remote": {

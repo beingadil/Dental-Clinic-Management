@@ -171,7 +171,7 @@ const tables = () => screen.getAllByRole('table');
 const clinicRow = (table: HTMLElement) =>
   within(table).getByText('Al-Noor Clinic').closest('tr') as HTMLElement;
 const footerRow = (table: HTMLElement) =>
-  within(table).getByText('Month Total').closest('tr') as HTMLElement;
+  within(table).getByText('Month total').closest('tr') as HTMLElement;
 
 /**
  * Read a figure by its column heading. Several money columns repeat the same
