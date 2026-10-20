@@ -24,6 +24,27 @@
  *
  * Usage: node scripts/contrast-audit.mjs
  * Exits 1 if any pairing fails, so it can gate CI. Needs no build step.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS GRADED, AND WHAT IS NOT
+ * ---------------------------------------------------------------------------
+ * Graded: a `bg-*` utility paired with the ink painted on it — `text-*` in
+ * every interaction state, and `placeholder-*` on the field it is painted in.
+ * A placeholder used to be invisible here, and the blind spot was not
+ * theoretical: `placeholder-slate-400` on a white field measured 2.63:1 and
+ * the suite stayed green, because the audit only ever paired a `bg-*` with a
+ * `text-*`. A field is the one place where the faintest ink is the easiest to
+ * ship and the hardest to notice — the real text is invisible until you type.
+ *
+ * NOT graded: a surface painted by a CSS class rather than a utility. The
+ * frosted panes (`.auth-glass`, `.auth-chip`) set their fill from a custom
+ * property, so the audit cannot see them and grades their contents against
+ * the surface BEHIND the pane. In both themes the pane LIGHTENS that surface,
+ * so the graded ratio is optimistic rather than conservative. The panes are
+ * therefore verified by MEASUREMENT — rendered pixels, not tokens — and the
+ * numbers live in the note above `.auth-glass` in src/index.css. If a pane is
+ * ever given a Tailwind utility fill with an alpha, this audit would model it
+ * correctly on its own (see the translucent compositing below).
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -346,8 +367,19 @@ const files = walk(SRC)
  * contrast to grade.
  */
 const STATE = '(?:(hover|focus|focus-visible|active|visited|disabled|group-hover|dark|focus-within):)?'
+/**
+ * The colour utilities the audit understands.
+ *
+ * `placeholder-*` is in the list because a placeholder is INK — it is text the
+ * operator reads, in a field they are about to type into. It was not graded
+ * before, and the blind spot was not theoretical: `placeholder-slate-400` on
+ * a white field measured 2.63:1 and the whole suite stayed green, because
+ * the audit only ever paired a `bg-*` with a `text-*`. A field is the one
+ * place where the "real" text is invisible until you type, so its faintest
+ * ink is the easiest to ship and the hardest to notice.
+ */
 const COLOUR_UTIL = new RegExp(
-  `^${STATE}(bg|text)-(?:(white|black|transparent)|(?:(?:([a-z]+)-))?(\\d{2,3}))(?:\\/(\\d{1,3}))?$`,
+  `^${STATE}(bg|text|placeholder)-(?:(white|black|transparent)|(?:(?:([a-z]+)-))?(\\d{2,3}))(?:\\/(\\d{1,3}))?$`,
 )
 
 /**
@@ -384,7 +416,7 @@ function composite(value, alpha, backdrop) {
 }
 
 /** Utility name → `--color-<name>`, e.g. `bg-slate-900` → `--color-slate-900`. */
-const tokenOf = (util) => `--color-${util.slice(util.startsWith('bg-') ? 3 : 5)}`
+const tokenOf = (util) => `--color-${util.slice(util.indexOf('-') + 1)}`
 
 /**
  * Parse one class token into `{ state, kind, util }`, or null if it is not a
@@ -437,6 +469,20 @@ function* renderings(classes) {
     // colour gets a row of its own.
     if (st && bg === baseBg && fg === baseFg) continue
     yield { bg, fg, state: st || 'rest' }
+  }
+
+  /* A PLACEHOLDER is ink, on the element's OWN surface, and no interaction
+     state changes it. It is therefore a rendering in its own right rather
+     than a foreground the text can stand in for: the text is what the
+     operator will read, and the placeholder is what they read FIRST, in a
+     field that is otherwise empty.
+
+     It is graded against the element's own background — the field it is
+     painted in — not against the card behind it, because the field covers
+     it. */
+  const placeholder = classes.find((c) => c.kind === 'placeholder' && c.state === '')
+  if (placeholder && baseBg) {
+    yield { bg: baseBg, fg: placeholder, state: 'placeholder' }
   }
 }
 
@@ -847,6 +893,7 @@ function expandClassName(raw) {
   return [{ text: strings.join(' '), path: [] }]
 }
 
+
 for (const file of files) {
   const src = readFileSync(file, 'utf8')
   const elements = jsxElementsWithBackground(src)
@@ -900,7 +947,7 @@ function resolveLight(util, state = '') {
   // shortcut.
   const alias = (state && aliases[`${state}:${util}`]) || aliases[util]
   if (alias) return deref(lightTokens, alias)
-  return deref(lightTokens, tokenOf(util)) ?? (util.startsWith('text-') || util.startsWith('bg-') ? BRAND(util) : null)
+  return deref(lightTokens, tokenOf(util)) ?? (util.startsWith('text-') || util.startsWith('bg-') || util.startsWith('placeholder-') ? BRAND(util) : null)
 }
 
 /**
@@ -932,6 +979,7 @@ function resolveDark(util, state = '') {
   if (brand) return { value: brand, remapped: true }
   return { value: deref(lightTokens, tokenOf(util)), remapped: false }
 }
+
 
 const rows = []
 const gaps = []
@@ -1066,9 +1114,13 @@ const fails = graded.filter((r) => r.dark < AA_BODY || r.light < AA_BODY)
 const darkRegressions = fails.filter((r) => r.light >= AA_BODY)
 const preexisting = fails.filter((r) => r.light < AA_BODY)
 
-/** Rows that fail ONLY in an interaction state — the class this tool missed. */
-const stateOnlyFails = fails.filter((r) => r.state !== 'rest')
+/** Rows that fail ONLY in an interaction state - the class this tool missed. */
+const stateOnlyFails = fails.filter((r) => r.state !== 'rest' && r.state !== 'placeholder')
 const restFails = fails.filter((r) => r.state === 'rest')
+/** A placeholder is not an interaction state - it is a different KIND of ink,
+ *  and it is reported on its own so a field's faint hint is never filed under
+ *  "only fails when you hover it", which is not what is happening. */
+const placeholderFails = fails.filter((r) => r.state === 'placeholder')
 
 const pad = (s, n) => String(s).padEnd(n)
 const num = (v) => (v === null ? '  n/a' : v.toFixed(2))
@@ -1112,8 +1164,8 @@ if (unremapped.size) {
 
 console.log(
   fails.length
-    ? `\n${fails.length} pairing(s) below ${AA_BODY}:1 — ${darkRegressions.length} introduced by the dark remap, ${preexisting.length} pre-existing in light mode (${restFails.length} at rest, ${stateOnlyFails.length} only in an interaction state).`
-    : `\nAll ${graded.length} graded pairings clear ${AA_BODY}:1 in both themes, across rest + ${GRADED_STATES.length - 1} interaction state(s).`,
+    ? `\n${fails.length} pairing(s) below ${AA_BODY}:1 — ${darkRegressions.length} introduced by the dark remap, ${preexisting.length} pre-existing in light mode (${restFails.length} at rest, ${stateOnlyFails.length} only in an interaction state, ${placeholderFails.length} a placeholder).`
+    : `\nAll ${graded.length} graded pairings clear ${AA_BODY}:1 in both themes, across rest + ${GRADED_STATES.length - 1} interaction state(s) and placeholders.`,
 )
 
 if (darkRegressions.length) {
@@ -1134,6 +1186,14 @@ if (preexisting.length) {
 if (stateOnlyFails.length) {
   console.log(`\n${'='.repeat(70)}\nFAILING ONLY IN AN INTERACTION STATE — invisible to the old audit\n${'='.repeat(70)}`)
   for (const r of stateOnlyFails) {
+    console.log(`  ${r.key.replace(/\|([a-z-]+)$/, ' > $1').replace('|', ' > ')}  light ${r.light.toFixed(2)} → dark ${r.dark.toFixed(2)}`)
+    console.log(`      ${r.where.slice(0, 2).join(', ')}${r.where.length > 2 ? ` +${r.where.length - 2} more` : ''}`)
+  }
+}
+
+if (placeholderFails.length) {
+  console.log(`\n${'='.repeat(70)}\nFAILING PLACEHOLDER — the hint in an empty field\n${'='.repeat(70)}`)
+  for (const r of placeholderFails) {
     console.log(`  ${r.key.replace(/\|([a-z-]+)$/, ' > $1').replace('|', ' > ')}  light ${r.light.toFixed(2)} → dark ${r.dark.toFixed(2)}`)
     console.log(`      ${r.where.slice(0, 2).join(', ')}${r.where.length > 2 ? ` +${r.where.length - 2} more` : ''}`)
   }

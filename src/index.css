@@ -621,6 +621,25 @@
  * Under `prefers-reduced-transparency` the glass becomes a solid pane and
  * the blur is dropped: a sheet of glass you cannot see through is a sheet
  * of glass nobody asked for.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS PANE IS NOT IN THE CONTRAST AUDIT
+ * ---------------------------------------------------------------------------
+ * The audit grades a `bg-*` utility against the ink painted on it. This
+ * pane's fill is a custom property, so the audit cannot see the surface and
+ * grades its contents against the page BEHIND the pane. In both themes the
+ * pane LIGHTENS that surface, so the audited ratio is optimistic, not
+ * conservative — which is the one direction that hides a failure.
+ *
+ * So the pane is verified by MEASUREMENT instead: the rendered pixels are
+ * sampled and every figure on it is checked against what is actually
+ * painted behind it, in both themes. It clears AA in both (worst measured
+ * 4.67:1).
+ *
+ * If this pane is ever given a Tailwind utility fill with an alpha, the
+ * audit would model it correctly on its own — it already composites
+ * translucent utilities over the surface behind them — and this note can
+ * go.
  */
 .auth-glass {
   position: relative;
