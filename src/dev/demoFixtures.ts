@@ -32,6 +32,7 @@
  */
 import { getDaysOffsetStr } from '../utils/dateUtils';
 import { LAB_DEPARTMENTS } from '../utils/labDepartments';
+import { waitForState } from '../utils/awaitState';
 import { isDatabaseReady } from '../db';
 import { casesRepo } from '../db/repos';
 import { flushNow } from '../db/persistence';
@@ -439,7 +440,17 @@ export async function seedDemoFixtures(
 
     created.push({ id: created_.id, case_number: created_.case_number });
     if (spec.paid) paidCaseIds.push(created_.id);
-    await settle();
+    /* Wait for the case to actually APPEAR before minting the next one.
+       `addCase` numbers the case from the `cases` array in the render
+       closure it was created in, so a second call made before React has
+       re-rendered reads the same stale array and mints the same number.
+       A single yield is a race — React posts its own work to the same
+       channel, and which is drained first is not guaranteed. Waiting for the
+       evidence is not. */
+    await waitForState(
+      () => getApp().cases.some((c) => c.id === created_.id),
+      { describe: `case ${created_.case_number} to appear in the app's case list` }
+    );
   }
 
   // ── Prove the numbering actually advanced ─────────────────────────────
@@ -450,7 +461,8 @@ export async function seedDemoFixtures(
     const dupes = numbers.filter((n) => (seen.has(n) ? true : (seen.add(n), false)));
     throw new Error(
       `Duplicate case numbers minted: ${[...new Set(dupes)].join(', ')}. ` +
-        'addCase reads `cases` from its render closure — it needs a yield between calls.',
+        'addCase reads `cases` from its render closure, so the next case must wait ' +
+        'for this one to appear before it is minted.',
     );
   }
 
