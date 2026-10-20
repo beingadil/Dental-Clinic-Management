@@ -4,6 +4,81 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.29.0] - 2026-10-20
+
+The statements are now documents an operator can read and send: the monthly
+statement chooses its clinics, exports as a real workbook or a real PDF, and
+prints the same columns the screen shows. The desktop app stops drawing its
+own window controls, and the export pipeline no longer produces a
+zero-byte file and calls it saved.
+
+### Added
+- **The monthly statement chooses its clinics.** A searchable multi-select
+  filter scopes the statement, the workbook and the PDF to the clinics in
+  play. The filter is applied *after* the history walk, so a clinic left out
+  does not rewrite the balance carried forward into the months that remain;
+  the month's totals are recomputed from what is left. Excluded ids are
+  recorded, not included ones, so a clinic added later is in scope by
+  default rather than silently missing from the statement.
+- **A real Excel workbook replaces the CSV.** A summary sheet plus one sheet
+  per month, with the figures as NUMBERS carrying a `#,##0` format, so a
+  cell can be summed, sorted and charted — a spreadsheet that cannot do
+  arithmetic is a picture of a spreadsheet. The grand total leaves the
+  balance columns blank on purpose: the flows add up across months, the
+  balances do not.
+- **The statement's twelve columns are now a choice.** Twelve is more than a
+  laptop screen shows at once, so the statement opens on the seven a reader
+  needs and `FULL` is there for the months being audited. The choice is
+  remembered, and the exported document follows it — the file an operator
+  sends is the file they were reading.
+- **A real vector PDF for the daily lab report**, with one page per month of
+  activity, selectable text and real page breaks. Not a picture of the table
+  and not the browser's print dialog.
+
+### Fixed
+- **The exported PDF was 0 bytes and the app said it was saved.** The blob
+  URL was revoked on a ten-second timer, and the download read it after the
+  timer fired. The URL is now held until the page goes away, the byte count
+  is checked before the bytes leave, and the count that lands on disk is
+  checked again — a short file is an error now, not a success.
+- **The demo seed minted the same case number twice.** `addCase` numbers the
+  case from the `cases` array in the render closure it was created in, so a
+  second call made before React re-rendered read the same stale array. The
+  seed now waits for the created case to *appear* rather than for a tick to
+  pass, and the wait is a tested utility.
+- **The monthly statement's PDF drew its totals row above the column
+  headings.** The totals callback ignored the y it was handed and used a
+  constant. It is now drawn under the last row, where a total belongs.
+- **The daily report's by-clinic breakdown printed a page with a heading and
+  nothing under it** when there were no clinics, and its late-delivery
+  marker was dropped in a refactor. Both are fixed.
+- **The contrast audit could not see a placeholder.** It paired a `bg-*` with
+  the `text-*` painted on it, so a field's hint — which is ink — was graded
+  by nothing. `placeholder-slate-400` on white measured 2.63:1 and the whole
+  suite stayed green. Placeholders are graded now, as ink on the field they
+  are painted in, and a test weakens the placeholder in the source and
+  asserts the audit turns red.
+
+### Changed
+- **One table engine for every statement the app prints.** The ledger, the
+  daily report and the monthly statement each grew their own copy of the
+  same pagination, and the copies had drifted: one put its heading inside
+  the table's own margin, another forgot to repeat the headings on a
+  continuation page, a third measured its rows differently from the way it
+  drew them. The behaviour now lives in one place.
+- **One declaration for the statement's columns.** The screen, the PDF and
+  the workbook each declared the twelve columns, and they had drifted: the
+  PDF needed a legend because its headings were abbreviations the other two
+  did not use, so the document had to be read alongside a key. The PDF now
+  prints the headings the screen prints, and the legend is gone.
+- **The desktop app no longer draws its own window controls.** The operating
+  system's title bar owns them, so the app drawing a second set was two
+  answers to one question. The Tauri window permissions that went with them
+  were removed too.
+- **The first-run screen was rebuilt as a cinematic stage** — a single key
+  light, a vignette and grain behind a frosted console — with the theme
+  switch moved into the header.
+
 ## [Unreleased]
 
 ### Fixed
