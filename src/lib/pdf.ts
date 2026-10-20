@@ -346,34 +346,6 @@ function planColumns(g: Geo, opts: { scopedToClinic: boolean }): { cols: LedgerC
   return { cols, X, tableW: g.CONTENT_W };
 }
 
-function drawTableHeader(
-  ops: PdfOp[], g: Geo, cols: LedgerCol[], X: Record<string, number>, y: number,
-): void {
-  ops.push({ kind: 'rect', x: g.MARGIN, y: y - 4, w: g.CONTENT_W, h: 15, grey: 0.93 });
-  for (const c of cols) {
-    const label = c.align === 'right'
-      ? c.label
-      : c.label;
-    ops.push({
-      kind: 'text',
-      x: c.align === 'right' ? X[c.key] + c.w - textW(label, 6.5) : X[c.key] + 2,
-      y: y + 5, size: 6.5, bold: true, text: label,
-    });
-  }
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4, x2: g.MARGIN + g.CONTENT_W, y2: y - 4, grey: 0.35 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 11, x2: g.MARGIN + g.CONTENT_W, y2: y - 11, grey: 0.35 });
-}
-
-function drawFooter(ops: PdfOp[], g: Geo, meta: LedgerPdfMeta, pageNo: number, pageCount: number): void {
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 12, x2: g.W - g.MARGIN, y2: g.FOOTER_Y + 12, grey: 0.8, width: 0.5 });
-  ops.push({
-    kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
-    text: fitShrink(`${meta.labName} — General Ledger — ${meta.clinicLabel} — ${meta.periodLabel}`, g.CONTENT_W - 130, 6.5).text,
-  });
-  const pg = `Page ${pageNo} of ${pageCount}`;
-  ops.push({ kind: 'text', x: g.W - g.MARGIN - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg });
-}
-
 /** Build the ledger statement PDF. Multi-page, cursor-driven, no overflow. */
 export function buildLedgerPdf(
   entries: LedgerPdfEntry[],
@@ -385,146 +357,159 @@ export function buildLedgerPdf(
   /* A single-clinic export names it in the header, so the column is dropped.
      An "All Clinics" export has no clinic in the header and keeps it. */
   const scopedToClinic = !/^all\s+clinics$/i.test((meta.clinicLabel || '').trim());
-  const { cols, X } = planColumns(g, { scopedToClinic });
-  const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
+  const planned = planColumns(g, { scopedToClinic });
+  const colByKey = Object.fromEntries(planned.cols.map((c) => [c.key, c]));
   const narrW = colByKey.narr.w - 4;
-  const headH = 15;
-  const lineH = 9.5;          // wrapped-line height inside a row
-  const rowBase = 15;         // min row height (single line + rule)
+  const lineH = 9.5;
+  const rowBase = 15; // min row height (single line + rule)
 
-  // Pre-wrap every row once so page breaks never split a row.
+  /* Pre-wrap every row once, so a page break never splits a row and the
+     narration is never clipped. The row's height accounts for the wrap. */
   const rows = entries.map((e) => {
     /* No typeLabel prefix here. It was rendered into the description as
        "Case Invoice - " while ALSO being the TYPE column, so every row opened
        by naming its own column. The type belongs in the column; the
        description should describe the work. */
-    const narr = e.narration || '';
-    const narrLines = wrapText(narr, narrW, 7);
-    const ids: Record<string, { text: string; size: number }> = {
-      date: fitShrink(e.date, colByKey.date.w - 4, 7),
-      // Absent when the column is not planned; guarded again at draw time.
-      ...(colByKey.clinic ? { clinic: fitShrink(e.clinic, colByKey.clinic.w - 4, 7) } : {}),
-      case: fitShrink(e.caseNumber, colByKey.case.w - 4, 7),
-      type: fitShrink(e.typeLabel, colByKey.type.w - 4, 7),
+    const narrLines = wrapText(e.narration || '', narrW, 7);
+    return {
+      e,
+      h: Math.max(rowBase, narrLines.length * lineH + 6),
+      cells: [
+        { text: e.date },
+        // Absent when the column is not planned; the cell list shifts left.
+        ...(colByKey.clinic ? [{ text: e.clinic }] : []),
+        { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.25 : 0 },
+        { text: e.typeLabel },
+        { text: '', lines: narrLines },
+        { text: e.debit ? num(e.debit) : '' },
+        { text: e.credit ? num(e.credit) : '' },
+        { text: num(e.closing), bold: true },
+      ] as TableCell[],
     };
-    return { e, narrLines, ids, h: Math.max(rowBase, narrLines.length * lineH + 6) };
   });
 
-  // --- paginate: pack rows into pages by measured height ---
-  type Chunk = { startIdx: number; endIdx: number; rows: typeof rows; startWithHeader: boolean };
-  const chunks: Chunk[] = [];
-  let cur: Chunk = { startIdx: 0, endIdx: 0, rows: [], startWithHeader: true };
-  let y = g.TABLE_TOP;
-  const pushChunk = () => { if (cur.rows.length) chunks.push(cur); };
+  const showsOpening = meta.openingBalance !== 0 || meta.periodLabel !== 'All Time';
 
-  rows.forEach((r, i) => {
-    const needed = r.h + 2;
-    if (y - needed < g.CONTENT_BOTTOM && cur.rows.length) {
-      pushChunk();
-      cur = { startIdx: i, endIdx: i, rows: [], startWithHeader: true };
-      y = g.TABLE_TOP;
-    }
-    cur.rows.push(r);
-    cur.endIdx = i + 1;
-    y -= needed;
-  });
-  pushChunk();
-  if (chunks.length === 0) chunks.push({ startIdx: 0, endIdx: 0, rows: [], startWithHeader: true });
-  const pageCount = chunks.length;
-
-  const pages: PageSpec[] = [];
-
-  chunks.forEach((chunk, p) => {
-    const ops: PdfOp[] = [];
-    const isLast = p === pageCount - 1;
-
-    // ----- header -----
-    ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 42, size: 13, bold: true, text: fitShrink(meta.labName, g.CONTENT_W * 0.5, 13).text });
-    ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15, text: 'GENERAL LEDGER' });
-    // Right-aligned meta block
-    const right = g.W - g.MARGIN;
-    const metaLine = (label: string, val: string, yy: number) => {
-      ops.push({ kind: 'text', x: right - textW(`${label}: ${val}`, 7.5), y: yy, size: 7.5, grey: 0.35, text: `${label}: ${val}` });
-    };
-    let my = g.H - 42;
-    ops.push({ kind: 'text', x: right - textW(meta.generatedOn, 7.5), y: my, size: 7.5, grey: 0.35, text: meta.generatedOn });
-    my -= 12;
-    const acctLabel = `${meta.accountCode ? `${meta.accountCode} \u00b7 ` : ''}${meta.accountName || 'Accounts Receivable'}`;
-    metaLine('Account', acctLabel, my); my -= 12;
-    metaLine('Period', meta.periodLabel, my); my -= 12;
-    metaLine('Clinic', meta.clinicLabel, my);
-    if (meta.caseFilterLabel) { my -= 12; metaLine('Case/Job', meta.caseFilterLabel, my); }
-    if (meta.periodLabel === 'All Time') { my -= 12; metaLine('As of', meta.generatedOn, my); }
-    // opening balance hint on the header, right under meta
-    if (p === 0 && (meta.openingBalance !== 0 || meta.periodLabel !== 'All Time')) {
-      my -= 12;
-      metaLine('Opening', pk(meta.openingBalance), my);
-    }
-
-    // rule under the header — sits below the deepest right-meta line
-    ops.push({ kind: 'line', x1: g.MARGIN, y1: my - 6, x2: g.W - g.MARGIN, y2: my - 6, grey: 0.6, width: 0.9 });
-
-    // ----- table header -----
-    let y = g.TABLE_TOP;
-    drawTableHeader(ops, g, cols, X, y);
-    y -= headH + 3;
-
-    // opening balance row on page 1 (statement convention: brought forward)
-    if (p === 0 && (meta.openingBalance !== 0 || meta.periodLabel !== 'All Time')) {
-      const ob = num(meta.openingBalance);
-      ops.push({ kind: 'text', x: X.date + 2, y, size: 7, bold: true, grey: 0.35, text: 'Opening Balance (b/f)' });
-      ops.push({ kind: 'text', x: X.close + colByKey.close.w - textW(ob, 7), y, size: 7, bold: true, grey: 0.35, text: ob });
-      ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 5, x2: g.MARGIN + g.CONTENT_W, y2: y - 5, grey: 0.85, width: 0.5 });
-      y -= rowBase;
-    }
-
-    // ----- rows -----
-    for (const r of chunk.rows) {
-      const { e, narrLines, ids } = r;
-      ops.push({ kind: 'text', x: X.date + 2, y, size: ids.date.size, text: ids.date.text });
-      if (colByKey.clinic && ids.clinic) {
-    ops.push({ kind: 'text', x: X.clinic + 2, y, size: ids.clinic.size, text: ids.clinic.text });
-  };
-      if (e.caseNumber) {
-        const cs = ids.case;
-        ops.push({ kind: 'text', x: X.case + 2, y, size: cs.size, bold: true, grey: 0.25, text: cs.text });
-      }
-      ops.push({ kind: 'text', x: X.type + 2, y, size: ids.type.size, text: ids.type.text });
-      narrLines.forEach((ln, li) => {
-        ops.push({ kind: 'text', x: X.narr + 2, y: y - li * lineH, size: 7, text: ln });
-      });
-      const d = e.debit ? num(e.debit) : '';
-      const c = e.credit ? num(e.credit) : '';
-      const b = num(e.closing);
-      if (d) ops.push({ kind: 'text', x: X.debit + colByKey.debit.w - textW(d, 7) - 2, y, size: 7, text: d });
-      if (c) ops.push({ kind: 'text', x: X.credit + colByKey.credit.w - textW(c, 7) - 2, y, size: 7, text: c });
-      ops.push({ kind: 'text', x: X.close + colByKey.close.w - textW(b, 7) - 2, y, size: 7, bold: true, text: b });
-      ops.push({ kind: 'line', x1: g.MARGIN, y1: y - (r.h - rowBase) - 4.5, x2: g.MARGIN + g.CONTENT_W, y2: y - (r.h - rowBase) - 4.5, grey: 0.9, width: 0.4 });
-      y -= r.h;
-    }
-
-    // ----- totals block (last page) -----
-    if (isLast) {
-      y -= 10;
-      if (y < g.CONTENT_BOTTOM + 20) y = g.CONTENT_BOTTOM + 20;
-      const boxW = 250;
-      const boxX = g.MARGIN + g.CONTENT_W - boxW;
-      ops.push({ kind: 'line', x1: boxX, y1: y + 10, x2: g.MARGIN + g.CONTENT_W, y2: y + 10, grey: 0.35 });
-      const line = (label: string, val: string, bold = false, grey = 0) => {
-        ops.push({ kind: 'text', x: boxX, y, size: 8, bold, grey, text: label });
-        ops.push({ kind: 'text', x: g.MARGIN + g.CONTENT_W - textW(val, 8) - 2, y, size: 8, bold, grey, text: val });
+  const section: TableSection = {
+    cols: planned.cols,
+    rows: rows.map((r) => ({ cells: r.cells, height: r.h })),
+    top: g.TABLE_TOP,
+    bottom: g.CONTENT_BOTTOM,
+    // The opening balance is a statement convention: brought forward, and
+    // shown before the month's entries.
+    preRows: showsOpening
+      ? [
+          {
+            cells: [
+              { text: 'Opening Balance (b/f)', bold: true, grey: 0.35 },
+              ...(colByKey.clinic ? [{ text: '' }] : []),
+              { text: '' },
+              { text: '' },
+              { text: '' },
+              { text: '' },
+              { text: '' },
+              { text: num(meta.openingBalance), bold: true, grey: 0.35 },
+            ] as TableCell[],
+          },
+        ]
+      : undefined,
+    totals: (ops, geo, _X, _cols, rowEndY) => {
+      /* The totals block sits just under the last row, and never lower than
+         the footer allows. */
+      let y = Math.max(rowEndY - 24, geo.CONTENT_BOTTOM + 30);
+      const line = (label: string, value: string) => {
+        ops.push({ kind: 'text', x: geo.MARGIN, y, size: 8, bold: true, grey: 0, text: label });
+        ops.push({
+          kind: 'text', x: geo.MARGIN + geo.CONTENT_W - textW(value, 8) - 2,
+          y, size: 8, bold: true, text: value,
+        });
+        y -= 13;
       };
-      line('Total Debits', pk(meta.totalDebits)); y -= 13;
-      line('Total Credits', pk(meta.totalCredits)); y -= 13;
-      line('Closing Balance', pk(meta.closingBalance), true); y -= 13;
+      ops.push({
+        kind: 'line', x1: geo.MARGIN, y1: y + 10, x2: geo.MARGIN + geo.CONTENT_W, y2: y + 10,
+        grey: 0.35, width: 1,
+      });
+      line('Total Debits', pk(meta.totalDebits));
+      line('Total Credits', pk(meta.totalCredits));
+      line('Closing Balance', pk(meta.closingBalance));
       line('Transactions', String(meta.transactionCount ?? 0));
-      y -= 16;
-      ops.push({ kind: 'text', x: g.MARGIN, y, size: 7, grey: 0.45, text: closingDrCr(meta.closingBalance) });
-    }
+      ops.push({
+        kind: 'text', x: geo.MARGIN, y: y - 2, size: 7, grey: 0.45,
+        text: closingDrCr(meta.closingBalance),
+      });
+    },
+  };
 
-    drawFooter(ops, g, meta, p + 1, pageCount);
-    pages.push({ ops, geo: g });
-  });
+  const pages = renderTableSections(
+    g,
+    [section],
+    (ops) => {
+      // The ledger's own header block: the business, the document, and a
+      // right-hand column of what the statement is about.
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: g.H - 42, size: 13, bold: true,
+        text: fitShrink(meta.labName, g.CONTENT_W * 0.5, 13).text,
+      });
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15,
+        text: 'GENERAL LEDGER',
+      });
+      const right = g.W - g.MARGIN;
+      const metaLine = (label: string, val: string, yy: number) => {
+        ops.push({
+          kind: 'text', x: right - textW(`${label}: ${val}`, 7.5), y: yy, size: 7.5, grey: 0.35,
+          text: `${label}: ${val}`,
+        });
+      };
+      let my = g.H - 42;
+      ops.push({
+        kind: 'text', x: right - textW(meta.generatedOn, 7.5), y: my, size: 7.5, grey: 0.35,
+        text: meta.generatedOn,
+      });
+      my -= 12;
+      const acctLabel = `${meta.accountCode ? `${meta.accountCode} · ` : ''}${meta.accountName || 'Accounts Receivable'}`;
+      metaLine('Account', acctLabel, my);
+      my -= 12;
+      metaLine('Period', meta.periodLabel, my);
+      my -= 12;
+      metaLine('Clinic', meta.clinicLabel, my);
+      if (meta.caseFilterLabel) {
+        my -= 12;
+        metaLine('Case/Job', meta.caseFilterLabel, my);
+      }
+      if (meta.periodLabel === 'All Time') {
+        my -= 12;
+        metaLine('As of', meta.generatedOn, my);
+      }
+      // The opening balance hint on the header, right under the meta.
+      if (showsOpening) {
+        my -= 12;
+        metaLine('Opening', pk(meta.openingBalance), my);
+      }
+      // The rule under the header sits below the deepest right-meta line.
+      ops.push({
+        kind: 'line', x1: g.MARGIN, y1: my - 6, x2: g.W - g.MARGIN, y2: my - 6, grey: 0.6, width: 0.9,
+      });
+    },
+    (ops, i, total) => {
+      ops.push({
+        kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 12, x2: g.W - g.MARGIN, y2: g.FOOTER_Y + 12,
+        grey: 0.8, width: 0.5,
+      });
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
+        text: fitShrink(
+          `${meta.labName} — General Ledger — ${meta.clinicLabel} — ${meta.periodLabel}`,
+          g.CONTENT_W - 130,
+          6.5,
+        ).text,
+      });
+      const pg = `Page ${i + 1} of ${total}`;
+      ops.push({
+        kind: 'text', x: g.W - g.MARGIN - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg,
+      });
+    },
+  );
 
   return assemblePdf(pages);
 }
@@ -578,22 +563,6 @@ export interface DailyReportPdfMeta {
   orientation?: Orientation;
 }
 
-interface ReportCol { key: string; label: string; w: number; align: 'left' | 'right' }
-
-function planReportCols(
-  g: Geo,
-  raw: [string, string, number, 'left' | 'right'][],
-): { cols: ReportCol[]; X: Record<string, number> } {
-  const sum = raw.reduce((s, r) => s + r[2], 0);
-  const cols: ReportCol[] = raw.map(([key, label, w, align]) => ({
-    key, label, w: Math.floor((w / sum) * g.CONTENT_W), align,
-  }));
-  const X: Record<string, number> = {};
-  let acc = g.MARGIN;
-  for (const c of cols) { X[c.key] = acc; acc += c.w; }
-  return { cols, X };
-}
-
 const PRODUCTION_COLS: [string, string, number, 'left' | 'right'][] = [
   ['case', 'CASE', 0.11, 'left'],
   ['recv', 'RECEIVED', 0.1, 'left'],
@@ -616,10 +585,6 @@ const CLINIC_COLS: [string, string, number, 'left' | 'right'][] = [
 ];
 
 /** A label + value, drawn right-aligned inside a column. */
-function pushRight(ops: PdfOp[], x: number, w: number, y: number, text: string, size: number, bold = false, grey = 0) {
-  ops.push({ kind: 'text', x: x + w - textW(text, size) - 2, y, size, bold, grey, text });
-}
-
 /** The money summary band: three figures across the content width. */
 function drawSummaryBand(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, y: number): number {
   const items: { label: string; value: string; note?: string }[] = [
@@ -708,6 +673,245 @@ function drawDocFooter(
   ops.push({ kind: 'text', x: g.W - g.MARGIN - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg });
 }
 
+/* ---------- the table engine ---------- */
+
+/**
+ * ONE table engine for every statement this app prints.
+ *
+ * The ledger, the daily lab report and the monthly statement all want the
+ * same thing: a table of rows, split across pages when it does not fit, with
+ * the column headings repeated on each page and the totals on the last one.
+ * Each grew its own copy, and the copies had already drifted — one put its
+ * heading inside the table's own margin, another forgot the repeated
+ * heading on a continuation page, a third measured its rows differently
+ * from the way it drew them.
+ *
+ * So the behaviour lives here once. A document supplies its columns, its
+ * rows and the few things that are its own; the engine packs the rows into
+ * pages by MEASURED height (so a row is never split across a page break),
+ * repeats the headings, and puts the totals on the last page of the section.
+ */
+export interface TableCol {
+  key: string;
+  label: string;
+  /** Share of the content width. Normalised across the table. */
+  w: number;
+  align: 'left' | 'right';
+}
+
+export interface TableCell {
+  text: string;
+  /** Overrides the column's size — for a value that had to shrink to fit. */
+  size?: number;
+  bold?: boolean;
+  grey?: number;
+  /**
+   * A cell whose content WRAPS: the lines, top to bottom.
+   *
+   * Accounting narration is words, not identifiers, and a word cut off is a
+   * sentence the reader cannot finish. The row's height has to account for
+   * the extra lines, which is the caller's job — it is the one that measured
+   * the wrap.
+   */
+  lines?: string[];
+}
+
+export interface TableRow {
+  /** One cell per column, in order. */
+  cells: TableCell[];
+  /** Row height in points. Defaults to a single line. */
+  height?: number;
+}
+
+export interface TableSection {
+  cols: TableCol[];
+  rows: TableRow[];
+  /**
+   * Drawn above the table on the section's FIRST page. Returns the y the
+   * column headings go at.
+   */
+  heading?: (ops: PdfOp[], g: Geo, y: number, continued: boolean) => number;
+  /**
+   * Rows drawn once, on the section's first page, before the data — a
+   * brought-forward balance, for instance.
+   */
+  preRows?: TableRow[];
+  /** Drawn after the section's last row. */
+  totals?: (ops: PdfOp[], g: Geo, X: Record<string, number>, cols: TableCol[], y: number) => void;
+  /** Where the first row starts. */
+  top: number;
+  /** The y the rows may not cross — the totals and the footer need room. */
+  bottom: number;
+  /**
+   * Skip the section entirely when it has nothing in it.
+   *
+   * A section with no rows would otherwise contribute a page with a heading
+   * and nothing under it — a blank sheet in the middle of a document. The
+   * daily report's per-clinic breakdown is one: with no clinics there is
+   * nothing to break down.
+   */
+  skipIfEmpty?: boolean;
+}
+
+/** The default row height, and the gap under it. */
+const ROW_H = 14;
+const ROW_GAP = 2;
+
+/** Lay the columns out across the content width and record where each starts. */
+function layoutCols(
+  g: Geo,
+  cols: TableCol[],
+): { cols: TableCol[]; X: Record<string, number> } {
+  const sum = cols.reduce((s, c) => s + c.w, 0) || 1;
+  const laid = cols.map((c) => ({ ...c, w: Math.floor((c.w / sum) * g.CONTENT_W) }));
+  const X: Record<string, number> = {};
+  let acc = g.MARGIN;
+  for (const c of laid) {
+    X[c.key] = acc;
+    acc += c.w;
+  }
+  return { cols: laid, X };
+}
+
+/** Draw the column headings, shrunk to their column rather than clipped. */
+function drawColumnHeadings(
+  ops: PdfOp[],
+  g: Geo,
+  cols: TableCol[],
+  X: Record<string, number>,
+  y: number,
+): void {
+  ops.push({ kind: 'rect', x: g.MARGIN, y: y - 4, w: g.CONTENT_W, h: 15, grey: 0.93 });
+  for (const c of cols) {
+    const fit = fitShrink(c.label, c.w - 4, 6.5);
+    ops.push({
+      kind: 'text',
+      x: c.align === 'right' ? X[c.key] + c.w - textW(fit.text, fit.size) - 2 : X[c.key] + 2,
+      y: y + 5,
+      size: fit.size,
+      bold: true,
+      text: fit.text,
+    });
+  }
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4, x2: g.MARGIN + g.CONTENT_W, y2: y - 4, grey: 0.35, width: 1 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 11, x2: g.MARGIN + g.CONTENT_W, y2: y - 11, grey: 0.35, width: 1 });
+}
+
+/** The height of one wrapped line inside a row. */
+const LINE_H = 9.5;
+
+/** Draw one row, and the hairline under it. */
+function drawRow(
+  ops: PdfOp[],
+  g: Geo,
+  cols: TableCol[],
+  X: Record<string, number>,
+  row: TableRow,
+  y: number,
+): void {
+  row.cells.forEach((cell, i) => {
+    const col = cols[i];
+    if (!col) return;
+    const size = cell.size ?? 6.5;
+    if (cell.lines && cell.lines.length) {
+      cell.lines.forEach((line, li) => {
+        const fit = fitShrink(line, col.w - 4, size);
+        ops.push({
+          kind: 'text',
+          x: col.align === 'right' ? X[col.key] + col.w - textW(fit.text, fit.size) - 2 : X[col.key] + 2,
+          y: y - li * LINE_H,
+          size: fit.size,
+          bold: cell.bold,
+          grey: cell.grey,
+          text: fit.text,
+        });
+      });
+      return;
+    }
+    const fit = fitShrink(cell.text, col.w - 4, size);
+    ops.push({
+      kind: 'text',
+      x: col.align === 'right' ? X[col.key] + col.w - textW(fit.text, fit.size) - 2 : X[col.key] + 2,
+      y,
+      size: fit.size,
+      bold: cell.bold,
+      grey: cell.grey,
+      text: fit.text,
+    });
+  });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4.5, x2: g.MARGIN + g.CONTENT_W, y2: y - 4.5, grey: 0.9, width: 0.4 });
+}
+
+/**
+ * Render a document made of table sections.
+ *
+ * `drawPageHeader` runs on every page; `drawPageFooter` runs once the page
+ * count is known, which is why it is a separate pass — a footer that says
+ * "Page 2 of 5" cannot be drawn until there are five pages.
+ */
+function renderTableSections(
+  g: Geo,
+  sections: TableSection[],
+  drawPageHeader: (ops: PdfOp[], sectionIndex: number, pageInSection: number) => void,
+  drawPageFooter: (ops: PdfOp[], pageIndex: number, pageCount: number) => void,
+): PageSpec[] {
+  const pages: PageSpec[] = [];
+
+  sections.forEach((section, sectionIndex) => {
+    if (section.skipIfEmpty && !section.rows.length && !section.preRows?.length) return;
+    const { cols, X } = layoutCols(g, section.cols);
+
+    /* Pack the rows into pages by MEASURED height. A row is never split
+       across a page break, and a page never runs into the footer. */
+    const chunks: TableRow[][] = [];
+    let current: TableRow[] = [];
+    let y = section.top;
+    for (const row of section.rows) {
+      const need = (row.height ?? ROW_H) + ROW_GAP;
+      if (y - need < section.bottom && current.length) {
+        chunks.push(current);
+        current = [];
+        y = section.top;
+      }
+      current.push(row);
+      y -= need;
+    }
+    if (current.length) chunks.push(current);
+    if (!chunks.length) chunks.push([]);
+
+    chunks.forEach((rows, pageInSection) => {
+      const ops: PdfOp[] = [];
+      drawPageHeader(ops, sectionIndex, pageInSection);
+
+      let headY = section.top;
+      if (section.heading) headY = section.heading(ops, g, headY, pageInSection > 0);
+      drawColumnHeadings(ops, g, cols, X, headY);
+      let rowY = headY - 18;
+
+      if (pageInSection === 0 && section.preRows) {
+        for (const row of section.preRows) {
+          drawRow(ops, g, cols, X, row, rowY);
+          rowY -= (row.height ?? ROW_H) + ROW_GAP;
+        }
+      }
+
+      for (const row of rows) {
+        drawRow(ops, g, cols, X, row, rowY);
+        rowY -= (row.height ?? ROW_H) + ROW_GAP;
+      }
+
+      if (pageInSection === chunks.length - 1 && section.totals) {
+        section.totals(ops, g, X, cols, rowY);
+      }
+
+      pages.push({ ops, geo: g });
+    });
+  });
+
+  pages.forEach((p, i) => drawPageFooter(p.ops, i, pages.length));
+  return pages;
+}
+
 /**
  * Build the daily lab report PDF.
  *
@@ -723,61 +927,6 @@ export function buildDailyReportPdf(
 ): PdfBuildResult {
   const geoKey = `${meta.paper || 'a4'}-${meta.orientation || 'landscape'}`;
   const g = GEOS[geoKey] || GEOS['a4-landscape'];
-  const { cols, X } = planReportCols(g, PRODUCTION_COLS);
-  const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
-
-  const headH = 15;
-  const rowH = 14;
-  const contentBottom = g.CONTENT_BOTTOM;
-
-  /* The first row's baseline on a given page. Page 1 carries the summary
-     band above its table, so it starts lower than the pages that follow.
-     The vertical rhythm is the report's own, not the ledger's: the ledger
-     carries a tall right-hand meta block, so its table starts low, while
-     this report has two meta lines and its content belongs just under the
-     rule. A page that opens with 80pt of nothing reads as a mistake. */
-  const firstRowY = (pageIndex: number) => (pageIndex === 0 ? g.H - 150 : g.H - 96);
-
-  // Measure every row first, so a page break never splits one.
-  const measured = rows.map((r) => {
-    const delivery = r.daysLate > 0 ? `${r.deliveryDate} (${r.daysLate}d late)` : r.deliveryDate;
-    return {
-      r,
-      ids: {
-        case: fitShrink(r.caseNumber, colByKey.case.w - 4, 7),
-        recv: fitShrink(r.receivedDate, colByKey.recv.w - 4, 7),
-        type: fitShrink(r.caseType, colByKey.type.w - 4, 7),
-        patient: fitShrink(r.patient, colByKey.patient.w - 4, 7),
-        doctor: fitShrink(r.doctor, colByKey.doctor.w - 4, 7),
-        clinic: fitShrink(r.clinic, colByKey.clinic.w - 4, 7),
-        delivery: fitShrink(delivery, colByKey.deliv.w - 4, 7),
-      },
-    };
-  });
-
-  // --- paginate the production sheet ---
-  type Chunk = { rows: typeof measured };
-  const chunks: Chunk[] = [];
-  let cur: Chunk = { rows: [] };
-  let y = firstRowY(0);
-  measured.forEach((m) => {
-    const needed = rowH + 2;
-    if (y - needed < contentBottom && cur.rows.length) {
-      chunks.push(cur);
-      cur = { rows: [] };
-      y = firstRowY(chunks.length);
-    }
-    cur.rows.push(m);
-    y -= needed;
-  });
-  if (cur.rows.length) chunks.push(cur);
-  if (chunks.length === 0) chunks.push({ rows: [] });
-
-  // The clinic breakdown is always its own page.
-  const clinicPages = clinics.length > 0 ? 1 : 0;
-  const pageCount = chunks.length + clinicPages;
-
-  const pages: PageSpec[] = [];
 
   const header = (): DocHeader => ({
     labName: meta.labName,
@@ -790,143 +939,139 @@ export function buildDailyReportPdf(
     periodLabel: meta.periodLabel,
   };
 
-  chunks.forEach((chunk, p) => {
-    const ops: PdfOp[] = [];
-    drawDocHeader(ops, g, header());
-    const rowY0 = firstRowY(p);
-    let rowY = rowY0;
+  const productionCols: TableCol[] = PRODUCTION_COLS.map(([key, label, w, align]) => ({
+    key,
+    label,
+    w,
+    align,
+  }));
+  const clinicCols: TableCol[] = CLINIC_COLS.map(([key, label, w, align]) => ({
+    key,
+    label,
+    w,
+    align,
+  }));
 
-    // The summary band sits on the first page only, in the space between the
-    // rule and the table. The figures are a headline; repeating them on
-    // every page would be noise.
-    if (p === 0) {
-      drawSummaryBand(ops, g, meta, g.H - 76);
-      ops.push({
-        kind: 'text', x: g.MARGIN, y: rowY0 + 30, size: 7.5, bold: true, grey: 0.25,
-        text: 'PRODUCTION SHEET',
-      });
-    }
+  /* The production sheet starts lower than the clinic table, because the
+     summary band sits above it on the first page. */
+  const productionTop = g.H - 150;
+  const clinicTop = g.H - 114;
 
-    drawTableHeader(ops, g, cols as unknown as LedgerCol[], X, rowY0 + 18);
-    rowY -= headH + 3;
+  const sections: TableSection[] = [
+    {
+      cols: productionCols,
+      rows: rows.map((r) => ({
+        cells: [
+          { text: r.caseNumber, bold: true, grey: 0.25 },
+          { text: r.receivedDate },
+          { text: r.caseType },
+          { text: r.patient },
+          { text: r.doctor },
+          { text: r.clinic },
+          {
+            /* A case that went past its delivery date says so, on the row
+               itself. The column is narrow, so the marker shrinks with the
+               date rather than being cut off. */
+            text:
+              r.daysLate > 0 ? `${r.deliveryDate} (${r.daysLate}d late)` : r.deliveryDate,
+            bold: r.daysLate > 0,
+            grey: r.daysLate > 0 ? 0.1 : 0,
+          },
+          { text: pk(r.fee), bold: true },
+        ],
+      })),
+      top: productionTop,
+      bottom: g.CONTENT_BOTTOM + 26,
+      heading: (ops, geo, y, continued) => {
+        // The summary band is a headline: it belongs to the first page only.
+        if (!continued) drawSummaryBand(ops, geo, meta, g.H - 76);
+        ops.push({
+          kind: 'text', x: geo.MARGIN, y: y + 30, size: 7.5, bold: true, grey: 0.25,
+          text: continued ? 'PRODUCTION SHEET (CONT.)' : 'PRODUCTION SHEET',
+        });
+        // An empty sheet says so, rather than leaving a heading over nothing.
+        if (!rows.length) {
+          ops.push({
+            kind: 'text', x: geo.MARGIN, y: y - 2, size: 8, grey: 0.45,
+            text: 'No cases were received in this window.',
+          });
+        }
+        return y + 18;
+      },
+    },
+    {
+      cols: clinicCols,
+      rows: clinics.map((c) => ({
+        cells: [
+          { text: c.clinicName, bold: true },
+          { text: c.doctor || '—' },
+          { text: num(c.casesReceived) },
+          { text: num(c.casesDue) },
+          { text: pk(c.invoicedValue) },
+          { text: pk(c.paidValue) },
+          { text: pk(c.outstanding), bold: true },
+        ],
+      })),
+      top: clinicTop,
+      bottom: g.CONTENT_BOTTOM + 26,
+      skipIfEmpty: true,
+      heading: (ops, geo, y) => {
+        ops.push({
+          kind: 'text', x: geo.MARGIN, y: y + 32, size: 7.5, bold: true, grey: 0.25, text: 'BY CLINIC',
+        });
+        return y + 18;
+      },
+      totals: (ops, geo, X, cols, rowEndY) => {
+        // Totals for the money columns, so the page can be checked at a glance.
+        let y = Math.max(rowEndY - 20, geo.CONTENT_BOTTOM + 26);
+        const line = (label: string, value: string) => {
+          ops.push({ kind: 'text', x: geo.MARGIN, y, size: 7.5, bold: true, grey: 0.25, text: label });
+          ops.push({
+            kind: 'text', x: geo.MARGIN + geo.CONTENT_W - textW(value, 7.5) - 2,
+            y, size: 7.5, bold: true, text: value,
+          });
+          y -= 12;
+        };
+        line('Total invoiced', pk(clinics.reduce((s, c) => s + c.invoicedValue, 0)));
+        line('Total paid', pk(clinics.reduce((s, c) => s + c.paidValue, 0)));
+        line('Total outstanding', pk(clinics.reduce((s, c) => s + c.outstanding, 0)));
+        void X;
+        void cols;
+      },
+    },
+  ];
 
-    for (const m of chunk.rows) {
-      const { r, ids } = m;
-      ops.push({ kind: 'text', x: X.case + 2, y: rowY, size: ids.case.size, bold: true, grey: 0.25, text: ids.case.text });
-      ops.push({ kind: 'text', x: X.recv + 2, y: rowY, size: ids.recv.size, text: ids.recv.text });
-      ops.push({ kind: 'text', x: X.type + 2, y: rowY, size: ids.type.size, text: ids.type.text });
-      ops.push({ kind: 'text', x: X.patient + 2, y: rowY, size: ids.patient.size, text: ids.patient.text });
-      ops.push({ kind: 'text', x: X.doctor + 2, y: rowY, size: ids.doctor.size, text: ids.doctor.text });
-      ops.push({ kind: 'text', x: X.clinic + 2, y: rowY, size: ids.clinic.size, text: ids.clinic.text });
-      ops.push({
-        kind: 'text', x: X.deliv + 2, y: rowY, size: ids.delivery.size,
-        bold: r.daysLate > 0, grey: r.daysLate > 0 ? 0.1 : 0, text: ids.delivery.text,
-      });
-      pushRight(ops, X.fee, colByKey.fee.w, rowY, pk(r.fee), 7, true);
-      ops.push({ kind: 'line', x1: g.MARGIN, y1: rowY - 4.5, x2: g.MARGIN + g.CONTENT_W, y2: rowY - 4.5, grey: 0.9, width: 0.4 });
-      rowY -= rowH;
-    }
-
-    if (chunk.rows.length === 0) {
-      ops.push({ kind: 'text', x: g.MARGIN, y: rowY, size: 8, grey: 0.45, text: 'No cases were received in this window.' });
-    } else {
-      ops.push({
-        kind: 'text', x: g.MARGIN, y: rowY + 4, size: 7, grey: 0.45,
-        text: `${chunk.rows.length} case${chunk.rows.length === 1 ? '' : 's'} on this sheet`,
-      });
-    }
-
-    drawDocFooter(ops, g, footerParts, p + 1, pageCount);
-    pages.push({ ops, geo: g });
-  });
-
-  // ----- the per-clinic breakdown, on its own page -----
-  if (clinics.length > 0) {
-    const ops: PdfOp[] = [];
-    drawDocHeader(ops, g, header());
-
-    ops.push({
-      kind: 'text', x: g.MARGIN, y: g.H - 82, size: 7.5, bold: true, grey: 0.25, text: 'BY CLINIC',
-    });
-
-    const cCols = planReportCols(g, CLINIC_COLS);
-    const tableHeaderY = g.H - 96;
-    drawTableHeader(ops, g, cCols.cols as unknown as LedgerCol[], cCols.X, tableHeaderY);
-    let rowY = tableHeaderY - headH - 3;
-
-    for (const c of clinics) {
-      const name = fitShrink(c.clinicName, cCols.cols[0].w - 4, 7);
-      const doc = fitShrink(c.doctor || '—', cCols.cols[1].w - 4, 7);
-      ops.push({ kind: 'text', x: cCols.X.clinic + 2, y: rowY, size: name.size, bold: true, text: name.text });
-      ops.push({ kind: 'text', x: cCols.X.doctor + 2, y: rowY, size: doc.size, text: doc.text });
-      pushRight(ops, cCols.X.recv, cCols.cols[2].w, rowY, num(c.casesReceived), 7);
-      pushRight(ops, cCols.X.due, cCols.cols[3].w, rowY, num(c.casesDue), 7);
-      pushRight(ops, cCols.X.invoiced, cCols.cols[4].w, rowY, pk(c.invoicedValue), 7);
-      pushRight(ops, cCols.X.paid, cCols.cols[5].w, rowY, pk(c.paidValue), 7);
-      pushRight(ops, cCols.X.outstanding, cCols.cols[6].w, rowY, pk(c.outstanding), 7, true);
-      ops.push({ kind: 'line', x1: g.MARGIN, y1: rowY - 4.5, x2: g.MARGIN + g.CONTENT_W, y2: rowY - 4.5, grey: 0.9, width: 0.4 });
-      rowY -= rowH;
-    }
-
-    // Totals for the money columns, so the page can be checked at a glance.
-    rowY -= 12;
-    const tot = (label: string, value: string) => {
-      ops.push({ kind: 'text', x: g.MARGIN, y: rowY, size: 7.5, bold: true, grey: 0.25, text: label });
-      ops.push({
-        kind: 'text', x: g.MARGIN + g.CONTENT_W - textW(value, 7.5) - 2,
-        y: rowY, size: 7.5, bold: true, text: value,
-      });
-      rowY -= 12;
-    };
-    tot('Total invoiced', pk(clinics.reduce((s, c) => s + c.invoicedValue, 0)));
-    tot('Total paid', pk(clinics.reduce((s, c) => s + c.paidValue, 0)));
-    tot('Total outstanding', pk(clinics.reduce((s, c) => s + c.outstanding, 0)));
-
-    drawDocFooter(ops, g, footerParts, pageCount, pageCount);
-    pages.push({ ops, geo: g });
-  }
+  const pages = renderTableSections(
+    g,
+    sections,
+    (ops) => {
+      drawDocHeader(ops, g, header());
+    },
+    (ops, i, total) => {
+      drawDocFooter(ops, g, footerParts, i + 1, total);
+    },
+  );
 
   return assemblePdf(pages);
 }
 
 /* ---------- monthly statement ---------- */
 
-/** One clinic's row in a month, as the PDF wants it. */
-export interface MonthlyStatementPdfRow {
-  clinicName: string;
-  casesBilled: number;
-  billed: number;
-  collected: number;
-  advanceReceived: number;
-  advanceApplied: number;
-  creditNotes: number;
-  debitAdjustments: number;
-  openingBalance: number;
-  closingBalance: number;
-  advanceCredit: number;
-  remaining: number;
-}
-
-export interface MonthlyStatementPdfMonth {
-  /** 'YYYY-MM' */
-  month: string;
-  /** The month as a title, e.g. 'March 2026'. */
+/**
+ * The columns of a statement, as the printer needs them.
+ *
+ * The caller supplies them — the screen, the PDF and the workbook all read
+ * the same declaration, so the headings on paper are the headings on screen
+ * and a column cannot be renamed in one place and not the others.
+ */
+export interface StatementPdfColumn {
+  key: string;
   label: string;
-  rows: MonthlyStatementPdfRow[];
-  /** The month's totals, in the same shape as a row with no clinic. */
-  totals: {
-    casesBilled: number;
-    billed: number;
-    collected: number;
-    advanceReceived: number;
-    advanceApplied: number;
-    creditNotes: number;
-    debitAdjustments: number;
-    openingBalance: number;
-    closingBalance: number;
-    advanceCredit: number;
-    remaining: number;
-  };
+  /** Share of the content width. */
+  w: number;
+  align: 'left' | 'right';
+  /** Set in bold: the figures a reader must see. */
+  strong?: boolean;
 }
 
 export interface MonthlyStatementPdfMeta {
@@ -940,57 +1085,46 @@ export interface MonthlyStatementPdfMeta {
   orientation?: Orientation;
 }
 
-/* The column plan. The labels are short because a statement table carries
-   twelve money columns and the headings have to fit in narrow columns without
-   being truncated — the full names live in the legend under the title. */
-const MONTHLY_COLS: [string, string, number, 'left' | 'right'][] = [
-  ['clinic', 'CLINIC', 0.155, 'left'],
-  ['cases', 'CASES', 0.045, 'right'],
-  ['billed', 'BILLED', 0.095, 'right'],
-  ['collected', 'COLLECTED', 0.095, 'right'],
-  ['advIn', 'ADV IN', 0.075, 'right'],
-  ['advUsed', 'ADV USED', 0.075, 'right'],
-  ['credits', 'CREDITS', 0.075, 'right'],
-  ['debits', 'DEBITS', 0.075, 'right'],
-  ['opening', 'OPENING', 0.085, 'right'],
-  ['closing', 'CLOSING', 0.085, 'right'],
-  ['advCr', 'ADV CR', 0.075, 'right'],
-  ['due', 'DUE', 0.085, 'right'],
-];
-
-/** The legend: what each short column heading means, in words. */
-const MONTHLY_LEGEND = [
-  'BILLED = charges raised in the month  ·  COLLECTED = settlements received in the month  ·  ' +
-    'ADV IN / ADV USED = advance deposits banked / spent against invoices  ·  CREDITS = credit notes',
-  'DEBITS = debit adjustments  ·  OPENING / CLOSING = balance brought forward / carried forward  ·  ' +
-    'ADV CR = unallocated advance wallet  ·  DUE = still owing',
-];
+/** One month of the statement, already formatted for print. */
+export interface MonthlyStatementPdfMonth {
+  /** 'YYYY-MM' */
+  month: string;
+  /** The month as a title, e.g. 'March 2026'. */
+  label: string;
+  /** One row per clinic: the clinic name, then the figure for each column. */
+  rows: string[][];
+  /** The month's totals, in the same shape as a row. */
+  totals: string[];
+  /** The month's own figures, for the heading: the three a reader wants. */
+  headline: { label: string; value: string }[];
+}
 
 /**
  * Build the monthly statement PDF.
  *
  * One month per page, because a month IS the unit an operator reads this
  * document in: the clinic rows under a month, and the month's totals under
- * them. A month with more clinics than fit on a page continues onto the next
- * one with its table header repeated, so no row is ever orphaned under a
- * page it does not belong to.
+ * them. A month with more clinics than fit on a page continues onto the
+ * next one with its column headings repeated, so no row is ever orphaned
+ * under a page it does not belong to.
+ *
+ * The headings are the ones the screen uses, so the document reads without
+ * a key beside it. It used to print twelve ABBREVIATIONS and a legend
+ * explaining them, which is a document that has to be read alongside
+ * something else.
  */
 export function buildMonthlyStatementPdf(
   months: MonthlyStatementPdfMonth[],
   meta: MonthlyStatementPdfMeta,
+  columns: StatementPdfColumn[],
 ): PdfBuildResult {
   const geoKey = `${meta.paper || 'a4'}-${meta.orientation || 'landscape'}`;
   const g = GEOS[geoKey] || GEOS['a4-landscape'];
-  const { cols, X } = planReportCols(g, MONTHLY_COLS);
-  const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
 
-  const headH = 15;
-  const rowH = 13;
   const header = (): DocHeader => ({
     labName: meta.labName,
     title: 'MONTHLY STATEMENT',
     meta: [meta.generatedOn, `Period: ${meta.periodLabel}`, `Clinics: ${meta.scopeLabel}`],
-    subtitle: MONTHLY_LEGEND,
   });
   const footerParts = {
     labName: meta.labName,
@@ -998,129 +1132,80 @@ export function buildMonthlyStatementPdf(
     periodLabel: meta.periodLabel,
   };
 
-  const pages: PageSpec[] = [];
-
-  /* The page's vertical rhythm, measured once.
-     The title block ends in a rule; the legend sits under it; the month's
-     heading and its figures come next; then the table header; then the rows.
-     Each band is given its own space, because a statement that prints its
-     legend across its own title is a statement nobody can read. */
+  /* The page's vertical rhythm, measured once. The title block ends in a
+     rule; the month's heading comes next; then the column headings; then the
+     rows. Each band is given its own space, because a statement that prints
+     its heading across its own title is a statement nobody can read. */
   const ruleY = g.H - 64 - 12; // three meta lines, so the rule sits one lower
-  const legendBottom = ruleY - 10 - (MONTHLY_LEGEND.length - 1) * 9;
-  const headY = legendBottom - 20;
-  const tableHeaderY = headY - 24;
-  const firstRowY = tableHeaderY - headH - 4;
+  const headingY = ruleY - 26;
+  const tableHeaderY = headingY - 18;
+  const firstRowY = tableHeaderY - 18;
 
-  months.forEach((month) => {
-    /* The month heading and its table travel together: a month that runs on
-       to a second page repeats both, with "(cont.)" on the heading so the
-       reader knows it is the same month. */
-    const chunks: MonthlyStatementPdfRow[][] = [];
-    let cur: MonthlyStatementPdfRow[] = [];
-    // Rows are measured, not counted: the month heading, the legend band and
-    // the month's totals all have to fit above the footer.
-    let y = firstRowY;
-    month.rows.forEach((r) => {
-      if (y - (rowH + 2) < g.CONTENT_BOTTOM + 26 && cur.length) {
-        chunks.push(cur);
-        cur = [];
-        y = firstRowY;
-      }
-      cur.push(r);
-      y -= rowH + 2;
-    });
-    if (cur.length) chunks.push(cur);
-    if (chunks.length === 0) chunks.push([]);
-
-    chunks.forEach((rows, ci) => {
-      const ops: PdfOp[] = [];
-      drawDocHeader(ops, g, header());
-
-      const isLast = ci === chunks.length - 1;
-      // The month heading: the name on the left, the month's own figures on
-      // the right, so a page reads as a statement of one month at a glance.
+  const sections: TableSection[] = months.map((month) => ({
+    cols: columns.map((c) => ({ key: c.key, label: c.label, w: c.w, align: c.align })),
+    rows: month.rows.map((cells) => ({
+      cells: cells.map((text, i) => ({
+        text,
+        bold: columns[i]?.strong,
+        grey: columns[i]?.strong ? 0.15 : 0,
+      })),
+    })),
+    top: firstRowY,
+    bottom: g.CONTENT_BOTTOM + 26,
+    heading: (ops, geo, y, continued) => {
       ops.push({
-        kind: 'text', x: g.MARGIN, y: headY, size: 9, bold: true, grey: 0.1,
-        text: ci === 0 ? month.label.toUpperCase() : `${month.label.toUpperCase()} (CONT.)`,
+        kind: 'text', x: geo.MARGIN, y: y + 32, size: 9, bold: true, grey: 0.1,
+        text: continued ? `${month.label.toUpperCase()} (CONT.)` : month.label.toUpperCase(),
       });
-      const figures: [string, string][] = [
-        ['Billed', pk(month.totals.billed)],
-        ['Collected', pk(month.totals.collected)],
-        ['Due', pk(month.totals.remaining)],
-      ];
-      let fx = g.W - g.MARGIN;
-      figures.reverse().forEach(([label, value]) => {
-        ops.push({ kind: 'text', x: fx - textW(value, 7.5), y: headY, size: 7.5, bold: true, text: value });
-        ops.push({ kind: 'text', x: fx - textW(value, 7.5) - textW(`${label}  `, 6.5) - 3, y: headY, size: 6.5, grey: 0.4, text: `${label}  ` });
-        fx -= textW(value, 7.5) + textW(`${label}  `, 6.5) + 14;
+      // The month's own figures, on the right of the heading.
+      let fx = geo.W - geo.MARGIN;
+      for (const f of [...month.headline].reverse()) {
+        ops.push({
+          kind: 'text', x: fx - textW(f.value, 7.5), y: y + 32, size: 7.5, bold: true, text: f.value,
+        });
+        ops.push({
+          kind: 'text', x: fx - textW(f.value, 7.5) - textW(`${f.label}  `, 6.5) - 3, y: y + 32,
+          size: 6.5, grey: 0.4, text: `${f.label}  `,
+        });
+        fx -= textW(f.value, 7.5) + textW(`${f.label}  `, 6.5) + 14;
+      }
+      ops.push({
+        kind: 'line', x1: geo.MARGIN, y1: y + 26, x2: geo.W - geo.MARGIN, y2: y + 26,
+        grey: 0.75, width: 0.6,
       });
-      ops.push({ kind: 'line', x1: g.MARGIN, y1: headY - 6, x2: g.W - g.MARGIN, y2: headY - 6, grey: 0.75, width: 0.6 });
+      return y + 18;
+    },
+    totals: (ops, geo, X, cols, rowEndY) => {
+      // The month's totals, under a rule, in the columns they belong to.
+      const y = rowEndY - 4;
+      ops.push({
+        kind: 'rect', x: geo.MARGIN, y: y - 5, w: geo.CONTENT_W, h: 14, grey: 0.92,
+      });
+      month.totals.forEach((text, i) => {
+        const col = cols[i];
+        if (!col) return;
+        ops.push({
+          kind: 'text',
+          x: col.align === 'right' ? X[col.key] + col.w - textW(text, 6.5) - 2 : X[col.key] + 2,
+          y: y + 4, size: 6.5, bold: true, text,
+        });
+      });
+    },
+  }));
 
-      drawTableHeader(ops, g, cols as unknown as LedgerCol[], X, tableHeaderY);
-      let rowY = firstRowY;
-
-      for (const r of rows) {
-        const name = fitShrink(r.clinicName, colByKey.clinic.w - 4, 6.5);
-        ops.push({ kind: 'text', x: X.clinic + 2, y: rowY, size: name.size, bold: true, text: name.text });
-        pushRight(ops, X.cases, colByKey.cases.w, rowY, num(r.casesBilled), 6.5);
-        pushRight(ops, X.billed, colByKey.billed.w, rowY, pk(r.billed), 6.5, true);
-        pushRight(ops, X.collected, colByKey.collected.w, rowY, pk(r.collected), 6.5);
-        pushRight(ops, X.advIn, colByKey.advIn.w, rowY, pk(r.advanceReceived), 6.5);
-        pushRight(ops, X.advUsed, colByKey.advUsed.w, rowY, pk(r.advanceApplied), 6.5);
-        pushRight(ops, X.credits, colByKey.credits.w, rowY, pk(r.creditNotes), 6.5);
-        pushRight(ops, X.debits, colByKey.debits.w, rowY, pk(r.debitAdjustments), 6.5);
-        pushRight(ops, X.opening, colByKey.opening.w, rowY, pk(r.openingBalance), 6.5);
-        pushRight(ops, X.closing, colByKey.closing.w, rowY, pk(r.closingBalance), 6.5, true);
-        pushRight(ops, X.advCr, colByKey.advCr.w, rowY, pk(r.advanceCredit), 6.5);
-        pushRight(ops, X.due, colByKey.due.w, rowY, pk(r.remaining), 6.5, true);
-        ops.push({ kind: 'line', x1: g.MARGIN, y1: rowY - 4, x2: g.MARGIN + g.CONTENT_W, y2: rowY - 4, grey: 0.9, width: 0.4 });
-        rowY -= rowH + 2;
-      }
-
-      // The month's totals, under a rule, on the last page of that month.
-      if (isLast) {
-        rowY -= 4;
-        ops.push({ kind: 'rect', x: g.MARGIN, y: rowY - 5, w: g.CONTENT_W, h: 14, grey: 0.92 });
-        ops.push({ kind: 'text', x: X.clinic + 2, y: rowY + 4, size: 6.5, bold: true, text: 'MONTH TOTAL' });
-        const t = month.totals;
-        pushRight(ops, X.cases, colByKey.cases.w, rowY + 4, num(t.casesBilled), 6.5, true);
-        pushRight(ops, X.billed, colByKey.billed.w, rowY + 4, pk(t.billed), 6.5, true);
-        pushRight(ops, X.collected, colByKey.collected.w, rowY + 4, pk(t.collected), 6.5, true);
-        pushRight(ops, X.advIn, colByKey.advIn.w, rowY + 4, pk(t.advanceReceived), 6.5, true);
-        pushRight(ops, X.advUsed, colByKey.advUsed.w, rowY + 4, pk(t.advanceApplied), 6.5, true);
-        pushRight(ops, X.credits, colByKey.credits.w, rowY + 4, pk(t.creditNotes), 6.5, true);
-        pushRight(ops, X.debits, colByKey.debits.w, rowY + 4, pk(t.debitAdjustments), 6.5, true);
-        pushRight(ops, X.opening, colByKey.opening.w, rowY + 4, pk(t.openingBalance), 6.5, true);
-        pushRight(ops, X.closing, colByKey.closing.w, rowY + 4, pk(t.closingBalance), 6.5, true);
-        pushRight(ops, X.advCr, colByKey.advCr.w, rowY + 4, pk(t.advanceCredit), 6.5, true);
-        pushRight(ops, X.due, colByKey.due.w, rowY + 4, pk(t.remaining), 6.5, true);
-      }
-
-      pages.push({ ops, geo: g });
-    });
-  });
-
-  if (pages.length === 0) {
-    /* An empty statement still gets a page, saying so, rather than a file the
-       reader opens to find nothing in it. */
-    const ops: PdfOp[] = [];
-    drawDocHeader(ops, g, header());
-    ops.push({
-      kind: 'text', x: g.MARGIN, y: g.TABLE_TOP, size: 9, grey: 0.4,
-      text: 'No billing activity in this period.',
-    });
-    pages.push({ ops, geo: g });
-  }
-
-  // The page numbers are only knowable once the pages exist.
-  const total = pages.length;
-  pages.forEach((p, i) => {
-    drawDocFooter(p.ops, g, footerParts, i + 1, total);
-  });
+  const pages = renderTableSections(
+    g,
+    sections,
+    (ops) => {
+      drawDocHeader(ops, g, header());
+    },
+    (ops, i, total) => {
+      drawDocFooter(ops, g, footerParts, i + 1, total);
+    },
+  );
 
   return assemblePdf(pages);
 }
-
 /* ---------- download helper ---------- */
 
 /**
