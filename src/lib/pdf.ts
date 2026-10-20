@@ -649,26 +649,60 @@ function drawSummaryBand(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, y: numb
   return y - 30;
 }
 
-/** The report's title block, repeated on every page. */
-function drawReportHeader(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta): number {
+/** A document's title block, repeated on every page. */
+interface DocHeader {
+  /** The business issuing the document. */
+  labName: string;
+  /** The document's own title, in caps. */
+  title: string;
+  /** Right-hand meta lines, top to bottom. */
+  meta: string[];
+  /**
+   * Lines under the rule — a legend, a scope note.
+   *
+   * They go UNDER the rule, not beside the title: a full-width line that
+   * starts at the left margin runs straight into the right-hand meta block
+   * unless it is given a band of its own.
+   */
+  subtitle?: string[];
+}
+
+/** Draws a document's title block. Returns the y of the rule under it. */
+function drawDocHeader(ops: PdfOp[], g: Geo, h: DocHeader): number {
   const right = g.W - g.MARGIN;
-  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 42, size: 13, bold: true, text: fitShrink(meta.labName, g.CONTENT_W * 0.5, 13).text });
-  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15, text: 'DAILY LAB REPORT' });
-  ops.push({ kind: 'text', x: right - textW(meta.generatedOn, 7.5), y: g.H - 42, size: 7.5, grey: 0.35, text: meta.generatedOn });
-  ops.push({
-    kind: 'text', x: right - textW(`Period: ${meta.periodLabel}`, 7.5), y: g.H - 54,
-    size: 7.5, grey: 0.35, text: `Period: ${meta.periodLabel}`,
+  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 42, size: 13, bold: true, text: fitShrink(h.labName, g.CONTENT_W * 0.5, 13).text });
+  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15, text: h.title });
+  let my = g.H - 42;
+  h.meta.forEach((line) => {
+    ops.push({ kind: 'text', x: right - textW(line, 7.5), y: my, size: 7.5, grey: 0.35, text: line });
+    my -= 12;
   });
-  const ruleY = g.H - 64;
+  /* The rule clears the meta block. Two meta lines fit above the rule; a
+     third one has to push the rule down, or the rule is drawn through the
+     text. */
+  const ruleY = g.H - 64 - Math.max(0, h.meta.length - 2) * 12;
   ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.6, width: 0.9 });
+  (h.subtitle ?? []).forEach((line, i) => {
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: ruleY - 10 - i * 9, size: 6.5, grey: 0.4,
+      text: fitShrink(line, g.CONTENT_W, 6.5).text,
+    });
+  });
   return ruleY;
 }
 
-function drawReportFooter(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, pageNo: number, pageCount: number): void {
+/** Draws a document's footer: who it is, which document, and where we are. */
+function drawDocFooter(
+  ops: PdfOp[],
+  g: Geo,
+  parts: { labName: string; title: string; periodLabel: string },
+  pageNo: number,
+  pageCount: number,
+): void {
   ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 12, x2: g.W - g.MARGIN, y2: g.FOOTER_Y + 12, grey: 0.8, width: 0.5 });
   ops.push({
     kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
-    text: fitShrink(`${meta.labName} — Daily Lab Report — ${meta.periodLabel}`, g.CONTENT_W - 130, 6.5).text,
+    text: fitShrink(`${parts.labName} — ${parts.title} — ${parts.periodLabel}`, g.CONTENT_W - 130, 6.5).text,
   });
   const pg = `Page ${pageNo} of ${pageCount}`;
   ops.push({ kind: 'text', x: g.W - g.MARGIN - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg });
@@ -745,9 +779,20 @@ export function buildDailyReportPdf(
 
   const pages: PageSpec[] = [];
 
+  const header = (): DocHeader => ({
+    labName: meta.labName,
+    title: 'DAILY LAB REPORT',
+    meta: [meta.generatedOn, `Period: ${meta.periodLabel}`],
+  });
+  const footerParts = {
+    labName: meta.labName,
+    title: 'Daily Lab Report',
+    periodLabel: meta.periodLabel,
+  };
+
   chunks.forEach((chunk, p) => {
     const ops: PdfOp[] = [];
-    drawReportHeader(ops, g, meta);
+    drawDocHeader(ops, g, header());
     const rowY0 = firstRowY(p);
     let rowY = rowY0;
 
@@ -791,14 +836,14 @@ export function buildDailyReportPdf(
       });
     }
 
-    drawReportFooter(ops, g, meta, p + 1, pageCount);
+    drawDocFooter(ops, g, footerParts, p + 1, pageCount);
     pages.push({ ops, geo: g });
   });
 
   // ----- the per-clinic breakdown, on its own page -----
   if (clinics.length > 0) {
     const ops: PdfOp[] = [];
-    drawReportHeader(ops, g, meta);
+    drawDocHeader(ops, g, header());
 
     ops.push({
       kind: 'text', x: g.MARGIN, y: g.H - 82, size: 7.5, bold: true, grey: 0.25, text: 'BY CLINIC',
@@ -837,9 +882,241 @@ export function buildDailyReportPdf(
     tot('Total paid', pk(clinics.reduce((s, c) => s + c.paidValue, 0)));
     tot('Total outstanding', pk(clinics.reduce((s, c) => s + c.outstanding, 0)));
 
-    drawReportFooter(ops, g, meta, pageCount, pageCount);
+    drawDocFooter(ops, g, footerParts, pageCount, pageCount);
     pages.push({ ops, geo: g });
   }
+
+  return assemblePdf(pages);
+}
+
+/* ---------- monthly statement ---------- */
+
+/** One clinic's row in a month, as the PDF wants it. */
+export interface MonthlyStatementPdfRow {
+  clinicName: string;
+  casesBilled: number;
+  billed: number;
+  collected: number;
+  advanceReceived: number;
+  advanceApplied: number;
+  creditNotes: number;
+  debitAdjustments: number;
+  openingBalance: number;
+  closingBalance: number;
+  advanceCredit: number;
+  remaining: number;
+}
+
+export interface MonthlyStatementPdfMonth {
+  /** 'YYYY-MM' */
+  month: string;
+  /** The month as a title, e.g. 'March 2026'. */
+  label: string;
+  rows: MonthlyStatementPdfRow[];
+  /** The month's totals, in the same shape as a row with no clinic. */
+  totals: {
+    casesBilled: number;
+    billed: number;
+    collected: number;
+    advanceReceived: number;
+    advanceApplied: number;
+    creditNotes: number;
+    debitAdjustments: number;
+    openingBalance: number;
+    closingBalance: number;
+    advanceCredit: number;
+    remaining: number;
+  };
+}
+
+export interface MonthlyStatementPdfMeta {
+  labName: string;
+  /** The months covered, e.g. 'February 2026 — October 2026'. */
+  periodLabel: string;
+  generatedOn: string;
+  /** Which clinics are in scope, e.g. 'All 13 clinics' or '3 of 13 clinics'. */
+  scopeLabel: string;
+  paper?: PaperKind;
+  orientation?: Orientation;
+}
+
+/* The column plan. The labels are short because a statement table carries
+   twelve money columns and the headings have to fit in narrow columns without
+   being truncated — the full names live in the legend under the title. */
+const MONTHLY_COLS: [string, string, number, 'left' | 'right'][] = [
+  ['clinic', 'CLINIC', 0.155, 'left'],
+  ['cases', 'CASES', 0.045, 'right'],
+  ['billed', 'BILLED', 0.095, 'right'],
+  ['collected', 'COLLECTED', 0.095, 'right'],
+  ['advIn', 'ADV IN', 0.075, 'right'],
+  ['advUsed', 'ADV USED', 0.075, 'right'],
+  ['credits', 'CREDITS', 0.075, 'right'],
+  ['debits', 'DEBITS', 0.075, 'right'],
+  ['opening', 'OPENING', 0.085, 'right'],
+  ['closing', 'CLOSING', 0.085, 'right'],
+  ['advCr', 'ADV CR', 0.075, 'right'],
+  ['due', 'DUE', 0.085, 'right'],
+];
+
+/** The legend: what each short column heading means, in words. */
+const MONTHLY_LEGEND = [
+  'BILLED = charges raised in the month  ·  COLLECTED = settlements received in the month  ·  ' +
+    'ADV IN / ADV USED = advance deposits banked / spent against invoices  ·  CREDITS = credit notes',
+  'DEBITS = debit adjustments  ·  OPENING / CLOSING = balance brought forward / carried forward  ·  ' +
+    'ADV CR = unallocated advance wallet  ·  DUE = still owing',
+];
+
+/**
+ * Build the monthly statement PDF.
+ *
+ * One month per page, because a month IS the unit an operator reads this
+ * document in: the clinic rows under a month, and the month's totals under
+ * them. A month with more clinics than fit on a page continues onto the next
+ * one with its table header repeated, so no row is ever orphaned under a
+ * page it does not belong to.
+ */
+export function buildMonthlyStatementPdf(
+  months: MonthlyStatementPdfMonth[],
+  meta: MonthlyStatementPdfMeta,
+): PdfBuildResult {
+  const geoKey = `${meta.paper || 'a4'}-${meta.orientation || 'landscape'}`;
+  const g = GEOS[geoKey] || GEOS['a4-landscape'];
+  const { cols, X } = planReportCols(g, MONTHLY_COLS);
+  const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
+
+  const headH = 15;
+  const rowH = 13;
+  const header = (): DocHeader => ({
+    labName: meta.labName,
+    title: 'MONTHLY STATEMENT',
+    meta: [meta.generatedOn, `Period: ${meta.periodLabel}`, `Clinics: ${meta.scopeLabel}`],
+    subtitle: MONTHLY_LEGEND,
+  });
+  const footerParts = {
+    labName: meta.labName,
+    title: 'Monthly Statement',
+    periodLabel: meta.periodLabel,
+  };
+
+  const pages: PageSpec[] = [];
+
+  /* The page's vertical rhythm, measured once.
+     The title block ends in a rule; the legend sits under it; the month's
+     heading and its figures come next; then the table header; then the rows.
+     Each band is given its own space, because a statement that prints its
+     legend across its own title is a statement nobody can read. */
+  const ruleY = g.H - 64 - 12; // three meta lines, so the rule sits one lower
+  const legendBottom = ruleY - 10 - (MONTHLY_LEGEND.length - 1) * 9;
+  const headY = legendBottom - 20;
+  const tableHeaderY = headY - 24;
+  const firstRowY = tableHeaderY - headH - 4;
+
+  months.forEach((month) => {
+    /* The month heading and its table travel together: a month that runs on
+       to a second page repeats both, with "(cont.)" on the heading so the
+       reader knows it is the same month. */
+    const chunks: MonthlyStatementPdfRow[][] = [];
+    let cur: MonthlyStatementPdfRow[] = [];
+    // Rows are measured, not counted: the month heading, the legend band and
+    // the month's totals all have to fit above the footer.
+    let y = firstRowY;
+    month.rows.forEach((r) => {
+      if (y - (rowH + 2) < g.CONTENT_BOTTOM + 26 && cur.length) {
+        chunks.push(cur);
+        cur = [];
+        y = firstRowY;
+      }
+      cur.push(r);
+      y -= rowH + 2;
+    });
+    if (cur.length) chunks.push(cur);
+    if (chunks.length === 0) chunks.push([]);
+
+    chunks.forEach((rows, ci) => {
+      const ops: PdfOp[] = [];
+      drawDocHeader(ops, g, header());
+
+      const isLast = ci === chunks.length - 1;
+      // The month heading: the name on the left, the month's own figures on
+      // the right, so a page reads as a statement of one month at a glance.
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: headY, size: 9, bold: true, grey: 0.1,
+        text: ci === 0 ? month.label.toUpperCase() : `${month.label.toUpperCase()} (CONT.)`,
+      });
+      const figures: [string, string][] = [
+        ['Billed', pk(month.totals.billed)],
+        ['Collected', pk(month.totals.collected)],
+        ['Due', pk(month.totals.remaining)],
+      ];
+      let fx = g.W - g.MARGIN;
+      figures.reverse().forEach(([label, value]) => {
+        ops.push({ kind: 'text', x: fx - textW(value, 7.5), y: headY, size: 7.5, bold: true, text: value });
+        ops.push({ kind: 'text', x: fx - textW(value, 7.5) - textW(`${label}  `, 6.5) - 3, y: headY, size: 6.5, grey: 0.4, text: `${label}  ` });
+        fx -= textW(value, 7.5) + textW(`${label}  `, 6.5) + 14;
+      });
+      ops.push({ kind: 'line', x1: g.MARGIN, y1: headY - 6, x2: g.W - g.MARGIN, y2: headY - 6, grey: 0.75, width: 0.6 });
+
+      drawTableHeader(ops, g, cols as unknown as LedgerCol[], X, tableHeaderY);
+      let rowY = firstRowY;
+
+      for (const r of rows) {
+        const name = fitShrink(r.clinicName, colByKey.clinic.w - 4, 6.5);
+        ops.push({ kind: 'text', x: X.clinic + 2, y: rowY, size: name.size, bold: true, text: name.text });
+        pushRight(ops, X.cases, colByKey.cases.w, rowY, num(r.casesBilled), 6.5);
+        pushRight(ops, X.billed, colByKey.billed.w, rowY, pk(r.billed), 6.5, true);
+        pushRight(ops, X.collected, colByKey.collected.w, rowY, pk(r.collected), 6.5);
+        pushRight(ops, X.advIn, colByKey.advIn.w, rowY, pk(r.advanceReceived), 6.5);
+        pushRight(ops, X.advUsed, colByKey.advUsed.w, rowY, pk(r.advanceApplied), 6.5);
+        pushRight(ops, X.credits, colByKey.credits.w, rowY, pk(r.creditNotes), 6.5);
+        pushRight(ops, X.debits, colByKey.debits.w, rowY, pk(r.debitAdjustments), 6.5);
+        pushRight(ops, X.opening, colByKey.opening.w, rowY, pk(r.openingBalance), 6.5);
+        pushRight(ops, X.closing, colByKey.closing.w, rowY, pk(r.closingBalance), 6.5, true);
+        pushRight(ops, X.advCr, colByKey.advCr.w, rowY, pk(r.advanceCredit), 6.5);
+        pushRight(ops, X.due, colByKey.due.w, rowY, pk(r.remaining), 6.5, true);
+        ops.push({ kind: 'line', x1: g.MARGIN, y1: rowY - 4, x2: g.MARGIN + g.CONTENT_W, y2: rowY - 4, grey: 0.9, width: 0.4 });
+        rowY -= rowH + 2;
+      }
+
+      // The month's totals, under a rule, on the last page of that month.
+      if (isLast) {
+        rowY -= 4;
+        ops.push({ kind: 'rect', x: g.MARGIN, y: rowY - 5, w: g.CONTENT_W, h: 14, grey: 0.92 });
+        ops.push({ kind: 'text', x: X.clinic + 2, y: rowY + 4, size: 6.5, bold: true, text: 'MONTH TOTAL' });
+        const t = month.totals;
+        pushRight(ops, X.cases, colByKey.cases.w, rowY + 4, num(t.casesBilled), 6.5, true);
+        pushRight(ops, X.billed, colByKey.billed.w, rowY + 4, pk(t.billed), 6.5, true);
+        pushRight(ops, X.collected, colByKey.collected.w, rowY + 4, pk(t.collected), 6.5, true);
+        pushRight(ops, X.advIn, colByKey.advIn.w, rowY + 4, pk(t.advanceReceived), 6.5, true);
+        pushRight(ops, X.advUsed, colByKey.advUsed.w, rowY + 4, pk(t.advanceApplied), 6.5, true);
+        pushRight(ops, X.credits, colByKey.credits.w, rowY + 4, pk(t.creditNotes), 6.5, true);
+        pushRight(ops, X.debits, colByKey.debits.w, rowY + 4, pk(t.debitAdjustments), 6.5, true);
+        pushRight(ops, X.opening, colByKey.opening.w, rowY + 4, pk(t.openingBalance), 6.5, true);
+        pushRight(ops, X.closing, colByKey.closing.w, rowY + 4, pk(t.closingBalance), 6.5, true);
+        pushRight(ops, X.advCr, colByKey.advCr.w, rowY + 4, pk(t.advanceCredit), 6.5, true);
+        pushRight(ops, X.due, colByKey.due.w, rowY + 4, pk(t.remaining), 6.5, true);
+      }
+
+      pages.push({ ops, geo: g });
+    });
+  });
+
+  if (pages.length === 0) {
+    /* An empty statement still gets a page, saying so, rather than a file the
+       reader opens to find nothing in it. */
+    const ops: PdfOp[] = [];
+    drawDocHeader(ops, g, header());
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.TABLE_TOP, size: 9, grey: 0.4,
+      text: 'No billing activity in this period.',
+    });
+    pages.push({ ops, geo: g });
+  }
+
+  // The page numbers are only knowable once the pages exist.
+  const total = pages.length;
+  pages.forEach((p, i) => {
+    drawDocFooter(p.ops, g, footerParts, i + 1, total);
+  });
 
   return assemblePdf(pages);
 }

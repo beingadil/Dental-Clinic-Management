@@ -1,22 +1,26 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Invoice, SavedVoucher } from '../../types';
+import { Invoice, SavedVoucher, DentalLab } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { EmptyState, DataTable } from '../common/ui';
+import { ClinicFilter } from '../common/ui/ClinicFilter';
 import { formatPKR } from '../../services/financeDomain';
-import { downloadCSV } from '../../services/csvExport';
+import { saveFile } from '../../lib/saveFile';
+import { buildMonthlyStatementPdf, downloadPdf } from '../../lib/pdf';
 import {
   buildMonthlyStatements,
+  filterMonthlyStatements,
   formatMonthLabel,
-  monthlyStatementCsvRows,
+  monthlyStatementWorkbook,
 } from '../../services/monthlyStatement';
 import {
   BarChart3,
   BookmarkCheck,
   BookOpen,
-  Download,
+  FileDown,
+  Sheet,
   Printer,
   Trash2,
   Search,
@@ -40,7 +44,17 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
   onViewCaseSlip,
   onOpenJournalModal,
 }) => {
-  const { invoices, cases, savedVouchers, deleteSavedVoucher, advancePayments, accountAdjustments } = useApp();
+  const {
+    invoices,
+    cases,
+    savedVouchers,
+    deleteSavedVoucher,
+    advancePayments,
+    accountAdjustments,
+    labs,
+    brandingSettings,
+    showToast,
+  } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
   const [voucherSearch, setVoucherSearch] = useState<string>('');
@@ -60,13 +74,182 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     [invoices, advancePayments, accountAdjustments]
   );
 
-  // Export CSV of the Monthly Statement (app exporter: correct RFC-4180
-  // quoting, and it actually writes a file inside the Tauri shell).
-  const handleExportMonthlyCSV = () => {
-    downloadCSV(
-      `Dental_Solutions_Monthly_Statement_${getTodayStr()}`,
-      monthlyStatementCsvRows(monthlyBlocks)
+  /* Which clinics the operator has taken OUT of the statement.
+     Excluded rather than included, so a clinic created tomorrow is in scope
+     by default instead of being missing from every report until somebody
+     remembers to tick it. Empty means "every clinic". */
+  const [excludedLabIds, setExcludedLabIds] = useState<string[]>([]);
+
+  const visibleBlocks = useMemo(
+    () => filterMonthlyStatements(monthlyBlocks, excludedLabIds),
+    [monthlyBlocks, excludedLabIds]
+  );
+
+  /* Every clinic that appears in the statement, whether or not it is still in
+     the clinic list — a deleted clinic can still have months of history, and
+     an operator has to be able to take it out of the report. The saved clinic
+     record wins where there is one, because it carries the doctor and city
+     the search looks at. */
+  const statementClinics = useMemo<DentalLab[]>(() => {
+    const byId = new Map<string, DentalLab>();
+    monthlyBlocks.forEach((block) =>
+      block.rows.forEach((r) => {
+        if (!byId.has(r.lab_id)) {
+          byId.set(r.lab_id, {
+            id: r.lab_id,
+            name: r.lab_name,
+            contact_person: '',
+            phone: '',
+            email: '',
+            address: '',
+            rating: 0,
+            reviews_count: 0,
+            created_at: '',
+            opening_balance: 0,
+            opening_balance_type: 'credit',
+          });
+        }
+      })
     );
+    (labs || []).forEach((l) => byId.set(l.id, l));
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [labs, monthlyBlocks]);
+
+  const selectedLabIds = useMemo(
+    () => statementClinics.map((c) => c.id).filter((id) => !excludedLabIds.includes(id)),
+    [statementClinics, excludedLabIds]
+  );
+
+  const setSelectedLabIds = (ids: string[]) => {
+    const chosen = new Set(ids);
+    setExcludedLabIds(statementClinics.map((c) => c.id).filter((id) => !chosen.has(id)));
+  };
+
+  /** The whole statement in one line of figures, for the scope on screen. */
+  const statementTotals = useMemo(() => {
+    const sum = (pick: (b: (typeof visibleBlocks)[number]) => number) =>
+      visibleBlocks.reduce((acc, b) => acc + pick(b), 0);
+    return {
+      months: visibleBlocks.length,
+      clinics: visibleBlocks.length ? visibleBlocks[0].totals.clinics : 0,
+      billed: sum((b) => b.totals.billed),
+      collected: sum((b) => b.totals.collected),
+      remaining: sum((b) => b.totals.remaining),
+    };
+  }, [visibleBlocks]);
+
+  // Export the Monthly Statement as an Excel workbook. Real cells, real
+  // numbers, one sheet per month — a CSV cannot be summed, sorted or charted
+  // once the figures arrive as text.
+  const handleExportMonthlyExcel = async () => {
+    try {
+      const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
+      const scopeLabel = excludedLabIds.length
+        ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
+        : `All ${statementClinics.length} clinics`;
+      const periodLabel = visibleBlocks.length
+        ? `${formatMonthLabel(visibleBlocks[visibleBlocks.length - 1].month)} — ${formatMonthLabel(
+            visibleBlocks[0].month,
+          )}`
+        : 'No activity';
+      const bytes = monthlyStatementWorkbook(visibleBlocks, {
+        labName,
+        periodLabel,
+        scopeLabel,
+        generatedOn: getTodayStr(),
+      });
+      const outcome = await saveFile(
+        `Monthly_Statement_${getTodayStr()}.xlsx`,
+        bytes,
+        {
+          extension: '.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Save the statement as an Excel workbook',
+        }
+      );
+      if (outcome.status === 'error') {
+        showToast(`Could not save the workbook: ${outcome.message}`, 'error');
+      } else if (outcome.status === 'saved' && outcome.location === 'downloads') {
+        showToast(`Saved ${outcome.path} to your browser's downloads folder.`, 'info');
+      }
+    } catch (e) {
+      showToast(
+        `Could not export the statement: ${e instanceof Error ? e.message : String(e)}`,
+        'error'
+      );
+    }
+  };
+
+  /**
+   * The statement as a document: the same rows the screen shows, as a real
+   * vector PDF with selectable text and one month per page. Not a picture of
+   * the table, and not the browser's print dialog.
+   */
+  const buildMonthlyDocument = () => {
+    const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
+    const months = visibleBlocks.map((b) => ({
+      month: b.month,
+      label: formatMonthLabel(b.month),
+      rows: b.rows.map((r) => ({
+        clinicName: r.lab_name,
+        casesBilled: r.cases_billed,
+        billed: r.billed,
+        collected: r.collected,
+        advanceReceived: r.advance_received,
+        advanceApplied: r.advance_applied,
+        creditNotes: r.credit_notes,
+        debitAdjustments: r.debit_adjustments,
+        openingBalance: r.opening_balance,
+        closingBalance: r.closing_balance,
+        advanceCredit: r.advance_credit,
+        remaining: r.remaining,
+      })),
+      totals: {
+        casesBilled: b.totals.cases_billed,
+        billed: b.totals.billed,
+        collected: b.totals.collected,
+        advanceReceived: b.totals.advance_received,
+        advanceApplied: b.totals.advance_applied,
+        creditNotes: b.totals.credit_notes,
+        debitAdjustments: b.totals.debit_adjustments,
+        openingBalance: b.totals.opening_balance,
+        closingBalance: b.totals.closing_balance,
+        advanceCredit: b.totals.advance_credit,
+        remaining: b.totals.remaining,
+      },
+    }));
+    // Newest first on screen, so the period reads oldest → newest.
+    const periodLabel = months.length
+      ? `${months[months.length - 1].label} — ${months[0].label}`
+      : 'No activity';
+    const scopeLabel = excludedLabIds.length
+      ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
+      : `All ${statementClinics.length} clinics`;
+    const result = buildMonthlyStatementPdf(months, {
+      labName,
+      periodLabel,
+      generatedOn: getTodayStr(),
+      scopeLabel,
+    });
+    const fileName = `Monthly_Statement_${months.length ? months[0].month : 'none'}.pdf`;
+    return { fileName, pdf: result.pdf };
+  };
+
+  const handleExportMonthlyPDF = async () => {
+    try {
+      const { fileName, pdf } = buildMonthlyDocument();
+      const outcome = await downloadPdf(fileName, pdf, 'PDF document');
+      if (outcome.status === 'error') {
+        showToast(`Could not save the PDF: ${outcome.message}`, 'error');
+      } else if (outcome.status === 'saved' && outcome.location === 'downloads') {
+        showToast(`Saved ${outcome.path} to your browser's downloads folder.`, 'info');
+      }
+    } catch (e) {
+      showToast(
+        `Could not export the statement: ${e instanceof Error ? e.message : String(e)}`,
+        'error'
+      );
+    }
   };
 
   // Filter saved vouchers
@@ -96,12 +279,15 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
   return (
     <div className="space-y-5">
       
-      {/* Sub-navigation bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+      {/* Sub-navigation bar. The strip and the controls share a row when there
+          is room and the controls drop to their own line when there is not —
+          which is what happens the moment a clinic filter and two export
+          buttons are added to it. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="flex shrink-0 items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             onClick={() => setActiveSubTab('monthly')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
               activeSubTab === 'monthly'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -116,7 +302,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
           <button
             onClick={() => setActiveSubTab('vouchers')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
               activeSubTab === 'vouchers'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -131,7 +317,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
           <button
             onClick={() => setActiveSubTab('daily')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
               activeSubTab === 'daily'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -143,13 +329,33 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         </div>
 
         {activeSubTab === 'monthly' && (
-          <button
-            onClick={handleExportMonthlyCSV}
-            className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export Monthly Statement CSV</span>
-          </button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            <ClinicFilter
+              clinics={statementClinics}
+              selected={selectedLabIds}
+              onChange={setSelectedLabIds}
+              tone="indigo"
+              className="sm:w-64"
+            />
+            <button
+              onClick={handleExportMonthlyExcel}
+              title="Export the statement as an Excel workbook (one sheet per month, real numbers)"
+              aria-label="Export the monthly statement as an Excel workbook"
+              className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <Sheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Export to Excel</span>
+            </button>
+            <button
+              onClick={handleExportMonthlyPDF}
+              title="Download the statement as a PDF (selectable text, one month per page)"
+              aria-label="Download the monthly statement as a PDF"
+              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>Export PDF</span>
+            </button>
+          </div>
         )}
 
         {activeSubTab === 'vouchers' && (
@@ -182,14 +388,41 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       {/* Sub-Tab 1: Monthly Breakdown */}
       {activeSubTab === 'monthly' && (
         <div className="space-y-4">
-          {monthlyBlocks.length === 0 ? (
+          {/* The whole statement in one line, so the scope is visible before
+              any month is read. */}
+          {visibleBlocks.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs divide-x divide-y md:divide-y-0 divide-slate-200">
+              <Stat label="Months" value={String(statementTotals.months)} />
+              <Stat label="Clinics" value={String(statementTotals.clinics)} />
+              <Stat label="Billed" value={formatPKR(statementTotals.billed)} />
+              <Stat
+                label="Collected"
+                value={formatPKR(statementTotals.collected)}
+                tone="success"
+              />
+              <Stat
+                label="Still owing"
+                value={formatPKR(statementTotals.remaining)}
+                tone={statementTotals.remaining > 0 ? 'warning' : 'muted'}
+              />
+            </div>
+          )}
+          {visibleBlocks.length === 0 ? (
             <EmptyState
               icon={BarChart3}
-              title="No Billing Records Yet"
-              description="Once invoices, payments or advances are recorded for this period, the monthly statement by clinic appears here."
+              title={
+                monthlyBlocks.length === 0
+                  ? 'No Billing Records Yet'
+                  : 'No Clinics In This Selection'
+              }
+              description={
+                monthlyBlocks.length === 0
+                  ? 'Once invoices, payments or advances are recorded for this period, the monthly statement by clinic appears here.'
+                  : 'Every clinic in the statement is excluded. Tick one in the clinic filter to bring it back.'
+              }
             />
           ) : (
-            monthlyBlocks.map((block) => {
+            visibleBlocks.map((block) => {
               const t = block.totals;
               return (
                 <div key={block.month} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
@@ -230,28 +463,29 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                   <DataTable
                     data={block.rows}
                     rowKey={(r) => r.lab_id}
+                    stickyFirstColumn
                     tfoot={
-                      <tr className="bg-slate-900/95 text-white font-bold text-[11px] uppercase tracking-wider">
-                        <td className="py-2.5 px-4">Month Total</td>
-                        <td className="py-2.5 px-4 text-center">{t.cases_billed}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap">{formatPKR(t.billed)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-emerald-300">{formatPKR(t.collected)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_received)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_applied)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-rose-300">{formatPKR(t.credit_notes)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-amber-300">{formatPKR(t.debit_adjustments)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-slate-300">{formatPKR(t.opening_balance)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap">{formatPKR(t.closing_balance)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_credit)}</td>
-                        <td className="py-2.5 px-4 text-right whitespace-nowrap text-amber-300">{formatPKR(t.remaining)}</td>
+                      <tr className="bg-slate-900 text-white font-bold text-[11px] uppercase tracking-wider">
+                        <td className="ds-sticky-col bg-slate-900 py-2.5 px-3">Month Total</td>
+                        <td className="py-2.5 px-3 text-center">{t.cases_billed}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">{formatPKR(t.billed)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-emerald-300">{formatPKR(t.collected)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_received)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_applied)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-rose-300">{formatPKR(t.credit_notes)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-amber-300">{formatPKR(t.debit_adjustments)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-slate-300">{formatPKR(t.opening_balance)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">{formatPKR(t.closing_balance)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-sky-300">{formatPKR(t.advance_credit)}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-amber-300">{formatPKR(t.remaining)}</td>
                       </tr>
                     }
                     columns={[
                       {
                         header: 'Dental Clinic',
-                        className: 'py-2.5 px-4 font-bold text-slate-800',
+                        className: 'py-2.5 px-3 font-bold text-slate-800 min-w-[190px]',
                         render: (r) => (
-                          <span className="flex items-center gap-1.5">
+                          <span className="flex items-center gap-1.5 whitespace-nowrap">
                             <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                             <span>{r.lab_name}</span>
                           </span>
@@ -260,25 +494,25 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       {
                         header: 'Cases Billed',
                         align: 'center',
-                        className: 'py-2.5 px-4 font-semibold text-slate-600',
+                        className: 'py-2.5 px-3 font-semibold text-slate-600',
                         render: (r) => r.cases_billed,
                       },
                       {
                         header: 'Billed (Dr)',
                         align: 'right',
-                        className: 'py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap',
                         render: (r) => formatPKR(r.billed),
                       },
                       {
                         header: 'Collected (Cr)',
                         align: 'right',
-                        className: 'py-2.5 px-4 font-bold text-ink-success whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-bold text-ink-success whitespace-nowrap',
                         render: (r) => formatPKR(r.collected),
                       },
                       {
                         header: <span title="Advance deposits banked this month">Advance In</span>,
                         align: 'right',
-                        className: 'py-2.5 px-4 font-semibold whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
                         /* Zero-emphasis on a money figure is decided per row,
                            so it rides on the cell content, not the column. */
                         render: (r) => (
@@ -290,7 +524,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       {
                         header: <span title="Advance credit spent against invoices this month">Advance Used</span>,
                         align: 'right',
-                        className: 'py-2.5 px-4 font-semibold whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
                         render: (r) => (
                           <span className={r.advance_applied > 0 ? 'text-sky-700' : 'text-ink-muted'}>
                             {formatPKR(r.advance_applied)}
@@ -300,7 +534,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       {
                         header: 'Credit Notes',
                         align: 'right',
-                        className: 'py-2.5 px-4 font-semibold whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
                         render: (r) => (
                           <span className={r.credit_notes > 0 ? 'text-ink-danger' : 'text-ink-muted'}>
                             {formatPKR(r.credit_notes)}
@@ -310,7 +544,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       {
                         header: 'Debit Adj.',
                         align: 'right',
-                        className: 'py-2.5 px-4 font-semibold whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
                         render: (r) => (
                           <span className={r.debit_adjustments > 0 ? 'text-amber-700' : 'text-ink-muted'}>
                             {formatPKR(r.debit_adjustments)}
@@ -320,13 +554,13 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       {
                         header: <span title="Balance brought forward from the previous month">Opening (B/F)</span>,
                         align: 'right',
-                        className: 'py-2.5 px-4 text-slate-500 whitespace-nowrap',
+                        className: 'py-2.5 px-3 text-slate-500 whitespace-nowrap',
                         render: (r) => formatPKR(r.opening_balance),
                       },
                       {
                         header: <span title="Closing balance carried into the next month">Closing (C/F)</span>,
                         align: 'right',
-                        className: 'py-2.5 px-4 font-bold whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-bold whitespace-nowrap',
                         render: (r) => (
                           <span className={r.closing_balance < 0 ? 'text-ink-success' : 'text-slate-900'}>
                             {formatPKR(r.closing_balance)}
@@ -336,7 +570,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       {
                         header: <span title="Unallocated advance wallet at month end">Advance Credit</span>,
                         align: 'right',
-                        className: 'py-2.5 px-4 font-semibold whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
                         render: (r) => (
                           <span className={r.advance_credit > 0 ? 'text-sky-700' : 'text-ink-muted'}>
                             {formatPKR(r.advance_credit)}
@@ -346,7 +580,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                       {
                         header: <span title="Still owed by the clinic at month end">Remaining Due</span>,
                         align: 'right',
-                        className: 'py-2.5 px-4 font-bold whitespace-nowrap',
+                        className: 'py-2.5 px-3 font-bold whitespace-nowrap',
                         render: (r) => (
                           <span className={r.remaining > 0 ? 'text-ink-warning' : 'text-ink-muted'}>
                             {formatPKR(r.remaining)}
@@ -479,3 +713,29 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     </div>
   );
 };
+
+/* ── Small presentational pieces ──────────────────────────────────────────── */
+
+/** One figure in the statement's summary strip. */
+const Stat: React.FC<{
+  label: string;
+  value: string;
+  tone?: 'success' | 'warning' | 'muted';
+}> = ({ label, value, tone = 'default' }) => (
+  <div className="px-4 py-3">
+    <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{label}</div>
+    <div
+      className={`mt-1 font-mono text-lg font-bold tabular-nums ${
+        tone === 'success'
+          ? 'text-ink-success'
+          : tone === 'warning'
+            ? 'text-ink-warning'
+            : tone === 'muted'
+              ? 'text-ink-muted'
+              : 'text-slate-900'
+      }`}
+    >
+      {value}
+    </div>
+  </div>
+);
