@@ -117,7 +117,21 @@ export interface PdfBuildResult {
   pageCount: number;
 }
 
-/** Assemble a complete PDF from page op-lists. Exact byte offsets via char codes. */
+/**
+ * Byte length of a string as it will be written to a file.
+ *
+ * A PDF's structural offsets are BYTE offsets: a stream's `/Length` counts
+ * bytes, and the xref table's entries are byte positions. They are computed
+ * from the STRING's character count, which is the same number only while
+ * every character is one byte. The moment that stops being true, the file
+ * says one length and contains another, the reader overruns `endstream`, and
+ * the document is dead on arrival.
+ */
+const byteLength = (s: string): number => new TextEncoder().encode(s).length;
+
+/**
+ * Assemble a complete PDF from page op-lists. Exact byte offsets via char codes.
+ */
 export function assemblePdf(pages: PageSpec[]): PdfBuildResult {
   if (pages.length === 0) pages = [{ ops: [], geo: GEOS['a4-portrait'] }];
 
@@ -135,13 +149,24 @@ export function assemblePdf(pages: PageSpec[]): PdfBuildResult {
 
   pages.forEach((p) => {
     const stream = p.ops.map(opContent).join('\n');
+    /* The declared length and the data must be the same number of BYTES.
+       A mismatch means the offsets below are wrong, so the file would be
+       unreadable — and nothing else in the pipeline would notice. Refuse to
+       build it instead of shipping a document that fails to open. */
+    const declared = byteLength(stream);
+    if (declared !== stream.length) {
+      throw new Error(
+        `PDF stream is ${stream.length} characters but ${declared} bytes. ` +
+          'The page offsets would be wrong and the file would not open.'
+      );
+    }
     // Page dict pushed first: its own number is objects.length + 1, so the
     // content stream that follows is objects.length + 2.
     push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${p.geo.W} ${p.geo.H}] ` +
-      `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${objects.length + 2} 0 R >>`
+        `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${objects.length + 2} 0 R >>`
     );
-    push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    push(`<< /Length ${declared} >>\nstream\n${stream}\nendstream`);
   });
 
   let out = '%PDF-1.4\n';
@@ -158,6 +183,18 @@ export function assemblePdf(pages: PageSpec[]): PdfBuildResult {
     out += `${off.toString().padStart(10, '0')} 00000 n \n`;
   });
   out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  /* Same check for the whole document: `xrefStart` and every offset above are
+     character counts, and the trailer points at them. If the document is not
+     one byte per character, that pointer is wrong and the reader cannot find
+     the xref table at all — which is the "there was an error loading the
+     document" a reader shows. */
+  if (byteLength(out) !== out.length) {
+    throw new Error(
+      `PDF document is ${out.length} characters but ${byteLength(out)} bytes. ` +
+        'The cross-reference table would point at the wrong place and the file would not open.'
+    );
+  }
 
   return { pdf: out, pageCount: pages.length };
 }
@@ -495,6 +532,318 @@ export function buildLedgerPdf(
 const closingDrCr = (n: number) =>
   n > 0 ? 'Balance Dr (receivable)' : n < 0 ? 'Balance Cr (advance held)' : 'Fully settled';
 
+/* ---------- daily lab report ---------- */
+
+/**
+ * The daily report's PDF: real pages, selectable text, no screenshot.
+ *
+ * It carries the SAME document the print sheet carries — title block, the
+ * money summary, the production sheet and the per-clinic breakdown — so
+ * "Print" and "Export PDF" are two forms of one report and not two
+ * documents that happen to share a screen.
+ */
+export interface DailyReportPdfRow {
+  caseNumber: string;
+  receivedDate: string;
+  caseType: string;
+  patient: string;
+  doctor: string;
+  clinic: string;
+  deliveryDate: string;
+  /** Days past the promised delivery date. 0 when the case is not late. */
+  daysLate: number;
+  fee: number;
+}
+
+export interface DailyReportPdfClinic {
+  clinicName: string;
+  doctor: string;
+  casesReceived: number;
+  casesDue: number;
+  invoicedValue: number;
+  paidValue: number;
+  outstanding: number;
+}
+
+export interface DailyReportPdfMeta {
+  labName: string;
+  periodLabel: string;
+  generatedOn: string;
+  invoicesRaised: number;
+  invoicedValue: number;
+  paymentsReceived: number;
+  paidValue: number;
+  totalOutstanding: number;
+  paper?: PaperKind;
+  orientation?: Orientation;
+}
+
+interface ReportCol { key: string; label: string; w: number; align: 'left' | 'right' }
+
+function planReportCols(
+  g: Geo,
+  raw: [string, string, number, 'left' | 'right'][],
+): { cols: ReportCol[]; X: Record<string, number> } {
+  const sum = raw.reduce((s, r) => s + r[2], 0);
+  const cols: ReportCol[] = raw.map(([key, label, w, align]) => ({
+    key, label, w: Math.floor((w / sum) * g.CONTENT_W), align,
+  }));
+  const X: Record<string, number> = {};
+  let acc = g.MARGIN;
+  for (const c of cols) { X[c.key] = acc; acc += c.w; }
+  return { cols, X };
+}
+
+const PRODUCTION_COLS: [string, string, number, 'left' | 'right'][] = [
+  ['case', 'CASE', 0.11, 'left'],
+  ['recv', 'RECEIVED', 0.1, 'left'],
+  ['type', 'TYPE', 0.13, 'left'],
+  ['patient', 'PATIENT', 0.15, 'left'],
+  ['doctor', 'DOCTOR', 0.15, 'left'],
+  ['clinic', 'CLINIC', 0.15, 'left'],
+  ['deliv', 'DELIVERY', 0.11, 'left'],
+  ['fee', 'FEE', 0.1, 'right'],
+];
+
+const CLINIC_COLS: [string, string, number, 'left' | 'right'][] = [
+  ['clinic', 'CLINIC', 0.28, 'left'],
+  ['doctor', 'DOCTOR', 0.24, 'left'],
+  ['recv', 'RECEIVED', 0.1, 'right'],
+  ['due', 'DUE', 0.08, 'right'],
+  ['invoiced', 'INVOICED', 0.11, 'right'],
+  ['paid', 'PAID', 0.1, 'right'],
+  ['outstanding', 'OUTSTANDING', 0.09, 'right'],
+];
+
+/** A label + value, drawn right-aligned inside a column. */
+function pushRight(ops: PdfOp[], x: number, w: number, y: number, text: string, size: number, bold = false, grey = 0) {
+  ops.push({ kind: 'text', x: x + w - textW(text, size) - 2, y, size, bold, grey, text });
+}
+
+/** The money summary band: three figures across the content width. */
+function drawSummaryBand(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, y: number): number {
+  const items: { label: string; value: string; note?: string }[] = [
+    {
+      label: 'INVOICES RAISED',
+      value: pk(meta.invoicedValue),
+      note: `${meta.invoicesRaised} invoice${meta.invoicesRaised === 1 ? '' : 's'}`,
+    },
+    {
+      label: 'PAYMENTS RECEIVED',
+      value: pk(meta.paidValue),
+      note: `${meta.paymentsReceived} payment${meta.paymentsReceived === 1 ? '' : 's'}`,
+    },
+    { label: 'TOTAL OUTSTANDING', value: pk(meta.totalOutstanding), note: 'Across the whole lab' },
+  ];
+  const gap = 10;
+  const boxW = (g.CONTENT_W - gap * (items.length - 1)) / items.length;
+  items.forEach((it, i) => {
+    const x = g.MARGIN + i * (boxW + gap);
+    ops.push({ kind: 'rect', x, y: y - 30, w: boxW, h: 34, grey: 0.95 });
+    ops.push({ kind: 'text', x: x + 6, y: y - 4, size: 6, bold: true, grey: 0.4, text: it.label });
+    ops.push({ kind: 'text', x: x + 6, y: y - 16, size: 10, bold: true, text: fitShrink(it.value, boxW - 12, 10).text });
+    if (it.note) {
+      ops.push({ kind: 'text', x: x + 6, y: y - 26, size: 6, grey: 0.45, text: fitShrink(it.note, boxW - 12, 6).text });
+    }
+  });
+  return y - 30;
+}
+
+/** The report's title block, repeated on every page. */
+function drawReportHeader(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta): number {
+  const right = g.W - g.MARGIN;
+  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 42, size: 13, bold: true, text: fitShrink(meta.labName, g.CONTENT_W * 0.5, 13).text });
+  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15, text: 'DAILY LAB REPORT' });
+  ops.push({ kind: 'text', x: right - textW(meta.generatedOn, 7.5), y: g.H - 42, size: 7.5, grey: 0.35, text: meta.generatedOn });
+  ops.push({
+    kind: 'text', x: right - textW(`Period: ${meta.periodLabel}`, 7.5), y: g.H - 54,
+    size: 7.5, grey: 0.35, text: `Period: ${meta.periodLabel}`,
+  });
+  const ruleY = g.H - 64;
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.6, width: 0.9 });
+  return ruleY;
+}
+
+function drawReportFooter(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, pageNo: number, pageCount: number): void {
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 12, x2: g.W - g.MARGIN, y2: g.FOOTER_Y + 12, grey: 0.8, width: 0.5 });
+  ops.push({
+    kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
+    text: fitShrink(`${meta.labName} — Daily Lab Report — ${meta.periodLabel}`, g.CONTENT_W - 130, 6.5).text,
+  });
+  const pg = `Page ${pageNo} of ${pageCount}`;
+  ops.push({ kind: 'text', x: g.W - g.MARGIN - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg });
+}
+
+/**
+ * Build the daily lab report PDF.
+ *
+ * The production sheet paginates on measured row heights with its header
+ * repeated on every page; the per-clinic breakdown gets a page of its own,
+ * because a clinic table that starts halfway down a sheet is a table
+ * somebody has to hunt for.
+ */
+export function buildDailyReportPdf(
+  rows: DailyReportPdfRow[],
+  clinics: DailyReportPdfClinic[],
+  meta: DailyReportPdfMeta,
+): PdfBuildResult {
+  const geoKey = `${meta.paper || 'a4'}-${meta.orientation || 'landscape'}`;
+  const g = GEOS[geoKey] || GEOS['a4-landscape'];
+  const { cols, X } = planReportCols(g, PRODUCTION_COLS);
+  const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
+
+  const headH = 15;
+  const rowH = 14;
+  const contentBottom = g.CONTENT_BOTTOM;
+
+  /* The first row's baseline on a given page. Page 1 carries the summary
+     band above its table, so it starts lower than the pages that follow.
+     The vertical rhythm is the report's own, not the ledger's: the ledger
+     carries a tall right-hand meta block, so its table starts low, while
+     this report has two meta lines and its content belongs just under the
+     rule. A page that opens with 80pt of nothing reads as a mistake. */
+  const firstRowY = (pageIndex: number) => (pageIndex === 0 ? g.H - 150 : g.H - 96);
+
+  // Measure every row first, so a page break never splits one.
+  const measured = rows.map((r) => {
+    const delivery = r.daysLate > 0 ? `${r.deliveryDate} (${r.daysLate}d late)` : r.deliveryDate;
+    return {
+      r,
+      ids: {
+        case: fitShrink(r.caseNumber, colByKey.case.w - 4, 7),
+        recv: fitShrink(r.receivedDate, colByKey.recv.w - 4, 7),
+        type: fitShrink(r.caseType, colByKey.type.w - 4, 7),
+        patient: fitShrink(r.patient, colByKey.patient.w - 4, 7),
+        doctor: fitShrink(r.doctor, colByKey.doctor.w - 4, 7),
+        clinic: fitShrink(r.clinic, colByKey.clinic.w - 4, 7),
+        delivery: fitShrink(delivery, colByKey.deliv.w - 4, 7),
+      },
+    };
+  });
+
+  // --- paginate the production sheet ---
+  type Chunk = { rows: typeof measured };
+  const chunks: Chunk[] = [];
+  let cur: Chunk = { rows: [] };
+  let y = firstRowY(0);
+  measured.forEach((m) => {
+    const needed = rowH + 2;
+    if (y - needed < contentBottom && cur.rows.length) {
+      chunks.push(cur);
+      cur = { rows: [] };
+      y = firstRowY(chunks.length);
+    }
+    cur.rows.push(m);
+    y -= needed;
+  });
+  if (cur.rows.length) chunks.push(cur);
+  if (chunks.length === 0) chunks.push({ rows: [] });
+
+  // The clinic breakdown is always its own page.
+  const clinicPages = clinics.length > 0 ? 1 : 0;
+  const pageCount = chunks.length + clinicPages;
+
+  const pages: PageSpec[] = [];
+
+  chunks.forEach((chunk, p) => {
+    const ops: PdfOp[] = [];
+    drawReportHeader(ops, g, meta);
+    const rowY0 = firstRowY(p);
+    let rowY = rowY0;
+
+    // The summary band sits on the first page only, in the space between the
+    // rule and the table. The figures are a headline; repeating them on
+    // every page would be noise.
+    if (p === 0) {
+      drawSummaryBand(ops, g, meta, g.H - 76);
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: rowY0 + 30, size: 7.5, bold: true, grey: 0.25,
+        text: 'PRODUCTION SHEET',
+      });
+    }
+
+    drawTableHeader(ops, g, cols as unknown as LedgerCol[], X, rowY0 + 18);
+    rowY -= headH + 3;
+
+    for (const m of chunk.rows) {
+      const { r, ids } = m;
+      ops.push({ kind: 'text', x: X.case + 2, y: rowY, size: ids.case.size, bold: true, grey: 0.25, text: ids.case.text });
+      ops.push({ kind: 'text', x: X.recv + 2, y: rowY, size: ids.recv.size, text: ids.recv.text });
+      ops.push({ kind: 'text', x: X.type + 2, y: rowY, size: ids.type.size, text: ids.type.text });
+      ops.push({ kind: 'text', x: X.patient + 2, y: rowY, size: ids.patient.size, text: ids.patient.text });
+      ops.push({ kind: 'text', x: X.doctor + 2, y: rowY, size: ids.doctor.size, text: ids.doctor.text });
+      ops.push({ kind: 'text', x: X.clinic + 2, y: rowY, size: ids.clinic.size, text: ids.clinic.text });
+      ops.push({
+        kind: 'text', x: X.deliv + 2, y: rowY, size: ids.delivery.size,
+        bold: r.daysLate > 0, grey: r.daysLate > 0 ? 0.1 : 0, text: ids.delivery.text,
+      });
+      pushRight(ops, X.fee, colByKey.fee.w, rowY, pk(r.fee), 7, true);
+      ops.push({ kind: 'line', x1: g.MARGIN, y1: rowY - 4.5, x2: g.MARGIN + g.CONTENT_W, y2: rowY - 4.5, grey: 0.9, width: 0.4 });
+      rowY -= rowH;
+    }
+
+    if (chunk.rows.length === 0) {
+      ops.push({ kind: 'text', x: g.MARGIN, y: rowY, size: 8, grey: 0.45, text: 'No cases were received in this window.' });
+    } else {
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: rowY + 4, size: 7, grey: 0.45,
+        text: `${chunk.rows.length} case${chunk.rows.length === 1 ? '' : 's'} on this sheet`,
+      });
+    }
+
+    drawReportFooter(ops, g, meta, p + 1, pageCount);
+    pages.push({ ops, geo: g });
+  });
+
+  // ----- the per-clinic breakdown, on its own page -----
+  if (clinics.length > 0) {
+    const ops: PdfOp[] = [];
+    drawReportHeader(ops, g, meta);
+
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 82, size: 7.5, bold: true, grey: 0.25, text: 'BY CLINIC',
+    });
+
+    const cCols = planReportCols(g, CLINIC_COLS);
+    const tableHeaderY = g.H - 96;
+    drawTableHeader(ops, g, cCols.cols as unknown as LedgerCol[], cCols.X, tableHeaderY);
+    let rowY = tableHeaderY - headH - 3;
+
+    for (const c of clinics) {
+      const name = fitShrink(c.clinicName, cCols.cols[0].w - 4, 7);
+      const doc = fitShrink(c.doctor || '—', cCols.cols[1].w - 4, 7);
+      ops.push({ kind: 'text', x: cCols.X.clinic + 2, y: rowY, size: name.size, bold: true, text: name.text });
+      ops.push({ kind: 'text', x: cCols.X.doctor + 2, y: rowY, size: doc.size, text: doc.text });
+      pushRight(ops, cCols.X.recv, cCols.cols[2].w, rowY, num(c.casesReceived), 7);
+      pushRight(ops, cCols.X.due, cCols.cols[3].w, rowY, num(c.casesDue), 7);
+      pushRight(ops, cCols.X.invoiced, cCols.cols[4].w, rowY, pk(c.invoicedValue), 7);
+      pushRight(ops, cCols.X.paid, cCols.cols[5].w, rowY, pk(c.paidValue), 7);
+      pushRight(ops, cCols.X.outstanding, cCols.cols[6].w, rowY, pk(c.outstanding), 7, true);
+      ops.push({ kind: 'line', x1: g.MARGIN, y1: rowY - 4.5, x2: g.MARGIN + g.CONTENT_W, y2: rowY - 4.5, grey: 0.9, width: 0.4 });
+      rowY -= rowH;
+    }
+
+    // Totals for the money columns, so the page can be checked at a glance.
+    rowY -= 12;
+    const tot = (label: string, value: string) => {
+      ops.push({ kind: 'text', x: g.MARGIN, y: rowY, size: 7.5, bold: true, grey: 0.25, text: label });
+      ops.push({
+        kind: 'text', x: g.MARGIN + g.CONTENT_W - textW(value, 7.5) - 2,
+        y: rowY, size: 7.5, bold: true, text: value,
+      });
+      rowY -= 12;
+    };
+    tot('Total invoiced', pk(clinics.reduce((s, c) => s + c.invoicedValue, 0)));
+    tot('Total paid', pk(clinics.reduce((s, c) => s + c.paidValue, 0)));
+    tot('Total outstanding', pk(clinics.reduce((s, c) => s + c.outstanding, 0)));
+
+    drawReportFooter(ops, g, meta, pageCount, pageCount);
+    pages.push({ ops, geo: g });
+  }
+
+  return assemblePdf(pages);
+}
+
 /* ---------- download helper ---------- */
 
 /**
@@ -507,7 +856,7 @@ const closingDrCr = (n: number) =>
  * that "Download" did not work was the file not appearing. `GeneralLedgerView`
  * now reports the outcome.
  */
-export function downloadPdf(
+export async function downloadPdf(
   filename: string,
   pdf: string,
   /** Labels the file type in the chooser, so the window reads correctly. */
@@ -515,6 +864,19 @@ export function downloadPdf(
 ): Promise<import('./saveFile').SaveFileResult> {
   const bytes = new Uint8Array(pdf.length);
   for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
+  /* The PDF's own offsets are byte offsets computed from character counts.
+     If the two disagree the file is structurally broken — the reader cannot
+     find the xref table — and the only symptom is "there was an error
+     loading the document". So the check happens here, at the last point
+     before the bytes leave for disk, and it fails loudly rather than
+     saving a document that cannot be opened. */
+  const utf8Length = new TextEncoder().encode(pdf).length;
+  if (utf8Length !== pdf.length) {
+    throw new Error(
+      `The report is ${pdf.length} characters but ${utf8Length} bytes. ` +
+        'Its page offsets would be wrong, so it was not saved.'
+    );
+  }
   return saveFile(filename, bytes, {
     extension: '.pdf',
     mimeType: 'application/pdf',

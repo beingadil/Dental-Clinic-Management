@@ -156,6 +156,18 @@ async function saveInBrowser(
             'The file was created but nothing was written to it. It is probably open in another program — close it and save again.',
         };
       }
+      /* A file that is SHORT is as broken as one that is empty, and it is
+         worse: a truncated PDF still opens, so the operator finds out later
+         that the document is damaged. The read-back is the only place this
+         can be seen, so it is checked here rather than trusted. */
+      if (typeof written?.size === 'number' && written.size !== bytes.length) {
+        return {
+          status: 'error',
+          message:
+            `The file was written but only ${written.size} of ${bytes.length} bytes landed, ` +
+            'so it is incomplete. Close anything that has the file open and save again.',
+        };
+      }
       return { status: 'saved', path: handle.name, bytes: landed };
     } catch (err) {
       /* Dismissing the chooser is a choice, not a failure. Reporting it as an
@@ -247,6 +259,18 @@ export async function saveFile(
       path,
       bytesB64: toBase64(bytes),
     })) as { path: string; bytes: number };
+    /* The Rust side decodes the base64 and writes the bytes; it reports back
+       how many it wrote. A number other than the number sent means the file
+       on disk is not the file we built — for a PDF that is a document that
+       opens and is broken, so it is caught here rather than by the operator. */
+    if (typeof result?.bytes === 'number' && result.bytes !== bytes.length) {
+      return {
+        status: 'error',
+        message:
+          `Only ${result.bytes} of ${bytes.length} bytes reached the file, ` +
+          'so it is incomplete. Close anything that has the file open and save again.',
+      };
+    }
     return { status: 'saved', path: result.path, bytes: result.bytes };
   } catch (err) {
     return {
