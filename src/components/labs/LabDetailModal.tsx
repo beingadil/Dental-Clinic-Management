@@ -13,6 +13,7 @@ import { PaymentReceiptModal } from '../billing/PaymentReceiptModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
 import { GeneralLedgerView } from '../billing/GeneralLedgerView';
 import { RecordAdjustmentModal } from '../billing/RecordAdjustmentModal';
+import { RecordTransactionModal } from '../billing/RecordTransactionModal';
 import {
   Building2,
   X,
@@ -71,6 +72,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [confirmInput, setConfirmInput] = useState('');
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Cases-tab search box.
   const [caseSearch, setCaseSearch] = useState('');
@@ -754,7 +756,15 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               clinic so the figures cannot be read against a different one. */}
           {activeTab === 'ledger' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(true)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  Receive Payment
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowAdjustmentModal(true)}
@@ -854,6 +864,17 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       {/* Record Adjustment Modal */}
       {showAdjustmentModal && (
         <RecordAdjustmentModal lab={lab} onClose={() => setShowAdjustmentModal(false)} />
+      )}
+
+      {/* Receive Payment Modal */}
+      {showPaymentModal && (
+        <RecordTransactionModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          initialMode="payment"
+          initialLabId={lab.id}
+          initialClinicId={lab.id}
+        />
       )}
 
       {/* Typed Confirmation DELETE Modal */}

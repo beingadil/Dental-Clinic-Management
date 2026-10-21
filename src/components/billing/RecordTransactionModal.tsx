@@ -125,13 +125,29 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     }
   }, [isOpen, effectiveClinicId, initialInvoiceId, labs]);
 
-  // Outstanding invoices for the selected clinic
+  // Outstanding invoices for the selected clinic, OLDEST FIRST.
+  //
+  // The auto-allocation below walks this list and takes from each invoice until
+  // the cash runs out, so the order here is the order money is applied. A
+  // clinic's oldest unpaid invoice is the one that has been waiting longest
+  // and must be settled first; sorting newest-first (the array's default
+  // order, since invoices are prepended on creation) meant a payment silently
+  // settled the newest invoice while the oldest stayed open. Sorting by
+  // issue_date, then by invoice_number as a tie-break, gives a stable
+  // oldest-first order even when two invoices share a date.
   const clinicInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
-      if (inv.lab_id !== clinicId) return false;
-      const due = invoiceBalanceDue(inv);
-      return due > 0;
-    });
+    return invoices
+      .filter((inv) => {
+        if (inv.lab_id !== clinicId) return false;
+        const due = invoiceBalanceDue(inv);
+        return due > 0;
+      })
+      .sort((a, b) => {
+        const da = a.issue_date || a.created_at || '';
+        const db = b.issue_date || b.created_at || '';
+        if (da !== db) return da < db ? -1 : 1;
+        return (a.invoice_number || '').localeCompare(b.invoice_number || '');
+      });
   }, [invoices, clinicId]);
 
   /* The open invoices narrowed by whatever the operator typed. Searchable on the
