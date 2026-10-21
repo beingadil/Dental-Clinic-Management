@@ -129,6 +129,8 @@ function syncNow(c: SyncCollections): void {
   // sibling slices).
   const writtenAllocIds = new Set<string>();
   const writtenAttachmentIds = new Set<string>();
+  const seenAttachmentIds = new Set<string>();
+  const seenAuditEventIds = new Set<string>();
   const usedAdvanceIds = new Set<string>();
   const usedCaseNumbers = new Set<string>();
   const usedInvoiceNumbers = new Set<string>();
@@ -360,6 +362,8 @@ function syncNow(c: SyncCollections): void {
         // computed at upload were wiped on the next save, and any row inserted
         // through attachmentsRepo with a REAL description had that description
         // overwritten with NULL by the next whole-table sync.
+        if (seenAttachmentIds.has(a.id)) continue; // dedup: one row per attachment
+        seenAttachmentIds.add(a.id);
         const description = a.description ?? a.file_size ?? null;
         tx.run(
           `INSERT INTO attachments (id, entity_type, entity_id, original_filename, stored_filename, mime_type, size_bytes, checksum, description, storage_path, data_url, uploaded_by, created_at)
@@ -423,7 +427,10 @@ function syncNow(c: SyncCollections): void {
     // same-millisecond id): one duplicate would abort the entire transaction
     // and stop ALL persistence. First occurrence wins.
     const seenJournalLineIds = new Set<string>();
+  const seenJournalEntryIds = new Set<string>();
     for (const j of c.journalEntries) {
+      if (seenJournalEntryIds.has(j.id)) continue;
+      seenJournalEntryIds.add(j.id);
       tx.run(
         `INSERT INTO journal_entries (id, journal_number, date, event_type, reference_type, reference_id, reference_number, lab_id, lab_name, case_id, case_number, description, created_at, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -669,6 +676,8 @@ function syncNow(c: SyncCollections): void {
     // ── audit ──
     tx.run('DELETE FROM audit_events');
     for (const a of c.auditEvents) {
+      if (seenAuditEventIds.has(a.id)) continue; // dedup: one row per event
+      seenAuditEventIds.add(a.id);
       tx.run(
         `INSERT INTO audit_events (id, timestamp, actor, action, entity_type, entity_id, entity_ref, reason, old_state, new_state, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
