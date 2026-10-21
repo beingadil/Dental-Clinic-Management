@@ -3,42 +3,34 @@ import { useApp } from '../../context/AppContext';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { EmptyState, DataTable } from '../common/ui';
 import { formatPKR } from '../../services/financeDomain';
-import { downloadCSV } from '../../services/csvExport';
-import { printCurrentDocument } from '../../utils/printDocument';
+import { buildDailyReportPdf, downloadPdf } from '../../lib/pdf';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
   buildDailyLabReport,
-  dailyReportCsvRows,
   type ProductionRow,
 } from '../../services/dailyLabReport';
 import {
   CalendarDays,
-  Download,
-  Printer,
-  PackageCheck,
-  PackageOpen,
-  Clock,
-  TriangleAlert,
-  Building2,
+  FileDown,
   FileText,
   Wallet,
+  Building2,
 } from 'lucide-react';
 
 /**
  * DAILY LAB REPORT.
  *
  * The end-of-day answer: what came in, what is due, what went out, and what is
- * still owed. A production sheet the operator reads off the bench, and a print
- * that goes into the lab's own records.
+ * still owed. A production sheet the operator reads off the bench, and a
+ * document that goes into the lab's own records.
  *
- * The print is a FIRST-CLASS deliverable here, not an afterthought: the
- * `.print-flow` container is the only thing on the page that prints, and it
- * carries the same rows the screen shows. `printCurrentDocument()` waits for
- * the browser to actually paint it before the dialog opens, so the sheet is
- * never blank.
+ * "Export PDF" writes that document to a file: a real, vector PDF built from
+ * the same rows, with selectable text and real page breaks — not a picture of
+ * the screen. The `.print-flow` container is still the one thing on the page
+ * that prints, so the browser's own print (Ctrl+P) produces the same sheet.
  */
 export const DailyReportView: React.FC = () => {
-  const { cases, invoices, advancePayments } = useApp();
+  const { cases, invoices, advancePayments, brandingSettings, showToast } = useApp();
 
   // Today by default: the report is a daily instrument first and foremost.
   const [from, setFrom] = useState<string>(() => todayISO());
@@ -58,15 +50,75 @@ export const DailyReportView: React.FC = () => {
     [cases, invoices, advancePayments, from, to, includeArchived]
   );
 
-  const handleExportCSV = () => {
-    downloadCSV(
-      `Dental_Solutions_Daily_Report_${from}_${to}`,
-      dailyReportCsvRows(report)
+  /**
+   * Build the report document. The PDF and the printed sheet are the same
+   * report, so the figures are formatted once here and used by both.
+   */
+  const buildDocument = () => {
+    const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
+    const periodLabel = `${from || 'Beginning'} → ${to || 'Present'}`;
+    const result = buildDailyReportPdf(
+      report.production.map((r) => ({
+        caseNumber: r.caseNumber,
+        receivedDate: r.receivedDate,
+        caseType: r.caseType,
+        patient: r.patient,
+        doctor: r.doctor,
+        clinic: r.clinic,
+        deliveryDate: r.deliveryDate,
+        daysLate: r.isOverdue ? Math.abs(r.daysRemaining) : 0,
+        fee: r.price,
+      })),
+      report.clinics.map((c) => ({
+        clinicName: c.labName,
+        doctor: c.doctor,
+        casesReceived: c.casesReceived,
+        casesDue: c.casesDue,
+        invoicedValue: c.invoicedValue,
+        paidValue: c.paidValue,
+        outstanding: c.outstanding,
+      })),
+      {
+        labName,
+        periodLabel,
+        generatedOn: getTodayStr(),
+        invoicesRaised: report.invoicesRaised,
+        invoicedValue: report.invoicedValue,
+        paymentsReceived: report.paymentsReceived,
+        paidValue: report.paidValue,
+        totalOutstanding: report.totalOutstanding,
+      }
     );
+    const fileName = `Daily_Report_${from || 'Beginning'}_${to || 'Present'}`.replace(
+      /[^A-Za-z0-9_-]+/g,
+      '_'
+    );
+    return { fileName: `${fileName}.pdf`, pdf: result.pdf };
   };
 
-  const handlePrint = () => {
-    void printCurrentDocument();
+  const handleExportPDF = async () => {
+    try {
+      const { fileName, pdf } = buildDocument();
+      const outcome = await downloadPdf(fileName, pdf, 'PDF document');
+      /* Only the unhappy paths are announced. A successful save is confirmed
+         by the chooser the operator just dismissed; a banner on top of that is
+         noise. Cancelling says nothing — they chose that.
+
+         The one success worth saying is the one where there was no chooser:
+         the file went to the browser's own download folder, and the operator
+         would otherwise be hunting the filesystem for a dialog that was
+         never going to appear. */
+      if (outcome.status === 'error') {
+        showToast(`Could not save the PDF: ${outcome.message}`, 'error');
+      } else if (outcome.status === 'saved' && outcome.location === 'downloads') {
+        showToast(`Saved ${outcome.path} to your browser's downloads folder.`, 'info');
+      }
+    } catch (e) {
+      showToast(
+        `Could not export the report: ${e instanceof Error ? e.message : String(e)}`,
+        'error'
+      );
+    }
   };
 
   const windowLabel = `${from || 'Beginning'} → ${to || 'Present'}`;
@@ -76,32 +128,29 @@ export const DailyReportView: React.FC = () => {
       {/* Controls — screen only. The printed sheet carries the window in its
           own header instead. */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <label className="flex items-center gap-1.5 text-[11px] text-slate-600 whitespace-nowrap cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(e) => setIncludeArchived(e.target.checked)}
+            className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+          />
+          Include archived
+        </label>
+        {/* The date window sits NEXT TO the export, because it is the
+            export's window: you choose the period, then take the document for
+            it. They were on opposite ends of the card, so the control that
+            decides what the button produces was nowhere near the button. */}
         <div className="flex items-center gap-2">
           <DatePickerRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-600 whitespace-nowrap cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
-              className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-            />
-            Include archived
-          </label>
-        </div>
-        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleExportCSV}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors"
-          >
-            <Download className="w-3.5 h-3.5" /> Export CSV
-          </button>
-          <button
-            type="button"
-            onClick={handlePrint}
+            onClick={handleExportPDF}
+            title="Download the report as a PDF (selectable text, real pages)"
+            aria-label="Download the daily lab report as a PDF"
             className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors"
           >
-            <Printer className="w-3.5 h-3.5" /> Print Report
+            <FileDown className="w-3.5 h-3.5" /> Export PDF
           </button>
         </div>
       </div>
@@ -122,34 +171,6 @@ export const DailyReportView: React.FC = () => {
               <div className="text-xs font-semibold text-slate-800">{getTodayStr()}</div>
             </div>
           </div>
-        </div>
-
-        {/* KPI row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi
-            icon={PackageOpen}
-            label="Cases received"
-            value={report.received}
-            tone="indigo"
-          />
-          <Kpi
-            icon={PackageCheck}
-            label="Due for delivery"
-            value={report.due}
-            tone="emerald"
-          />
-          <Kpi
-            icon={Clock}
-            label="Still open"
-            value={report.open}
-            tone="amber"
-          />
-          <Kpi
-            icon={TriangleAlert}
-            label="Overdue"
-            value={report.overdue}
-            tone={report.overdue > 0 ? 'rose' : 'slate'}
-          />
         </div>
 
         {/* Money row */}
@@ -338,30 +359,6 @@ export const DailyReportView: React.FC = () => {
 };
 
 /* ── Small presentational pieces ──────────────────────────────────────────── */
-
-const Kpi: React.FC<{
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: number;
-  tone: 'indigo' | 'emerald' | 'amber' | 'rose' | 'slate';
-}> = ({ icon: Icon, label, value, tone }) => {
-  const tones = {
-    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    amber: 'bg-amber-50 text-amber-700 border-amber-200',
-    rose: 'bg-rose-50 text-rose-700 border-rose-200',
-    slate: 'bg-slate-50 text-slate-600 border-slate-200',
-  } as const;
-  return (
-    <div className={`p-4 rounded-2xl border ${tones[tone]}`}>
-      <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4" />
-        <span className="text-[11px] font-bold uppercase tracking-wider">{label}</span>
-      </div>
-      <div className="text-2xl font-bold font-mono mt-1">{value}</div>
-    </div>
-  );
-};
 
 const MoneyCard: React.FC<{
   icon: React.ComponentType<{ className?: string }>;

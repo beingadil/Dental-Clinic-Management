@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildDailyLabReport,
-  dailyReportCsvRows,
   caseReceivedDate,
   invoiceIssuedDate,
   paymentDate,
 } from '../../src/services/dailyLabReport';
+import { buildDailyReportPdf } from '../../src/lib/pdf';
 import type { DentalCase, Invoice } from '../../src/types';
 
 const mkCase = (over: Partial<DentalCase> = {}): DentalCase =>
@@ -279,21 +279,79 @@ describe('overdue is measured against the window, not against receipt', () => {
   });
 });
 
-describe('the CSV export', () => {
-  it('writes a header row and one row per case', () => {
-    const report = buildDailyLabReport({
-      cases: [mkCase()],
-      invoices: [],
-      advancePayments: [],
-      from: '2026-10-17',
-      to: '2026-10-17',
-    });
-    const rows = dailyReportCsvRows(report);
-    expect(rows[0][0]).toBe('Case #');
-    expect(rows[0]).toContain('Received');
-    expect(rows[0]).toContain('Patient');
-    expect(rows).toHaveLength(2);
-    expect(rows[1][0]).toBe('DS-0001');
+describe('the PDF export', () => {
+  /** The report's rows, shaped the way the PDF builder wants them. */
+  const pdfRows = () => [
+    {
+      caseNumber: 'DS-0001',
+      receivedDate: '2026-10-17',
+      caseType: 'PFM Crown',
+      patient: 'Hadia',
+      doctor: 'Dr Haroon',
+      clinic: 'Rahat Dental',
+      deliveryDate: '2026-10-20',
+      daysLate: 0,
+      fee: 28000,
+    },
+  ];
+
+  const meta = {
+    labName: 'Dental Lab',
+    periodLabel: '2026-10-17 → 2026-10-17',
+    generatedOn: '2026-10-20',
+    invoicesRaised: 1,
+    invoicedValue: 28000,
+    paymentsReceived: 0,
+    paidValue: 0,
+    totalOutstanding: 28000,
+  };
+
+  it('writes a real PDF, not a picture of one', () => {
+    const { pdf, pageCount } = buildDailyReportPdf(pdfRows(), [], meta);
+    // A PDF starts with a header and ends with the trailer. A screenshot
+    // would be neither.
+    expect(pdf.startsWith('%PDF-1.4')).toBe(true);
+    expect(pdf.trimEnd().endsWith('%%EOF')).toBe(true);
+    expect(pageCount).toBeGreaterThan(0);
+  });
+
+  it('carries the report as selectable text, not as pixels', () => {
+    const { pdf } = buildDailyReportPdf(pdfRows(), [], meta);
+    // The strings live in the content stream as literal text operators.
+    expect(pdf).toContain('DAILY LAB REPORT');
+    expect(pdf).toContain('PRODUCTION SHEET');
+    expect(pdf).toContain('DS-0001');
+    expect(pdf).toContain('PFM Crown');
+    expect(pdf).toContain('PKR 28,000');
+  });
+
+  it('gives the clinic breakdown a page of its own', () => {
+    const one = buildDailyReportPdf(pdfRows(), [], meta).pageCount;
+    const two = buildDailyReportPdf(
+      pdfRows(),
+      [
+        {
+          clinicName: 'Rahat Dental',
+          doctor: 'Dr Haroon',
+          casesReceived: 1,
+          casesDue: 1,
+          invoicedValue: 28000,
+          paidValue: 0,
+          outstanding: 28000,
+        },
+      ],
+      meta
+    ).pageCount;
+    expect(two).toBe(one + 1);
+  });
+
+  it('marks a case that went past its delivery date', () => {
+    const { pdf } = buildDailyReportPdf(
+      [{ ...pdfRows()[0], deliveryDate: '2026-10-14', daysLate: 3 }],
+      [],
+      meta
+    );
+    expect(pdf).toContain('3d late');
   });
 });
 

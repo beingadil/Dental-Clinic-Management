@@ -163,6 +163,72 @@ describe('the 0-byte result', () => {
       'cancelled',
     );
   });
+
+  it('does not call a file that came out short a success', async () => {
+    /* A file that is SHORT is as broken as one that is empty, and it is worse:
+       a truncated PDF still opens, so the operator finds out later that the
+       document is damaged. */
+    const s = stubHandle({ landedSize: 900 });
+    (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => s.handle);
+    const { saveFile } = await import('../../src/lib/saveFile');
+
+    const result = await saveFile('Ledger.pdf', new Uint8Array(3140), saveOpts);
+
+    expect(result.status).toBe('error');
+    if (result.status === 'error') expect(result.message).toMatch(/incomplete/i);
+  });
+
+  it('says which of the two paths the file took', async () => {
+    /* "Saved" is not enough when one path writes where the operator chose and
+       the other writes to the browser's download folder. The second one has no
+       dialog, so nothing else tells them where to look. */
+    const s = stubHandle({});
+    (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => s.handle);
+    const { saveFile } = await import('../../src/lib/saveFile');
+
+    const chosen = await saveFile('Ledger.pdf', new Uint8Array([1, 2, 3]), saveOpts);
+    expect(chosen.status).toBe('saved');
+    if (chosen.status === 'saved') expect(chosen.location).toBe('chosen');
+
+    /* A chooser that fails for a reason that is not a cancel falls through to
+       the plain download, and that has to be reported as such. */
+    const broken = stubHandle({ writeThrows: 'stream refused' });
+    (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => broken.handle);
+    const fell = await saveFile('Ledger.pdf', new Uint8Array([1, 2, 3]), saveOpts);
+    expect(fell.status).toBe('saved');
+    if (fell.status === 'saved') expect(fell.location).toBe('downloads');
+  });
+});
+
+describe('the blob URL lifetime', () => {
+  it('is not revoked on a timer while a download may still be reading it', async () => {
+    /* A blob URL points at a snapshot the browser holds, not at the bytes.
+       The download reads them when it STARTS, which can be long after the
+       click — after the operator has answered a "Save as" dialog. Revoking on
+       a timer races that, and a revoked blob arrives as a ZERO-BYTE file.
+
+       That is exactly what the operator got: a PDF in Downloads that would
+       not open, because it was empty. */
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    (window as never as Record<string, unknown>).showSaveFilePicker = vi.fn(async () => {
+      const e = new Error('chooser unavailable');
+      e.name = 'NotAllowedError';
+      throw e;
+    });
+    const { saveFile } = await import('../../src/lib/saveFile');
+
+    const result = await saveFile('Ledger.pdf', new Uint8Array([1, 2, 3]), saveOpts);
+    expect(result.status).toBe('saved');
+
+    // Nothing has been revoked yet: the download may still be starting.
+    expect(revoke).not.toHaveBeenCalled();
+
+    // It is released when the document goes away, which is the last moment
+    // anything could still need it.
+    const before = revoke.mock.calls.length;
+    window.dispatchEvent(new Event('pagehide'));
+    expect(revoke.mock.calls.length).toBeGreaterThan(before);
+  });
 });
 
 describe('the source contract', () => {

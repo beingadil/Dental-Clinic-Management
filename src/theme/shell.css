@@ -88,6 +88,30 @@
   }
 
   /*
+   * ── A frozen first column ───────────────────────────────────────────────
+   * A statement carries more money columns than a screen can show, and the
+   * column that identifies the row is the one that scrolls off first. The
+   * clinic name stays put while the money moves.
+   *
+   * The background has to be OPAQUE, and it has to be the surface the cell
+   * actually sits on — a translucent frozen cell lets the rows underneath
+   * show through it as they slide past.
+   */
+  .ds-sticky-col {
+    position: sticky;
+    left: 0;
+    background-color: var(--ds-surface);
+    box-shadow: 1px 0 0 var(--ds-line);
+  }
+
+  /* The header cell of a frozen column, which sits on the sunken canvas the
+     other header cells sit on, and above the body cells when they pass. */
+  .ds-sticky-col-head {
+    z-index: 2;
+    background-color: var(--ds-surface-sunken);
+  }
+
+  /*
    * ── Rail ───────────────────────────────────────────────────────────────
    * The rail is the canvas, not a card: no shadow, no radius, one hairline on
    * its trailing edge. A vertical surface does not need elevation because there

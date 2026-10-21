@@ -567,13 +567,32 @@
     opacity: 0.05;
   }
 
-  /* The sign-in tray inverts the other way: on white the tray is a hair DARKER
-     than the core, on dark it must be a hair LIGHTER, and its shadow has to
-     become depth rather than darkness. */
-  .dark .login-tray {
-    background: rgb(148 163 184 / 0.05);
-    border-color: rgb(148 163 184 / 0.16);
-    box-shadow: 0 24px 60px -28px rgb(0 0 0 / 0.7);
+  /* The first-run stage, lit for a low-key scene. The rig is the same one —
+     one shaft, one pool, one vignette — but on near-black the key light has
+     to be a cool beam rather than a white bloom, because white on white is
+     nothing and a light blue on near-black is a projector. The vignette
+     deepens with it: on the pale surface it was a soft shadow, here it is
+     the dark the subject stands out of.
+
+     The glass pane follows the same rule. A translucent sheet over a lit
+     room picks the room up: on white it is milk, on near-black it is a
+     smoked pane. Its fill stays opaque enough that the words on it keep
+     their contrast, which is why the aurora behind it is pulled back. */
+  .dark .auth-stage {
+    --auth-key-light: rgba(122, 162, 255, 0.24);
+    --auth-vignette: rgba(2, 6, 16, 0.78);
+    --auth-glass-fill: rgba(20, 30, 46, 0.58);
+    --auth-glass-edge: rgba(148, 163, 184, 0.22);
+    --auth-glass-sheen: rgba(255, 255, 255, 0.1);
+    --auth-glass-shadow: rgba(0, 0, 0, 0.88);
+    --auth-glass-solid: #0d1520;
+    --auth-chip-fill: rgba(20, 30, 46, 0.6);
+  }
+
+  /* The app-wide aurora steps back on the first-run stage, so the glass pane
+     has a quiet room to refract. */
+  .dark .auth-stage.app-atmos::before {
+    opacity: 0.24;
   }
 
   /* Scrollbars are pure rgba() here. The light thumb is slate-300 at 80%;

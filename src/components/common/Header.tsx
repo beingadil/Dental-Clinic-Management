@@ -45,7 +45,6 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { DentalCase } from '../../types';
-import { WindowControls } from './WindowControls';
 import { ThemeToggle } from './ThemeToggle';
 import { formatDoctorName } from '../../utils/doctorName';
 
@@ -720,7 +719,13 @@ export const Header: React.FC = () => {
           )}
         </div>
 
-        <WindowControls />
+        {/*
+          The window's own minimise / maximise / close live in the OS title
+          bar, not here. They were duplicated in this header, which meant the
+          desktop build showed two sets of them and the web build showed
+          none — the same screen behaving differently depending on how it was
+          opened. The OS already owns them, so the header leaves them alone.
+        */}
       </div>
     </header>
   );

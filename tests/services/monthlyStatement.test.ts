@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   buildMonthlyStatements,
   formatMonthLabel,
-  monthlyStatementCsvRows,
 } from '../../src/services/monthlyStatement';
 import { buildLabFinancialSummary } from '../../src/services/ledgerDomain';
 import type { Invoice, PaymentRecord, AdvancePayment, AccountAdjustment } from '../../src/types';
@@ -258,34 +257,5 @@ describe('formatMonthLabel', () => {
   it('renders a human month label', () => {
     expect(formatMonthLabel('2026-03')).toBe('March 2026');
     expect(formatMonthLabel('2026-01')).toBe('January 2026');
-  });
-});
-
-describe('monthlyStatementCsvRows', () => {
-  it('exports every statement column, one row per clinic per month', () => {
-    const rows = monthlyStatementCsvRows(blocks);
-    expect(rows[0]).toEqual([
-      'Month',
-      'Dental Clinic',
-      'Cases Billed',
-      'Billed (PKR)',
-      'Collected (PKR)',
-      'Advance Received (PKR)',
-      'Advance Applied (PKR)',
-      'Credit Notes (PKR)',
-      'Debit Adjustments (PKR)',
-      'Opening Balance (PKR)',
-      'Closing Balance (PKR)',
-      'Advance Credit (PKR)',
-      'Remaining Due (PKR)',
-    ]);
-    // Newest month first, matching the table.
-    expect(rows[1][0]).toBe('2026-03');
-    const i = rows[0].indexOf('Closing Balance (PKR)');
-    const j = rows[0].indexOf('Advance Credit (PKR)');
-    const k = rows[0].indexOf('Remaining Due (PKR)');
-    expect(rows[1][i]).toBe(37000);
-    expect(rows[1][j]).toBe(5000);
-    expect(rows[1][k]).toBe(37000);
   });
 });

@@ -75,15 +75,14 @@ describe('Tauri window permission contract', () => {
     // Guards the scanner itself: if this ever finds nothing, the regex or the
     // source layout changed and the assertions below would pass vacuously.
     //
-    // Four call sites: minimize / toggleMaximize / close in WindowControls,
-    // plus the flush-then-destroy in persistence.ts. This used to be five —
-    // the old UpdateStatusPill had its own destroy() for "restart now", which
-    // the v2.17 updater replaced with the native `update_apply` command (it
-    // must exit via Rust so the detached installer waiter gets our PID).
-    expect(calls.length).toBeGreaterThanOrEqual(4);
+    // ONE call site now: the flush-then-destroy in persistence.ts, which
+    // finishes the pending SQLite write before the window goes. It used to be
+    // four — the header's own minimise / maximise / close buttons went with
+    // the duplicate window controls, because the OS title bar already owns
+    // them and the web build has neither.
+    expect(calls.length).toBeGreaterThanOrEqual(1);
     const methods = new Set(calls.map((c) => c.method));
-    // The close path has two halves: the button and the flush-then-destroy.
-    expect(methods).toContain('close');
+    // The close path has two halves: the request handler and the force-destroy.
     expect(methods).toContain('destroy');
   });
 
@@ -99,9 +98,10 @@ describe('Tauri window permission contract', () => {
   });
 
   it('keeps the default set (read-only window access) granted', () => {
-    // isMaximized()/onResized() in WindowControls rely on it; dropping it
-    // would silently hide the window controls instead of erroring loudly.
-    expect(granted.has('core:window:default') || granted.has('core:default')).toBe(true);
+    // `core:default` already expands to `core:window:default`, so the
+    // read-only window access is granted either way; dropping the explicit
+    // entry must not take it with it.
+    expect(granted.has('core:default') || granted.has('core:window:default')).toBe(true);
   });
 
   /* ---------------------------------------------------------------------
@@ -118,13 +118,9 @@ describe('Tauri window permission contract', () => {
    * permission must now name the code that needs it.
    */
   const JUSTIFIED: Record<string, string> = {
-    'core:default': 'baseline Tauri core set',
+    'core:default': 'baseline Tauri core set (which includes the read-only core:window access)',
     'core:event:default': 'listen/emit for update://progress and window events',
-    'core:window:default': 'isMaximized()/onResized() in WindowControls',
-    'core:window:allow-close': 'WindowControls close button',
     'core:window:allow-destroy': 'close-request flush in persistence.ts',
-    'core:window:allow-minimize': 'WindowControls minimize button',
-    'core:window:allow-toggle-maximize': 'WindowControls maximize/restore button',
     'dialog:default': 'native save dialog behind save_file_bytes and PDF export',
   };
 

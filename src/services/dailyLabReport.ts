@@ -266,30 +266,3 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
     clinics,
   };
 };
-
-/**
- * CSV rows for the production sheet.
- *
- * The header is written by the caller so the file can carry the report window
- * in its name; this returns data rows only, RFC-4180 quoted by the exporter.
- */
-export const dailyReportCsvRows = (report: DailyLabReport): (string | number | null)[][] => [
-  ['Case #', 'Received', 'Delivery', 'Type', 'Patient', 'Doctor', 'Clinic', 'Units', 'Teeth', 'Shade', 'Material', 'Status', 'Priority', 'Price (PKR)', 'Days to delivery'],
-  ...report.production.map((r) => [
-    r.caseNumber,
-    r.receivedDate,
-    r.deliveryDate,
-    r.caseType,
-    r.patient,
-    r.doctor,
-    r.clinic,
-    r.units,
-    r.teeth,
-    r.shade,
-    r.material,
-    r.status,
-    r.priority,
-    r.price,
-    r.daysToDelivery,
-  ]),
-];

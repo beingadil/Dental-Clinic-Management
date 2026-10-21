@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { isThemeMode, resolveTheme, type ThemeMode } from '../../theme/theme';
 import {
   Lock,
   User,
@@ -8,10 +9,20 @@ import {
   ArrowRight,
   AlertCircle,
   Building2,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, brandingSettings, showToast, users, createInitialAdmin } = useApp();
+  const {
+    login,
+    brandingSettings,
+    showToast,
+    users,
+    createInitialAdmin,
+    userPreferences,
+    updateUserPreferences,
+  } = useApp();
 
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -96,50 +107,142 @@ export const LoginPage: React.FC = () => {
   const setupReady =
     !!setupName.trim() && !!setupUsername.trim() && setupPassword.length >= 8 && !setupBusy;
 
-  return (
-    <div className="app-atmos app-auth-hero min-h-[100dvh] bg-white flex flex-col text-slate-900 selection:bg-indigo-600 selection:text-white">
-      <main className="flex-1 flex items-center justify-center p-6 sm:p-10">
-        <section className="login-tray w-full max-w-[26rem] animate-step-in rounded-[26px] p-2">
-          <div className="rounded-[20px] border border-slate-100 bg-white px-7 py-9 sm:px-8">
-          {/* Brand header */}
-          <div className="flex items-center gap-3 mb-10">
-            {brandingSettings.logoUrl ? (
-              <img
-                src={brandingSettings.logoUrl}
-                alt={appName}
-                className="h-9 w-auto max-w-[140px] object-contain"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
-                <Building2 className="w-4.5 h-4.5 text-white" strokeWidth={1.75} />
-              </div>
-            )}
-            <div>
-              <div className="text-sm font-bold tracking-tight">{appName}</div>
-              <div className="text-[11px] text-slate-500">{tagline}</div>
-            </div>
-          </div>
+  /* ── The theme switch ────────────────────────────────────────────────
+     The preference is the same one Settings > Application Defaults writes,
+     so the switch here and the three-way control there can never disagree:
+     both go through `theme_mode`, and the database owns it.
+     This screen offers the two explicit modes only. "System" is still one
+     click away in Settings, but a button on a first-run screen should say
+     what it does, and a sun-and-moon pair says it in a glance. */
+  const themeMode: ThemeMode = isThemeMode(userPreferences?.theme_mode)
+    ? userPreferences.theme_mode
+    : 'system';
 
+  /* 'system' is a live subscription, not a one-shot read: the OS flipping at
+     dusk has to move the switch with it. */
+  const [prefersDark, setPrefersDark] = useState<boolean>(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => setPrefersDark(e.matches);
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    }
+    // Safari < 14 / older WebView2 only has the deprecated API.
+    const legacy = mq as MediaQueryList & {
+      addListener?: (cb: (e: MediaQueryListEvent) => void) => void;
+      removeListener?: (cb: (e: MediaQueryListEvent) => void) => void;
+    };
+    legacy.addListener?.(onChange);
+    return () => legacy.removeListener?.(onChange);
+  }, []);
+
+  const isDark = resolveTheme(themeMode, prefersDark) === 'dark';
+  const switchTheme = () =>
+    updateUserPreferences({ theme_mode: isDark ? 'light' : 'dark' });
+
+  return (
+    <div className="app-atmos auth-stage relative flex min-h-[100dvh] flex-col bg-slate-50 text-slate-900 selection:bg-brand-600 selection:text-white">
+      {/*
+        The lighting rig: one key light from above and to the right, the pool
+        it lands in, and a vignette that lets the corners fall away. Painted
+        BEHIND everything, so no word ever sits on a gradient and the
+        contrast audit keeps grading the ink against a real surface.
+      */}
+      <div className="auth-stage-lighting" aria-hidden="true" />
+
+      {/* ── Top matte ───────────────────────────────────────────────────
+          The slate header: what state this terminal is in, and what build it
+          is running. No brand name — the title card carries that, and saying
+          it twice on one screen is noise. */}
+      <header className="auth-rail flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-6 py-4 sm:px-10">
+        <span className="auth-rail-label flex items-center gap-2.5 text-slate-500">
+          <span className="auth-tally" aria-hidden="true" />
+          {needsSetup ? 'First run' : 'Operator sign in'}
+        </span>
+        <span className="flex items-center gap-4">
+          <span className="auth-rail-version text-slate-500">v{__APP_VERSION__}</span>
+          <button
+            type="button"
+            onClick={switchTheme}
+            aria-label={isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}
+            title={isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}
+            className="auth-chip flex h-7 w-7 items-center justify-center rounded-full text-slate-600 transition-colors hover:text-slate-900"
+          >
+            {isDark ? (
+              <Sun className="h-3.5 w-3.5" strokeWidth={1.75} />
+            ) : (
+              <Moon className="h-3.5 w-3.5" strokeWidth={1.75} />
+            )}
+          </button>
+        </span>
+      </header>
+
+      <main className="mx-auto grid w-full max-w-[1240px] flex-1 items-center gap-10 px-6 py-8 sm:px-10 lg:grid-cols-[1.04fr_0.96fr] lg:gap-16 lg:py-10">
+        {/* ── Title card ───────────────────────────────────────────────
+            The product's first impression, and its first flavour: a lit
+            bench, a name set the way a title card sets a name, and one line
+            that says what the thing actually is. */}
+        {/* The title card and the console share one measure when they stack,
+            so their left edges line up instead of the title hugging the
+            margin and the pane floating in the middle. */}
+        <section className="auth-title-card mx-auto w-full max-w-[27rem] lg:mx-0 lg:max-w-xl">
+          {brandingSettings.logoUrl ? (
+            <img
+              src={brandingSettings.logoUrl}
+              alt=""
+              aria-hidden="true"
+              className="mb-7 h-9 w-auto max-w-[150px] object-contain"
+            />
+          ) : (
+            <div className="mb-7 flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600">
+              <Building2 className="h-4.5 w-4.5 text-white" strokeWidth={1.75} />
+            </div>
+          )}
+
+          <p className="auth-eyebrow text-slate-500">{tagline}</p>
+
+          <h1 className="auth-title mt-4 text-slate-900">{appName}</h1>
+
+          <p className="auth-logline mt-6 max-w-[46ch] text-slate-600">
+            Cases, clinics, invoices and the ledger, running on this terminal with no server to
+            depend on.
+          </p>
+
+          <p className="auth-spec mt-9 text-slate-500">
+            Local SQLite &middot; Offline-first &middot; Single terminal
+          </p>
+        </section>
+
+        {/* ── The console ─────────────────────────────────────────────
+            A pane of frosted glass, standing in the pool of light. The words
+            sit on the pane, not on the room behind it, so what is refracted
+            through the glass is never what a word is read against. */}
+        <section className="auth-console auth-glass w-full max-w-[27rem] justify-self-center rounded-[28px] px-7 py-7 sm:px-8 sm:py-8 lg:justify-self-end">
           {needsSetup ? (
             <>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-600">
-                First-time setup
-              </p>
-              <h2 className="mt-2 text-2xl font-bold tracking-tight">Create the administrator</h2>
-              <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
-                This terminal has no administrator yet. The first account you create receives
-                the Super Admin role.
+              <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                Create the administrator
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                This terminal has no administrator yet. The first account you create receives the
+                Super Admin role.
               </p>
 
               <form
-                className="mt-8 space-y-5"
+                className="mt-8 space-y-4"
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (setupReady) void handleCreateAdmin();
                 }}
               >
-                <div className="space-y-1.5">
-                  <label htmlFor="setup-name" className="block text-xs font-semibold text-slate-700">
+                <div className="space-y-2">
+                  <label htmlFor="setup-name" className="auth-field-label text-slate-600">
                     Full name
                   </label>
                   <input
@@ -148,12 +251,13 @@ export const LoginPage: React.FC = () => {
                     onChange={(e) => setSetupName(e.target.value)}
                     placeholder="Administrator's full name"
                     autoComplete="name"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all"
+                    autoFocus
+                    className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-600 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-600"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="setup-username" className="block text-xs font-semibold text-slate-700">
+                <div className="space-y-2">
+                  <label htmlFor="setup-username" className="auth-field-label text-slate-600">
                     Username
                   </label>
                   <input
@@ -162,12 +266,12 @@ export const LoginPage: React.FC = () => {
                     onChange={(e) => setSetupUsername(e.target.value)}
                     placeholder="Used to sign in"
                     autoComplete="username"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all"
+                    className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-600 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-600"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="setup-password" className="block text-xs font-semibold text-slate-700">
+                <div className="space-y-2">
+                  <label htmlFor="setup-password" className="auth-field-label text-slate-600">
                     Password
                   </label>
                   <input
@@ -177,11 +281,12 @@ export const LoginPage: React.FC = () => {
                     onChange={(e) => setSetupPassword(e.target.value)}
                     placeholder="Minimum 8 characters"
                     autoComplete="new-password"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all"
+                    className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-600 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-600"
                   />
                   {setupPassword.length > 0 && setupPassword.length < 8 && (
                     <p className="text-[11px] text-slate-500">
-                      {8 - setupPassword.length} more character{8 - setupPassword.length === 1 ? '' : 's'} needed
+                      {8 - setupPassword.length} more character
+                      {8 - setupPassword.length === 1 ? '' : 's'} needed
                     </p>
                   )}
                   {setupPassword.length > 0 && (() => {
@@ -197,17 +302,21 @@ export const LoginPage: React.FC = () => {
                         : { bar: 'bg-amber-500', text: 'text-amber-700', word: 'Good' };
                     return (
                       <div className="mt-1.5">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
                             <div
                               className={`h-full rounded-full transition-all duration-300 ${verdict.bar}`}
                               style={{ width: `${(strength / 4) * 100}%` }}
                             />
                           </div>
-                          <span className={`text-[10px] font-bold ${verdict.text}`}>{verdict.word}</span>
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-[0.12em] ${verdict.text}`}
+                          >
+                            {verdict.word}
+                          </span>
                         </div>
                         {longEnough && strength < 3 && (
-                          <p className="text-[11px] text-slate-500 mt-1">
+                          <p className="mt-1 text-[11px] text-slate-500">
                             Mix in upper case, a number and a symbol to harden it.
                           </p>
                         )}
@@ -219,52 +328,49 @@ export const LoginPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={!setupReady}
-                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-sm font-semibold rounded-lg transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-lg bg-brand-600 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white transition-all hover:bg-brand-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
                 >
                   {setupBusy ? (
-                    <>Creating account…</>
+                    <>Creating account&hellip;</>
                   ) : (
                     <>
                       Create administrator
-                      <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+                      <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
                     </>
                   )}
                 </button>
 
-                <p className="text-[11px] text-ink-muted leading-relaxed">
-                  Additional staff accounts are provisioned later in Settings &rarr; User
-                  Management.
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  Additional staff accounts are provisioned in Settings &rarr; My Account &amp;
+                  Security.
                 </p>
               </form>
             </>
           ) : (
             <>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-600">
-                Sign in
-              </p>
-              <h2 className="mt-2 text-2xl font-bold tracking-tight">Welcome back</h2>
-              <p className="mt-1.5 text-sm text-slate-500">
+              <h2 className="text-2xl font-bold tracking-tight text-slate-900">Welcome back</h2>
+              <p className="mt-2 text-sm text-slate-600">
                 Use your {appName} operator account.
               </p>
 
               {error && (
                 <div
                   role="alert"
-                  className="mt-6 p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs font-medium flex items-start gap-2.5 animate-fadeIn"
+                  className="mt-6 flex animate-fadeIn items-start gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-800"
                 >
-                  <AlertCircle className="w-4 h-4 text-ink-danger shrink-0 mt-0.5" strokeWidth={1.75} />
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-ink-danger" strokeWidth={1.75} />
                   <div className="flex-1">{error}</div>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="mt-8 space-y-5" noValidate>
-                <div className="space-y-1.5">
-                  <label htmlFor="login-user" className="block text-xs font-semibold text-slate-700">
+              <form onSubmit={handleSubmit} className="mt-8 space-y-4" noValidate>
+                <div className="space-y-2">
+                  <label htmlFor="login-user" className="auth-field-label text-slate-600">
                     Username or email
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-muted">
-                      <User className="w-4 h-4" strokeWidth={1.5} />
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-ink-muted">
+                      <User className="h-4 w-4" strokeWidth={1.5} />
                     </div>
                     <input
                       id="login-user"
@@ -276,18 +382,18 @@ export const LoginPage: React.FC = () => {
                       }}
                       autoComplete="username"
                       autoFocus
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-slate-100 py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-600 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-600"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700">
+                <div className="space-y-2">
+                  <label htmlFor="login-password" className="auth-field-label text-slate-600">
                     Password
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-muted">
-                      <Lock className="w-4 h-4" strokeWidth={1.5} />
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-ink-muted">
+                      <Lock className="h-4 w-4" strokeWidth={1.5} />
                     </div>
                     <input
                       id="login-password"
@@ -298,61 +404,64 @@ export const LoginPage: React.FC = () => {
                         setError(null);
                       }}
                       autoComplete="current-password"
-                      className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-slate-100 py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder-slate-600 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-600"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-ink-muted hover:text-slate-600 transition-colors"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-ink-muted transition-colors hover:text-slate-600"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? (
-                        <EyeOff className="w-4 h-4" strokeWidth={1.5} />
+                        <EyeOff className="h-4 w-4" strokeWidth={1.5} />
                       ) : (
-                        <Eye className="w-4 h-4" strokeWidth={1.5} />
+                        <Eye className="h-4 w-4" strokeWidth={1.5} />
                       )}
                     </button>
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2.5 cursor-pointer select-none pt-0.5">
+                <label className="flex cursor-pointer select-none items-center gap-2.5 pt-0.5">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-600"
                   />
-                  <span className="text-xs text-slate-600 font-medium">Keep me signed in</span>
+                  <span className="text-xs font-medium text-slate-600">Keep me signed in</span>
                 </label>
 
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-sm font-semibold rounded-lg transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-lg bg-brand-600 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white transition-all hover:bg-brand-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
                 >
                   {isSubmitting ? (
-                    <>Signing in…</>
+                    <>Signing in&hellip;</>
                   ) : (
                     <>
                       Sign in
-                      <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+                      <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
                     </>
                   )}
                 </button>
               </form>
 
-              <p className="mt-8 text-[11px] text-ink-muted leading-relaxed">
+              <p className="mt-8 text-[11px] leading-relaxed text-slate-500">
                 Access is managed by your laboratory administrator. New staff accounts are
-                provisioned in Settings &rarr; User Management.
+                provisioned in Settings &rarr; My Account &amp; Security.
               </p>
             </>
           )}
-          </div>
         </section>
       </main>
 
-      <footer className="px-6 py-4 text-center text-[11px] text-ink-muted border-t border-slate-100">
-        &copy; {new Date().getFullYear()} {appName}
+      {/* ── Bottom matte ─────────────────────────────────────────────── */}
+      <footer className="auth-rail flex shrink-0 items-center justify-between gap-4 border-t border-slate-200 px-6 py-4 text-[11px] text-slate-500 sm:px-10">
+        <span>
+          &copy; {new Date().getFullYear()} {appName}
+        </span>
+        <span className="hidden sm:inline">All data stays on this device.</span>
       </footer>
     </div>
   );

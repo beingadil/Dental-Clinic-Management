@@ -22,7 +22,20 @@ import { isDesktop } from '../db/persistence';
 import { invoke } from '@tauri-apps/api/core';
 
 export type SaveFileResult =
-  | { status: 'saved'; path: string; bytes: number }
+  | {
+      status: 'saved';
+      path: string;
+      bytes: number;
+      /**
+       * Where the file actually went.
+       *
+       * 'chosen' means the operator picked the location (the native dialog on
+       * desktop, the File System Access picker in a browser). 'downloads' means
+       * the browser's own download folder, because there was no chooser to ask
+       * — and the operator has no way of knowing that unless we say so.
+       */
+      location?: 'chosen' | 'downloads';
+    }
   | { status: 'cancelled' }
   | { status: 'unsupported' }
   | { status: 'error'; message: string };
@@ -104,6 +117,34 @@ async function saveInBrowser(
 ): Promise<SaveFileResult> {
   const blob = new Blob([bytes as BlobPart], { type: opts.mimeType });
 
+  /* The blob URL's lifetime is the whole ballgame for the plain-download
+     path, and it is easy to get wrong in a way that produces a ZERO-BYTE
+     file.
+     A blob URL does not point at the bytes; it points at a snapshot the
+     browser holds. When the URL is revoked, that snapshot goes with it. The
+     download, however, does not read the bytes when the link is clicked: it
+     reads them when the download actually starts, which can be long after
+     the click — after the operator has chosen a location, or after the
+     browser's own "Save as" dialog has been answered. Revoking on a timer
+     therefore races the download, and a revoked blob arrives as an empty
+     file.
+
+     So the URL is held until the DOCUMENT goes away. `pagehide` is the
+     moment the bytes can no longer be needed by anything, and the browser
+     releases the snapshot on its own when the document is discarded, so
+     nothing leaks. */
+  const blobUrl = URL.createObjectURL(blob);
+  const releaseBlobUrl = () => {
+    try {
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      /* already released */
+    }
+  };
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('pagehide', releaseBlobUrl, { once: true });
+  }
+
   const picker = savePicker();
   if (picker) {
     try {
@@ -150,13 +191,30 @@ async function saveInBrowser(
       const written = await handle.getFile?.();
       const landed = typeof written?.size === 'number' ? written.size : bytes.length;
       if (bytes.length > 0 && landed === 0) {
+        /* The chosen file exists and is empty. Say so, and say what to do
+           about it — an empty PDF does not open, and the operator is the
+           only one who can fix it (close whatever has the file open). */
         return {
           status: 'error',
           message:
-            'The file was created but nothing was written to it. It is probably open in another program — close it and save again.',
+            `The file was created at the chosen location but nothing was written to it, ` +
+            'so it is an empty file that will not open. It is probably open in another ' +
+            'program — close it and save again.',
         };
       }
-      return { status: 'saved', path: handle.name, bytes: landed };
+      /* A file that is SHORT is as broken as one that is empty, and it is
+         worse: a truncated PDF still opens, so the operator finds out later
+         that the document is damaged. The read-back is the only place this
+         can be seen, so it is checked here rather than trusted. */
+      if (typeof written?.size === 'number' && written.size !== bytes.length) {
+        return {
+          status: 'error',
+          message:
+            `The file was written but only ${written.size} of ${bytes.length} bytes landed, ` +
+            'so it is incomplete. Close anything that has the file open and save again.',
+        };
+      }
+      return { status: 'saved', path: handle.name, bytes: landed, location: 'chosen' };
     } catch (err) {
       /* Dismissing the chooser is a choice, not a failure. Reporting it as an
          error would train the operator to ignore the message. Matched on the
@@ -168,21 +226,26 @@ async function saveInBrowser(
       /* Anything else — a refused stream, a locked file, a sync folder fighting
          the swap — falls through to the plain download below. The operator
          still gets their file; losing the chooser is a lesser loss than losing
-         the save. */
+         the save. The file will land in the browser's own download folder
+         rather than where they were choosing, and the message below says so. */
     }
   }
 
   try {
-    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
+    link.href = blobUrl;
     link.download = fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    // Revoking immediately can cancel the download in some browsers.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    return { status: 'saved', path: fileName, bytes: bytes.length };
+    /* The blob URL is NOT revoked on a timer. It is held until the document
+       goes away (see `releaseBlobUrl` above), because the download reads the
+       bytes when it starts — which can be after the operator has answered a
+       "Save as" dialog — and a revoked blob arrives as a ZERO-BYTE file.
+
+       The link is removed from the DOM straight away, which is safe: the
+       click has already handed the URL to the browser's download manager. */
+    return { status: 'saved', path: fileName, bytes: bytes.length, location: 'downloads' };
   } catch (err) {
     return {
       status: 'error',
@@ -247,7 +310,19 @@ export async function saveFile(
       path,
       bytesB64: toBase64(bytes),
     })) as { path: string; bytes: number };
-    return { status: 'saved', path: result.path, bytes: result.bytes };
+    /* The Rust side decodes the base64 and writes the bytes; it reports back
+       how many it wrote. A number other than the number sent means the file
+       on disk is not the file we built — for a PDF that is a document that
+       opens and is broken, so it is caught here rather than by the operator. */
+    if (typeof result?.bytes === 'number' && result.bytes !== bytes.length) {
+      return {
+        status: 'error',
+        message:
+          `Only ${result.bytes} of ${bytes.length} bytes reached the file, ` +
+          'so it is incomplete. Close anything that has the file open and save again.',
+      };
+    }
+    return { status: 'saved', path: result.path, bytes: result.bytes, location: 'chosen' };
   } catch (err) {
     return {
       status: 'error',

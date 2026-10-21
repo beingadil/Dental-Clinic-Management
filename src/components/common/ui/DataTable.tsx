@@ -44,6 +44,18 @@ interface DataTableProps<T> {
   tfoot?: React.ReactNode;
   /** Rendered below the table, outside it (e.g. "show more" bar). */
   footer?: React.ReactNode;
+  /**
+   * Freeze the first column.
+   *
+   * For the tables that carry more columns than a screen can show: the
+   * clinic name stays put while the money scrolls, so a row can still be
+   * read against the figure the operator is looking at.
+   *
+   * A `<tfoot>` is caller-supplied, so its first cell needs the same
+   * treatment by hand — `ds-sticky-col`, with an opaque background, or the
+   * totals row slides under the frozen column instead of lining up with it.
+   */
+  stickyFirstColumn?: boolean;
 }
 
 const ALIGN = {
@@ -79,8 +91,14 @@ export function DataTable<T>({
   emptyState,
   tfoot,
   footer,
+  stickyFirstColumn = false,
 }: DataTableProps<T>) {
   if (data.length === 0) return <>{emptyState ?? null}</>;
+
+  /* The frozen column, when there is one. The header cell goes on top of the
+     body cells as they slide under it. */
+  const stickyHead = stickyFirstColumn ? 'ds-sticky-col ds-sticky-col-head' : '';
+  const stickyBody = stickyFirstColumn ? 'ds-sticky-col' : '';
 
   return (
     <>
@@ -103,7 +121,9 @@ export function DataTable<T>({
                 <th
                   key={i}
                   scope="col"
-                  className={`py-2 px-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}
+                  className={`py-2 px-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''} ${
+                    i === 0 ? stickyHead : ''
+                  }`}
                 >
                   {col.header}
                 </th>
@@ -135,7 +155,9 @@ export function DataTable<T>({
                   {columns.map((col, i) => (
                     <td
                       key={i}
-                      className={`py-2 px-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}
+                      className={`py-2 px-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''} ${
+                        i === 0 ? stickyBody : ''
+                      }`}
                     >
                       {col.render(row)}
                     </td>
