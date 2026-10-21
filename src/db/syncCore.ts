@@ -120,6 +120,15 @@ function syncNow(c: SyncCollections): void {
   const usedPaymentNumbers = new Set<string>();
   const usedAdvanceNumbers = new Set<string>();
   const usedPaymentIds = new Set<string>();
+  // DEDUP (multi-invoice receipts): a single receipt can hit several invoices,
+  // and syncCore stores one payments row per invoice-nested slice. Each slice
+  // carries the SAME allocation list and the SAME attachment list, so without
+  // dedup the same row is inserted once per invoice — UNIQUE constraint
+  // failure. These sets persist across invoices (unlike the per-payment sets
+  // they replaced, which were reset for every payment and never saw the
+  // sibling slices).
+  const writtenAllocIds = new Set<string>();
+  const writtenAttachmentIds = new Set<string>();
   const usedAdvanceIds = new Set<string>();
   const usedCaseNumbers = new Set<string>();
   const usedInvoiceNumbers = new Set<string>();
@@ -505,11 +514,8 @@ function syncNow(c: SyncCollections): void {
            p.journal_id && knownJournalIds.has(p.journal_id) ? p.journal_id : (paymentJournalByPayment.get(pid) ?? null),
            p.created_at || p.payment_date || now]
         );
-        // DEDUP (multi-invoice receipts): same as allocations above — the same
-        // payment (with the same attachments) is stored in every invoice it
-        // touched, so without dedup the attachment row is inserted once per
-        // invoice and the sync aborts on a UNIQUE constraint.
-        const writtenAttachmentIds = new Set<string>();
+        // DEDUP: writtenAttachmentIds is declared at the top level so it
+        // persists across invoice slices of the same receipt.
         for (const a of p.attachments || []) {
           const attId = a.id || genId('pa');
           if (writtenAttachmentIds.has(attId)) continue;
@@ -524,13 +530,8 @@ function syncNow(c: SyncCollections): void {
         // Payment allocations, same rule as advance allocations below: the
         // table was emptied above, so an allocation not rewritten here is gone.
         //
-        // DEDUP (multi-invoice receipts): a single receipt can hit several
-        // invoices, and syncCore stores one payments row per invoice-nested
-        // slice. Each slice carries the SAME allocation list, so without
-        // dedup the same allocation row is inserted once per invoice —
-        // UNIQUE constraint failure on payment_allocations.id. Track
-        // already-written ids so a sibling slice cannot re-insert one.
-        const writtenAllocIds = new Set<string>();
+        // DEDUP: writtenAllocIds is declared at the top level so it persists
+        // across invoice slices of the same receipt.
         for (const al of p.allocations || []) {
           if (!liveInvoiceIds.has(al.invoice_id)) continue; // orphan -> skip
           const allocId = al.id || genId('alloc');
