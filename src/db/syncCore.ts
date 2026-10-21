@@ -505,22 +505,41 @@ function syncNow(c: SyncCollections): void {
            p.journal_id && knownJournalIds.has(p.journal_id) ? p.journal_id : (paymentJournalByPayment.get(pid) ?? null),
            p.created_at || p.payment_date || now]
         );
+        // DEDUP (multi-invoice receipts): same as allocations above — the same
+        // payment (with the same attachments) is stored in every invoice it
+        // touched, so without dedup the attachment row is inserted once per
+        // invoice and the sync aborts on a UNIQUE constraint.
+        const writtenAttachmentIds = new Set<string>();
         for (const a of p.attachments || []) {
+          const attId = a.id || genId('pa');
+          if (writtenAttachmentIds.has(attId)) continue;
+          writtenAttachmentIds.add(attId);
           tx.run(
             `INSERT INTO payment_attachments (id, owner_type, payment_id, filename, file_type, file_size, file_url, uploaded_at, uploaded_by)
              VALUES (?, 'payment', ?, ?, ?, ?, ?, ?, ?)`,
-            [a.id || genId('pa'), pid, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
+            [attId, pid, a.file_name ?? 'proof', a.file_type ?? 'application/octet-stream',
              a.file_size ?? null, a.file_url ?? '', a.uploaded_at ?? now, a.uploaded_by ?? null]
           );
         }
         // Payment allocations, same rule as advance allocations below: the
         // table was emptied above, so an allocation not rewritten here is gone.
+        //
+        // DEDUP (multi-invoice receipts): a single receipt can hit several
+        // invoices, and syncCore stores one payments row per invoice-nested
+        // slice. Each slice carries the SAME allocation list, so without
+        // dedup the same allocation row is inserted once per invoice —
+        // UNIQUE constraint failure on payment_allocations.id. Track
+        // already-written ids so a sibling slice cannot re-insert one.
+        const writtenAllocIds = new Set<string>();
         for (const al of p.allocations || []) {
           if (!liveInvoiceIds.has(al.invoice_id)) continue; // orphan -> skip
+          const allocId = al.id || genId('alloc');
+          if (writtenAllocIds.has(allocId)) continue; // already written by a sibling slice
+          writtenAllocIds.add(allocId);
           tx.run(
             `INSERT INTO payment_allocations (id, source_type, source_id, source_ref, invoice_id, invoice_number, amount, allocated_at, allocated_by, notes)
              VALUES (?, 'payment', ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [al.id || genId('alloc'), pid, p.payment_number || null,
+            [allocId, pid, p.payment_number || null,
              al.invoice_id, al.invoice_number ?? null, al.amount,
              al.allocated_at || now, al.allocated_by || null, al.notes ?? null]
           );

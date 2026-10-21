@@ -1,178 +1,156 @@
 # Dental Solutions — Explainer Video Script & Storyboard
 
-**Title:** "Dental Solutions: Run Your Dental Lab End to End on One Machine"
-**Target length:** 4:00–5:00 (aim ~4:30; trim any scene if you need to land shorter)
-**Format:** 16:9, 1080p. Screen-recording of the live app + voiceover. No motion graphics required.
-**Audience:** Lab owners / solo operators evaluating the software; also useful as onboarding for new staff.
-**Tone:** Calm, practical, demo-driven. Show, don't tell.
-**Recording tips:** Record at 1080p, 60 fps. Use a neutral cursor; hide notifications. Speak at ~130 wpm. Pause 0.5s after each scene title. Keep the app in dark mode for contrast on video, or light mode if the audience prefers — pick one and stay consistent.
+**Rendered video:** `brag-output/brag.mp4` (4:05, 1920×1080, 30 fps)
+**Title:** "Run your lab end to end."
+**Target length:** 4:05 (245 s)
+**Format:** 16:9, 1080p. Motion-graphics explainer built from the live product's design system.
+**Audience:** Lab owners / solo operators evaluating the software; also usable as onboarding for new staff.
+**Tone:** Calm, practical, premium. Show, don't tell.
+
+> **This script is synced to the rendered video.** Scene timecodes below match the cuts in `brag.mp4` exactly. Record one scene at a time and drop each take in at its timecode — the on-screen visuals already carry the message, so your narration should add context, not repeat the captions.
 
 ---
 
 ## Production notes
 
-- **Word count target:** ~520 words of narration ≈ 4:00 at 130 wpm.
-- **On-screen text** = short labels that appear as lower-thirds or callouts while you narrate. Keep ≤ 6 words each.
-- **B-roll / cutaways:** where marked, switch from screen recording to a close-up of the relevant panel; otherwise stay on the main window.
-- **Music:** optional low-volume instrumental under the whole track; duck during narration.
-- **Chapters (YouTube):** use the scene titles as chapter markers.
+- **Word count target:** ~520 words of narration ≈ 4:00 at 130 wpm. The current script is ~640 words ≈ 5:00; trim Scenes 6, 10, 12 if you need to land shorter.
+- **Music bed** is already in the render at low volume. When you add narration, duck the music to ~0.12 under your voice and return it to 0.5 in the gaps.
+- **Chapter markers** are already burned into the top-right of the video (Overview, The workflow, Dashboard, Case intake, …) and a progress bar runs along the bottom — use them for YouTube chapters.
+- **On-screen text** is a caption, not a subtitle. Your narration should add the *why*, never read the caption aloud.
 
 ---
 
-## Scene 0 — Title card (0:00 – 0:08)
+## Scene-by-scene
 
-**Visual:** Black/brand background. Logo + title "Dental Solutions — Clinic & Laboratory Management". Subtitle: "Run your dental lab end to end on one machine."
-**Narration:** *(none — hold for 2s, then start)*
-**Notes:** Fade in. Let the title breathe.
-
----
-
-## Scene 1 — The problem & the promise (0:08 – 0:40) · ~70 words
-
-**Visual:** Dashboard first, then quick cuts: case list → odontogram → invoice → payment → job slip.
-**On-screen:** "One operator. One machine. No second system."
+### Scene 1 — Hero — 0:00 – 0:08
+**On screen:** "Run your lab end to end." · "One machine. One operator. Every case, invoice, and payment — in one place." · pills: Offline / White-label / Double-entry ledger
 **Narration:**
-> Dental Solutions is a local-first desktop app for dental clinics and dental laboratories. It runs a whole lab on one machine: receive a case from a clinic, chart exactly which teeth and which shade, move it through production under an SLA, print the job slip the bench works from, and bill the clinic for it. No second system to keep in sync, no internet required.
+> This is Dental Solutions. It runs a dental laboratory end to end on a single machine — one person doing bench work, front desk, and the books, in one session.
 
 ---
 
-## Scene 2 — The dashboard: what needs me right now (0:40 – 1:05) · ~55 words
-
-**Visual:** Dashboard. Pan across the panels: overdue/late cases, today's deliveries, receivables, low-stock/SLA alerts.
-**On-screen:** "What's late? What's due? What am I owed?"
+### Scene 2 — The workflow — 0:08 – 0:28
+**On screen:** "No second system to keep in sync." · 5-step vertical flow: Receive case → Chart teeth & shade → Production & SLA → Print job slip → Invoice the clinic
 **Narration:**
-> Everything starts on the dashboard. It answers three questions without leaving the screen: what is late, what is due today, and what am I owed. Late and at-risk cases are flagged against their SLA, deliveries are calendared, and receivable balances sit next to them. One operator, many hats — so the dashboard is the single place to look.
+> The whole path is here. Receive a case from a clinic, chart it, produce it, print the slip, and bill the clinic. Nothing gets re-entered into a second system and nothing has to be reconciled by hand.
 
 ---
 
-## Scene 3 — Receiving a case: the odontogram (1:05 – 1:50) · ~100 words
-
-**Visual:** New Case modal. Select clinic. Chart teeth on the FDI odontogram (click teeth, pick shade once, pick restoration type + material). Show per-tooth vs not-per-tooth (retainer) product. Show case template reuse.
-**On-screen:** "A case's identity is its charted teeth and shade."
+### Scene 3 — Dashboard — 0:28 – 0:48
+**On screen:** "What needs me right now?" · tiles: Late 3, Due today 7, Receivable PKR 46.5k · three case rows
 **Narration:**
-> Receiving a case is where Dental Solutions is different. A case's identity is its charted teeth and shade — not a free-text note. You select the clinic, then chart teeth on the FDI odontogram. Pick the shade once and it applies to the whole selection. Choose the restoration type and material. Pricing multiplies by charted units automatically. Some products, like a retainer, have no teeth at all — they are not charted, and they appear on no slip and no invoice as teeth. You can also save a case as a template and reuse it for repeat work.
+> Everything starts on the dashboard, because the first question is always the same: what needs me right now, and what is late? Late cases, today's deliveries, and what the clinics owe you — all without leaving the screen.
 
 ---
 
-## Scene 4 — Production workflow and SLA (1:50 – 2:20) · ~65 words
-
-**Visual:** Case list → open a case → status progression received → in production → QC → ready → dispatched. Show priority + SLA countdown. Show case notes / QC panel / attachments.
-**On-screen:** "received → in production → QC → ready → dispatched"
+### Scene 4 — Case intake — 0:48 – 1:13
+**On screen:** "A case's identity is its charted teeth and shade." · full 32-tooth FDI odontogram, charted teeth lit
 **Narration:**
-> Once registered, a case moves through a fixed production workflow: received, in production, QC, ready, dispatched. Every case carries a priority and a global SLA turnaround, so the countdown is the same for every case of that priority. Inside the case you keep notes, QC results, and attachments — files and images — right next to the chart, so nothing lives in a separate folder.
+> Receiving a case is where this product is genuinely different. A case's identity is its charted teeth and shade — not a free-text note. You chart teeth on the FDI odontogram, pick the shade once and it applies to the whole selection, and choose the restoration type and material. Pricing multiplies by charted units automatically.
 
 ---
 
-## Scene 5 — Printing the job slip (2:20 – 2:45) · ~55 words
-
-**Visual:** Case → Print job slip. Show the slip with teeth, shade, material. Show per-document section toggles + saved print settings. Batch print modal.
-**On-screen:** "The slip prints the teeth. The teeth drive the slip."
+### Scene 5 — Product types — 1:13 – 1:28
+**On screen:** "Some products have no teeth." · Crown (per-tooth) vs Retainer (no teeth)
 **Narration:**
-> The job slip is a first-class deliverable, not an export. It prints the teeth, the shade, and the material — the same chart that drives pricing. You control which sections print, and your choices are saved. For a busy morning, batch-print a whole queue of slips at once. The technician at the bench reads the slip, not the screen.
+> Some products have no teeth at all. A retainer is not charted. It appears on no slip and no invoice as teeth — and it is still priced correctly.
 
 ---
 
-## Scene 6 — Invoicing that writes itself (2:45 – 3:15) · ~65 words
-
-**Visual:** Open a case → show the auto-generated invoice bound to it. Show clinic's agreed rate for the material. Show invoice detail drawer, partial payments, payment-proof image upload.
-**On-screen:** "Invoiced at registration. Priced from the clinic's rate."
+### Scene 6 — Production — 1:28 – 1:48
+**On screen:** "received → in production → QC → ready → dispatched" · vertical stepper with dates
 **Narration:**
-> Invoicing is not a separate step. The moment a case is registered, an invoice is raised for it, priced from that clinic's agreed rate for that material. It stays bound to the case for life. Payments are recorded against it — partial payments included — and you can attach a payment-proof image. Receivable balances update as payments land, so you always know who owes what.
+> Once registered, a case moves through a fixed production workflow: received, in production, quality check, ready, dispatched. Every case carries a priority and a global SLA turnaround, so the countdown is the same for every case of that priority. Notes, QC results, and attachments live on the case itself.
 
 ---
 
-## Scene 7 — Money: ledger, adjustments, reports (3:15 – 3:45) · ~65 words
-
-**Visual:** Billing view → general ledger → journal entry modal → record adjustment → clinic statement → billing reports. Show PKR amounts.
-**On-screen:** "Double-entry ledger. Real money, in PKR."
+### Scene 7 — Printing — 1:48 – 2:08
+**On screen:** "The slip prints the teeth." · job slip with clinic, material, shade A2, teeth 11·12·13, priority, SLA, due date
 **Narration:**
-> Behind the invoices sits a real double-entry ledger. Every payment and adjustment posts a journal entry. You can record manual adjustments, view a clinic statement, and run billing reports. Money is real money here — PKR amounts, receivable balances, allocation across invoices — and nothing is hidden behind a sync.
+> The job slip is a first-class deliverable, not an export. It prints the teeth, the shade, and the material — the same chart that drives the pricing. You control which sections print, your choices are saved, and you can batch-print a whole queue of slips for a busy morning. The technician at the bench reads the slip, not the screen.
 
 ---
 
-## Scene 8 — Clinics, labs, and the catalog (3:45 – 4:05) · ~45 words
-
-**Visual:** Clinics list, labs list, catalog view (materials, categories, SLA turnarounds by priority).
-**On-screen:** "Configure materials, SLAs, and clinics once."
+### Scene 8 — Billing — 2:08 – 2:28
+**On screen:** "Invoiced at registration." · invoice #1042 with line items, tooth numbers, PKR amounts, total PKR 46,500, "Auto-raised" badge
 **Narration:**
-> Clinics and labs are managed in their own screens. The material catalog is operator-managed: add materials, group them into categories, and set global SLA turnarounds per priority. Configure it once; every new case inherits it. The product is white-label, so your practice name, logo, tagline, and accent colour are yours.
+> Invoicing is not a separate step. The moment a case is registered, an invoice is raised for it, priced from that clinic's agreed rate for that material, and it stays bound to the case for life. Payments are recorded against it, partial payments included, and you can attach a payment-proof image. Receivable balances update as money lands.
 
 ---
 
-## Scene 9 — Backup, restore, and updates (4:05 – 4:30) · ~55 words
-
-**Visual:** Settings → Backup tab: export .dentalbackup, validate, restore with safety snapshot. SQL dump import. Updates tab: 5-step checklist.
-**On-screen:** "Back up. Validate. Restore. Update safely."
+### Scene 9 — Ledger — 2:28 – 2:48
+**On screen:** "Double-entry ledger. Real money, in PKR." · journal entries table, receivable balance PKR 26,500, collected PKR 20,000
 **Narration:**
-> Backups are a versioned package — the SQLite file plus a SHA-256 manifest. Restore validates the package first, takes a safety snapshot of current data, swaps the engine, and reloads. You can even import a plain SQL dump, sandboxed and reported before anything is replaced. On the desktop build, updates run a five-step checklist — check, download, verify, back up, ask — and only your click closes the app.
+> Behind the invoices sits a real double-entry ledger. Every payment and adjustment posts a journal entry. You can record manual adjustments, pull a clinic statement, and run billing reports. Money is real money here — PKR amounts, receivable balances, allocation across invoices — and none of it is hidden behind a sync.
 
 ---
 
-## Scene 10 — Offline, branding, and the desktop build (4:30 – 4:50) · ~45 words
-
-**Visual:** Settings → Branding tab (logo, name, accent). Show app running with no network. Desktop installer bundle. Dark mode toggle.
-**On-screen:** "Offline. White-label. Yours."
+### Scene 10 — Configuration — 2:48 – 3:03
+**On screen:** "Configure once." · material catalog, SLA by priority, branding swatches
 **Narration:**
-> Core workflows need no network — fonts and the SQLite engine are bundled, no runtime CDN calls. It ships as a Windows desktop installer via Tauri, and the same code runs in a browser. Dark mode is a working requirement, not a preference, and small screens are first-class.
+> Clinics and labs are managed in their own screens, and the catalog is yours. Add materials, group them into categories, and set the SLA turnarounds per priority. Configure it once and every new case inherits it. The product is white-label — your practice name, logo, tagline, and accent colour.
 
 ---
 
-## Scene 11 — Outro (4:50 – 5:00)
+### Scene 11 — Data safety — 3:03 – 3:23
+**On screen:** "Back up. Validate. Restore." · 5-step flow: Export .dentalbackup → Validate SHA-256 → Safety snapshot → Swap engine → Reload
+**Narration:**
+> Backups are a versioned package — the SQLite file plus a SHA-256 manifest. Restore validates the package first, takes a safety snapshot of your current data, swaps the engine, and reloads. You can import a plain SQL dump too: it is replayed into a throwaway database and reported before anything is replaced, and statements that would escape the sandbox are refused rather than run.
 
-**Visual:** Dashboard again. Title card. "Dental Solutions — Run your lab end to end."
+---
+
+### Scene 12 — Updates — 3:23 – 3:38
+**On screen:** "Updates, handled." · checklist: Check manifest / Download installer / Verify SHA-256 / Back up database / Restart & apply
+**Narration:**
+> The desktop app updates itself. It checks the published manifest, streams the download, verifies the checksum while it downloads, and takes a database backup before anything is installed. Then it asks. Only your click closes the app — the staged installer is re-hashed at that moment, because it has been sitting on disk unattended.
+
+---
+
+### Scene 13 — Platform — 3:38 – 3:53
+**On screen:** "Offline. White-label. Yours." · three pillars: Offline / White-label / Desktop + Web
+**Narration:**
+> Core workflows need no network at all — fonts and the SQLite engine are bundled, with no runtime CDN calls. It ships as a Windows desktop installer and the same code runs in a browser. Dark mode is a working requirement, not a preference, and the small 1366-pixel screens these labs actually use are treated as first-class.
+
+---
+
+### Scene 14 — Close — 3:53 – 4:05
+**On screen:** "One source of truth for every case, invoice, and payment." · pills: Offline / White-label / v2.28
 **Narration:**
 > That's Dental Solutions: one machine, one operator, one source of truth for every case, invoice, and payment. Thanks for watching.
 
 ---
 
-## Quick reference — feature checklist (for coverage)
+## Feature coverage checklist
 
-- [x] Dashboard / what's late, due, owed
-- [x] Case intake + FDI odontogram
+- [x] Dashboard — what's late, what's due, what's owed
+- [x] Case intake + FDI odontogram + per-tooth shade
 - [x] Per-tooth vs not-per-tooth products (retainer)
-- [x] Shade chosen once applies to whole selection
-- [x] Case templates
-- [x] Material catalog + categories
-- [x] Global SLA per priority
-- [x] Production workflow (received → dispatched)
-- [x] Case notes / QC / attachments
-- [x] Job slip print + section toggles + saved settings + batch print
-- [x] Auto-invoicing at registration, clinic rate
-- [x] Partial payments + payment-proof images
-- [x] Receivable balances
-- [x] Double-entry ledger + journal + adjustments
+- [x] Case templates, QC, notes, attachments
+- [x] Material catalog + categories + SLA per priority
+- [x] Production workflow with priority + SLA
+- [x] Job slip print, section toggles, saved settings, batch print
+- [x] Auto-invoicing at registration, clinic rate, bound to the case
+- [x] Partial payments + payment-proof images + receivable balances
+- [x] Double-entry ledger, journal entries, adjustments
 - [x] Clinic statements + billing reports
 - [x] Clinics & labs management
 - [x] White-label branding (name, logo, tagline, accent)
 - [x] Backup (.dentalbackup + SHA-256) + restore + safety snapshot
-- [x] SQL dump import (sandboxed)
+- [x] Sandboxed SQL dump import
 - [x] Desktop updates (5-step)
-- [x] Offline operation
-- [x] Dark mode + small screens
-- [x] Desktop (Tauri) + web
+- [x] Offline operation, Tauri desktop + web, dark mode, small screens
 
 ## Recording checklist
 
-1. Seed the demo dataset first. The app ships with zero accounts, so on first run
-   create an administrator through the setup screen, then run the dev-only
-   fixture in the browser console:
+1. Log in to a demo account with realistic seed data (clinics, cases in every status, invoices, payments) — the mockups in the video use Acme Dental, Case #1042, PKR amounts.
+2. Record each scene as a separate take. Stitch in the editor; it is far easier to re-record one scene than the whole video.
+3. Capture audio at 48 kHz, normalise to -3 dB peak, add light compression.
+4. Duck the existing music bed to ~0.12 under your narration, then let it return to 0.5.
+5. Export H.264, 1080p, 8–12 Mbps, AAC 192 kbps.
+6. Use the burned-in chapter labels for YouTube chapter markers.
 
-   ```js
-   await __dentalDemo.seed()
-   ```
+## Shorter cuts
 
-   It books 5 clinics, 25 cases across every workflow stage, 25 invoices and
-   payment records. `__dentalDemo.status()` prints what is on the board.
-   Fixtures are excluded from production builds, so this only works on
-   `npm run dev`.
-2. Pre-open each screen once so chunks are cached and transitions are instant.
-3. Hide the OS clock/notifications; use a neutral cursor.
-4. Record each scene as a separate take; stitch in the editor. Easier to re-record one scene than the whole video.
-5. Capture audio at 48 kHz; normalize to -3 dB peak; add light compression.
-6. Add chapter markers at each scene title for YouTube.
-7. Export H.264, 1080p, 8–12 Mbps, AAC 192 kbps.
-
-## Optional: shorter cuts
-
-- **60s teaser:** Scenes 1, 3, 6, 11 only.
-- **90s "how it works":** Scenes 1, 2, 3, 4, 6, 11.
+- **60s teaser:** Scenes 1, 4, 8, 14.
+- **90s "how it works":** Scenes 1, 2, 3, 4, 7, 8, 14.
+- **Silent / text-only version:** strip the narration track and raise the music to 0.8 — the video reads on its own.
