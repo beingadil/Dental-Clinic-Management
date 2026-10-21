@@ -392,10 +392,10 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
 
     if (entry.entry_type === 'credit_note') {
       return {
-        typeLabel: 'Credit Note',
-        typeBadgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
+        typeLabel: 'Credit',
+        typeBadgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         icon: ArrowDownLeft,
-        narration: `Credit Note #${entry.reference_number || ''} • ${entry.description || 'Adjustment / Discount'}`,
+        narration: `Credit #${entry.reference_number || ''} • ${entry.description || 'Adjustment / Discount'}`,
         subText: entry.notes,
         caseDetail: []
       };
@@ -403,10 +403,32 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
 
     if (entry.entry_type === 'debit_adjustment') {
       return {
-        typeLabel: 'Debit Adjustment',
-        typeBadgeBg: 'bg-orange-50 text-orange-700 border-orange-200',
+        typeLabel: 'Debit',
+        typeBadgeBg: 'bg-rose-50 text-rose-700 border-rose-200',
         icon: ArrowUpRight,
-        narration: `Debit Adjustment #${entry.reference_number || ''} • ${entry.description || 'Surcharge'}`,
+        narration: `Debit #${entry.reference_number || ''} • ${entry.description || 'Surcharge'}`,
+        subText: entry.notes,
+        caseDetail: []
+      };
+    }
+
+    if (entry.entry_type === 'refund') {
+      return {
+        typeLabel: 'Refund',
+        typeBadgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
+        icon: RotateCcw,
+        narration: `Refund #${entry.reference_number || ''} • ${entry.description || 'Refund to clinic'}`,
+        subText: entry.notes,
+        caseDetail: []
+      };
+    }
+
+    if (entry.entry_type === 'write_off') {
+      return {
+        typeLabel: 'Write Off',
+        typeBadgeBg: 'bg-slate-100 text-slate-600 border-slate-200',
+        icon: RotateCcw,
+        narration: `Write Off #${entry.reference_number || ''} • ${entry.description || 'Written off'}`,
         subText: entry.notes,
         caseDetail: []
       };

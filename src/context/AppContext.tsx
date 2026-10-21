@@ -36,6 +36,7 @@ import {
 import {
   buildInvoiceJournal,
   buildPaymentJournal,
+  deriveInvoiceStatus,
 } from '../services/financeDomain';
 import {
   computeQcMetrics,
@@ -1677,6 +1678,49 @@ const deleteLab = (id: string) => {
     };
 
     setAccountAdjustments((prev) => [newAdj, ...prev]);
+
+    // CREDIT NOTES AUTO-APPLY: a credit entry reduces what the clinic owes, so
+    // it must land on the oldest unpaid invoice first (FIFO), the same way a
+    // payment does. Without this the credit note shows in the ledger but never
+    // touches an invoice's effective balance, so the books disagree.
+    if (type === 'credit_note') {
+      setInvoices((prev) => {
+        const openInvs = prev
+          .filter((inv) => inv.lab_id === labId && (inv.final_amount || 0) > (inv.amount_paid || 0) + (inv.credit_notes_total || 0))
+          .sort((a, b) => {
+            const da = a.issue_date || a.created_at || '';
+            const db = b.issue_date || b.created_at || '';
+            if (da !== db) return da < db ? -1 : 1;
+            return (a.invoice_number || '').localeCompare(b.invoice_number || '');
+          });
+
+        let remaining = amount;
+        const updates = new Map<string, number>();
+        for (const inv of openInvs) {
+          if (remaining <= 0) break;
+          const ceiling = Math.max(0, (inv.final_amount || 0) - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+          const take = Math.min(ceiling, remaining);
+          if (take > 0) {
+            updates.set(inv.id, (inv.credit_notes_total || 0) + take);
+            remaining -= take;
+          }
+        }
+
+        if (updates.size === 0) return prev;
+        return prev.map((inv) => {
+          const newCr = updates.get(inv.id);
+          if (newCr === undefined) return inv;
+          const newStatus = deriveInvoiceStatus(inv.final_amount, inv.amount_paid || 0, inv.due_date, newCr);
+          return { ...inv, credit_notes_total: newCr, status_v2: newStatus };
+        });
+      });
+    }
+
+    // Debit adjustments are clinic-level: they show as a debit row in the ledger
+    // and buildLabFinancialSummary already adds them to total_debit_adjustments.
+    // They do NOT touch individual invoices — there is no debit_adjustments_total
+    // field on an invoice, and modifying final_amount would double-count (once
+    // here, once in the ledger row).
 
     pushNotifications(
       buildAdjustmentNotification({ id: genId('notif'), kind: type, adjNum, labId, labName, amount, reason, at: nowStr }),
