@@ -412,6 +412,18 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
       };
     }
 
+    if (entry.entry_type === 'opening_balance') {
+      const isCredit = (entry.credit || 0) > 0 && (entry.debit || 0) === 0;
+      return {
+        typeLabel: isCredit ? 'Opening Credit' : 'Opening Balance',
+        typeBadgeBg: isCredit ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200',
+        icon: isCredit ? ArrowDownLeft : ArrowUpRight,
+        narration: `${entry.description || 'Opening balance'} #${entry.reference_number || ''}`,
+        subText: entry.notes,
+        caseDetail: []
+      };
+    }
+
     // Default refund / other
     return {
       typeLabel: 'Refund / Adjustment',
