@@ -146,11 +146,14 @@ describe('the clinic ledger is the shared General Ledger, not a second one', () 
     expect(src).toMatch(/id: 'ledger', label: 'Account Ledger'/);
   });
 
-  it('keeps the bespoke ledger implementation deleted', () => {
+  it('keeps the bespoke ledger table deleted', () => {
+    /* The bespoke ledger table (with its payment index and per-row matcher) is
+       gone — the shared GeneralLedgerView replaced it. getLabFinancialSummary is
+       back, but only to drive the three financial cards on General Info; it is
+       not a second ledger implementation. */
     expect(src).not.toMatch(/ledgerRowMeta/);
     expect(src).not.toMatch(/paymentIndex/);
     expect(src).not.toMatch(/getLedgerEntries/);
-    expect(src).not.toMatch(/getLabFinancialSummary/);
   });
 });
 

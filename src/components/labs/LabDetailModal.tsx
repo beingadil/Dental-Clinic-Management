@@ -42,7 +42,7 @@ interface LabDetailModalProps {
 }
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
-  const { cases, invoices, updateLab, deleteLab, labDeletionImpact } = useApp();
+  const { cases, updateLab, deleteLab, labDeletionImpact, getLabFinancialSummary } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing'>(initialTab);
   const [isFullScreen, setIsFullScreen] = useState(true);
@@ -161,9 +161,17 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
     });
   }, [allLabCases, caseHaystack, caseQuery]);
 
-  const labInvoices = invoices.filter((inv) => inv.lab_id === lab.id);
-  const totalBilled = labInvoices.reduce((sum, inv) => sum + inv.final_amount, 0);
-  const totalUnpaid = totalBilled - labInvoices.reduce((sum, inv) => sum + inv.amount_paid, 0);
+  /* These must agree with the General Ledger, which is derived from
+     buildLabFinancialSummary (invoices + payments + advances + adjustments +
+     opening balance). Computing them from invoices alone left the opening
+     balance and any debit/credit adjustment out, so the two screens disagreed
+     by exactly that amount. */
+  const labFinancials = getLabFinancialSummary(lab.id);
+  /* Total Invoiced Revenue = invoices only. Outstanding Balance = invoices +
+     opening balance + debit adjustments - advances - credit notes, which is
+     exactly what the General Ledger's closing balance shows. */
+  const totalBilled = labFinancials.total_invoiced;
+  const totalUnpaid = labFinancials.outstanding_balance;
 
   /* Same contract as the create form: only clinic name + doctor name are
      required, the rest are optional and format-checked only when filled. */
