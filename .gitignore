@@ -55,6 +55,10 @@ desktop.ini
 tmp/
 *.tmp
 
+# Playwright E2E artifacts (HTML report + traces regenerated on each run)
+test-results/
+playwright-report/
+
 # Local contrast-audit report (scripts/contrast-audit.mjs). CI writes its own
 # copy as an artifact; a local run should not leave one in the tree.
 contrast-audit.txt

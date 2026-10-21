@@ -1,7 +1,7 @@
 {
   "name": "dental-solutions",
   "private": true,
-  "version": "2.29.0",
+  "version": "2.30.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/verify-binaries.mjs && npm run role:check && vite --port=3000 --host=0.0.0.0",
@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "test": "node scripts/verify-binaries.mjs && vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "lint": "node scripts/version-guard.mjs && npm run verify:binaries && node scripts/role-picker.mjs --check && tsc --noEmit",
     "verify:binaries": "node scripts/verify-binaries.mjs",
     "audit:contrast": "node scripts/contrast-audit.mjs",
@@ -39,6 +41,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
