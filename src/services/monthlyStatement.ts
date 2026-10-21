@@ -344,13 +344,11 @@ export type StatementColumnKey =
   | 'cases'
   | 'billed'
   | 'collected'
-  | 'advanceIn'
   | 'advanceUsed'
   | 'credits'
   | 'debits'
   | 'opening'
   | 'closing'
-  | 'advanceCredit'
   | 'due';
 
 /**
@@ -406,15 +404,6 @@ export const STATEMENT_COLUMNS: readonly StatementColumn[] = [
     value: (r) => r.collected,
   },
   {
-    key: 'advanceIn',
-    label: 'Advance In',
-    width: 0.075,
-    align: 'right',
-    core: false,
-    strong: false,
-    value: (r) => r.advance_received,
-  },
-  {
     key: 'advanceUsed',
     label: 'Advance Used',
     width: 0.075,
@@ -458,15 +447,6 @@ export const STATEMENT_COLUMNS: readonly StatementColumn[] = [
     core: true,
     strong: true,
     value: (r) => r.closing_balance,
-  },
-  {
-    key: 'advanceCredit',
-    label: 'Advance Credit',
-    width: 0.075,
-    align: 'right',
-    core: false,
-    strong: false,
-    value: (r) => r.advance_credit,
   },
   {
     key: 'due',

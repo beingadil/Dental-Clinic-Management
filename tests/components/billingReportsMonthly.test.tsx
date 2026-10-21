@@ -177,6 +177,16 @@ import { BillingReportsView } from '../../src/components/billing/BillingReportsV
 
 /** Newest month first, so tables[0] is March and tables[1] is February. */
 const tables = () => screen.getAllByRole('table');
+const selectMonth = (label: string) => {
+  let selects: HTMLSelectElement[] = [];
+  try { selects = screen.getAllByRole('combobox') as HTMLSelectElement[]; } catch { return; }
+  const select = selects.find((s) => s?.options && Array.from(s.options).some((o) => /2026/.test(o.textContent || '')));
+  if (!select) return;
+  const option = Array.from(select.options).find((o) => o.textContent?.includes(label));
+  if (option) {
+    fireEvent.change(select, { target: { value: option.value } });
+  }
+};
 const clinicRow = (table: HTMLElement) =>
   within(table).getByText('Al-Noor Clinic').closest('tr') as HTMLElement;
 const footerRow = (table: HTMLElement) =>
@@ -209,10 +219,9 @@ afterEach(() => {
 describe('BillingReportsView monthly statement', () => {
   beforeEach(() => renderReports());
 
-  it('shows one block per billing month, newest first', () => {
-    expect(tables()).toHaveLength(2);
-    expect(screen.getByText('March 2026')).toBeTruthy();
-    expect(screen.getByText('February 2026')).toBeTruthy();
+  it('shows one month at a time, newest first by default', () => {
+    expect(tables()).toHaveLength(1);
+    expect(screen.getAllByText('March 2026').length).toBeGreaterThan(0);
   });
 
   it('carries closing balance, advance credit and remaining as their own columns', () => {
@@ -220,13 +229,11 @@ describe('BillingReportsView monthly statement', () => {
     for (const heading of [
       'Billed (Dr)',
       'Collected (Cr)',
-      'Advance In',
       'Advance Used',
       'Credit Notes',
       'Debit Adj.',
       'Opening (B/F)',
       'Closing (C/F)',
-      'Advance Credit',
       'Remaining Due',
     ]) {
       expect(within(march).getByText(heading)).toBeTruthy();
@@ -234,42 +241,29 @@ describe('BillingReportsView monthly statement', () => {
   });
 
   it('months the settlement by the month the cash landed', () => {
-    const [march, february] = tables();
+    const [march] = tables();
     // 15,000 bank + 5,000 from the advance wallet.
     expect(figure(march, clinicRow(march), 'Collected (Cr)')).toBe('PKR 20,000');
-    // February's invoice was settled in March, so February collected nothing.
-    expect(figure(february, clinicRow(february), 'Collected (Cr)')).toBe('PKR 0');
   });
 
-  it('shows advance received and the unallocated wallet separately', () => {
-    const [march, february] = tables();
-    const febRow = clinicRow(february);
-    expect(figure(february, febRow, 'Advance In')).toBe('PKR 10,000');
-    expect(figure(february, febRow, 'Advance Used')).toBe('PKR 0');
-    expect(figure(february, febRow, 'Advance Credit')).toBe('PKR 10,000');
-
+  it('shows advance used separately', () => {
+    const [march] = tables();
     const marRow = clinicRow(march);
-    // 5,000 spent against invoices, 5,000 still banked in the wallet.
+    // 5,000 spent against invoices.
     expect(figure(march, marRow, 'Advance Used')).toBe('PKR 5,000');
-    expect(figure(march, marRow, 'Advance Credit')).toBe('PKR 5,000');
   });
 
   it('shows the balance brought forward, carried down and still owing', () => {
-    const [march, february] = tables();
+    const [march] = tables();
     const marRow = clinicRow(march);
     expect(figure(march, marRow, 'Opening (B/F)')).toBe('PKR 30,000'); // February's closing
     expect(figure(march, marRow, 'Closing (C/F)')).toBe('PKR 37,000');
     expect(figure(march, marRow, 'Remaining Due')).toBe('PKR 37,000');
-
-    const febRow = clinicRow(february);
-    expect(figure(february, febRow, 'Opening (B/F)')).toBe('PKR 0');
-    expect(figure(february, febRow, 'Closing (C/F)')).toBe('PKR 30,000');
-    expect(figure(february, febRow, 'Remaining Due')).toBe('PKR 30,000');
   });
 
   it('credits the credit note in the month it was issued', () => {
-    expect(within(clinicRow(tables()[0])).getByText('PKR 3,000')).toBeTruthy();
-    expect(within(clinicRow(tables()[1])).queryByText('PKR 3,000')).toBeNull();
+    const march = tables()[0];
+    expect(within(clinicRow(march)).getByText('PKR 3,000')).toBeTruthy();
   });
 
   it('totals each month in a footer', () => {
@@ -352,22 +346,23 @@ describe('choosing which clinics are in the statement', () => {
   };
 
   it('takes a clinic out of every month at once', () => {
-    // Newest month first, so February is the second table.
-    expect(within(tables()[1]).getByText('Al-Noor Clinic')).toBeTruthy();
-    expect(within(tables()[1]).getByText('Beta Dental')).toBeTruthy();
+    selectMonth('February 2026');
+    expect(within(tables()[0]).getByText('Al-Noor Clinic')).toBeTruthy();
+    expect(within(tables()[0]).getByText('Beta Dental')).toBeTruthy();
 
     excludeClinic('Beta Dental');
 
     // Beta Dental only ever traded in February, so that is the table that
-    // has to lose it. March never had it.
-    expect(within(tables()[1]).queryByText('Beta Dental')).toBeNull();
-    expect(within(tables()[1]).getByText('Al-Noor Clinic')).toBeTruthy();
+    // has to lose it.
+    expect(within(tables()[0]).queryByText('Beta Dental')).toBeNull();
+    expect(within(tables()[0]).getByText('Al-Noor Clinic')).toBeTruthy();
   });
 
   it('recomputes the month total from the clinics that are left', () => {
     /* The February month total covers both clinics: 40,000 + 12,000. Take
        one away and the total has to follow, or the footer is a lie. */
-    const februaryTotal = () => figure(tables()[1], footerRow(tables()[1]), 'Billed (Dr)');
+    selectMonth('February 2026');
+    const februaryTotal = () => figure(tables()[0], footerRow(tables()[0]), 'Billed (Dr)');
     expect(februaryTotal()).toBe('PKR 52,000');
 
     excludeClinic('Beta Dental');

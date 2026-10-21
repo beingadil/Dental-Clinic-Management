@@ -62,6 +62,10 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
   const [voucherSearch, setVoucherSearch] = useState<string>('');
+  // Monthly statement: view one month at a time. The previous month's closing
+  // balance carries forward as this month's opening balance (computed by the
+  // service over the full history), so showing a single month is honest — the
+  // running total is not lost, it is just not repeated on screen.
   // Saved-voucher list defaults to TODAY like the other billing tabs; rewind the
   // picker (or clear it for All Time) to audit earlier vouchers.
   const [vFromDate, setVFromDate] = useState<string>(() => todayISO());
@@ -102,18 +106,34 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     [monthlyBlocks, excludedLabIds]
   );
 
+  // Month selector: view one month at a time. Defaults to the latest month so
+  // the screen is not a wall of identical clinics repeated across months; the
+  // previous month's closing balance still carries into this month's opening
+  // balance because buildMonthlyStatements computes the running total over the
+  // full history before we filter for display.
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  useEffect(() => {
+    if (!selectedMonth && visibleBlocks.length > 0) {
+      setSelectedMonth(visibleBlocks[0].month);
+    }
+  }, [visibleBlocks, selectedMonth]);
+  const displayedBlocks = useMemo(
+    () => (selectedMonth ? visibleBlocks.filter((b) => b.month === selectedMonth) : visibleBlocks),
+    [visibleBlocks, selectedMonth]
+  );
+
   /** The whole statement in one line, for the scope on screen. */
   const statementTotals = useMemo(() => {
-    const sum = (pick: (b: (typeof visibleBlocks)[number]) => number) =>
-      visibleBlocks.reduce((acc, b) => acc + pick(b), 0);
+    const sum = (pick: (b: (typeof displayedBlocks)[number]) => number) =>
+      displayedBlocks.reduce((acc, b) => acc + pick(b), 0);
     return {
-      months: visibleBlocks.length,
-      clinics: visibleBlocks.length ? visibleBlocks[0].totals.clinics : 0,
+      months: displayedBlocks.length,
+      clinics: displayedBlocks.length ? displayedBlocks[0].totals.clinics : 0,
       billed: sum((b) => b.totals.billed),
       collected: sum((b) => b.totals.collected),
       remaining: sum((b) => b.totals.remaining),
     };
-  }, [visibleBlocks]);
+  }, [displayedBlocks]);
 
   /* Every clinic that appears in the statement, whether or not it is still in
      the clinic list — a deleted clinic can still have months of history, and
@@ -187,14 +207,6 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       className: 'py-2.5 px-3 font-bold text-ink-success whitespace-nowrap',
       render: (r) => formatPKR(r.collected),
     },
-    advanceIn: {
-      className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
-      render: (r) => (
-        <span className={r.advance_received > 0 ? 'text-sky-600' : 'text-ink-muted'}>
-          {formatPKR(r.advance_received)}
-        </span>
-      ),
-    },
     advanceUsed: {
       className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
       render: (r) => (
@@ -228,14 +240,6 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       render: (r) => (
         <span className={r.closing_balance < 0 ? 'text-ink-success' : 'text-slate-900'}>
           {formatPKR(r.closing_balance)}
-        </span>
-      ),
-    },
-    advanceCredit: {
-      className: 'py-2.5 px-3 font-semibold whitespace-nowrap',
-      render: (r) => (
-        <span className={r.advance_credit > 0 ? 'text-sky-700' : 'text-ink-muted'}>
-          {formatPKR(r.advance_credit)}
         </span>
       ),
     },
@@ -552,9 +556,30 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       {/* Sub-Tab 1: Monthly Breakdown */}
       {activeSubTab === 'monthly' && (
         <div className="space-y-4">
+          {/* Month selector — view one month at a time. The previous month's
+              closing balance carries forward as this month's opening balance
+              (computed over the full history), so a single month is honest:
+              the running total is not lost, it is just not repeated on screen. */}
+          {visibleBlocks.length > 1 && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-700">Month:</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              >
+                {visibleBlocks.map((b) => (
+                  <option key={b.month} value={b.month}>
+                    {formatMonthLabel(b.month)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* The whole statement in one line, so the scope is visible before
               any month is read. */}
-          {visibleBlocks.length > 0 && (
+          {displayedBlocks.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs divide-x divide-y md:divide-y-0 divide-slate-200">
               <Stat label="Months" value={String(statementTotals.months)} />
               <Stat label="Clinics" value={String(statementTotals.clinics)} />
@@ -571,7 +596,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               />
             </div>
           )}
-          {visibleBlocks.length === 0 ? (
+          {displayedBlocks.length === 0 ? (
             <EmptyState
               icon={BarChart3}
               title={
@@ -586,7 +611,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               }
             />
           ) : (
-            visibleBlocks.map((block) => {
+            displayedBlocks.map((block) => {
               const t = block.totals;
               return (
                 <div key={block.month} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
