@@ -667,7 +667,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                       otherwise the column would be blank for exactly the rows a
                       clinic most needs to chase. */}
                   {['Date', 'Invoice #', 'Case', 'Price', 'Units', 'Total'].map((h) => (
-                    <th key={h} className="border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold">{h}</th>
+                    <th key={h} className="border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold" style={{ backgroundColor: '#f1f5f9', color: '#0f172a' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
