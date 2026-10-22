@@ -12,9 +12,6 @@ import {
 import {
   CalendarDays,
   FileDown,
-  FileText,
-  Wallet,
-  Building2,
 } from 'lucide-react';
 
 /**
@@ -173,32 +170,6 @@ export const DailyReportView: React.FC = () => {
           </div>
         </div>
 
-        {/* Money row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <MoneyCard
-            icon={FileText}
-            label="Invoices raised"
-            count={report.invoicesRaised}
-            amount={report.invoicedValue}
-            tone="indigo"
-          />
-          <MoneyCard
-            icon={Wallet}
-            label="Payments received"
-            count={report.paymentsReceived}
-            amount={report.paidValue}
-            tone="emerald"
-          />
-          <MoneyCard
-            icon={Building2}
-            label="Total outstanding"
-            count={undefined}
-            amount={report.totalOutstanding}
-            tone="amber"
-            note="Across the whole lab, not just this window"
-          />
-        </div>
-
         {/* Production sheet */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50 gap-3 flex-wrap">
@@ -299,91 +270,7 @@ export const DailyReportView: React.FC = () => {
           )}
         </div>
 
-        {/* Per-clinic breakdown */}
-        {report.clinics.length > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                By Clinic
-              </h3>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                {report.clinics.length} clinics
-              </span>
-            </div>
-            <DataTable
-              data={report.clinics}
-              rowKey={(r) => r.labId}
-              columns={[
-                {
-                  header: 'Clinic',
-                  className: 'font-bold text-slate-900 whitespace-nowrap',
-                  render: (r) => <>{r.labName}</>,
-                },
-                {
-                  header: 'Doctor',
-                  className: 'text-slate-600 whitespace-nowrap',
-                  render: (r) => <>{r.doctor || '—'}</>,
-                },
-                {
-                  header: 'Received',
-                  className: 'text-right tabular-nums text-slate-700 whitespace-nowrap',
-                  render: (r) => <>{r.casesReceived}</>,
-                },
-                {
-                  header: 'Due',
-                  className: 'text-right tabular-nums text-slate-700 whitespace-nowrap',
-                  render: (r) => <>{r.casesDue}</>,
-                },
-                {
-                  header: 'Invoiced',
-                  className: 'text-right font-mono text-slate-700 whitespace-nowrap',
-                  render: (r) => <>{formatPKR(r.invoicedValue)}</>,
-                },
-                {
-                  header: 'Paid',
-                  className: 'text-right font-mono text-emerald-700 whitespace-nowrap',
-                  render: (r) => <>{formatPKR(r.paidValue)}</>,
-                },
-                {
-                  header: 'Outstanding',
-                  className: 'text-right font-mono font-bold text-slate-900 whitespace-nowrap',
-                  render: (r) => <>{formatPKR(r.outstanding)}</>,
-                },
-              ]}
-            />
-          </div>
-        )}
       </div>
-    </div>
-  );
-};
-
-/* ── Small presentational pieces ──────────────────────────────────────────── */
-
-const MoneyCard: React.FC<{
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  amount: number;
-  count?: number;
-  tone: 'indigo' | 'emerald' | 'amber';
-  note?: string;
-}> = ({ icon: Icon, label, amount, count, tone, note }) => {
-  const tones = {
-    indigo: 'bg-indigo-50 text-indigo-800 border-indigo-200',
-    emerald: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-    amber: 'bg-amber-50 text-amber-800 border-amber-200',
-  } as const;
-  return (
-    <div className={`p-4 rounded-2xl border ${tones[tone]}`}>
-      <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4" />
-        <span className="text-[11px] font-bold uppercase tracking-wider">{label}</span>
-        {count !== undefined && (
-          <span className="ml-auto text-[11px] font-bold tabular-nums opacity-70">{count}</span>
-        )}
-      </div>
-      <div className="text-xl font-bold font-mono mt-1">{formatPKR(amount)}</div>
-      {note && <p className="text-[10px] mt-0.5 opacity-70">{note}</p>}
     </div>
   );
 };

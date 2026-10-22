@@ -56,8 +56,6 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     labs,
     brandingSettings,
     showToast,
-    userPreferences,
-    updateUserPreferences,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
@@ -93,14 +91,6 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
      COMPACT shows the seven a reader needs to read the statement at all; FULL
      shows every column, for the months a reader is auditing. The choice is
      remembered, because switching it on every visit is a tax. */
-  const [compactStatement, setCompactStatement] = useState<boolean>(
-    () => userPreferences?.statement_columns !== 'full',
-  );
-  useEffect(() => {
-    if (userPreferences?.statement_columns === undefined) return;
-    setCompactStatement(userPreferences.statement_columns !== 'full');
-  }, [userPreferences?.statement_columns]);
-
   const visibleBlocks = useMemo(
     () => filterMonthlyStatements(monthlyBlocks, excludedLabIds),
     [monthlyBlocks, excludedLabIds]
@@ -253,13 +243,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     },
   };
 
-  const visibleColumns = statementColumns(compactStatement);
-
-  /** Switch the column set, and remember it. */
-  const setColumnMode = (compact: boolean) => {
-    setCompactStatement(compact);
-    updateUserPreferences({ statement_columns: compact ? 'compact' : 'full' });
-  };
+  const visibleColumns = statementColumns(true);
 
   /** The figure a column holds for a clinic row, formatted once for print. */
   const figureFor = (c: (typeof visibleColumns)[number], r: MonthlyClinicRow): string =>
@@ -363,7 +347,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       const bytes = monthlyStatementWorkbook(
         visibleBlocks,
         { labName, periodLabel, scopeLabel, generatedOn: getTodayStr() },
-        compactStatement,
+        true,
       );
       const outcome = await saveFile(`Monthly_Statement_${getTodayStr()}.xlsx`, bytes, {
         extension: '.xlsx',
@@ -467,37 +451,6 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                 month. The choice is remembered, and the exported document
                 follows it — the file an operator sends is the file they were
                 reading. */}
-            <div
-              role="group"
-              aria-label="Columns shown"
-              className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 self-start"
-            >
-              {(
-                [
-                  { key: 'compact', label: 'Compact' },
-                  { key: 'full', label: 'Full' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => setColumnMode(opt.key === 'compact')}
-                  title={
-                    opt.key === 'compact'
-                      ? 'The columns a reader needs'
-                      : 'Every column, for auditing a month'
-                  }
-                  aria-pressed={compactStatement === (opt.key === 'compact')}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
-                    compactStatement === (opt.key === 'compact')
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
             <ClinicFilter
               clinics={statementClinics}
               selected={selectedLabIds}

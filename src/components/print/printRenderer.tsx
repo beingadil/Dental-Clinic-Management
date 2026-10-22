@@ -284,7 +284,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   const pageSetupCss = `@page { size: ${paper === 'letter' ? 'letter' : 'A4'}; margin: ${pageMarginMm}mm; }`;
 
   return (
-    <div className={`print-doc bg-white text-slate-900 print-fs-${fontSize}`} style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+    <div className={`print-doc bg-white text-slate-900 print-fs-${fontSize}`} style={{ fontFamily: 'Georgia, "Times New Roman", serif', backgroundColor: '#ffffff', color: '#0f172a' }}>
       <style>{pageSetupCss}</style>
       {on(sections, 'brand') && (
         <div
@@ -666,7 +666,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                       only when the invoice has no resolvable case at all —
                       otherwise the column would be blank for exactly the rows a
                       clinic most needs to chase. */}
-                  {['Date', 'Invoice #', 'Case', 'Amount', 'Paid', 'Balance', 'Status'].map((h) => (
+                  {['Date', 'Invoice #', 'Case', 'Price', 'Units', 'Total'].map((h) => (
                     <th key={h} className="border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold">{h}</th>
                   ))}
                 </tr>
@@ -685,14 +685,13 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     ? caseDetailLines(linkedCase, { omit: INVOICE_DETAIL_OMIT })
                     : [];
                   const received = linkedCase ? formatReceivedDate(linkedCase) : '';
-                  // Same derivation as the single invoice — see invoiceStatus.
-                  // The balance printed next to it subtracts credit notes, so
-                  // the label has to come from that same number.
-                  const batchBalance =
-                    inv.final_amount -
-                    (inv.amount_paid || 0) -
-                    (inv.credit_notes_total || 0);
-                  const batchStatus = invoiceStatus(batchBalance, inv.amount_paid);
+                  /* Per-unit base price and the unit count behind this invoice. */
+                  const units = linkedCase
+                    ? linkedCase.units_count || (linkedCase.selected_teeth?.length || 0) || 1
+                    : 1;
+                  const pricePerUnit = linkedCase && units > 0
+                    ? linkedCase.price / units
+                    : inv.final_amount;
                   return (
                   <tr key={inv.id}>
                     {/* Date leads the row. The operator reads a statement as
@@ -727,15 +726,14 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.final_amount)}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(inv.amount_paid || 0)}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(batchBalance)}</td>
-                    <td className="border border-slate-400 px-2 py-1 align-top">{batchStatus.label}</td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(pricePerUnit)}</td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{units}</td>
+                    <td className="border border-slate-400 px-2 py-1 text-right align-top font-bold">{money(inv.final_amount)}</td>
                   </tr>
                   );
                 })}
                 {statementInvoices.length === 0 && (
-                  <tr><td colSpan={7} className="border border-slate-400 px-2 py-4 text-center italic text-slate-500">No invoices in this period.</td></tr>
+                  <tr><td colSpan={6} className="border border-slate-400 px-2 py-4 text-center italic text-slate-500">No invoices in this period.</td></tr>
                 )}
               </tbody>
             </table>
@@ -744,9 +742,9 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
             <div className="flex justify-end mb-4">
               <table className="text-[11px] w-64">
                 <tbody>
-                  <tr><td className="py-0.5 text-slate-600">Total Billed</td><td className="py-0.5 text-right font-bold">{money(balanceRows.reduce((s, i) => s + i.final_amount, 0))}</td></tr>
-                  <tr><td className="py-0.5 text-slate-600">Total Paid</td><td className="py-0.5 text-right">{money(balanceRows.reduce((s, i) => s + (i.amount_paid || 0), 0))}</td></tr>
-                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Outstanding</td><td className="py-1 text-right font-bold">{money(balanceRows.reduce((s, i) => s + invoiceBalanceDue(i), 0))}</td></tr>
+                  <tr><td className="py-0.5 text-slate-600">Cases Amount</td><td className="py-0.5 text-right font-bold">{money(balanceRows.reduce((s, i) => s + i.final_amount, 0))}</td></tr>
+                  <tr><td className="py-0.5 text-slate-600">Amount Paid</td><td className="py-0.5 text-right">{money(balanceRows.reduce((s, i) => s + (i.amount_paid || 0), 0))}</td></tr>
+                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Closing Balance</td><td className="py-1 text-right font-bold">{money(balanceRows.reduce((s, i) => s + invoiceBalanceDue(i), 0))}</td></tr>
                 </tbody>
               </table>
             </div>

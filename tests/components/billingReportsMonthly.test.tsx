@@ -229,9 +229,6 @@ describe('BillingReportsView monthly statement', () => {
     for (const heading of [
       'Billed (Dr)',
       'Collected (Cr)',
-      'Advance Used',
-      'Credit Notes',
-      'Debit Adj.',
       'Opening (B/F)',
       'Closing (C/F)',
       'Remaining Due',
@@ -246,24 +243,12 @@ describe('BillingReportsView monthly statement', () => {
     expect(figure(march, clinicRow(march), 'Collected (Cr)')).toBe('PKR 20,000');
   });
 
-  it('shows advance used separately', () => {
-    const [march] = tables();
-    const marRow = clinicRow(march);
-    // 5,000 spent against invoices.
-    expect(figure(march, marRow, 'Advance Used')).toBe('PKR 5,000');
-  });
-
   it('shows the balance brought forward, carried down and still owing', () => {
     const [march] = tables();
     const marRow = clinicRow(march);
     expect(figure(march, marRow, 'Opening (B/F)')).toBe('PKR 30,000'); // February's closing
     expect(figure(march, marRow, 'Closing (C/F)')).toBe('PKR 37,000');
     expect(figure(march, marRow, 'Remaining Due')).toBe('PKR 37,000');
-  });
-
-  it('credits the credit note in the month it was issued', () => {
-    const march = tables()[0];
-    expect(within(clinicRow(march)).getByText('PKR 3,000')).toBeTruthy();
   });
 
   it('totals each month in a footer', () => {
@@ -291,7 +276,6 @@ describe('BillingReportsView monthly statement', () => {
     // The figures are NUMBERS, not text — that is the whole point of a
     // workbook over a CSV.
     expect(xml).toContain('<v>37000</v>'); // March closing balance
-    expect(xml).toContain('<v>5000</v>'); // March advance credit
   });
 });
 

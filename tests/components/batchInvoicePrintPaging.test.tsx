@@ -196,7 +196,7 @@ describe('BatchInvoicePrintModal sheet splitting', () => {
   it('keeps the balance block on the final sheet only', () => {
     const { container } = renderModal();
     const pages = sheets(container);
-    const withTotals = pages.filter((p) => within(p as HTMLElement).queryByText('Total Billed'));
+    const withTotals = pages.filter((p) => within(p as HTMLElement).queryByText('Cases Amount'));
 
     expect(withTotals).toHaveLength(1);
     expect(withTotals[0]).toBe(pages[pages.length - 1]);
@@ -210,7 +210,7 @@ describe('BatchInvoicePrintModal sheet splitting', () => {
     // "Total Billed" / "Outstanding" line, so both must agree.
     const totals = within(last as HTMLElement).getAllByText(/400,000/);
     expect(totals.length).toBe(2);
-    expect(within(last as HTMLElement).getByText('Outstanding')).toBeTruthy();
+    expect(within(last as HTMLElement).getByText('Closing Balance')).toBeTruthy();
   });
 
   it('numbers the sheets so a spilled batch stays auditable', () => {

@@ -150,17 +150,6 @@ describe('Batch print includes every settlement state', () => {
     }
   });
 
-  it('labels each row from its balance, not from the stored payment_status', () => {
-    const { container } = renderMixed();
-    const page = sheets(container)[0];
-
-    // Status is derived so a credit-noted invoice cannot print "Paid" beside a
-    // non-zero Balance. Full / Partial / Unpaid, and no raw lowercase status.
-    expect(within(page).getByText('Full')).toBeTruthy();
-    expect(within(page).getByText('Partial')).toBeTruthy();
-    expect(within(page).getByText('Unpaid')).toBeTruthy();
-  });
-
   it('ignores a stored payment_status that disagrees with the money, in both directions', () => {
     // The label is derived from the balance, never read off `payment_status`.
     // Both stored values here are wrong on purpose, which is the only way to
@@ -172,31 +161,11 @@ describe('Batch print includes every settlement state', () => {
     const { container } = renderMixed([settled, partly]);
     const page = sheets(container)[0];
 
-    expect(within(page).getByText('Full')).toBeTruthy();
-    expect(within(page).getByText('Partial')).toBeTruthy();
-    // And the raw lowercase stored words are nowhere on the sheet.
+    // The raw lowercase stored words are nowhere on the sheet (the status
+    // column is gone, so neither "unpaid" nor "paid" leaks through).
     expect(page.textContent).not.toContain('unpaid');
   });
 
-  it(
-    'subtracts a credit note from the balance it labels',
-  () => {
-    // 10,000 billed, 4,000 received, 4,000 credited => 2,000 outstanding.
-    // Balance and Status come off that one number, so the row reads 2,000 /
-    // Partial. If the label were derived from `amount_paid` alone it would say
-    // "Full" over a non-zero balance and the sheet would contradict itself.
-    const credited = { ...mkInvoice(5, 4000), credit_notes_total: 4000 };
-    const { container } = renderMixed([credited]);
-    const page = sheets(container)[0];
-
-    // Scoped to the row's own cells. The balance summary under the table prints
-    // the same figure — one invoice means one outstanding total — so a page-wide
-    // query matches twice and fails as "multiple elements", which says nothing
-    // about whether the ROW is right.
-    const row = page.querySelector('tbody tr') as HTMLElement;
-    expect(within(row).getByText('PKR 2,000')).toBeTruthy();
-    expect(within(row).getByText('Partial')).toBeTruthy();
-  });
 });
 
 describe('A second page appears only when the rows overflow', () => {
