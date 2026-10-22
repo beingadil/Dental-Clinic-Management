@@ -42,7 +42,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   cases,
   onClose,
 }) => {
-  const { brandingSettings, saveVoucherToSystem, userPreferences } = useApp();
+  const { brandingSettings, saveVoucherToSystem, userPreferences, getLabFinancialSummary } = useApp();
   const [savedSuccess, flashSavedSuccess] = useTransientFlag(4000);
   const [printSettings] = useState(() => loadPrintSettings());
   const [showSections, setShowSections] = useState(false);
@@ -203,6 +203,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
                 cases={cases}
                 invoice={invoice}
                 labName={invoice.lab_name}
+                advanceBalance={getLabFinancialSummary?.(invoice.lab_id)?.advance_balance ?? 0}
               />
             </div>
           </div>

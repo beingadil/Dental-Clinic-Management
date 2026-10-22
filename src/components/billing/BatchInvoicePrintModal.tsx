@@ -39,7 +39,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   initialLabId,
   onClose,
 }) => {
-  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem } = useApp();
+  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem, getLabFinancialSummary } = useApp();
 
   const [labId, setLabId] = useState<string>(initialLabId || labs[0]?.id || '');
   // Default the period to today, matching every other billing tab; the quick
@@ -339,6 +339,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                        only, so adding up the printed pages never double-counts. */
                     balanceInvoices={selected}
                     showBalance={page.pageNumber === pageCount}
+                    advanceBalance={selectedClinic ? (getLabFinancialSummary?.(selectedClinic.id)?.advance_balance ?? 0) : 0}
                   />
                 </div>
               ))

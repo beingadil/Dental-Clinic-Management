@@ -89,7 +89,7 @@ import { runIntegrityCheckSafe, IntegrityReport } from '../db/integrityCheck';
 import {
   usersRepo, casesRepo, caseTemplatesRepo,
   sessionsRepo, labContactsRepo, labAddressesRepo, labPricingOverridesRepo, labReviewsRepo,
-  doctorPreferredLabsRepo, qcInspectionsRepo,
+  doctorPreferredLabsRepo, qcInspectionsRepo, adjustmentsRepo,
 } from '../db/repos';
 import type { UserRow } from '../db/repos';
 
@@ -241,6 +241,7 @@ interface AppContextType {
     attachments?: PaymentAttachment[],
     date?: string
   ) => AccountAdjustment;
+  deleteAccountAdjustment: (id: string) => boolean;
 
   // Payments & Receivables 2.0 Core Financial Engine
   recordTransactionV2: (command: {
@@ -1753,6 +1754,28 @@ const deleteLab = (id: string) => {
     return newAdj;
   };
 
+  const deleteAccountAdjustment = (id: string): boolean => {
+    const adj = accountAdjustments.find((a) => a.id === id);
+    if (!adj) return false;
+    try {
+      adjustmentsRepo.delete(id);
+    } catch { /* already gone */ }
+    if (adj.type === 'credit_note' && adj.invoice_id) {
+      setInvoices((prev) =>
+        prev.map((inv) =>
+          inv.id === adj.invoice_id
+            ? { ...inv, credit_notes_total: Math.max(0, (inv.credit_notes_total || 0) - (adj.amount || 0)) }
+            : inv
+        )
+      );
+    }
+    setAccountAdjustments((prev) => prev.filter((a) => a.id !== id));
+    if (adj.journal_id) {
+      setJournalEntries((prev) => prev.filter((j) => j.id !== adj.journal_id));
+    }
+    return true;
+  };
+
   // ==========================================
   // PAYMENTS & RECEIVABLES 2.0 ENGINE
   // ==========================================
@@ -1899,6 +1922,7 @@ const deleteLab = (id: string) => {
         reconcileItemV2,
         flagReconciliationExceptionV2,
         recordAccountAdjustment,
+        deleteAccountAdjustment,
 
         // Payments & Receivables 2.0
         recordTransactionV2,

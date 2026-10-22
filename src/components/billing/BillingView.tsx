@@ -52,6 +52,7 @@ export const BillingView: React.FC = () => {
     allPayments,
     advancePayments,
     accountAdjustments,
+
     bulkMarkPaid, 
     deleteInvoice,
     getLabFinancialSummary,
@@ -364,20 +365,6 @@ export const BillingView: React.FC = () => {
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setUnifiedModalInvoiceId(undefined);
-                setUnifiedModalLabId(clinicFilter !== 'all' ? clinicFilter : undefined);
-                setUnifiedModalMode('advance_deposit');
-                setIsUnifiedRecordModalOpen(true);
-              }}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <Wallet className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>Advance Deposit</span>
-            </button>
-
             {/* The "Credit Note / Adjustment" button is gone. Issuing a credit note
                 is a write-off decision, not a collection, and the operator removed
                 it from the recorder. Credit notes already issued still show on the
@@ -637,7 +624,7 @@ export const BillingView: React.FC = () => {
                    never touched. */
                 render: (inv: Invoice) => {
                   const vouchers = inv.payments || [];
-                  if (vouchers.length === 0) return <span className="text-slate-400">—</span>;
+                   if (vouchers.length === 0) return <span className="text-slate-400">—</span>
                   return (
                     <div className="space-y-1">
                       {vouchers.map((pay) => (

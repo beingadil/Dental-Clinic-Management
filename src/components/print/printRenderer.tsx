@@ -153,6 +153,7 @@ interface PrintDocumentProps {
    * be the statement's totals, not that page's slice.
    */
   balanceInvoices?: Invoice[] | null;
+  advanceBalance?: number;
 }
 
 export const PrintDocument: React.FC<PrintDocumentProps> = ({
@@ -170,6 +171,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   page,
   showBalance = true,
   balanceInvoices,
+  advanceBalance = 0,
 }) => {
   const lab = branding;
   const paper = printSettings?.paper || 'a4';
@@ -744,6 +746,9 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                 <tbody>
                   <tr><td className="py-0.5 text-slate-600">Cases Amount</td><td className="py-0.5 text-right font-bold">{money(balanceRows.reduce((s, i) => s + i.final_amount, 0))}</td></tr>
                   <tr><td className="py-0.5 text-slate-600">Amount Paid</td><td className="py-0.5 text-right">{money(balanceRows.reduce((s, i) => s + (i.amount_paid || 0), 0))}</td></tr>
+                  {advanceBalance > 0 && (
+                    <tr><td className="py-0.5 text-slate-600">Advance Credit (we owe)</td><td className="py-0.5 text-right text-ink-success">{money(advanceBalance)}</td></tr>
+                  )}
                   <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Closing Balance</td><td className="py-1 text-right font-bold">{money(balanceRows.reduce((s, i) => s + invoiceBalanceDue(i), 0))}</td></tr>
                 </tbody>
               </table>
