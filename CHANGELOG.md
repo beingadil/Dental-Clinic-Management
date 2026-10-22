@@ -4,6 +4,55 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.30.0] - 2026-10-22
+
+The clinic ledger takes payments now, the monthly statement reads one month
+at a time, and the release pipeline works again - which it had not been
+doing quietly in the background.
+
+### Added
+- **Receive Payment in the clinic's Account Ledger.** A payment entered
+  without selecting invoices is applied to the oldest unpaid invoice
+  first, and **credit entries** auto-apply FIFO the same way. The ledger
+  badges now say plain **Credit** / **Debit** instead of "adjustment",
+  which is what they are.
+- **A Playwright E2E suite** covering login, clinic creation and the
+  account-ledger flows.
+
+### Fixed
+- **A multi-invoice receipt failed with `UNIQUE constraint failed`.** The
+  payment allocations and attachments were deduplicated per payment, not
+  across the invoice slices that payment was split into, so a receipt
+  covering three invoices wrote the same allocation three times. The same
+  guard now runs across every `syncCore` INSERT loop, not just this one.
+- **The opening balance showed as "Refund / Adjustment"** in the clinic
+  ledger, and the **financial cards on Clinic General Info disagreed with
+  the General Ledger's closing balance**. Both now read the same numbers.
+- **The monthly statement shows one month at a time**, with the previous
+  month's balance carried in as Opening (B/F). The **Advance In** and
+  **Advance Credit** columns are gone from the screen, the PDF and the
+  workbook.
+- **The release pipeline had been failing since the E2E suite landed.** The
+  CI's security job runs `npm audit --audit-level=high` and had been red on
+  a high-severity vite advisory. The desktop job that builds the installer
+  *and publishes the auto-update manifest* needs the security job, so every
+  release went out with no CI-built installer and no manifest - which is
+  why the updater kept offering the old version: nothing had told it a
+  new one existed. vite is on the fixed patch release, and it is a
+  dev dependency where it belongs, not a runtime one.
+- **The E2E suite only passed in the evening.** It waited for the text
+  "Good evening" to know the dashboard had rendered, and the dashboard
+  greets by the hour - "Good morning" before noon, "Good afternoon" until
+  five, "Still up" after midnight. It failed every other hour of the day,
+  at a login that was working perfectly. It now waits for the greeting
+  element, which carries a `data-purpose` hook.
+- **The v2.30.0 tag pointed at a tree that could not be built.** Its
+  `Cargo.lock` still carried 2.29.0 while `package.json`,
+  `tauri.conf.json` and `Cargo.toml` all said 2.30.0, so the version the
+  installer carried and the version the tag named were different. The tag
+  was re-pointed at the tree where all four agree, and the release was
+  rebuilt from it.
+
 ## [2.29.0] - 2026-10-20
 
 The statements are now documents an operator can read and send: the monthly
