@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.30.2] - 2026-10-22
+
+Adjustment entries now reach installed copies.
+
+### Fixed
+- Credit notes, debit adjustments and refunds appear inline with the
+  payment vouchers on the invoice row and in the invoice drawer, with
+  their own CR-/DR-/REF- serials. They can be edited or deleted there.
+- Editing a credit note reverses the original FIFO application and
+  re-applies the corrected amount; deleting reverses it. Existing
+  adjustments appear automatically, without a migration.
+- Invoice statements show advance credit and close on the correct Dr/Cr
+  side. "Amount Paid" is labelled "Paid / Adjusted".
+- Print headers keep their contrast in dark mode, and missing invoice
+  journals are backfilled at boot.
+
 ## [2.30.1] - 2026-10-22
 
 The release the pipeline could not make, made.
