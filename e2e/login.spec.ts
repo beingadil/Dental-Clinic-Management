@@ -41,7 +41,12 @@ async function ensureLoggedIn(page: any) {
   await page.fill('#login-user', 'admin');
   await page.fill('#login-password', 'password123');
   await page.click('button:has-text("Sign in")');
-  await expect(page.getByText('Good evening')).toBeVisible({ timeout: 15000 });
+  // NOT the greeting's WORDS. The dashboard greets by the hour - "Good
+  // morning" before noon, "Good afternoon" until five, "Good evening" after
+  // that, "Still up" after midnight - so a test that waits for one of those
+  // strings passes in the evening and fails every other hour of the day.
+  // The greeting element has a test hook, so wait for the element.
+  await expect(page.locator('[data-purpose="dashboard-greeting"]')).toBeVisible({ timeout: 15000 });
 }
 
 /**
@@ -50,6 +55,6 @@ async function ensureLoggedIn(page: any) {
 test.describe('First run and login', () => {
   test('creates an admin account on first visit or logs in if already set up', async ({ page }) => {
     await ensureLoggedIn(page);
-    await expect(page.getByText('Good evening')).toBeVisible();
+    await expect(page.locator('[data-purpose="dashboard-greeting"]')).toBeVisible();
   });
 });
