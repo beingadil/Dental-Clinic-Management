@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.30.1] - 2026-10-22
+
+The release the pipeline could not make, made.
+
+2.30.0's work was finished and its tag was correct, but the release itself
+had been published by hand from a tree that could not be rebuilt, with no
+checksum beside it. This release is the one the pipeline produced: built
+by CI from the tagged commit, checksummed, and published to the
+auto-update manifest so installed copies are offered it.
+
+**Why not reuse 2.30.0.** A machine that installed the hand-published
+2.30.0 would have been told it was up to date and never offered the
+fixed build - same version number, nothing to compare. 2.30.1 is a
+version every copy can be offered, and it is an immutable release: the
+2.30.0 tag was re-pointed twice while it was being repaired, and this
+one will not be.
+
+### Fixed
+- **The CI's security job had been red since the E2E suite landed**, and
+  the job that builds the installer *and publishes the auto-update
+  manifest* needs it, so every release went out with neither. Two causes:
+  vite was on a high-severity advisory (now the fixed patch release, and a
+  dev dependency where it belongs), and `cargo audit` was red on two real
+  advisories in the crates that verify certificates for the updater's own
+  download - `rustls-webpki` and `webpki-roots`, both via `reqwest`.
+  Both are fixed rather than ignored.
+- **The E2E suite only passed in the evening.** It waited for the text
+  "Good evening" to know the dashboard had rendered, and the dashboard
+  greets by the hour. It now waits for the greeting element.
+
 ## [2.30.0] - 2026-10-22
 
 The clinic ledger takes payments now, the monthly statement reads one month
