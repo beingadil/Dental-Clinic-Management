@@ -2,7 +2,7 @@ import { formatPKR } from '../../services/financeDomain';
 import { invoiceBalanceDue, hasLivePayment } from '../../services/financeDomain';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Invoice, PaymentRecord } from '../../types';
+import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
 import { downloadCSV } from '../../services/csvExport';
 import { canPost } from '../../services/permissions';
 import { ConfirmDialog } from '../common/ui';
@@ -11,6 +11,7 @@ import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 import { PaymentProofModal } from './PaymentProofModal';
 import { PaymentReceiptModal } from './PaymentReceiptModal';
 import { invoiceMatchesSearch } from '../../services/invoiceSearch';
+import { attributeAdjustmentsToInvoices } from '../../services/adjustmentAttribution';
 import {
   buildUnifiedTransactions,
   filterUnifiedTransactions,
@@ -22,6 +23,7 @@ import { RecordTransactionModal } from './RecordTransactionModal';
 import { JournalEntryModal } from './JournalEntryModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import EditPaymentModal from './EditPaymentModal';
+import { EditAdjustmentModal } from './EditAdjustmentModal';
 import { ClinicStatementModal } from './ClinicStatementModal';
 import { PageHeader, EmptyState, DataTable, FilterBar, usePagination } from '../common/ui';
 import { BILLING_TABS, labelOf } from '../common/financeTabs';
@@ -58,6 +60,8 @@ export const BillingView: React.FC = () => {
     getLabFinancialSummary,
     deletePaymentV2,
     updatePaymentV2,
+    deleteAccountAdjustment,
+    updateAccountAdjustment,
     user
   } = useApp();
 
@@ -88,6 +92,10 @@ export const BillingView: React.FC = () => {
   /* The voucher being corrected. Reading one opens the receipt modal, which is a
      different intent from changing it. */
   const [voucherToEdit, setVoucherToEdit] = useState<PaymentRecord | null>(null);
+  /* Adjustments live in the register below the invoice table: credit notes are
+     clinic-level (FIFO across invoices), so a single row cannot own them. */
+  const [adjustmentToEdit, setAdjustmentToEdit] = useState<AccountAdjustment | null>(null);
+  const [adjustmentToDelete, setAdjustmentToDelete] = useState<AccountAdjustment | null>(null);
   const [isUnifiedRecordModalOpen, setIsUnifiedRecordModalOpen] = useState<boolean>(false);
   /* Two things only: money against an invoice, or money held on account.
      Credit notes and refunds were removed from the recorder — see
@@ -135,6 +143,19 @@ export const BillingView: React.FC = () => {
     return getLabFinancialSummary(clinicFilter);
   }, [clinicFilter, getLabFinancialSummary]);
 
+  /* Which adjustments belong on each invoice row.
+   *
+   * Credit notes are clinic-level documents applied FIFO across open invoices,
+   * so they are replayed here against the same clinic invoices to give each one
+   * a home row. Debit adjustments and refunds carry no invoice effect; they are
+   * parked on the clinic's oldest invoice so they can still be read, corrected
+   * and deleted from the invoice module. Old rows need no migration — they are
+   * attributed the moment they load. */
+  const adjustmentsByInvoice = useMemo(
+    () => attributeAdjustmentsToInvoices(invoices, accountAdjustments || []),
+    [invoices, accountAdjustments],
+  );
+
   // Filtered Invoices
   //
   // ONLY invoices that have been paid against appear here. An invoice becomes a
@@ -148,7 +169,17 @@ export const BillingView: React.FC = () => {
   // again and belongs back in the allocation list, not on a screen of records.
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
-      if (!hasLivePayment(inv)) return false;
+      // A credit note is money against the invoice too, so an invoice settled
+      // only by credit stays visible on the one screen that can correct it.
+      // The same goes for an invoice whose only money document is a
+      // clinic-level adjustment landed on it.
+      if (
+        !hasLivePayment(inv) &&
+        !(inv.credit_notes_total || 0) &&
+        !adjustmentsByInvoice.has(inv.id)
+      ) {
+        return false;
+      }
 
       // Date range on the billing day (created_at is 'YYYY-MM-DD HH:mm')
       const day = (inv.created_at || '').slice(0, 10);
@@ -165,7 +196,7 @@ export const BillingView: React.FC = () => {
 
       return true;
     });
-  }, [invoices, clinicFilter, searchTerm, invFromDate, invToDate]);
+  }, [invoices, clinicFilter, searchTerm, invFromDate, invToDate, adjustmentsByInvoice]);
 
   /* Whether the clinic has ANY paid invoice at all, ignoring every filter. The
      empty state needs it to tell "nothing paid yet" apart from "your filters
@@ -188,12 +219,12 @@ export const BillingView: React.FC = () => {
   });
 
   /*
-   * The payments register underneath the invoice table, built from every stored
-   * money document and filtered by the SAME controls the table above it uses.
+   * The voucher export's rows, built from every stored money document and
+   * filtered by the SAME controls the invoice table uses.
    *
    * Two filter bands once sat on this page — one per table — and they disagreed
    * the moment either changed: filtering to one clinic left the register listing
-   * every other clinic's receipts. One band, one query, both lists.
+   * every other clinic's receipts. One band, one query, one export.
    */
   const registerTransactions = useMemo<UnifiedTransaction[]>(() => {
     return filterUnifiedTransactions(
@@ -624,7 +655,24 @@ export const BillingView: React.FC = () => {
                    never touched. */
                 render: (inv: Invoice) => {
                   const vouchers = inv.payments || [];
-                   if (vouchers.length === 0) return <span className="text-slate-400">—</span>
+                  const attributed = adjustmentsByInvoice.get(inv.id) || [];
+                  const creditsOnInvoice = inv.credit_notes_total || 0;
+                  const attributedCredits = attributed.reduce(
+                    (sum, entry) => sum + (entry.clinicLevel ? 0 : entry.amount),
+                    0,
+                  );
+                  /* Credits still on the invoice with no surviving adjustment
+                     document — usually a note deleted by a build that did not
+                     reverse its allocation. Show the money; there is nothing to
+                     edit, but nothing is hidden either. */
+                  const residualCredit = Math.max(0, creditsOnInvoice - attributedCredits);
+                  if (
+                    vouchers.length === 0 &&
+                    attributed.length === 0 &&
+                    creditsOnInvoice <= 0
+                  ) {
+                    return <span className="text-slate-400">-</span>;
+                  }
                   return (
                     <div className="space-y-1">
                       {vouchers.map((pay) => (
@@ -668,6 +716,57 @@ export const BillingView: React.FC = () => {
                           </button>
                         </div>
                       ))}
+                      {attributed.map(({ adjustment: adj, amount, clinicLevel }, idx) => (
+                        <div
+                          key={`${adj.id}-${idx}`}
+                          className="flex items-center gap-1.5 text-[11px] bg-amber-50/70 border border-amber-200 rounded-md px-2 py-1"
+                          title={`${adj.reason || 'Adjustment'}${
+                            clinicLevel ? ' (clinic-level document)' : ''
+                          }`}
+                        >
+                          <span className="font-mono font-bold text-amber-800">
+                            {adj.adjustment_number}
+                          </span>
+                          <span className="font-mono tabular-nums text-slate-700">
+                            {formatPKR(amount || 0)}
+                          </span>
+                          {clinicLevel && (
+                            <span className="px-1 rounded bg-amber-100 text-amber-800 border border-amber-200 text-[9px] font-bold uppercase">
+                              clinic
+                            </span>
+                          )}
+                          <span className="text-slate-500">{adj.date}</span>
+                          <button
+                            type="button"
+                            onClick={() => setAdjustmentToEdit(adj)}
+                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                            title={`Edit adjustment ${adj.adjustment_number}`}
+                            aria-label={`Edit adjustment ${adj.adjustment_number}`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdjustmentToDelete(adj)}
+                            className="p-0.5 text-slate-400 hover:text-ink-danger hover:bg-rose-50 rounded cursor-pointer"
+                            title={`Delete adjustment ${adj.adjustment_number}`}
+                            aria-label={`Delete adjustment ${adj.adjustment_number}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {residualCredit > 0 && (
+                        <div
+                          className="flex items-center gap-1.5 text-[11px] bg-amber-50/70 border border-amber-200 rounded-md px-2 py-1"
+                          title="Credit recorded on this invoice with no surviving adjustment document"
+                        >
+                          <span className="font-bold text-amber-800">Credit applied</span>
+                          <span className="font-mono tabular-nums text-slate-700">
+                            {formatPKR(residualCredit)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 },
@@ -733,12 +832,13 @@ export const BillingView: React.FC = () => {
         </div>
 
       {/* No payments register. It used to sit directly under the invoice table,
-          repeating every payment the Vouchers column already showed — two
+          repeating every payment the Vouchers column already showed - two
           surfaces for one fact, and the operator had to learn which one to edit
           a mistyped amount in. The vouchers on the invoice row are now the only
           place a payment lives: read it, correct it, delete it, all from the row
-          it belongs to. `registerTransactions` survives below solely as the data
-          behind the vouchers CSV export. */}
+          it belongs to. Adjustments follow the same rule: they sit in the same
+          column with their own serials (CR-/DR-/REF-), attributed to the rows
+          they affect. `registerTransactions` still feeds the vouchers CSV. */}
 
       {/* Unified Transaction Recording Modal (Finance 2.0 Engine) */}
       {isUnifiedRecordModalOpen && (
@@ -767,6 +867,11 @@ export const BillingView: React.FC = () => {
         isOpen={!!selectedDrawerInvoice}
         onClose={() => setSelectedDrawerInvoice(null)}
         invoice={selectedDrawerInvoice}
+        attributedAdjustments={
+          selectedDrawerInvoice
+            ? adjustmentsByInvoice.get(selectedDrawerInvoice.id)
+            : undefined
+        }
         onOpenPaymentModal={(inv) => {
           setSelectedDrawerInvoice(null);
           setUnifiedModalLabId(inv.lab_id);
@@ -778,6 +883,8 @@ export const BillingView: React.FC = () => {
         onPrintInvoice={(inv) => setPrintModalInvoice(inv)}
         onViewReceipt={(pay) => setSelectedReceiptPayment({ payment: pay })}
         onDeletePayment={(pay) => setPaymentToDelete(pay)}
+        onEditAdjustment={(adj) => setAdjustmentToEdit(adj)}
+        onDeleteAdjustment={(adj) => setAdjustmentToDelete(adj)}
         onVoidInvoice={(inv) => setVoidTarget(inv)}
         canVoid={canPost(user, 'invoice:void')}
       />
@@ -792,6 +899,17 @@ export const BillingView: React.FC = () => {
         onDelete={(pay) => setPaymentToDelete(pay)}
         onClose={() => setVoucherToEdit(null)}
       />
+
+      {/* Correcting an adjustment: amount, date, reason and reference. Credit
+          notes reverse their old invoice credit and re-apply the corrected one
+          before the register, invoice rows and ledger refresh. */}
+      {adjustmentToEdit && (
+        <EditAdjustmentModal
+          adjustment={adjustmentToEdit}
+          onSave={(id, patch) => updateAccountAdjustment(id, patch)}
+          onClose={() => setAdjustmentToEdit(null)}
+        />
+      )}
 
       {/* Official Clinic Statement of Account Modal */}
       {clinicStatementModalId && (
@@ -879,6 +997,28 @@ export const BillingView: React.FC = () => {
         onConfirm={() => {
           if (paymentToDelete) deletePaymentV2(paymentToDelete.id);
           setPaymentToDelete(null);
+        }}
+      />
+
+      {/* Deleting an adjustment moves money. A credit note comes back off the
+          invoices it paid down, so the consequences name both directions. */}
+      <ConfirmDialog
+        open={!!adjustmentToDelete}
+        title={`Delete adjustment ${adjustmentToDelete?.adjustment_number || ''}`}
+        consequences={[
+          adjustmentToDelete?.type === 'credit_note'
+            ? `The credit is reversed from ${adjustmentToDelete?.lab_name || 'the clinic'}'s invoices and balance, so the clinic's balance rises by ${(adjustmentToDelete?.amount || 0).toLocaleString()} PKR.`
+            : adjustmentToDelete?.type === 'debit_adjustment'
+            ? `${adjustmentToDelete?.lab_name || 'The clinic'}'s balance falls by ${(adjustmentToDelete?.amount || 0).toLocaleString()} PKR.`
+            : `The ${adjustmentToDelete?.type?.replace('_', ' ') || 'adjustment'} leaves the invoice list and the ledger.`,
+          'The entry disappears from the invoice list, the ledger and the reports.',
+          'Any journal posting and attachments recorded with it are removed as well.',
+        ]}
+        confirmLabel="Delete Adjustment"
+        onCancel={() => setAdjustmentToDelete(null)}
+        onConfirm={() => {
+          if (adjustmentToDelete) deleteAccountAdjustment(adjustmentToDelete.id);
+          setAdjustmentToDelete(null);
         }}
       />
 

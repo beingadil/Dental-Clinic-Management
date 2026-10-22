@@ -36,6 +36,7 @@ import {
 import {
   buildInvoiceJournal,
   buildPaymentJournal,
+  buildAdjustmentJournal,
   deriveInvoiceStatus,
 } from '../services/financeDomain';
 import {
@@ -89,7 +90,7 @@ import { runIntegrityCheckSafe, IntegrityReport } from '../db/integrityCheck';
 import {
   usersRepo, casesRepo, caseTemplatesRepo,
   sessionsRepo, labContactsRepo, labAddressesRepo, labPricingOverridesRepo, labReviewsRepo,
-  doctorPreferredLabsRepo, qcInspectionsRepo, adjustmentsRepo,
+  doctorPreferredLabsRepo, qcInspectionsRepo,
 } from '../db/repos';
 import type { UserRow } from '../db/repos';
 
@@ -242,6 +243,15 @@ interface AppContextType {
     date?: string
   ) => AccountAdjustment;
   deleteAccountAdjustment: (id: string) => boolean;
+  updateAccountAdjustment: (
+    id: string,
+    patch: {
+      amount?: number;
+      reason?: string;
+      date?: string;
+      reference_number?: string;
+    }
+  ) => boolean;
 
   // Payments & Receivables 2.0 Core Financial Engine
   recordTransactionV2: (command: {
@@ -1670,6 +1680,113 @@ const deleteLab = (id: string) => {
     showToast(`Invoice ${target.invoice_number} voided — ledger reversed and audit trail updated.`, 'success');
   };
 
+  /**
+   * A credit note is clinic money, not invoice money: it pays down the oldest
+   * open invoices first, exactly like a receipt. `credit_notes_total` is the
+   * only per-invoice trace of that allocation, so every later edit or delete
+   * has to move the same aggregate or the invoice and the ledger disagree.
+   */
+  const creditAdjustedInvoice = (inv: Invoice, nextCredits: number): Invoice => {
+    const finalAmount = inv.final_amount || 0;
+    const amountPaid = inv.amount_paid || 0;
+    const nextStatus = inv.status_v2 === 'voided'
+      ? inv.status_v2
+      : deriveInvoiceStatus(finalAmount, amountPaid, inv.due_date, nextCredits);
+    const settled = amountPaid >= finalAmount - nextCredits;
+    return {
+      ...inv,
+      credit_notes_total: nextCredits,
+      status_v2: nextStatus,
+      payment_status: settled ? 'paid' : amountPaid > 0 || nextCredits > 0 ? 'partial' : 'unpaid',
+    };
+  };
+
+  /** Apply a credit across this clinic's open invoices, oldest first (FIFO). */
+  const applyClinicCredit = (labId: string, amount: number, preferredInvoiceId?: string) => {
+    if (!(amount > 0)) return;
+    setInvoices((prev) => {
+      const openInvs = prev
+        .filter(
+          (inv) =>
+            inv.lab_id === labId &&
+            inv.status_v2 !== 'voided' &&
+            (inv.final_amount || 0) > (inv.amount_paid || 0) + (inv.credit_notes_total || 0)
+        )
+        .sort((a, b) => {
+          if (preferredInvoiceId) {
+            if (a.id === preferredInvoiceId) return -1;
+            if (b.id === preferredInvoiceId) return 1;
+          }
+          const da = a.issue_date || a.created_at || '';
+          const db = b.issue_date || b.created_at || '';
+          if (da !== db) return da < db ? -1 : 1;
+          return (a.invoice_number || '').localeCompare(b.invoice_number || '');
+        });
+
+      let remaining = amount;
+      const updates = new Map<string, number>();
+      for (const inv of openInvs) {
+        if (remaining <= 0) break;
+        const ceiling = Math.max(
+          0,
+          (inv.final_amount || 0) - (inv.amount_paid || 0) - (inv.credit_notes_total || 0)
+        );
+        const take = Math.min(ceiling, remaining);
+        if (take > 0) {
+          updates.set(inv.id, (inv.credit_notes_total || 0) + take);
+          remaining -= take;
+        }
+      }
+
+      if (updates.size === 0) return prev;
+      return prev.map((inv) => {
+        const nextCredits = updates.get(inv.id);
+        return nextCredits === undefined ? inv : creditAdjustedInvoice(inv, nextCredits);
+      });
+    });
+  };
+
+  /**
+   * Reverse a credit. The invoice named on the adjustment (older invoice-issued
+   * notes) goes first; otherwise the newest credited invoices are unwound first,
+   * the mirror of FIFO. Either way the clinic's total credits stay equal to the
+   * notes that remain.
+   */
+  const reverseClinicCredit = (labId: string, amount: number, preferredInvoiceId?: string) => {
+    if (!(amount > 0)) return;
+    setInvoices((prev) => {
+      let remaining = amount;
+      const candidates = prev
+        .filter((inv) => inv.lab_id === labId && (inv.credit_notes_total || 0) > 0)
+        .sort((a, b) => {
+          if (preferredInvoiceId) {
+            if (a.id === preferredInvoiceId) return -1;
+            if (b.id === preferredInvoiceId) return 1;
+          }
+          const da = a.issue_date || a.created_at || '';
+          const db = b.issue_date || b.created_at || '';
+          if (da !== db) return da < db ? 1 : -1;
+          return (b.invoice_number || '').localeCompare(a.invoice_number || '');
+        });
+
+      const updates = new Map<string, number>();
+      for (const inv of candidates) {
+        if (remaining <= 0) break;
+        const take = Math.min(inv.credit_notes_total || 0, remaining);
+        if (take > 0) {
+          updates.set(inv.id, (inv.credit_notes_total || 0) - take);
+          remaining -= take;
+        }
+      }
+
+      if (updates.size === 0) return prev;
+      return prev.map((inv) => {
+        const nextCredits = updates.get(inv.id);
+        return nextCredits === undefined ? inv : creditAdjustedInvoice(inv, nextCredits);
+      });
+    });
+  };
+
   const recordAccountAdjustment = (
     labId: string,
     type: 'credit_note' | 'debit_adjustment' | 'refund',
@@ -1709,36 +1826,7 @@ const deleteLab = (id: string) => {
     // payment does. Without this the credit note shows in the ledger but never
     // touches an invoice's effective balance, so the books disagree.
     if (type === 'credit_note') {
-      setInvoices((prev) => {
-        const openInvs = prev
-          .filter((inv) => inv.lab_id === labId && (inv.final_amount || 0) > (inv.amount_paid || 0) + (inv.credit_notes_total || 0))
-          .sort((a, b) => {
-            const da = a.issue_date || a.created_at || '';
-            const db = b.issue_date || b.created_at || '';
-            if (da !== db) return da < db ? -1 : 1;
-            return (a.invoice_number || '').localeCompare(b.invoice_number || '');
-          });
-
-        let remaining = amount;
-        const updates = new Map<string, number>();
-        for (const inv of openInvs) {
-          if (remaining <= 0) break;
-          const ceiling = Math.max(0, (inv.final_amount || 0) - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
-          const take = Math.min(ceiling, remaining);
-          if (take > 0) {
-            updates.set(inv.id, (inv.credit_notes_total || 0) + take);
-            remaining -= take;
-          }
-        }
-
-        if (updates.size === 0) return prev;
-        return prev.map((inv) => {
-          const newCr = updates.get(inv.id);
-          if (newCr === undefined) return inv;
-          const newStatus = deriveInvoiceStatus(inv.final_amount, inv.amount_paid || 0, inv.due_date, newCr);
-          return { ...inv, credit_notes_total: newCr, status_v2: newStatus };
-        });
-      });
+      applyClinicCredit(labId, amount);
     }
 
     // Debit adjustments are clinic-level: they show as a debit row in the ledger
@@ -1754,24 +1842,69 @@ const deleteLab = (id: string) => {
     return newAdj;
   };
 
+  /**
+   * Remove an adjustment and undo its money effect. Credit notes (and
+   * write-offs, if any older row carries that type) come back off the invoices
+   * they paid down, so the clinic's credits always equal the notes still on
+   * file. Persistence follows the ordinary state sync, same as every other
+   * billing command.
+   */
   const deleteAccountAdjustment = (id: string): boolean => {
     const adj = accountAdjustments.find((a) => a.id === id);
     if (!adj) return false;
-    try {
-      adjustmentsRepo.delete(id);
-    } catch { /* already gone */ }
-    if (adj.type === 'credit_note' && adj.invoice_id) {
-      setInvoices((prev) =>
-        prev.map((inv) =>
-          inv.id === adj.invoice_id
-            ? { ...inv, credit_notes_total: Math.max(0, (inv.credit_notes_total || 0) - (adj.amount || 0)) }
-            : inv
-        )
-      );
+    if (adj.type === 'credit_note' || adj.type === 'write_off') {
+      reverseClinicCredit(adj.lab_id, adj.amount, adj.invoice_id);
     }
     setAccountAdjustments((prev) => prev.filter((a) => a.id !== id));
     if (adj.journal_id) {
       setJournalEntries((prev) => prev.filter((j) => j.id !== adj.journal_id));
+    }
+    return true;
+  };
+
+  /**
+   * Correct an adjustment in place. Amount, reason, date and reference are
+   * editable; the document type stays fixed because the number prefix (CR/DR/
+   * REF) and the posted journal both derive from it. A changed credit amount is
+   * reversed from the invoices and re-applied, so the invoice module and the
+   * ledger move together.
+   */
+  const updateAccountAdjustment = (
+    id: string,
+    patch: { amount?: number; reason?: string; date?: string; reference_number?: string }
+  ): boolean => {
+    const adj = accountAdjustments.find((a) => a.id === id);
+    if (!adj) return false;
+
+    const nextAmount = patch.amount === undefined ? adj.amount : patch.amount;
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) return false;
+
+    if ((adj.type === 'credit_note' || adj.type === 'write_off') && nextAmount !== adj.amount) {
+      reverseClinicCredit(adj.lab_id, adj.amount, adj.invoice_id);
+      applyClinicCredit(adj.lab_id, nextAmount, adj.invoice_id);
+    }
+
+    const updated: AccountAdjustment = {
+      ...adj,
+      amount: nextAmount,
+      reason: patch.reason === undefined ? adj.reason : patch.reason,
+      date: patch.date === undefined ? adj.date : patch.date,
+      reference_number:
+        patch.reference_number === undefined ? adj.reference_number : patch.reference_number,
+    };
+    setAccountAdjustments((prev) => prev.map((a) => (a.id === id ? updated : a)));
+
+    // Invoice-issued notes carry a journal; rewrite its lines in place so a
+    // corrected amount does not leave a stale posting in the ledger.
+    if (adj.journal_id) {
+      const rebuilt = buildAdjustmentJournal(updated, user ? user.name : 'Manager');
+      setJournalEntries((prev) =>
+        prev.map((j) =>
+          j.id === adj.journal_id
+            ? { ...rebuilt, id: j.id, journal_number: j.journal_number, created_at: j.created_at }
+            : j
+        )
+      );
     }
     return true;
   };
@@ -1923,6 +2056,7 @@ const deleteLab = (id: string) => {
         flagReconciliationExceptionV2,
         recordAccountAdjustment,
         deleteAccountAdjustment,
+        updateAccountAdjustment,
 
         // Payments & Receivables 2.0
         recordTransactionV2,

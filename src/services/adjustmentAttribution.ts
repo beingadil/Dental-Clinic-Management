@@ -1,0 +1,142 @@
+import type { AccountAdjustment, Invoice } from '../types';
+
+/**
+ * Which adjustments belong on which invoice row.
+ *
+ * Payments already carry `invoice_id`; a clinic-level credit note does not.
+ * Credit notes are applied FIFO across a clinic's open invoices (see
+ * `recordAccountAdjustment`), so the same replay is used here to give every
+ * note a home on the rows it paid down — no extra allocation table, and old
+ * rows recorded before this existed still land somewhere.
+ *
+ * Debit adjustments and refunds recorded at clinic level do not touch invoice
+ * balances at all. They are parked on the clinic's oldest invoice row with
+ * `clinicLevel: true`, purely so the document can be read, corrected or
+ * deleted from the invoice module instead of disappearing into the ledger.
+ */
+
+export interface AttributedAdjustment {
+  adjustment: AccountAdjustment;
+  /** Portion of the document that lands on this invoice (display only). */
+  amount: number;
+  /** True when the invoice row is only the document's display home. */
+  clinicLevel: boolean;
+}
+
+const oldestFirst = (a: Invoice, b: Invoice): number => {
+  const da = a.issue_date || a.created_at || '';
+  const db = b.issue_date || b.created_at || '';
+  if (da !== db) return da < db ? -1 : 1;
+  return (a.invoice_number || '').localeCompare(b.invoice_number || '');
+};
+
+const push = (
+  map: Map<string, AttributedAdjustment[]>,
+  invoiceId: string,
+  entry: AttributedAdjustment,
+): void => {
+  const list = map.get(invoiceId);
+  if (list) list.push(entry);
+  else map.set(invoiceId, [entry]);
+};
+
+export const attributeAdjustmentsToInvoices = (
+  invoices: Invoice[],
+  adjustments: AccountAdjustment[],
+): Map<string, AttributedAdjustment[]> => {
+  const result = new Map<string, AttributedAdjustment[]>();
+
+  const byClinic = new Map<string, Invoice[]>();
+  for (const inv of invoices) {
+    const list = byClinic.get(inv.lab_id);
+    if (list) list.push(inv);
+    else byClinic.set(inv.lab_id, [inv]);
+  }
+  for (const list of byClinic.values()) list.sort(oldestFirst);
+
+  const creditsByClinic = new Map<string, AccountAdjustment[]>();
+  for (const adj of adjustments) {
+    const list = creditsByClinic.get(adj.lab_id);
+    if (list) list.push(adj);
+    else creditsByClinic.set(adj.lab_id, [adj]);
+  }
+
+  for (const [clinicId, clinicInvoices] of byClinic.entries()) {
+    const clinicAdjustments = (creditsByClinic.get(clinicId) || []).slice().sort((a, b) => {
+      const da = a.date || a.created_at || '';
+      const db = b.date || b.created_at || '';
+      if (da !== db) return da < db ? -1 : 1;
+      return (a.adjustment_number || '').localeCompare(b.adjustment_number || '');
+    });
+
+    // Head-room before any credit note is replayed: what the clinic was billed
+    // and has not settled in cash. Credit notes are then layered on oldest-first.
+    const capacity = new Map<string, number>();
+    for (const inv of clinicInvoices) {
+      capacity.set(inv.id, Math.max(0, (inv.final_amount || 0) - (inv.amount_paid || 0)));
+    }
+
+    // How much credit actually landed on invoices. A note can be larger than
+    // the open balance (nothing stops an operator typing 70,000 against a
+    // 50,000 clinic), and deleted notes in older versions could leave the two
+    // sides out of step. Replaying at most this much keeps the displayed
+    // allocation honest; any surplus is shown as an unapplied clinic document.
+    let creditPool = clinicInvoices.reduce(
+      (sum, inv) => sum + Math.max(0, inv.credit_notes_total || 0),
+      0,
+    );
+
+    for (const adj of clinicAdjustments) {
+      const isCredit = adj.type === 'credit_note' || adj.type === 'write_off';
+      const namedInvoice = adj.invoice_id
+        ? clinicInvoices.find((inv) => inv.id === adj.invoice_id)
+        : undefined;
+
+      if (!isCredit) {
+        // Surcharges/refunds are clinic documents; keep the named invoice if
+        // there is one, otherwise park the row on the oldest invoice so the
+        // billing screen can still manage it.
+        const home = namedInvoice || clinicInvoices[0];
+        if (home) push(result, home.id, { adjustment: adj, amount: adj.amount, clinicLevel: !namedInvoice });
+        continue;
+      }
+
+      const candidates = namedInvoice
+        ? [namedInvoice, ...clinicInvoices.filter((inv) => inv.id !== namedInvoice.id)]
+        : clinicInvoices;
+
+      let remaining = adj.amount;
+      for (const inv of candidates) {
+        if (remaining <= 0 || creditPool <= 0) break;
+        const room = Math.min(capacity.get(inv.id) || 0, creditPool);
+        const take = Math.min(room, remaining);
+        if (take > 0) {
+          capacity.set(inv.id, (capacity.get(inv.id) || 0) - take);
+          creditPool -= take;
+          remaining -= take;
+          push(result, inv.id, {
+            adjustment: adj,
+            amount: take,
+            clinicLevel: false,
+          });
+        }
+      }
+
+      // More credit than open invoices (payments arrived later, or the note was
+      // refunded manually). Keep the remainder visible on the named/newest row
+      // rather than hiding a money document.
+      if (remaining > 0) {
+        const home = namedInvoice || clinicInvoices[clinicInvoices.length - 1];
+        if (home) {
+          push(result, home.id, {
+            adjustment: adj,
+            amount: remaining,
+            clinicLevel: true,
+          });
+        }
+      }
+    }
+  }
+
+  return result;
+};

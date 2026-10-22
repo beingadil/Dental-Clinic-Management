@@ -71,6 +71,15 @@ describe('invoices table columns', () => {
     expect(source).not.toContain('TransactionRegister');
   });
 
+  it('lists adjustments in the same Vouchers cell as payments, with their own serial', () => {
+    // Adjustments are money documents too. They belong beside the payment
+    // vouchers on the invoice row — CR-/DR-/REF- serials, not a second panel.
+    expect(source).toMatch(/adjustmentsByInvoice\.get\(inv\.id\)/);
+    expect(source).toMatch(/adj\.adjustment_number/);
+    expect(source).not.toContain('Adjustments &amp; Credit Notes');
+    expect(source).not.toMatch(/header:\s*'Adjustment #'/);
+  });
+
   it('reads no payment-terms countdown off any invoice row', () => {
     // "Due in 6d" and friends are gone from the badge helper, so nothing in
     // the table restates how many days remain.

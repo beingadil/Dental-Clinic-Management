@@ -1,11 +1,12 @@
 import React, { useRef, useState } from 'react';
 import { Drawer, InvoiceStatusBadge, DataTable } from '../common/ui';
 import { useApp } from '../../context/AppContext';
-import { Invoice, JournalLine, PaymentRecord } from '../../types';
+import { Invoice, JournalLine, PaymentRecord, AccountAdjustment } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
 import { formatDoctorName } from '../../utils/doctorName';
 import { caseDetailLines } from '../../services/ledgerCaseDetail';
 import { availableAdvanceCredit } from '../../services/transactionDomain';
+import type { AttributedAdjustment } from '../../services/adjustmentAttribution';
 import { 
   X, 
   FileText, 
@@ -18,6 +19,7 @@ import {
   ChevronRight,
   Receipt,
   Trash2,
+  Pencil,
   Wallet,
   Ban
 } from 'lucide-react';
@@ -32,6 +34,12 @@ interface InvoiceDetailDrawerProps {
   onViewReceipt: (payment: PaymentRecord) => void;
   /** Delete a payment entry (its whole receipt). Never the invoice itself. */
   onDeletePayment: (payment: PaymentRecord) => void;
+  /** Correct an adjustment (credit note, surcharge, refund) in place. */
+  onEditAdjustment?: (adjustment: AccountAdjustment) => void;
+  /** Remove an adjustment and undo its invoice effect. */
+  onDeleteAdjustment?: (adjustment: AccountAdjustment) => void;
+  /** Adjustments attributed to this invoice, including clinic-level credit notes. */
+  attributedAdjustments?: AttributedAdjustment[];
   /** Void the invoice document itself — an accounting action, not a correction. */
   onVoidInvoice?: (invoice: Invoice) => void;
   /** Whether the signed-in user may void an invoice. */
@@ -47,6 +55,9 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   onPrintInvoice,
   onViewReceipt,
   onDeletePayment,
+  onEditAdjustment,
+  onDeleteAdjustment,
+  attributedAdjustments,
   onVoidInvoice,
   canVoid,
 }) => {
@@ -70,9 +81,19 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   if (!isOpen || !invoice) return null;
 
   const linkedCase = cases.find((c) => c.id === invoice.case_id);
-  const creditNotes = accountAdjustments.filter(
-    (a) => a.invoice_id === invoice.id
-  );
+  /* Invoice-linked notes first, then the clinic-level notes FIFO attribution
+     parked on this row. Deduplicate so a note is listed once. */
+  const attributedForInvoice = attributedAdjustments || [];
+  const creditNotes = [
+    ...accountAdjustments.filter((a) => a.invoice_id === invoice.id),
+    ...attributedForInvoice.map((entry) => entry.adjustment),
+  ].filter((a, index, list) => list.findIndex((other) => other.id === a.id) === index);
+  const attributedAmountFor = (id: string, fallback: number): number => {
+    const entry = attributedForInvoice.find((e) => e.adjustment.id === id);
+    return entry ? entry.amount : fallback;
+  };
+  const isClinicLevel = (id: string): boolean =>
+    attributedForInvoice.find((e) => e.adjustment.id === id)?.clinicLevel === true;
 
   const totalPaid = invoice.amount_paid || 0;
   const totalCredits = invoice.credit_notes_total || 0;
@@ -506,7 +527,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-ink-warning" />
-                Credit Notes &amp; Write-Offs ({creditNotes.length})
+                Adjustments on this Invoice ({creditNotes.length})
               </h3>
               {/* The "Issue Credit Note" button is gone. Issuing a credit note is a
                   write-off decision, not a collection, and the operator removed it
@@ -516,26 +537,60 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
 
             {creditNotes.length === 0 ? (
               <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
-                No credit notes or write-offs issued against this invoice.
+                No credit notes, surcharges or refunds are attributed to this invoice.
               </div>
             ) : (
               <div className="space-y-2">
-                {creditNotes.map((cn) => (
-                  <div key={cn.id} className="p-3 rounded-lg bg-amber-50/50 border border-amber-200 text-xs flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
+                {creditNotes.map((cn) => {
+                  const amount = attributedAmountFor(cn.id, cn.amount);
+                  return (
+                  <div key={cn.id} className="p-3 rounded-lg bg-amber-50/50 border border-amber-200 text-xs flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono font-bold text-amber-900">{cn.adjustment_number}</span>
                         <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 uppercase">
                           {cn.type}
                         </span>
+                        {isClinicLevel(cn.id) && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200/60 text-amber-900 uppercase">
+                            clinic-level
+                          </span>
+                        )}
+                        <span className="text-[11px] text-amber-700">{cn.date}</span>
                       </div>
                       <p className="text-[11px] text-amber-800 mt-0.5">{cn.reason}</p>
                     </div>
-                    <span className="font-mono font-bold text-sm text-amber-700">
-                      -{formatPKR(cn.amount)}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="font-mono font-bold text-sm text-amber-700">
+                        {cn.type === 'debit_adjustment' ? '+' : '-'}
+                        {formatPKR(amount)}
+                      </span>
+                      {onEditAdjustment && (
+                        <button
+                          type="button"
+                          onClick={() => onEditAdjustment(cn)}
+                          className="p-1 text-amber-700 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                          title={`Edit adjustment ${cn.adjustment_number}`}
+                          aria-label={`Edit adjustment ${cn.adjustment_number}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {onDeleteAdjustment && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteAdjustment(cn)}
+                          className="p-1 text-amber-700 hover:text-ink-danger hover:bg-rose-50 rounded cursor-pointer"
+                          title={`Delete adjustment ${cn.adjustment_number}`}
+                          aria-label={`Delete adjustment ${cn.adjustment_number}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
