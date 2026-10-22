@@ -73,7 +73,12 @@ export const attributeAdjustmentsToInvoices = (
     // and has not settled in cash. Credit notes are then layered on oldest-first.
     const capacity = new Map<string, number>();
     for (const inv of clinicInvoices) {
-      capacity.set(inv.id, Math.max(0, (inv.final_amount || 0) - (inv.amount_paid || 0)));
+      capacity.set(
+        inv.id,
+        inv.status_v2 === 'voided'
+          ? 0
+          : Math.max(0, (inv.final_amount || 0) - (inv.amount_paid || 0)),
+      );
     }
 
     // How much credit actually landed on invoices. A note can be larger than
@@ -82,7 +87,9 @@ export const attributeAdjustmentsToInvoices = (
     // sides out of step. Replaying at most this much keeps the displayed
     // allocation honest; any surplus is shown as an unapplied clinic document.
     let creditPool = clinicInvoices.reduce(
-      (sum, inv) => sum + Math.max(0, inv.credit_notes_total || 0),
+      (sum, inv) =>
+        sum +
+        (inv.status_v2 === 'voided' ? 0 : Math.max(0, inv.credit_notes_total || 0)),
       0,
     );
 

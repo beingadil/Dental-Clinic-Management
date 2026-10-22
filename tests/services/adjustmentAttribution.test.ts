@@ -128,6 +128,24 @@ describe('attributeAdjustmentsToInvoices', () => {
     ]);
   });
 
+  it('does not park credit on a voided invoice', () => {
+    const voided = invoice({
+      id: 'inv-v',
+      invoice_number: 'INV-0000',
+      created_at: '2025-12-01 09:00',
+      status_v2: 'voided',
+    });
+    const map = attributeAdjustmentsToInvoices(
+      [voided, INV_B(10000)],
+      [adjustment({ amount: 10000 })],
+    );
+
+    expect(map.has('inv-v')).toBe(false);
+    expect(map.get('inv-b')).toEqual([
+      expect.objectContaining({ amount: 10000, clinicLevel: false }),
+    ]);
+  });
+
   it('does not leak another clinic’s adjustments onto this clinic’s rows', () => {
     const map = attributeAdjustmentsToInvoices(
       [INV_A()],
