@@ -606,10 +606,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           byRef.set(j.reference_id, j.id);
         }
       }
-      if (byRef.size > 0) {
-        const affected = new Set(invoices.filter((i) => !i.journal_id && byRef.has(i.id)).map((i) => i.id));
-        if (affected.size > 0) {
-          setInvoices((prev) => prev.map((i) => (affected.has(i.id) && !i.journal_id ? { ...i, journal_id: byRef.get(i.id)! } : i)));
+      // Invoices that already have a matching journal: stamp the pairing so
+      // the whole-table sync does not wipe it.
+      const stampIds = new Set(invoices.filter((i) => !i.journal_id && byRef.has(i.id)).map((i) => i.id));
+      if (stampIds.size > 0) {
+        setInvoices((prev) => prev.map((i) => (stampIds.has(i.id) && !i.journal_id ? { ...i, journal_id: byRef.get(i.id)! } : i)));
+      }
+      // Invoices with NO journal at all (legacy / imported / pre-wiring): build
+      // one now, so the ledger invariant holds and the integrity self-check
+      // stops reporting them. Mirrors migration 012, but runs at boot so a
+      // late-arriving unjournaled invoice is still covered.
+      const missing = invoices.filter((i) => !i.journal_id && !byRef.has(i.id));
+      if (missing.length > 0) {
+        const newJournals: JournalEntry[] = [];
+        const journalByInvoice = new Map<string, string>();
+        for (const inv of missing) {
+          try {
+            const journal = buildInvoiceJournal(inv, user ? user.name : 'System');
+            newJournals.push(journal);
+            journalByInvoice.set(inv.id, journal.id);
+          } catch { /* skip unbuildable invoices (e.g. zero amount) */ }
+        }
+        if (newJournals.length > 0) {
+          setJournalEntries((prev) => [...newJournals, ...prev]);
+          const affected = new Set(newJournals.map((j) => j.reference_id).filter(Boolean) as string[]);
+          setInvoices((prev) => prev.map((i) => (affected.has(i.id) && !i.journal_id ? { ...i, journal_id: journalByInvoice.get(i.id)! } : i)));
+          // Re-run the integrity self-check once the sync has had a chance to
+          // flush the new journals to SQLite.
+          setTimeout(() => { try { runIntegritySelfCheck(); } catch { /* noop */ } }, 1500);
         }
       }
     }
