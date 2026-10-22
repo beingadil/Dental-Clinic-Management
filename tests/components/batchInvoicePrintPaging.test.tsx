@@ -210,7 +210,7 @@ describe('BatchInvoicePrintModal sheet splitting', () => {
     // "Total Billed" / "Outstanding" line, so both must agree.
     const totals = within(last as HTMLElement).getAllByText(/400,000/);
     expect(totals.length).toBe(2);
-    expect(within(last as HTMLElement).getByText('Closing Balance')).toBeTruthy();
+    expect(within(last as HTMLElement).getByText(/Closing Balance/)).toBeTruthy();
   });
 
   it('numbers the sheets so a spilled batch stays auditable', () => {

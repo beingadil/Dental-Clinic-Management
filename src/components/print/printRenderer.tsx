@@ -279,6 +279,12 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   /* The balance block must total the whole run even when the table is split
      across sheets, so it sums `balanceInvoices` when the caller supplies it. */
   const balanceRows = balanceInvoices ?? statementInvoices;
+  const balanceCases = balanceRows.reduce((s, i) => s + (i.final_amount || 0), 0);
+  const balancePaid = balanceRows.reduce((s, i) => s + (i.amount_paid || 0), 0);
+  const balanceDue = balanceRows.reduce((s, i) => s + invoiceBalanceDue(i), 0);
+  /* Unallocated advance is money the clinic holds with us, so it settles the
+     account on the credit side: due minus advance. Negative = we owe them. */
+  const closingNet = balanceDue - (advanceBalance || 0);
 
   // Dynamic page setup — the chosen paper size + margin become the actual
   // @page rule for printing (overrides the 12mm stylesheet default).
@@ -540,7 +546,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     <td className="px-3 py-1.5 text-right font-bold">{money(invoice.final_amount)}</td>
                   </tr>
                   <tr className="border border-slate-300 border-t-0">
-                    <td className="px-3 py-1.5 text-slate-600">Amount Paid</td>
+                    <td className="px-3 py-1.5 text-slate-600">Paid / Adjusted</td>
                     <td className="px-3 py-1.5 text-right text-emerald-700">{money(invoice.amount_paid || 0)}</td>
                   </tr>
                   <tr className="border-2 border-slate-900 bg-slate-100">
@@ -744,12 +750,17 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
             <div className="flex justify-end mb-4">
               <table className="text-[11px] w-64">
                 <tbody>
-                  <tr><td className="py-0.5 text-slate-600">Cases Amount</td><td className="py-0.5 text-right font-bold">{money(balanceRows.reduce((s, i) => s + i.final_amount, 0))}</td></tr>
-                  <tr><td className="py-0.5 text-slate-600">Amount Paid</td><td className="py-0.5 text-right">{money(balanceRows.reduce((s, i) => s + (i.amount_paid || 0), 0))}</td></tr>
+                  <tr><td className="py-0.5 text-slate-600">Cases Amount</td><td className="py-0.5 text-right font-bold">{money(balanceCases)}</td></tr>
+                  <tr><td className="py-0.5 text-slate-600">Paid / Adjusted</td><td className="py-0.5 text-right">{money(balancePaid)}</td></tr>
                   {advanceBalance > 0 && (
                     <tr><td className="py-0.5 text-slate-600">Advance Credit (we owe)</td><td className="py-0.5 text-right text-ink-success">{money(advanceBalance)}</td></tr>
                   )}
-                  <tr className="border-t-2 border-slate-900"><td className="py-1 font-bold">Closing Balance</td><td className="py-1 text-right font-bold">{money(balanceRows.reduce((s, i) => s + invoiceBalanceDue(i), 0))}</td></tr>
+                  <tr className="border-t-2 border-slate-900">
+                    <td className="py-1 font-bold">
+                      {closingNet < 0 ? 'Closing Balance (Cr)' : closingNet > 0 ? 'Closing Balance (Dr)' : 'Closing Balance'}
+                    </td>
+                    <td className="py-1 text-right font-bold">{money(Math.abs(closingNet))}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
