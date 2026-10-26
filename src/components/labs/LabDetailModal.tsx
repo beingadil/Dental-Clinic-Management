@@ -1,5 +1,5 @@
 import { formatPKR } from '../../services/financeDomain';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getDaysOffsetStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
@@ -28,6 +28,7 @@ import {
   Tag,
   PlusCircle,
   Printer,
+  ChevronDown,
   ChevronRight,
   Calendar,
   BookOpen,
@@ -162,6 +163,49 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       });
     });
   }, [allLabCases, caseHaystack, caseQuery]);
+
+  // Cases-tab month boxes: clicking a month reveals that month's entries.
+  // Expanded state persists per clinic in localStorage so the operator does
+  // not have to re-expand boxes on every visit.
+  const [expandedMonthKeys, setExpandedMonthKeys] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(`dental-cases-expanded:${lab.id}`);
+      if (raw) return JSON.parse(raw) as string[];
+    } catch { /* best-effort */ }
+    return [];
+  });
+
+  const toggleMonth = (key: string) => {
+    setExpandedMonthKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      try { localStorage.setItem(`dental-cases-expanded:${lab.id}`, JSON.stringify(next)); } catch { /* best-effort */ }
+      return next;
+    });
+  };
+
+  /* All cases for this lab, grouped by month (newest month first). Each month
+     is a box the operator clicks to reveal that month's case entries. */
+  const casesByMonth = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; cases: typeof labCases; latest: number }>();
+    for (const c of labCases) {
+      const d = new Date(c.created_at || c.delivery_date);
+      const ts = isNaN(d.getTime()) ? 0 : d.getTime();
+      const key = ts === 0 ? 'undated' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = ts === 0 ? 'Undated' : d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      if (!groups.has(key)) groups.set(key, { key, label, cases: [], latest: 0 });
+      const g = groups.get(key)!;
+      g.cases.push(c);
+      g.latest = Math.max(g.latest, ts);
+    }
+    return Array.from(groups.values()).sort((a, b) => b.latest - a.latest);
+  }, [labCases]);
+
+  // Open newest month by default only when state is empty and months exist.
+  useEffect(() => {
+    if (expandedMonthKeys.length === 0 && casesByMonth.length > 0) {
+      setExpandedMonthKeys([casesByMonth[0].key]);
+    }
+  }, [casesByMonth]);
 
   /* These must agree with the General Ledger, which is derived from
      buildLabFinancialSummary (invoices + payments + advances + adjustments +
@@ -418,91 +462,66 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   </div>
                 )
               ) : (
-                <div className="space-y-3">
-                  {labCases.map((c, index) => {
-                    const isLatest = index === 0;
-                    const teethStr = c.selected_teeth?.length > 0 ? c.selected_teeth.map(t => `#${t}`).join(', ') : 'Full Arch';
-
+                <div className="space-y-4">
+                  {casesByMonth.map((group) => {
+                    const expanded = expandedMonthKeys.includes(group.key);
                     return (
-                      <div
-                        key={c.id}
-                        className={`p-4 rounded-xl border transition-all ${
-                          isLatest 
-                            ? 'bg-indigo-50/40 border-indigo-200 shadow-xs' 
-                            : 'bg-white border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          {/* Case Info */}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-bold text-sm text-slate-900">
-                                {c.case_number}
-                              </span>
-                              {/* Patient name is what the operator is usually
-                                  looking for — the case number rarely is. It
-                                  sits beside the case number so the card reads
-                                  as "whose job is this" at a glance, and it is
-                                  searchable along with everything else. */}
-                              <span className="text-sm font-semibold text-slate-800">
-                                {c.patient_name || <span className="text-ink-muted font-normal">No patient name</span>}
-                              </span>
-                              {isLatest && (
-                                <span className="px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-md">
-                                  Most Recent
-                                </span>
-                              )}
-                              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border capitalize ${getStatusBadge(c.status)}`}>
-                                {c.status.replace('_', ' ')}
-                              </span>
-                              {c.priority === 'urgent' && (
-                                <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold rounded-md uppercase">
-                                  Urgent
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 pt-0.5">
-                              <span><strong>Material:</strong> {c.case_type_name}</span>
-                              <span><strong>Doctor:</strong> {formatDoctorName(c.doctor_name)}</span>
-                              <span><strong>Teeth:</strong> <span className="font-mono">{teethStr}</span></span>
-                              {c.shade && <span><strong>Shade:</strong> <span className="font-mono font-semibold text-slate-900">{c.shade}</span></span>}
-                              <span className="flex items-center gap-1 text-slate-500">
-                                <Calendar className="w-3.5 h-3.5 text-ink-muted" />
-                                Delivery: {c.delivery_date}
-                              </span>
-                            </div>
+                      <div key={group.key} className="border rounded-xl overflow-hidden shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => toggleMonth(group.key)}
+                          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200 text-left cursor-pointer transition-colors hover:bg-slate-100"
+                        >
+                          <div className="flex items-center gap-2">
+                            {expanded ? (
+                              <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                            )}
+                            <span className="font-semibold text-slate-900">{group.label}</span>
+                            <span className="text-xs text-slate-500">{group.cases.length} {group.cases.length === 1 ? 'case' : 'cases'}</span>
                           </div>
-
-                          {/* Price & Actions */}
-                          <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                            <div className="text-left sm:text-right">
-                              <div className="text-[10px] text-ink-muted font-bold uppercase">Case Fee</div>
-                              <div className="text-sm font-bold text-slate-900 font-mono">
-                                {formatPKR(c.final_price || 0)}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedCaseForSlip(c)}
-                                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                                title="Print Job Card Slip"
-                              >
-                                <Printer className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedCaseForDetail(c)}
-                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                              >
-                                <span>Details</span>
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                        </button>
+                        {expanded && (
+                          <div className="p-3 space-y-3">
+                            {group.cases.map((c) => {
+                              const teethStr = c.selected_teeth?.length > 0 ? c.selected_teeth.map(t => `#${t}`).join(', ') : 'Full Arch';
+                              return (
+                                <div key={c.id} className="p-4 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono font-bold text-sm text-slate-900">{c.case_number}</span>
+                                        <span className="text-sm font-semibold text-slate-800">{c.patient_name || <span className="text-slate-400 font-normal">No patient name</span>}</span>
+                                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border capitalize ${getStatusBadge(c.status)}`}>{c.status.replace('_', ' ')}</span>
+                                        {c.priority === 'urgent' && (
+                                          <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold rounded-md uppercase">Urgent</span>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 pt-0.5">
+                                        <span><strong>Material:</strong> {c.case_type_name}</span>
+                                        <span><strong>Doctor:</strong> {formatDoctorName(c.doctor_name)}</span>
+                                        <span><strong>Teeth:</strong> <span className="font-mono">{teethStr}</span></span>
+                                        {c.shade && <span><strong>Shade:</strong> <span className="font-mono font-semibold text-slate-900">{c.shade}</span></span>}
+                                        <span className="flex items-center gap-1 text-slate-500"><Calendar className="w-3.5 h-3.5 text-slate-400" />Delivery: {c.delivery_date}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                                      <div className="text-left sm:text-right">
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase">Case Fee</div>
+                                        <div className="text-sm font-bold text-slate-900 font-mono">{formatPKR(c.final_price || 0)}</div>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <button type="button" onClick={() => setSelectedCaseForSlip(c)} className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer" title="Print Job Card Slip"><Printer className="w-4 h-4" /></button>
+                                        <button type="button" onClick={() => setSelectedCaseForDetail(c)} className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1"><span>Details</span><ChevronRight className="w-3.5 h-3.5" /></button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })}

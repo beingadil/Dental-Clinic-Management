@@ -170,7 +170,7 @@ describe('A case with no teeth (a product that is not per-tooth work)', () => {
     // joined with a middot, so the whole joined string is a single text node —
     // hence one exact lookup for the whole cell rather than one per label.
     // The facts are unchanged: who it is, what was made, and how much work.
-    expect(screen.getByText(`Ali Raza${SEP}Retainer${SEP}1 unit`)).toBeTruthy();
+    expect(screen.getByText(`Ali Raza${SEP}Retainer`)).toBeTruthy();
     // ...carries no tooth list, because a retainer has none...
     expect(screen.queryByText('Teeth')).toBeNull();
     expect(screen.queryByText('Shade')).toBeNull();

@@ -546,7 +546,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     <td className="px-3 py-1.5 text-right font-bold">{money(invoice.final_amount)}</td>
                   </tr>
                   <tr className="border border-slate-300 border-t-0">
-                    <td className="px-3 py-1.5 text-slate-600">Paid / Adjusted</td>
+                    <td className="px-3 py-1.5 text-slate-600">Paid</td>
                     <td className="px-3 py-1.5 text-right text-emerald-700">{money(invoice.amount_paid || 0)}</td>
                   </tr>
                   <tr className="border-2 border-slate-900 bg-slate-100">
@@ -674,8 +674,8 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                       only when the invoice has no resolvable case at all —
                       otherwise the column would be blank for exactly the rows a
                       clinic most needs to chase. */}
-                  {['Date', 'Invoice #', 'Case', 'Price', 'Units', 'Total'].map((h) => (
-                    <th key={h} className="border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold" style={{ backgroundColor: '#f1f5f9', color: '#0f172a' }}>{h}</th>
+                  {['Date', 'Invoice #', 'Case', 'Price', 'Units', 'Total', 'Paid'].map((h) => (
+                    <th key={h} className={h === 'Paid' ? 'border border-slate-400 bg-slate-100 px-2 py-1 text-center font-bold' : 'border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold'} style={{ backgroundColor: '#f1f5f9', color: '#0f172a' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -689,8 +689,18 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   // invoice suppresses them: a billing row should read as
                   // "patient, procedure, N units", and the charting list plus
                   // the bench date only made the cell tall. `Units` is kept.
+                  /* Statement rows show the tooth list instead of the unit
+                     count — units are a column above, teeth are what the
+                     clinic reconciles against in the case detail line. */
                   const detail = linkedCase
-                    ? caseDetailLines(linkedCase, { omit: INVOICE_DETAIL_OMIT })
+                    ? caseDetailLines(linkedCase, {
+                        omit: [
+                          'Shade',
+                          'Received Date',
+                          'Units',
+                          'Delivery Date',
+                        ],
+                      })
                     : [];
                   const received = linkedCase ? formatReceivedDate(linkedCase) : '';
                   /* Per-unit base price and the unit count behind this invoice. */
@@ -737,11 +747,14 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(pricePerUnit)}</td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">{units}</td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top font-bold">{money(inv.final_amount)}</td>
+                    <td className="border border-slate-400 px-2 py-1 align-top font-semibold">
+                      {`Paid: ${invoiceBalanceDue(inv) <= 0 ? 'Full' : (inv.amount_paid || 0) > 0 ? 'Partial' : 'Unpaid'}`}
+                    </td>
                   </tr>
                   );
                 })}
                 {statementInvoices.length === 0 && (
-                  <tr><td colSpan={6} className="border border-slate-400 px-2 py-4 text-center italic text-slate-500">No invoices in this period.</td></tr>
+                  <tr><td colSpan={7} className="border border-slate-400 px-2 py-4 text-center italic text-slate-500">No invoices in this period.</td></tr>
                 )}
               </tbody>
             </table>
@@ -751,7 +764,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               <table className="text-[11px] w-64">
                 <tbody>
                   <tr><td className="py-0.5 text-slate-600">Cases Amount</td><td className="py-0.5 text-right font-bold">{money(balanceCases)}</td></tr>
-                  <tr><td className="py-0.5 text-slate-600">Paid / Adjusted</td><td className="py-0.5 text-right">{money(balancePaid)}</td></tr>
+                  <tr><td className="py-0.5 text-slate-600">Paid</td><td className="py-0.5 text-right">{money(balancePaid)}</td></tr>
                   {advanceBalance > 0 && (
                     <tr><td className="py-0.5 text-slate-600">Advance Credit (we owe)</td><td className="py-0.5 text-right text-ink-success">{money(advanceBalance)}</td></tr>
                   )}

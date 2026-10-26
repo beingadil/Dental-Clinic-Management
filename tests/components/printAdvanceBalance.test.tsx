@@ -65,7 +65,7 @@ describe('statement closing balance — debit / credit', () => {
     expect(text).toContain('Closing Balance (Cr)');
     // The received figure is no longer mislabelled as if it were the only money paid.
     expect(text).not.toContain('Amount Paid');
-    expect(text).toContain('Paid / Adjusted');
+    expect(text).toContain('Paid');
   });
 
   it('closes on the debit side when the clinic still owes for the cases', () => {

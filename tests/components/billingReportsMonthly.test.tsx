@@ -229,12 +229,13 @@ describe('BillingReportsView monthly statement', () => {
     for (const heading of [
       'Billed (Dr)',
       'Collected (Cr)',
-      'Opening (B/F)',
-      'Closing (C/F)',
       'Remaining Due',
     ]) {
       expect(within(march).getByText(heading)).toBeTruthy();
     }
+    // Opening (B/F) and Closing (C/F) columns were removed per redesign.
+    expect(within(march).queryByText('Opening (B/F)')).toBeNull();
+    expect(within(march).queryByText('Closing (C/F)')).toBeNull();
   });
 
   it('months the settlement by the month the cash landed', () => {
@@ -246,8 +247,6 @@ describe('BillingReportsView monthly statement', () => {
   it('shows the balance brought forward, carried down and still owing', () => {
     const [march] = tables();
     const marRow = clinicRow(march);
-    expect(figure(march, marRow, 'Opening (B/F)')).toBe('PKR 30,000'); // February's closing
-    expect(figure(march, marRow, 'Closing (C/F)')).toBe('PKR 37,000');
     expect(figure(march, marRow, 'Remaining Due')).toBe('PKR 37,000');
   });
 
@@ -256,7 +255,6 @@ describe('BillingReportsView monthly statement', () => {
     const footer = footerRow(march);
     expect(figure(march, footer, 'Cases Billed')).toBe('1');
     expect(figure(march, footer, 'Billed (Dr)')).toBe('PKR 25,000');
-    expect(figure(march, footer, 'Closing (C/F)')).toBe('PKR 37,000');
     expect(figure(march, footer, 'Remaining Due')).toBe('PKR 37,000');
   });
 
@@ -293,9 +291,9 @@ describe('the compact view', () => {
     expect(headers).toContain('Dental Clinic');
     expect(headers).toContain('Billed (Dr)');
     expect(headers).toContain('Collected (Cr)');
-    expect(headers).toContain('Closing (C/F)');
     expect(headers).toContain('Remaining Due');
-    expect(headers).toContain('Opening (B/F)');
+    expect(headers).not.toContain('Opening (B/F)');
+    expect(headers).not.toContain('Closing (C/F)');
     // The detail columns are the ones the Compact view leaves out.
     expect(headers).not.toContain('Advance In');
     expect(headers).not.toContain('Credit Notes');
@@ -358,8 +356,7 @@ describe('choosing which clinics are in the statement', () => {
        into March. Filtering February must not rewrite it. */
     excludeClinic('Beta Dental');
     const march = tables()[0];
-    expect(figure(march, clinicRow(march), 'Opening (B/F)')).toBe('PKR 30,000');
-    expect(figure(march, clinicRow(march), 'Closing (C/F)')).toBe('PKR 37,000');
+    expect(figure(march, clinicRow(march), 'Remaining Due')).toBe('PKR 37,000');
   });
 
   it('exports the filtered statement, not the whole one', async () => {

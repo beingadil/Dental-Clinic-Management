@@ -127,14 +127,14 @@ describe('BatchInvoicePrintModal case detail', () => {
     // SEP below is the escape the renderer uses for its inline join, so this
     // assertion tracks the code instead of duplicating a literal middle dot
     // that a shell round-trip can silently corrupt (it already did once).
-    expect(screen.getByText(`Ali Raza${SEP}Zirconia Crown${SEP}2 units`)).toBeTruthy();
-    // The tooth list and the promised day are both off a billing row.
-    expect(screen.queryByText('#11, #21')).toBeNull();
+    expect(screen.getByText(`Ali Raza${SEP}Zirconia Crown${SEP}#11, #21`)).toBeTruthy();
+    // The unit count is off a billing row — teeth take its place in the
+    // case detail line.
+    expect(screen.queryByText('2 units')).toBeNull();
     expect(screen.queryByText('Dec 20, 2026')).toBeNull();
     // …and with the labels gone, so are the label strings themselves.
     expect(screen.queryByText('Patient')).toBeNull();
     expect(screen.queryByText('Procedure')).toBeNull();
-    expect(screen.queryByText('Teeth')).toBeNull();
     expect(screen.queryByText('Delivery Date')).toBeNull();
   });
 
