@@ -299,10 +299,10 @@ const fitShrink = (s: string, maxW: number, size: number): { text: string; size:
   return { text: out + '\u2026', size };
 };
 
-/** Auto-orientation: many/wide columns → landscape. */
+/** Auto-orientation: user asked for portrait clean PDF. */
 export const chooseOrientation = (meta: LedgerPdfMeta): Orientation => {
   if (meta.orientation) return meta.orientation;
-  return meta.caseFilterLabel ? 'portrait' : 'landscape';
+  return 'portrait';
 };
 
 interface LedgerCol { key: string; label: string; w: number; align: 'left' | 'right' }
@@ -317,18 +317,14 @@ interface LedgerCol { key: string; label: string; w: number; align: 'left' | 'ri
  * dropping the column there would leave rows with no way to tell whose they
  * are. Hence a condition, not a deletion.
  */
-function planColumns(g: Geo, opts: { scopedToClinic: boolean }): { cols: LedgerCol[]; X: Record<string, number>; tableW: number } {
+function planColumns(g: Geo): { cols: LedgerCol[]; X: Record<string, number>; tableW: number } {
   const weights: Record<string, number> = {
-    date: 0.085, clinic: 0.135, case: 0.105, type: 0.115, narr: 0.35,
-    debit: 0.07, credit: 0.07, close: 0.07,
+    date: 0.11, case: 0.13, type: 0.15, narr: 0.45,
+    debit: 0.08, credit: 0.08, close: 0.08,
   };
+  /* User asked: remove CLINIC column unconditionally; clean portrait. */
   const raw: [string, string, number, 'left' | 'right'][] = [
     ['date', 'DATE', weights.date, 'left'],
-    // Spreading a spread loses the tuple type, so the extra column is built
-    // separately and concatenated.
-    ...(opts.scopedToClinic
-      ? []
-      : ([['clinic', 'CLINIC', weights.clinic, 'left']] as [string, string, number, 'left'][])),
     ['case', 'CASE/JOB', weights.case, 'left'],
     ['type', 'TYPE', weights.type, 'left'],
     ['narr', 'DESCRIPTION / PARTICULARS', weights.narr, 'left'],
@@ -354,10 +350,8 @@ export function buildLedgerPdf(
   const orientation = chooseOrientation(meta);
   const geoKey = `${meta.paper || 'a4'}-${orientation}`;
   const g = GEOS[geoKey] || GEOS['a4-portrait'];
-  /* A single-clinic export names it in the header, so the column is dropped.
-     An "All Clinics" export has no clinic in the header and keeps it. */
-  const scopedToClinic = !/^all\s+clinics$/i.test((meta.clinicLabel || '').trim());
-  const planned = planColumns(g, { scopedToClinic });
+  /* User asked: remove CLINIC column; portrait; clean header. */
+  const planned = planColumns(g);
   const colByKey = Object.fromEntries(planned.cols.map((c) => [c.key, c]));
   const narrW = colByKey.narr.w - 4;
   const lineH = 9.5;
@@ -376,8 +370,6 @@ export function buildLedgerPdf(
       h: Math.max(rowBase, narrLines.length * lineH + 6),
       cells: [
         { text: e.date },
-        // Absent when the column is not planned; the cell list shifts left.
-        ...(colByKey.clinic ? [{ text: e.clinic }] : []),
         { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.25 : 0 },
         { text: e.typeLabel },
         { text: '', lines: narrLines },
@@ -402,7 +394,7 @@ export function buildLedgerPdf(
           {
             cells: [
               { text: 'Opening Balance (b/f)', bold: true, grey: 0.35 },
-              ...(colByKey.clinic ? [{ text: '' }] : []),
+              { text: '' },
               { text: '' },
               { text: '' },
               { text: '' },
@@ -454,38 +446,14 @@ export function buildLedgerPdf(
         kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15,
         text: 'GENERAL LEDGER',
       });
+      // Clean simple header: title + date only. Amount/meta lines removed per user.
       const right = g.W - g.MARGIN;
-      const metaLine = (label: string, val: string, yy: number) => {
-        ops.push({
-          kind: 'text', x: right - textW(`${label}: ${val}`, 7.5), y: yy, size: 7.5, grey: 0.35,
-          text: `${label}: ${val}`,
-        });
-      };
       let my = g.H - 42;
       ops.push({
-        kind: 'text', x: right - textW(meta.generatedOn, 7.5), y: my, size: 7.5, grey: 0.35,
+        kind: 'text', x: right - textW(meta.generatedOn, 7.5), y: my, size: 7.5, grey: 0.45,
         text: meta.generatedOn,
       });
-      my -= 12;
-      const acctLabel = `${meta.accountCode ? `${meta.accountCode} · ` : ''}${meta.accountName || 'Accounts Receivable'}`;
-      metaLine('Account', acctLabel, my);
-      my -= 12;
-      metaLine('Period', meta.periodLabel, my);
-      my -= 12;
-      metaLine('Clinic', meta.clinicLabel, my);
-      if (meta.caseFilterLabel) {
-        my -= 12;
-        metaLine('Case/Job', meta.caseFilterLabel, my);
-      }
-      if (meta.periodLabel === 'All Time') {
-        my -= 12;
-        metaLine('As of', meta.generatedOn, my);
-      }
-      // The opening balance hint on the header, right under the meta.
-      if (showsOpening) {
-        my -= 12;
-        metaLine('Opening', pk(meta.openingBalance), my);
-      }
+      // No amount/meta lines — simple portrait, clean PDF.
       // The rule under the header sits below the deepest right-meta line.
       ops.push({
         kind: 'line', x1: g.MARGIN, y1: my - 6, x2: g.W - g.MARGIN, y2: my - 6, grey: 0.6, width: 0.9,
