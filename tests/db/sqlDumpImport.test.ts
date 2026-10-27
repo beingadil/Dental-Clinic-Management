@@ -328,7 +328,7 @@ async function seededDump(sql: any, restoreTo: SqliteEngine | null = null): Prom
   const ts = '2026-10-01T00:00:00.000Z';
   src.run(
     `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, is_super_admin, is_active, created_at, updated_at)
-     VALUES ('u1','labadmin','admin@localhost','Lab Admin','Lab Admin',?,'c0ffee',0,1,?,?)`,
+     VALUES ('u1','labadmin','admin@localhost','Lab Admin','Super Admin',?,'c0ffee',0,1,?,?)`,
     [CREDENTIAL, ts, ts],
   );
   src.run(
@@ -450,7 +450,7 @@ describe('importer against the real exporter', () => {
     setDatabase(eng);
     eng.run(
       `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, is_super_admin, is_active, created_at, updated_at)
-       VALUES ('u9','tech','tech@localhost','Tech','Technician','${CREDENTIAL}','c0ffee',0,1,?,?)`,
+       VALUES ('u9','tech','tech@localhost','Tech','Super Admin','${CREDENTIAL}','c0ffee',0,1,?,?)`,
       ['2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'],
     );
     eng.run(
@@ -490,7 +490,7 @@ describe('importer against the real exporter', () => {
     setDatabase(eng);
     eng.run(
       `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, is_super_admin, is_active, created_at, updated_at)
-       VALUES ('u9','tech','tech@localhost','Tech','Technician','${CREDENTIAL}','c0ffee',0,1,?,?)`,
+       VALUES ('u9','tech','tech@localhost','Tech','Super Admin','${CREDENTIAL}','c0ffee',0,1,?,?)`,
       ['2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'],
     );
 

@@ -165,6 +165,7 @@ vi.mock('../../src/context/AppContext', () => ({
     labs: [],
     brandingSettings: { appName: 'Dental Solutions', lab_name: 'Dental Lab' },
     showToast: () => {},
+    user: { id: 'u1', name: 'Tester', role: 'Super Admin' },
     /* The statement opens in COMPACT — seven columns, the ones a reader needs.
        These tests are about the DETAIL columns, so the mock asks for the full
        set; the Compact view has its own test below. */
@@ -229,11 +230,13 @@ describe('BillingReportsView monthly statement', () => {
     for (const heading of [
       'Billed (Dr)',
       'Collected (Cr)',
-      'Remaining Due',
+      'Closing Balance',
     ]) {
       expect(within(march).getByText(heading)).toBeTruthy();
     }
-    // Opening (B/F) and Closing (C/F) columns were removed per redesign.
+    // Remaining Due was replaced by the ledger's Closing Balance column and
+    // the B/F-C/F pair stays out per redesign.
+    expect(within(march).queryByText('Remaining Due')).toBeNull();
     expect(within(march).queryByText('Opening (B/F)')).toBeNull();
     expect(within(march).queryByText('Closing (C/F)')).toBeNull();
   });
@@ -244,10 +247,10 @@ describe('BillingReportsView monthly statement', () => {
     expect(figure(march, clinicRow(march), 'Collected (Cr)')).toBe('PKR 20,000');
   });
 
-  it('shows the balance brought forward, carried down and still owing', () => {
+  it('shows the balance brought forward as the ledger closing balance with its Dr/Cr side', () => {
     const [march] = tables();
     const marRow = clinicRow(march);
-    expect(figure(march, marRow, 'Remaining Due')).toBe('PKR 37,000');
+    expect(figure(march, marRow, 'Closing Balance')).toBe('PKR 37,000 Dr');
   });
 
   it('totals each month in a footer', () => {
@@ -255,10 +258,10 @@ describe('BillingReportsView monthly statement', () => {
     const footer = footerRow(march);
     expect(figure(march, footer, 'Cases Billed')).toBe('1');
     expect(figure(march, footer, 'Billed (Dr)')).toBe('PKR 25,000');
-    expect(figure(march, footer, 'Remaining Due')).toBe('PKR 37,000');
+    expect(figure(march, footer, 'Closing Balance')).toBe('PKR 37,000 Dr');
   });
 
-  it('exports the same closing balance, advance credit and remaining due to Excel', async () => {
+  it('exports the same closing balance to Excel', async () => {
     fireEvent.click(screen.getByLabelText('Export the monthly statement as an Excel workbook'));
     await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
 
@@ -291,7 +294,7 @@ describe('the compact view', () => {
     expect(headers).toContain('Dental Clinic');
     expect(headers).toContain('Billed (Dr)');
     expect(headers).toContain('Collected (Cr)');
-    expect(headers).toContain('Remaining Due');
+    expect(headers).toContain('Closing Balance');
     expect(headers).not.toContain('Opening (B/F)');
     expect(headers).not.toContain('Closing (C/F)');
     // The detail columns are the ones the Compact view leaves out.
@@ -308,7 +311,7 @@ describe('the compact view', () => {
     const [, bytes] = saveFile.mock.calls[0] as unknown as [string, Uint8Array];
     const xml = new TextDecoder().decode(bytes);
     // The core columns are there...
-    expect(xml).toContain('Remaining Due');
+    expect(xml).toContain('Closing Balance');
     // ...and the detail ones are not, because the document is the one on screen.
     expect(xml).not.toContain('Credit Notes');
     expect(xml).not.toContain('Advance Used');
@@ -356,7 +359,7 @@ describe('choosing which clinics are in the statement', () => {
        into March. Filtering February must not rewrite it. */
     excludeClinic('Beta Dental');
     const march = tables()[0];
-    expect(figure(march, clinicRow(march), 'Remaining Due')).toBe('PKR 37,000');
+    expect(figure(march, clinicRow(march), 'Closing Balance')).toBe('PKR 37,000 Dr');
   });
 
   it('exports the filtered statement, not the whole one', async () => {

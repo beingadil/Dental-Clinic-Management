@@ -127,7 +127,7 @@ async function importLegacyUser(u: any, report: ReportBuilder): Promise<void> {
       username,
       email,
       name: requireString(u.name, 'name', `user ${username}`),
-      role: ['Super Admin', 'Lab Admin', 'Technician', 'Billing Manager'].includes(u.role) ? u.role : 'Technician',
+      role: ['Super Admin', 'Clinic Entry Manager', 'Audit Checker'].includes(u.role) ? u.role : 'Super Admin',
       password_hash: hash,
       password_salt: hash.split('$')[2] ?? '',
       is_super_admin: u.isSuperAdmin || u.role === 'Super Admin' ? 1 : 0,

@@ -599,11 +599,27 @@ export interface UserProfile {
   username: string;
   email: string;
   name: string;
-  role: 'Lab Admin' | 'Technician' | 'Billing Manager' | 'Super Admin';
+  role: string; // built-in roles + custom roles created in Settings → Users (RBAC v4)
   password?: string;
   avatar?: string;
   isSuperAdmin?: boolean; // Superadmin account is hidden from User Management list
+  permissions?: string[]; // RBAC v3: per-user granted actions (overrides role baseline)
+  is_active?: boolean; // soft-disable flag enforced at login (RBAC v2)
   is_hidden?: number; // DB flag: never shown in any user list (service account)
+  created_at?: string;
+  /** Clinics the user may see. Absent/empty = unrestricted (opt-in scoping). */
+  clinic_ids?: string[];
+}
+
+/** RBAC v4: a role definition. Built-ins ship as is_system rows; custom roles
+ *  are created by the Super Admin in Settings → Users and carry their own
+ *  baseline permission ticks (users keep explicit per-user overrides). */
+export interface RoleDef {
+  id: string;
+  name: string;
+  description?: string;
+  permissions: string[]; // baseline tick set for newly created users of this role
+  is_system: boolean;
   created_at?: string;
 }
 

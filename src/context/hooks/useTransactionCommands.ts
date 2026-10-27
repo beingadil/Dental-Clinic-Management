@@ -16,6 +16,7 @@ import type {
   JournalEntry,
   PaymentAttachment,
   ReconciliationItem,
+  UserProfile,
 } from '../../types';
 import { getNowStamp } from '../../utils/dateUtils';
 import type { PaymentMethod } from '../../types';
@@ -49,6 +50,7 @@ import {
   buildReconciliationUpdate,
 } from '../../services/transactionDomain';
 import { buildPaymentReceivedNotification, buildAdvanceDepositV2Notification } from '../../services/notificationDomain';
+import { canPost, deniedTooltip } from '../../services/permissions';
 
 /**
  * V2 cashier command flows (audit F2 continuation) — recordTransaction,
@@ -87,6 +89,7 @@ export function useTransactionCommands(deps: {
   setReconciliationItems: React.Dispatch<React.SetStateAction<ReconciliationItem[]>>;
   allPayments: PaymentRecord[];
   actorName: string;
+  user?: UserProfile | null;
   pushNotifications: (n: any) => void;
   genId: (prefix: string) => string;
   saveVoucherToSystem: (v: any) => unknown;
@@ -95,7 +98,7 @@ export function useTransactionCommands(deps: {
     labs, invoices, setInvoices, advancePayments, setAdvancePayments,
     accountAdjustments, setAccountAdjustments, journalEntries, setJournalEntries,
     auditEvents: _auditEvents, setAuditEvents, reconciliationItems: _reconciliationItems,
-    setReconciliationItems, allPayments, actorName, pushNotifications, genId,
+    setReconciliationItems, allPayments, actorName, user, pushNotifications, genId,
     saveVoucherToSystem,
   } = deps;
 
@@ -112,6 +115,21 @@ export function useTransactionCommands(deps: {
     ],
   };
 
+  const denyPermission = (action: string, entityRef?: string) => {
+    setAuditEvents((prev: any[]) => [
+      buildAuditEvent({
+        actor: actorName || 'System',
+        action: 'rbac.denied',
+        entity_type: 'permission',
+        entity_id: action,
+        entity_ref: entityRef ?? '',
+        reason: 'insufficient_permission',
+        notes: `Denied: ${action}`,
+      }),
+      ...prev,
+    ]);
+  };
+
   const recordTransactionV2 = (command: {
     clinicId: string;
     amount: number;
@@ -124,6 +142,10 @@ export function useTransactionCommands(deps: {
     saveRemainingAsAdvance?: boolean;
     isVerified?: boolean;
   }): { payment: PaymentRecord; receiptNumber: string; journal: JournalEntry } => {
+    if (user && !canPost(user, 'payment:record')) {
+      denyPermission('payment:record', command.clinicId);
+      throw new Error(deniedTooltip);
+    }
     const lab = labs.find((l) => l.id === command.clinicId);
     const labName = lab ? lab.name : 'Dental Clinic';
     const nowStr = getNowStamp();
@@ -258,6 +280,10 @@ export function useTransactionCommands(deps: {
     attachments?: any[];
     isVerified?: boolean;
   }): { advance: AdvancePayment; receiptNumber: string; journal: JournalEntry } => {
+    if (user && !canPost(user, 'advance:deposit')) {
+      denyPermission('advance:deposit', command.clinicId);
+      throw new Error(deniedTooltip);
+    }
     const lab = labs.find((l) => l.id === command.clinicId);
     const labName = lab ? lab.name : 'Dental Clinic';
     const nowStr = getNowStamp();
@@ -476,6 +502,10 @@ export function useTransactionCommands(deps: {
    * voiding one is a separate action on the invoice table.
    */
   const deletePaymentV2 = (paymentId: string): boolean => {
+    if (user && !canPost(user, 'payment:edit')) {
+      denyPermission('payment:edit', paymentId);
+      return false;
+    }
     let target: PaymentRecord | null = null;
     for (const inv of invoices) {
       const found = (inv.payments || []).find((p) => p.id === paymentId || p.payment_number === paymentId);
@@ -534,6 +564,10 @@ export function useTransactionCommands(deps: {
   };
 
   const updatePaymentV2 = (paymentId: string, patch: PaymentPatch): boolean => {
+    if (user && !canPost(user, 'payment:edit')) {
+      denyPermission('payment:edit', paymentId);
+      return false;
+    }
     const next = patch.amount === undefined ? 0 : roundMoney(patch.amount);
     if (patch.amount !== undefined && (!Number.isFinite(next) || next <= 0)) return false;
 

@@ -1,5 +1,5 @@
 import { getDatabase } from './index';
-import { SqliteEngine, DbError } from './engine';
+import { SqliteEngine, DbError, SqlValue } from './engine';
 import { QcInspection, CatalogCategory } from '../types';
 import { stripDoctorHonorific } from '../utils/doctorName';
 import { fromStoredNeedsTeeth, toStoredNeedsTeeth } from '../utils/catalogToothRequirement';
@@ -151,6 +151,128 @@ export const sessionsRepo = {
   },
   purgeExpired(): void {
     requireEngine().run('DELETE FROM sessions WHERE expires_at <= ?', [now()]);
+  },
+};
+
+// ─────────────────────────────────────────────────────────── roles (RBAC v4)
+
+export const rolesRepo = {
+  all(): { id: string; name: string; description: string | null; permissions: string[]; is_system: boolean; created_at: string }[] {
+    return requireEngine()
+      .all<{ id: string; name: string; description: string | null; permissions: string; is_system: number; created_at: string }>(
+        'SELECT * FROM roles ORDER BY is_system DESC, name COLLATE NOCASE')
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        permissions: (() => { try { return JSON.parse(r.permissions || '[]') as string[]; } catch { return []; } })(),
+        is_system: !!r.is_system,
+        created_at: r.created_at,
+      }));
+  },
+  insert({ id, name, description, permissions, is_system, created_at }: { id: string; name: string; description: string; permissions: string[]; is_system: boolean; created_at: string }): void {
+    requireEngine().run(
+      'INSERT INTO roles (id, name, description, permissions, is_system, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, name, description, JSON.stringify(permissions || []), is_system ? 1 : 0, created_at]
+    );
+  },
+  update(id: string, patch: { name?: string; description?: string; permissions?: string[] }): void {
+    const sets: string[] = [];
+    const values: SqlValue[] = [];
+    if (patch.name !== undefined) { sets.push('name = ?'); values.push(patch.name); }
+    if (patch.description !== undefined) { sets.push('description = ?'); values.push(patch.description); }
+    if (patch.permissions !== undefined) { sets.push('permissions = ?'); values.push(JSON.stringify(patch.permissions)); }
+    if (!sets.length) return;
+    values.push(id);
+    requireEngine().run(`UPDATE roles SET ${sets.join(', ')} WHERE id = ?`, values);
+  },
+  delete(id: string): void {
+    requireEngine().run('DELETE FROM roles WHERE id = ?', [id]);
+  },
+  /** Point all users of `fromRole` at `toRole` (used when renaming a custom role). */
+  reassignUsers(fromRole: string, toRole: string): void {
+    requireEngine().run('UPDATE users SET role = ? WHERE role = ?', [toRole, fromRole]);
+  },
+};
+
+// ─────────────────────────────────────────────────────────── user permissions (RBAC v3)
+
+export const userPermissionsRepo = {
+  all(): { user_id: string; action: string; granted: number }[] {
+    return requireEngine().all<{ user_id: string; action: string; granted: number }>(
+      'SELECT * FROM user_permissions'
+    );
+  },
+  forUser(userId: string): string[] {
+    return requireEngine()
+      .all<{ action: string }>('SELECT action FROM user_permissions WHERE user_id = ? AND granted = 1', [userId])
+      .map((r) => r.action);
+  },
+  /** Whether the user has ever had permission rows at all (granted or not).
+   *  Hydration seeds the role baseline only when this is false — a user
+   *  whose ticks were all revoked has granted=0 rows and must NOT be reseeded. */
+  exists(userId: string): boolean {
+    const row = requireEngine()
+      .scalar('SELECT COUNT(*) FROM user_permissions WHERE user_id = ?', [userId]) as unknown;
+    return Number(row) > 0;
+  },
+  /** Replace a user's grant set. Actions outside `granted` are stored with
+   *  granted=0 when listed in `catalog`, so "revoke everything" is a durable
+   *  state rather than an indistinguishable-from-unseeded empty set. */
+  setForUser(userId: string, actions: string[], catalog: string[] = []): void {
+    const engine = requireEngine();
+    const granted = new Set(actions);
+    engine.transaction((tx) => {
+      tx.run('DELETE FROM user_permissions WHERE user_id = ?', [userId]);
+      for (const action of actions) {
+        tx.run('INSERT INTO user_permissions (user_id, action, granted) VALUES (?, ?, 1)', [userId, action]);
+      }
+      for (const action of catalog) {
+        if (!granted.has(action)) {
+          tx.run('INSERT INTO user_permissions (user_id, action, granted) VALUES (?, ?, 0)', [userId, action]);
+        }
+      }
+    });
+  },
+  deleteForUser(userId: string): void {
+    requireEngine().run('DELETE FROM user_permissions WHERE user_id = ?', [userId]);
+  },
+};
+
+/** A user's clinic-scope row: which labs they may see (RBAC v2, opt-in). */
+export interface UserClinicRow {
+  user_id: string;
+  lab_id: string;
+  created_at: string;
+}
+
+export const userClinicsRepo = {
+  all(): UserClinicRow[] {
+    return requireEngine().all<UserClinicRow>('SELECT * FROM user_clinics');
+  },
+  /** Clinic ids the user is narrowed to. Empty = unrestricted (opt-in). */
+  idsForUser(userId: string): string[] {
+    return requireEngine()
+      .all<Pick<UserClinicRow, 'lab_id'>>('SELECT lab_id FROM user_clinics WHERE user_id = ?', [userId])
+      .map((r) => r.lab_id);
+  },
+  /** Replace a user's scope atomically — a half-written scope must never
+   *  silently widen visibility, so delete+insert rides one transaction. */
+  setForUser(userId: string, labIds: string[]): void {
+    const engine = requireEngine();
+    engine.transaction((tx) => {
+      tx.run('DELETE FROM user_clinics WHERE user_id = ?', [userId]);
+      labIds.forEach((labId) => {
+        tx.run('INSERT INTO user_clinics (user_id, lab_id, created_at) VALUES (?, ?, ?)', [
+          userId,
+          labId,
+          now(),
+        ]);
+      });
+    });
+  },
+  deleteForUser(userId: string): void {
+    requireEngine().run('DELETE FROM user_clinics WHERE user_id = ?', [userId]);
   },
 };
 

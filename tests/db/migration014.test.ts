@@ -34,7 +34,7 @@ describe('migration 014 — user_preferences', () => {
 
   const seedUser = (id: string) =>
     engine.run(
-      `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, 'Technician', 'hash', 'salt', '2026-10-01')`,
+      `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, 'Super Admin', 'hash', 'salt', '2026-10-01')`,
       [id, id, `${id}@x`, id]
     );
 

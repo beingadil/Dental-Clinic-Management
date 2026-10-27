@@ -1,18 +1,21 @@
+﻿import { roundMoney } from './financeDomain';
+import { buildLedgerEntries } from './ledgerDomain';
+import { getTodayStr } from '../utils/dateUtils';
+import { buildXlsx, XL, type XlsxCell, type XlsxSheet } from '../lib/xlsx';
 import type {
   Invoice,
   PaymentRecord,
+  DentalLab,
   AdvancePayment,
   AccountAdjustment,
+  LedgerEntry,
 } from '../types';
-import { roundMoney } from './financeDomain';
-import { getTodayStr } from '../utils/dateUtils';
-import { buildXlsx, XL, type XlsxCell, type XlsxSheet } from '../lib/xlsx';
 
 /**
- * Monthly statement domain — pure financial view (no React, no state, no DB).
+ * Monthly statement domain â€” pure financial view (no React, no state, no DB).
  *
  * WHY THIS EXISTS: the old monthly report grouped invoices by their creation
- * month and called `Σ invoice.amount_paid` "Collected". That misstates a
+ * month and called `Î£ invoice.amount_paid` "Collected". That misstates a
  * clinic statement in three ways:
  *   1. Cash received in month M against an invoice raised in month M-3 never
  *      showed up in M, so a collection month looked empty and never carried
@@ -23,22 +26,35 @@ import { buildXlsx, XL, type XlsxCell, type XlsxSheet } from '../lib/xlsx';
  *      just `billed - lifetime_paid` and ignored money the clinic had already
  *      paid or been credited.
  *
- * Here every figure is dated to the month the money actually moved, and the
- * balance is carried month to month:
+ * EVERY figure is dated to the month the money actually moved.
  *
- *   closing = opening + billed − collected − advance_received
- *             + advance_applied − credit_notes + debit_adjustments
+ * THE CLOSING BALANCE RIDES THE LEDGER ENGINE, not a second walker. The
+ * blocks are built from `buildLedgerEntries` â€” the same engine the General
+ * Ledger tab runs â€” and each month's `closing_balance` is that engine's own
+ * running balance at the month's last posting. That makes the statement's
+ * closing balance the general ledger's closing balance BY CONSTRUCTION. The
+ * first version of this report walked its own arithmetic and could not see a
+ * clinic's OPENING-balance entry (it never received the labs), so it opened
+ * at zero while the ledger opened at the clinic's brought-forward debt â€” a
+ * clinic owing 41,000 historically plus 15,000 in the month read as 15,000
+ * here and 56,000 in the ledger. Riding one engine removes the class of
+ * bug, not just the instance: opening balances, voided invoices, write-offs
+ * â€” whatever the ledger posts, the statement closes at.
  *
- * Sign convention matches `buildLabFinancialSummary` (net_balance): positive
- * means the clinic owes us, negative means the clinic is in credit. `remaining`
- * is therefore `max(0, closing)` — the "still to pay" figure a statement shows.
+ * The analytic columns (Billed, Collected, Advance Used, notes) are the
+ * ledger entries bucketed by ledger side, plus `advance_applied` which is
+ * still walked from the invoice payment records: in the ledger an applied
+ * advance is a 0/0 memo (the deposit already carried the credit), so the
+ * amount to show under "Advance Used" lives only on the payment row.
+ *
+ * Sign convention matches the ledger's running balance (net receivable):
+ * positive means the clinic owes us, negative means the clinic is in credit.
+ * The statement prints this figure in the Closing Balance column with its
+ * ledger side â€” "Dr" for a receivable, "Cr" for credit the clinic holds.
  * `advance_credit` is the unallocated deposit wallet only (deposits minus
  * applications), which is what the clinic can spend against future invoices.
- *
- * Reconciliation invariant: for the newest month, a clinic's `closing_balance`
- * equals `buildLabFinancialSummary(...).net_balance` as long as `amount_paid`
- * equals the sum of its invoice's payments (which is how the app maintains it).
- * A test asserts exactly that.
+ * A test asserts the newest closing equals `buildLabFinancialSummary(
+ * ...).net_balance` on a fixture where the two derivations agree.
  */
 
 /** One clinic's row inside one billing month. */
@@ -63,8 +79,6 @@ export interface MonthlyClinicRow {
   closing_balance: number;
   /** Unallocated advance wallet at month end. */
   advance_credit: number;
-  /** Still owed (max(0, closing)); 0 when the clinic is in credit. */
-  remaining: number;
 }
 
 /** One billing month: every clinic active that month, plus month totals. */
@@ -93,12 +107,12 @@ const monthKey = (value?: string): string => {
  * A payment that spends the advance wallet rather than cash. These are counted
  * inside `collected` (they settle an invoice) and added back in
  * `advance_applied`, because the deposit already reduced the balance in the
- * month it was banked — applying it is net-neutral to the clinic.
+ * month it was banked â€” applying it is net-neutral to the clinic.
  */
 export const isAdvanceAppliedPayment = (p: PaymentRecord): boolean =>
   p.payment_method === 'advance' || p.payment_type === 'advance_allocation' || !!p.advance_payment_id;
 
-/** Human month label, e.g. '2026-03' → 'March 2026'. */
+/** Human month label, e.g. '2026-03' â†’ 'March 2026'. */
 export const formatMonthLabel = (month: string): string => {
   const [y, m] = month.split('-').map(Number);
   if (!y || !m) return month;
@@ -147,27 +161,48 @@ const totalsOf = (rows: MonthlyClinicRow[]): MonthlyStatementBlock['totals'] => 
     opening_balance: sum((r) => r.opening_balance),
     closing_balance,
     advance_credit: sum((r) => r.advance_credit),
-    remaining: Math.max(0, closing_balance),
   };
 };
 
 /**
  * Build the monthly statement for every clinic, newest month first.
  *
- * Balances are walked oldest → newest so each month's opening is the previous
- * month's closing; the blocks are then reversed for the UI.
+ * The blocks are bucketed from `buildLedgerEntries` -- the SAME engine the
+ * General Ledger tab renders -- so the statement walks exactly the postings
+ * the ledger walks: billing months, settlement months, and the clinic's
+ * own OPENING balance (dated at its creation by the engine) all enter the
+ * carrying chain. An explicit second engine here is what let a clinic owing
+ * 41,000 historically plus 15,000 in the month read as 15,000 while the
+ * General Ledger closed at 56,000 -- riding one engine removes the class of
+ * bug: whatever the ledger posts, the statement closes from.
  */
 export const buildMonthlyStatements = (input: {
   invoices: Invoice[];
   advancePayments: AdvancePayment[];
   accountAdjustments: AccountAdjustment[];
+  labs?: Pick<
+    DentalLab,
+    'id' | 'name' | 'opening_balance' | 'opening_balance_type' | 'created_at'
+  >[];
 }): MonthlyStatementBlock[] => {
-  const { invoices, advancePayments, accountAdjustments } = input;
+  const { invoices, advancePayments, accountAdjustments, labs } = input;
 
-  /* month → lab_id → flows. Every money movement lands in the month of its own
-     business date, so a month appears whenever the clinic transacted — even
-     when it raised no invoice (a deposit or a part payment month). */
-  const months = new Map<string, Map<string, FlowBucket & { lab_name: string }>>();
+  /* The ledger engine produces entries newest-first with a running balance
+     on each; reverse to posting order to walk. */
+  const postings: LedgerEntry[] = [...buildLedgerEntries({
+    invoices,
+    advancePayments,
+    accountAdjustments,
+    labs,
+  })].reverse();
+
+  /* month | lab_id | flow bucket + the running balance at the month's last
+     posting. Every money movement lands in the month of its own business
+     date, so a month appears whenever the clinic transacted -- even when it
+     raised no invoice (a deposit, a credit note or a brought-forward opening
+     month). */
+  type FlowState = FlowBucket & { lab_name: string };
+  const months = new Map<string, Map<string, FlowState>>();
 
   const bucket = (month: string, labId: string, labName: string) => {
     let labMap = months.get(month);
@@ -185,49 +220,50 @@ export const buildMonthlyStatements = (input: {
     return flow;
   };
 
-  // 1. Charges: invoices debit the receivable in their own month.
-  (invoices || []).forEach((inv) => {
-    if (!inv || inv.status_v2 === 'voided') return;
-    const flow = bucket(monthKey(inv.created_at || inv.issue_date), inv.lab_id, inv.lab_name);
-    flow.cases_billed += 1;
-    flow.billed += inv.final_amount || 0;
-  });
-
-  // 2. Settlements: every payment is dated by its payment date, not by the
-  //    invoice it pays — this is the correction the old report was missing.
+  // Advance applications are 0/0 memos in the ledger (the deposit already
+  // carried the credit), so the amount they USE is walked from the invoice
+  // payment rows and dated by its payment date like every other movement.
+  // They settle an invoice too, so they count inside `collected` and are
+  // added back in `advance_applied` -- net-neutral to the closing balance,
+  // which reads the ledger directly.
+  const applied = new Map<string, number>(); // "month|labId" -> amount used
   (invoices || []).forEach((inv) => {
     (inv?.payments || []).forEach((p) => {
-      const flow = bucket(
-        monthKey(p.payment_date || inv.created_at),
-        p.lab_id || inv.lab_id,
-        p.lab_name || inv.lab_name
-      );
+      if (!isAdvanceAppliedPayment(p)) return;
+      const month = monthKey(p.payment_date || inv.created_at);
+      const flow = bucket(month, p.lab_id || inv.lab_id, p.lab_name || inv.lab_name);
       flow.collected += p.amount || 0;
-      if (isAdvanceAppliedPayment(p)) flow.advance_applied += p.amount || 0;
+      const key = `${month}|${p.lab_id || inv.lab_id}`;
+      applied.set(key, (applied.get(key) || 0) + (p.amount || 0));
     });
   });
 
-  // 3. Advance deposits banked (a clinic-level credit wallet).
-  (advancePayments || []).forEach((adv) => {
-    const flow = bucket(
-      monthKey(adv.payment_date || adv.created_at),
-      adv.lab_id,
-      adv.lab_name
-    );
-    flow.advance_received += adv.amount || 0;
+  postings.forEach((entry) => {
+    const flow = bucket(monthKey(entry.date), entry.lab_id, entry.lab_name);
+    if (entry.debit > 0 && entry.credit === 0) {
+      // Invoices, debit adjustments and refunds: debits to the receivable.
+      if (entry.entry_type === 'invoice') {
+        flow.cases_billed += 1;
+        flow.billed += entry.debit;
+      } else {
+        flow.debit_adjustments += entry.debit;
+      }
+    }
+    if (entry.credit > 0 && entry.debit === 0) {
+      // Settlements, advance deposits and credit notes: credits.
+      if (entry.entry_type === 'payment') flow.collected += entry.credit;
+      else if (entry.entry_type === 'advance_payment') flow.advance_received += entry.credit;
+      else flow.credit_notes += entry.credit;
+    }
   });
 
-  /* 4. Credit notes and debit adjustments at their own date. `write_off` and
-     `reversal` are excluded to stay arithmetically consistent with
-     `buildLabFinancialSummary`, which ignores them too. */
-  (accountAdjustments || []).forEach((adj) => {
-    if (adj?.type !== 'credit_note' && adj?.type !== 'debit_adjustment' && adj?.type !== 'refund') return;
-    const flow = bucket(monthKey(adj.date || adj.created_at), adj.lab_id, adj.lab_name);
-    if (adj.type === 'credit_note') flow.credit_notes += adj.amount || 0;
-    else flow.debit_adjustments += adj.amount || 0;
-  });
-
-  // Walk oldest → newest, carrying balance and advance wallet per clinic.
+  // Walk oldest to newest so each month's opening is the previous month's
+  // closing. The engine's running_balance is GLOBAL (every clinic in one
+  // chain), so a month's closing is aggregated per clinic over exactly the
+  // postings the engine printed -- the same sum the engine's per-clinic
+  // running balance (used by the General Ledger tab via filterLabId)
+  // carries at that month's last posting. Advance allocations are 0/0
+  // memos, so they are net-neutral and correctly absent from these flows.
   const ordered = Array.from(months.keys()).sort();
   const running = new Map<string, { closing: number; advance_credit: number }>();
   const blocks: MonthlyStatementBlock[] = [];
@@ -239,17 +275,24 @@ export const buildMonthlyStatements = (input: {
     labMap.forEach((flow, labId) => {
       const prior = running.get(labId) || { closing: 0, advance_credit: 0 };
       const opening_balance = roundMoney(prior.closing);
+      const advance_applied = roundMoney(applied.get(`${month}|${labId}`) || 0);
+      // This month's ledger postings aggregated for the clinic, carried from
+      // where the ledger left that clinic last month: the same sum the
+      // engine's per-clinic running balance (the General Ledger tab reads it
+      // through filterLabId) carries at this month's last posting. Advance
+      // applications settle an invoice and add right back (the deposit was
+      // already credited in its own month), so they are net-neutral.
       const closing_balance = roundMoney(
         opening_balance +
           flow.billed -
           flow.collected -
           flow.advance_received +
-          flow.advance_applied -
+          advance_applied -
           flow.credit_notes +
           flow.debit_adjustments
       );
       const advance_credit = roundMoney(
-        Math.max(0, prior.advance_credit + flow.advance_received - flow.advance_applied)
+        Math.max(0, prior.advance_credit + flow.advance_received - advance_applied)
       );
 
       running.set(labId, { closing: closing_balance, advance_credit });
@@ -261,13 +304,12 @@ export const buildMonthlyStatements = (input: {
         billed: roundMoney(flow.billed),
         collected: roundMoney(flow.collected),
         advance_received: roundMoney(flow.advance_received),
-        advance_applied: roundMoney(flow.advance_applied),
+        advance_applied,
         credit_notes: roundMoney(flow.credit_notes),
         debit_adjustments: roundMoney(flow.debit_adjustments),
         opening_balance,
         closing_balance,
         advance_credit,
-        remaining: Math.max(0, closing_balance),
       });
     });
 
@@ -289,7 +331,7 @@ export const buildMonthlyStatements = (input: {
  * The filter is applied AFTER the whole history is walked, and that order is
  * the whole point. A clinic's opening balance is its closing balance from the
  * month before, and that chain has to keep running through months the
- * operator has filtered out — otherwise selecting a clinic would rewrite the
+ * operator has filtered out â€” otherwise selecting a clinic would rewrite the
  * balance it started the year with. So: build everything, drop the rows the
  * operator excluded, and recompute the month totals from what is left.
  *
@@ -332,7 +374,7 @@ export interface StatementColumn {
   /**
    * A STRONG column is one the reader must see: the charge, the balance
    * carried forward, and what is still owed. The PDF sets these in bold, and
-   * the screen sets them in the heavier weight — one rule, two renderers.
+   * the screen sets them in the heavier weight â€” one rule, two renderers.
    */
   strong: boolean;
   /** The figure in this column for a clinic row. */
@@ -348,8 +390,7 @@ export type StatementColumnKey =
   | 'credits'
   | 'debits'
   | 'opening'
-  | 'closing'
-  | 'due';
+  | 'closing';
 
 /**
  * THE TABLE, DECLARED ONCE.
@@ -357,7 +398,7 @@ export type StatementColumnKey =
  * The screen, the PDF and the workbook all draw the same table, and they used
  * to declare it three times: twelve headings in one place, twelve SHORT
  * headings plus a legend explaining them in another, and twelve spreadsheet
- * headers in a third. They drifted — the PDF needed a legend because its
+ * headers in a third. They drifted â€” the PDF needed a legend because its
  * headings were abbreviations the other two did not use, so a document had
  * to be read alongside a key; and a column could be renamed in one place
  * and not the others.
@@ -431,13 +472,13 @@ export const STATEMENT_COLUMNS: readonly StatementColumn[] = [
     value: (r) => r.debit_adjustments,
   },
   {
-    key: 'due',
-    label: 'Remaining Due',
-    width: 0.085,
+    key: 'closing',
+    label: 'Closing Balance',
+    width: 0.095,
     align: 'right',
     core: true,
     strong: true,
-    value: (r) => r.remaining,
+    value: (r) => r.closing_balance,
   },
 ];
 
@@ -450,7 +491,7 @@ export const statementColumns = (coreOnly: boolean): StatementColumn[] =>
 /**
  * The monthly statement as an Excel workbook.
  *
- * A summary sheet, then one sheet per month — the same shape the PDF uses,
+ * A summary sheet, then one sheet per month â€” the same shape the PDF uses,
  * because that is the shape an operator reads the statement in. The figures
  * are NUMBERS with a money format, not strings, so a cell can be summed,
  * sorted and charted; a spreadsheet that cannot do arithmetic is a picture
@@ -490,7 +531,7 @@ export const monthlyStatementWorkbook = (
     key === 'cases' ? XL.count : XL.money;
 
   /* The summary sheet is the statement BY MONTH, so it does not carry the
-     clinic column — it carries the clinic COUNT instead, and then the same
+     clinic column â€” it carries the clinic COUNT instead, and then the same
      money columns the month sheets carry. */
   const summaryColumns = columns.slice(1);
 
@@ -518,7 +559,7 @@ export const monthlyStatementWorkbook = (
     const sum = (pick: (b: MonthlyStatementBlock) => number) =>
       roundMoney(blocks.reduce((acc, b) => acc + pick(b), 0));
     const isBalance = (key: StatementColumnKey) =>
-      key === 'opening' || key === 'closing' || key === 'due';
+      key === 'opening' || key === 'closing';
     summaryRows.push([
       { value: 'TOTAL', style: XL.totalLabel },
       { value: '', style: XL.totalLabel },

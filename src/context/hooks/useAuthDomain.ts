@@ -6,7 +6,9 @@ import {
   CaseAttachment, CaseNote, UserProfile, QcInspection,
 } from '../../types';
 import type { UserRow } from '../../db/repos';
-import { usersRepo, sessionsRepo, caseTypesRepo } from '../../db/repos';
+import { usersRepo, sessionsRepo, caseTypesRepo, auditRepo, userClinicsRepo, userPermissionsRepo } from '../../db/repos';
+import { ROLE_BASELINE, ALL_ACTIONS, DESTRUCTIVE_ACTIONS, roleBaselineFor, setCustomRoleBaseline } from '../../services/permissions';
+import { rolesRepo } from '../../db/repos';
 import { isDatabaseReady, getDatabase } from '../../db/core';
 import { getTodayStr } from '../../utils/dateUtils';
 import { hashPassword, verifyPassword } from '../../db/crypto';
@@ -196,16 +198,75 @@ export function useAuthDomain(deps: {
       const row = cleanInput.includes('@')
         ? usersRepo.byEmail(cleanInput)
         : usersRepo.byUsername(cleanInput);
-      if (row && (await verifyPassword(passwordAttempt, row.password_hash))) {
-        authenticatedUser = {
-          id: row.id,
-          username: row.username,
-          email: row.email,
-          name: row.name,
-          role: row.role as UserProfile['role'],
-          isSuperAdmin: !!row.is_super_admin,
-          created_at: row.created_at,
-        };
+      if (row) {
+        if (!row.is_active) {
+          try {
+            auditRepo.log({
+              actor: row.username,
+              action: 'auth.login.failed',
+              entity_type: 'user',
+              entity_id: row.id,
+              entity_ref: row.username,
+              reason: 'inactive_account',
+              notes: 'Login denied - account is disabled.',
+            });
+          } catch { /* audit is best-effort */ }
+        } else if (await verifyPassword(passwordAttempt, row.password_hash)) {
+          authenticatedUser = {
+            id: row.id,
+            username: row.username,
+            email: row.email,
+            name: row.name,
+            role: row.role as UserProfile['role'],
+            isSuperAdmin: !!row.is_super_admin,
+            is_active: !!row.is_active,
+            clinic_ids: userClinicsRepo.idsForUser(row.id),
+            permissions: (() => {
+              if (row.is_super_admin) return ROLE_BASELINE['Super Admin'];
+              // Custom-role baselines live in the roles table; register before lookup.
+              try { rolesRepo.all().forEach((r) => { if (!r.is_system) setCustomRoleBaseline(r.name, r.permissions); }); } catch { /* best-effort */ }
+              let perms = userPermissionsRepo.forUser(row.id);
+              if (!perms.length && !userPermissionsRepo.exists(row.id)) {
+                const baseline = roleBaselineFor(row.role);
+                if (baseline.length) { try { userPermissionsRepo.setForUser(row.id, baseline); } catch {} perms = baseline; }
+              }
+              return perms;
+            })(),
+            created_at: row.created_at,
+          };
+          try {
+            auditRepo.log({
+              actor: row.username,
+              action: 'auth.login',
+              entity_type: 'user',
+              entity_id: row.id,
+              entity_ref: row.username,
+              new_state: { role: row.role, is_super_admin: !!row.is_super_admin },
+            });
+          } catch { /* audit is best-effort */ }
+        } else {
+          try {
+            auditRepo.log({
+              actor: row.username,
+              action: 'auth.login.failed',
+              entity_type: 'user',
+              entity_id: row.id,
+              entity_ref: row.username,
+              reason: 'invalid_password',
+            });
+          } catch { /* audit is best-effort */ }
+        }
+      } else {
+        try {
+          auditRepo.log({
+            actor: cleanInput,
+            action: 'auth.login.failed',
+            entity_type: 'user',
+            entity_id: 'unknown',
+            entity_ref: cleanInput,
+            reason: 'unknown_identity',
+          });
+        } catch { /* audit is best-effort */ }
       }
     }
 
@@ -214,10 +275,10 @@ export function useAuthDomain(deps: {
       setUser(authenticatedUser);
 
       // Role-based routing
-      if (authenticatedUser.role === 'Technician') {
+      if (authenticatedUser.role === 'Clinic Entry Manager') {
         setCurrentView('cases');
-      } else if (authenticatedUser.role === 'Billing Manager') {
-        setCurrentView('billing');
+      } else if (authenticatedUser.role === 'Audit Checker') {
+        setCurrentView('analytics');
       } else {
         setCurrentView('dashboard');
       }
@@ -246,7 +307,7 @@ export function useAuthDomain(deps: {
     localStorage.removeItem('dsw_user');
   };
 
-  const addUser = async (newUser: Omit<UserProfile, 'id' | 'created_at'>) => {
+  const addUser = async (newUser: Omit<UserProfile, 'id' | 'created_at'>): Promise<UserProfile | undefined> => {
     const pwProblem = passwordProblem(newUser.password);
     if (pwProblem) {
       showToast(`${pwProblem} to create a user`, 'error');
@@ -270,8 +331,48 @@ export function useAuthDomain(deps: {
       }),
     );
 
-    const createdUser: UserProfile = { ...newUser, id, created_at, isSuperAdmin: false, password: undefined };
+    // RBAC v3: the add-user form (or API caller) supplies the ticked set
+    // explicitly. Destructive actions can never be seeded onto a non-Super
+    // account; role baseline applies only when no explicit array was passed.
+    const isSuper = !!newUser.isSuperAdmin || newUser.role === 'Super Admin';
+    const seedPerms = isSuper
+      ? ROLE_BASELINE['Super Admin']
+      : (Array.isArray(newUser.permissions)
+          ? Array.from(new Set(newUser.permissions)).filter((a) => !DESTRUCTIVE_ACTIONS.has(a))
+          : roleBaselineFor(newUser.role));
+    try { userPermissionsRepo.setForUser(id, seedPerms, isSuper ? [] : ALL_ACTIONS); } catch { /* best-effort */ }
+
+    const createdUser: UserProfile = { ...newUser, id, created_at, isSuperAdmin: false, password: undefined, permissions: seedPerms };
     setUsers((prev) => [...prev, createdUser]);
+    try {
+      auditRepo.log({
+        actor: user?.name || 'System',
+        action: 'user.created',
+        entity_type: 'user',
+        entity_id: id,
+        entity_ref: newUser.username,
+        new_state: {
+          role: newUser.role,
+          is_super_admin: !!newUser.isSuperAdmin,
+          username: newUser.username,
+          email: newUser.email,
+        },
+      });
+      setAuditEvents((prev) => [
+        {
+          id: `aud-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actor: user?.name || 'System',
+          action: 'user.created',
+          entity_type: 'user',
+          entity_id: id,
+          entity_ref: newUser.username,
+          new_state: { role: newUser.role, username: newUser.username },
+        },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
+    return createdUser;
   };
 
   const updateUser = async (id: string, updates: Partial<UserProfile>) => {
@@ -315,6 +416,35 @@ export function useAuthDomain(deps: {
 
     dbWrite(() => usersRepo.update(id, persisted));
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, password: undefined } : u)));
+
+    try {
+      const isPasswordReset = !!updates.password;
+      const action = isPasswordReset ? 'user.password_reset' : 'user.updated';
+      const masked = { ...updates } as any;
+      if (masked.password !== undefined) masked.password = '***';
+      auditRepo.log({
+        actor: user?.name || 'System',
+        action,
+        entity_type: 'user',
+        entity_id: id,
+        entity_ref: updates.username || (users.find((u) => u.id === id)?.username || id),
+        new_state: masked,
+        notes: updates.role ? `role -> ${updates.role}` : undefined,
+      });
+      setAuditEvents((prev) => [
+        {
+          id: `aud-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actor: user?.name || 'System',
+          action,
+          entity_type: 'user',
+          entity_id: id,
+          entity_ref: updates.username || (users.find((u) => u.id === id)?.username || id),
+          new_state: masked,
+        },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
   };
 
   const deleteUser = (id: string) => {
@@ -322,8 +452,104 @@ export function useAuthDomain(deps: {
     setUsers((prev) => prev.filter((u) => u.id !== id || !!u.isSuperAdmin));
     if (isDatabaseReady()) {
       const row = usersRepo.byId(id);
-      if (row && !row.is_super_admin) dbWrite(() => usersRepo.delete(id));
+      if (row && !row.is_super_admin) {
+        dbWrite(() => usersRepo.delete(id));
+        try {
+          auditRepo.log({
+            actor: user?.name || 'System',
+            action: 'user.deleted',
+            entity_type: 'user',
+            entity_id: id,
+            entity_ref: row.username,
+            old_state: { username: row.username, role: row.role },
+          });
+          setAuditEvents((prev) => [
+            {
+              id: `aud-${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              actor: user?.name || 'System',
+              action: 'user.deleted',
+              entity_type: 'user',
+              entity_id: id,
+              entity_ref: row.username,
+              old_state: { username: row.username, role: row.role },
+            },
+            ...prev,
+          ]);
+        } catch { /* audit is best-effort */ }
+      }
     }
+  };
+
+  const setUserPermissions = (userId: string, actions: string[]) => {
+    const normalized = Array.from(new Set((actions || []).filter(Boolean)));
+    const target = users.find((u) => u.id === userId);
+    const isSuper = !!target?.isSuperAdmin;
+    const safe = isSuper ? normalized : normalized.filter((a) => !DESTRUCTIVE_ACTIONS.has(a));
+    if (isDatabaseReady()) {
+      try { dbWrite(() => userPermissionsRepo.setForUser(userId, safe, target?.isSuperAdmin ? [] : ALL_ACTIONS)); } catch { /* best-effort */ }
+    }
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, permissions: safe } : u)));
+    if (user?.id === userId) {
+      setUser((prev) => (prev ? { ...prev, permissions: safe } : prev));
+    }
+    try {
+      auditRepo.log({
+        actor: user?.name || 'System',
+        action: 'user.permissions_changed',
+        entity_type: 'user',
+        entity_id: userId,
+        entity_ref: (target?.username || userId),
+        new_state: { permissions: safe },
+      });
+      setAuditEvents((prev) => [
+        {
+          id: `aud-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actor: user?.name || 'System',
+          action: 'user.permissions_changed',
+          entity_type: 'user',
+          entity_id: userId,
+          entity_ref: (target?.username || userId),
+          new_state: { permissions: safe },
+        },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
+  };
+
+  const setUserClinicScope = (userId: string, labIds: string[]) => {
+    const normalized = (labIds || []).filter(Boolean);
+    if (isDatabaseReady()) {
+      try { dbWrite(() => userClinicsRepo.setForUser(userId, normalized)); } catch { /* best-effort */ }
+    }
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, clinic_ids: normalized } : u)));
+    if (user?.id === userId) {
+      setUser((prev) => (prev ? { ...prev, clinic_ids: normalized } : prev));
+    }
+    try {
+      auditRepo.log({
+        actor: user?.name || 'System',
+        action: 'user.clinic_scope_changed',
+        entity_type: 'user',
+        entity_id: userId,
+        entity_ref: (users.find((u) => u.id === userId)?.username || userId),
+        new_state: { clinic_ids: normalized },
+      });
+      setAuditEvents((prev) => [
+        {
+          id: `aud-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actor: user?.name || 'System',
+          action: 'user.clinic_scope_changed',
+          entity_type: 'user',
+          entity_id: userId,
+          entity_ref: (users.find((u) => u.id === userId)?.username || userId),
+          new_state: { clinic_ids: normalized },
+        },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
   };
 
   const changePassword = async (userId: string, currentPasswordAttempt: string, newPassword: string) => {
@@ -353,6 +579,27 @@ export function useAuthDomain(deps: {
     // A new password invalidates sessions minted with the old one (S5).
     revokeSessions(userId);
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, password: undefined } : u)));
+    try {
+      auditRepo.log({
+        actor: user?.name || targetUser.name,
+        action: 'user.password_changed',
+        entity_type: 'user',
+        entity_id: userId,
+        entity_ref: targetUser.username,
+      });
+      setAuditEvents((prev) => [
+        {
+          id: `aud-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actor: user?.name || targetUser.name,
+          action: 'user.password_changed',
+          entity_type: 'user',
+          entity_id: userId,
+          entity_ref: targetUser.username,
+        },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
     return { success: true, message: 'Password updated successfully!' };
   };
 
@@ -512,6 +759,8 @@ export function useAuthDomain(deps: {
     updateUser,
     deleteUser,
     changePassword,
+    setUserPermissions,
+    setUserClinicScope,
     getBackupData,
     restoreBackupData,
     wipeAllData,

@@ -110,6 +110,7 @@ vi.mock('../../src/context/AppContext', () => ({
     brandingSettings: { appName: 'DENTAL SOLUTIONS', lab_name: 'DENTAL SOLUTIONS' },
     getLedgerEntries: () => LEDGER,
     setSelectedCaseForModal: () => {},
+    user: { id: 'u1', name: 'Tester', role: 'Super Admin' },
   }),
 }));
 

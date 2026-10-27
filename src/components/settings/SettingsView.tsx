@@ -31,11 +31,12 @@ import { UpdatesTab } from './UpdatesTab';
     liveTableStats; each tab lives in its own file. */
 export const SettingsView: React.FC = () => {
   const { user } = useApp();
-  const isAdmin = user?.role === 'Lab Admin' || user?.role === 'Super Admin' || user?.isSuperAdmin;
   // F2: tab visibility now FOLLOWS the permission matrix. canManageSystem is
   // the single owner of "may this role touch this area"; every guarded tab
-  // re-checks at its action sites too (hiding is not enforcement).
-  const may = (a: SystemAction) => canManageSystem(user, a) || (isAdmin && a !== 'users:manage');
+  // re-checks at its action sites too (hiding is not enforcement). The old
+  // local widening (isAdmin grants everything except users:manage) is gone —
+  // it diverged from the tested matrix and out-lived its 4-role era.
+  const may = (a: SystemAction) => canManageSystem(user, a);
 
   const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates'>('branding');
   /* Shared by BackupTab and TestingTab, so it lives here rather than in either
@@ -131,7 +132,7 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-1.5 bg-white/60 text-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-white/80 self-start md:self-auto">
-          <ShieldCheck className={`w-4 h-4 ${isAdmin ? 'text-indigo-600' : 'text-ink-muted'}`} />
+          <ShieldCheck className={`w-4 h-4 ${may('users:manage') ? 'text-indigo-600' : 'text-ink-muted'}`} />
           <span>Role: <strong className="text-slate-900">{user?.role || '—'}</strong></span>
         </div>
       </div>

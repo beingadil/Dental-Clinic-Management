@@ -3,7 +3,7 @@ import {
   buildMonthlyStatements,
   formatMonthLabel,
 } from '../../src/services/monthlyStatement';
-import { buildLabFinancialSummary } from '../../src/services/ledgerDomain';
+import { buildLabFinancialSummary, buildLedgerEntries } from '../../src/services/ledgerDomain';
 import type { Invoice, PaymentRecord, AdvancePayment, AccountAdjustment } from '../../src/types';
 
 /**
@@ -164,11 +164,7 @@ describe('buildMonthlyStatements', () => {
     expect(row(march).closing_balance).toBe(37000);
   });
 
-  it('reports the amount still owed as the non-negative closing balance', () => {
-    expect(row(march).remaining).toBe(37000);
-  });
-
-  it('clamps remaining to zero when the clinic is in credit', () => {
+  it('carries a credit balance as a negative figure, never clamped to zero', () => {
     const credited = buildMonthlyStatements({
       invoices: [invoice({ id: 'x', created_at: '2026-01-05 10:00', final_amount: 5000 })],
       advancePayments: [{ ...ADVANCES[0], payment_date: '2026-01-06', created_at: '2026-01-06 10:00' }],
@@ -176,7 +172,6 @@ describe('buildMonthlyStatements', () => {
     });
     const r = credited[0].rows[0];
     expect(r.closing_balance).toBe(-5000); // in credit
-    expect(r.remaining).toBe(0);
     expect(r.advance_credit).toBe(10000);
   });
 
@@ -188,36 +183,90 @@ describe('buildMonthlyStatements', () => {
       accountAdjustments: ADJUSTMENTS,
     });
     expect(row(march).closing_balance).toBe(summary.net_balance);
-    expect(row(march).remaining).toBe(summary.outstanding_balance);
     expect(row(march).advance_credit).toBe(summary.advance_balance);
   });
 
-  it('excludes voided invoices and write-offs', () => {
+  it('mirrors the ledger engine exactly, including voided invoices and write-offs', () => {
+    const noiseInvoices = [
+      ...INVOICES,
+      invoice({
+        id: 'void',
+        created_at: '2026-04-01 10:00',
+        final_amount: 99000,
+        status_v2: 'voided' as const,
+      }),
+    ];
+    const noiseAdjustments: AccountAdjustment[] = [
+      ...ADJUSTMENTS,
+      {
+        ...ADJUSTMENTS[0],
+        id: 'adj-wo',
+        adjustment_number: 'ADJ-0002',
+        type: 'write_off' as const,
+        amount: 50000,
+        date: '2026-04-02',
+      },
+    ];
     const blocksWithNoise = buildMonthlyStatements({
-      invoices: [
-        ...INVOICES,
-        invoice({
-          id: 'void',
-          created_at: '2026-04-01 10:00',
-          final_amount: 99000,
-          status_v2: 'voided',
-        }),
-      ],
+      invoices: noiseInvoices,
       advancePayments: [],
-      accountAdjustments: [
-        ...ADJUSTMENTS,
-        {
-          ...ADJUSTMENTS[0],
-          id: 'adj-wo',
-          adjustment_number: 'ADJ-0002',
-          type: 'write_off',
-          amount: 50000,
-          date: '2026-04-02',
-        },
-      ],
+      accountAdjustments: noiseAdjustments,
     });
     const april = blocksWithNoise.find((b) => b.month === '2026-04');
-    expect(april).toBeUndefined();
+    expect(april).toBeDefined();
+    // The General Ledger is the source of truth; the statement must close
+    // where the ledger's own running balance ends for the same period.
+    const ledger = buildLedgerEntries({
+      invoices: noiseInvoices,
+      advancePayments: [],
+      accountAdjustments: noiseAdjustments,
+    });
+    const aprilLedgerClose = [...ledger]
+      .reverse()
+      .filter((e) => e.date.slice(0, 7) === '2026-04')
+      .at(-1)!.running_balance;
+    expect(row(april!).closing_balance).toBe(aprilLedgerClose);
+  });
+
+  it("carries a clinic's opening balance into the statement (the Dr Saad case)", () => {
+    // 41,000 brought forward plus 15,000 billed this month. The statement
+    // used to read 15,000 because it never saw the clinic's opening entry;
+    // riding the ledger engine it closes where the ledger closes: 56,000 Dr.
+    const lamps = [
+      {
+        id: 'lab-saad',
+        name: 'Dr Saad ( Oramed )',
+        opening_balance: 41000,
+        opening_balance_type: 'debit' as const,
+        created_at: '2026-10-19 09:00',
+      },
+    ];
+    const saadInvoices = [
+      invoice({
+        id: 'za',
+        lab_id: 'lab-saad',
+        lab_name: 'Dr Saad ( Oramed )',
+        created_at: '2026-10-19 10:00',
+        final_amount: 10000,
+      }),
+      invoice({
+        id: 'zb',
+        lab_id: 'lab-saad',
+        lab_name: 'Dr Saad ( Oramed )',
+        created_at: '2026-10-19 11:00',
+        final_amount: 5000,
+      }),
+    ];
+    const oct = buildMonthlyStatements({
+      invoices: saadInvoices,
+      advancePayments: [],
+      accountAdjustments: [],
+      labs: lamps,
+    }).find((b) => b.month === '2026-10')!;
+    expect(row(oct, 'lab-saad').opening_balance).toBe(0);
+    expect(row(oct, 'lab-saad').billed).toBe(15000);
+    // The exact general ledger closing balance, not the month's activity.
+    expect(row(oct, 'lab-saad').closing_balance).toBe(56000);
   });
 
   it('falls back to the current month for records with a malformed date', () => {
@@ -242,7 +291,6 @@ describe('buildMonthlyStatements', () => {
       opening_balance: 30000,
       closing_balance: 37000,
       advance_credit: 5000,
-      remaining: 37000,
     });
   });
 

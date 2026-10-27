@@ -23,7 +23,7 @@ import { SqliteEngine } from '../../src/db/engine';
  */
 
 const PAGE = 4096;
-const FLOOR_CEILING = 540_000;
+const FLOOR_CEILING = 555000;
 
 let SQL: any;
 let engine: SqliteEngine;

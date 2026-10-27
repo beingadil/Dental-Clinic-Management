@@ -266,7 +266,7 @@ describe('journal and ledger', () => {
 describe('users, notes, attachments, settings, notifications', () => {
   it('stores hashed users', () => {
     usersRepo.insert({
-      id: 'u-t', username: 'tester', email: 't@d.pk', name: 'Tester', role: 'Technician',
+      id: 'u-t', username: 'tester', email: 't@d.pk', name: 'Tester', role: 'Audit Checker',
       password_hash: 'pbkdf2$1$abc$def', password_salt: 'abc',
     });
     expect(usersRepo.byUsername('TESTER')?.id).toBe('u-t');
@@ -351,7 +351,7 @@ describe('sessionsRepo', () => {
   const user = (id: string) =>
     usersRepo.insert({
       id, username: `u-${id}`, email: `${id}@clinic.test`, name: id,
-      role: 'Lab Admin', password_hash: 'h', password_salt: 's',
+      role: 'Super Admin', password_hash: 'h', password_salt: 's',
     });
   const inDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
 

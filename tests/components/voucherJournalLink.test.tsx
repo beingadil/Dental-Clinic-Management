@@ -90,6 +90,7 @@ vi.mock('../../src/context/AppContext', () => ({
     advancePayments: [],
     accountAdjustments: [],
     journalEntries: JOURNAL_ENTRIES,
+    user: { id: 'u1', name: 'Tester', role: 'Super Admin' },
   }),
 }));
 

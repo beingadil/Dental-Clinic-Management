@@ -748,7 +748,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">{units}</td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top font-bold">{money(inv.final_amount)}</td>
                     <td className="border border-slate-400 px-2 py-1 align-top font-semibold">
-                      {`Paid: ${invoiceBalanceDue(inv) <= 0 ? 'Full' : (inv.amount_paid || 0) > 0 ? 'Partial' : 'Unpaid'}`}
+                      {invoiceBalanceDue(inv) <= 0 ? 'Full' : (inv.amount_paid || 0) > 0 ? 'Partial' : 'Unpaid'}
                     </td>
                   </tr>
                   );

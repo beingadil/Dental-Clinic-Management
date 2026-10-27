@@ -37,7 +37,7 @@ function insertUser(
     username,
     email,
     name: username,
-    role: opts.isSuperAdmin ? 'Super Admin' : 'Technician',
+    role: opts.isSuperAdmin ? 'Super Admin' : 'Clinic Entry Manager',
     password_hash: 'a'.repeat(64),
     password_salt: 'b'.repeat(16),
     is_super_admin: opts.isSuperAdmin ?? 0,

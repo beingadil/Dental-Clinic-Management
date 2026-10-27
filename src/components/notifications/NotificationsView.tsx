@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { can, deniedTooltip } from '../../services/permissions';
 import { AppNotification } from '../../types';
 import { 
   Bell, 
@@ -36,7 +37,8 @@ export const NotificationsView: React.FC = () => {
     setCurrentView,
     setSearchTerm,
     cases,
-    setSelectedCaseForModal
+    setSelectedCaseForModal,
+    user,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'overdue' | 'billing' | 'status' | 'archived'>('all');
@@ -165,6 +167,9 @@ export const NotificationsView: React.FC = () => {
   // Handle adding test alert
   const handleSendTestNotification = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!can(user, 'notifications:send')) {
+      return;
+    }
     const title = testTitle.trim() || 'Urgent Case Status Notice';
     const message = testMessage.trim() || 'Case #DS-0001 requires high priority technician review before final zirconia sintering.';
     
@@ -694,7 +699,9 @@ export const NotificationsView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                  disabled={!can(user, 'notifications:send')}
+                  title={!can(user, 'notifications:send') ? deniedTooltip : undefined}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
                   <Bell className="w-3.5 h-3.5" />
                   <span>Send Notification</span>

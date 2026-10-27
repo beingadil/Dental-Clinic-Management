@@ -3,6 +3,7 @@ import { TransientBanner } from '../common/useTransient';
 import { getTodayStr } from '../../utils/dateUtils';
 import { saveFile } from '../../lib/saveFile';
 import { useApp } from '../../context/AppContext';
+import { canManageSystem, deniedTooltip } from '../../services/permissions';
 import {
   createBackup,
   serializeBackup,
@@ -68,6 +69,7 @@ export const BackupTab: React.FC<{
     caseNotes,
     caseAttachments,
     getBackupData,
+    user,
   } = useApp();
 
   const [backupRuns] = useState<BackupRun[]>(() => getBackupRuns());
@@ -213,6 +215,10 @@ export const BackupTab: React.FC<{
   };
 
   const handleConfirmRestore = async () => {
+    if (!canManageSystem(user, 'backup:restore')) {
+      setBackupMessage({ type: 'error', text: deniedTooltip });
+      return;
+    }
     if (!pendingRestore || pendingRestore.errors.length > 0) return;
     setBusy('restore');
     try {

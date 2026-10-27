@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { can } from '../../services/permissions';
 import { Invoice, SavedVoucher, DentalLab } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
@@ -56,6 +57,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     labs,
     brandingSettings,
     showToast,
+    user,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
@@ -73,11 +75,11 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
      the money moved (see services/monthlyStatement), so "Collected" is what
      actually landed this month — not a lifetime per-invoice total filed under
      the invoice's creation month — and each month carries its opening balance
-     forward into a closing balance, with advance credit and the amount still
-     remaining shown separately. */
+     forward into a closing balance, with advance credit and the closing
+     balance itself (Dr/Cr side of the ledger) shown for every clinic. */
   const monthlyBlocks = useMemo(
-    () => buildMonthlyStatements({ invoices, advancePayments, accountAdjustments }),
-    [invoices, advancePayments, accountAdjustments]
+    () => buildMonthlyStatements({ invoices, advancePayments, accountAdjustments, labs }),
+    [invoices, advancePayments, accountAdjustments, labs]
   );
 
   /* Which clinics the operator has taken OUT of the statement.
@@ -112,7 +114,10 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     [visibleBlocks, selectedMonth]
   );
 
-  /** The whole statement in one line, for the scope on screen. */
+  /** The whole statement in one line, for the scope on screen. The Closing
+      Balance figure is NOT summed across months — a closing balance repeats
+      every month, so it is the NEWEST month's closing, i.e. exactly what the
+      general ledger carries for the clinics in scope right now. */
   const statementTotals = useMemo(() => {
     const sum = (pick: (b: (typeof displayedBlocks)[number]) => number) =>
       displayedBlocks.reduce((acc, b) => acc + pick(b), 0);
@@ -121,7 +126,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       clinics: displayedBlocks.length ? displayedBlocks[0].totals.clinics : 0,
       billed: sum((b) => b.totals.billed),
       collected: sum((b) => b.totals.collected),
-      remaining: sum((b) => b.totals.remaining),
+      closingBalance: displayedBlocks[0]?.totals.closing_balance ?? 0,
     };
   }, [displayedBlocks]);
 
@@ -228,16 +233,24 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     closing: {
       className: 'py-2.5 px-3 font-bold whitespace-nowrap',
       render: (r) => (
-        <span className={r.closing_balance < 0 ? 'text-ink-success' : 'text-slate-900'}>
+        <span
+          className={
+            r.closing_balance < 0
+              ? 'text-ink-success'
+              : r.closing_balance > 0
+                ? 'text-slate-900'
+                : 'text-ink-muted'
+          }
+          title={
+            r.closing_balance < 0
+              ? 'Clinic is in credit — Cr side of the ledger'
+              : r.closing_balance > 0
+                ? 'Clinic owes us — Dr side of the ledger'
+                : 'Fully settled'
+          }
+        >
           {formatPKR(r.closing_balance)}
-        </span>
-      ),
-    },
-    due: {
-      className: 'py-2.5 px-3 font-bold whitespace-nowrap',
-      render: (r) => (
-        <span className={r.remaining > 0 ? 'text-ink-warning' : 'text-ink-muted'}>
-          {formatPKR(r.remaining)}
+          {r.closing_balance > 0 ? ' Dr' : r.closing_balance < 0 ? ' Cr' : ''}
         </span>
       ),
     },
@@ -245,9 +258,18 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
   const visibleColumns = statementColumns(true);
 
+  /** Dr / Cr ledger side for a closing balance figure, as the ledger tab
+      prints it: a debit is money the clinic still owes us, a credit is
+      money we are holding for them. */
+  const drCr = (v: number) => (v > 0 ? ' Dr' : v < 0 ? ' Cr' : '');
+
   /** The figure a column holds for a clinic row, formatted once for print. */
   const figureFor = (c: (typeof visibleColumns)[number], r: MonthlyClinicRow): string =>
-    c.key === 'cases' ? String(c.value(r)) : formatPKR(c.value(r));
+    c.key === 'cases'
+      ? String(c.value(r))
+      : c.key === 'closing'
+        ? `${formatPKR(c.value(r))}${drCr(c.value(r))}`
+        : formatPKR(c.value(r));
 
   /**
    * The statement as the PDF and the workbook want it: the same columns, the
@@ -271,7 +293,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         headline: [
           { label: 'Billed', value: formatPKR(b.totals.billed) },
           { label: 'Collected', value: formatPKR(b.totals.collected) },
-          { label: 'Due', value: formatPKR(b.totals.remaining) },
+          { label: 'Closing', value: `${formatPKR(b.totals.closing_balance)}${drCr(b.totals.closing_balance)}` },
         ],
       };
     });
@@ -390,6 +412,15 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       );
     });
   }, [savedVouchers, voucherSearch, vFromDate, vToDate]);
+
+  if (!can(user, 'reports:view')) {
+    return (
+      <div className="p-6 text-center text-slate-500 text-sm">
+        <p className="font-semibold text-slate-700 mb-1">Insufficient permission</p>
+        <p className="text-xs">This report is available to Super Admin and Audit Checker roles only.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -543,9 +574,15 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                 tone="success"
               />
               <Stat
-                label="Still owing"
-                value={formatPKR(statementTotals.remaining)}
-                tone={statementTotals.remaining > 0 ? 'warning' : 'muted'}
+                label="Closing Balance"
+                value={`${formatPKR(statementTotals.closingBalance)}${drCr(statementTotals.closingBalance)}`}
+                tone={
+                  statementTotals.closingBalance < 0
+                    ? 'success'
+                    : statementTotals.closingBalance > 0
+                      ? 'warning'
+                      : 'muted'
+                }
               />
             </div>
           )}
@@ -611,7 +648,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                           >
                             {c.key === 'cases'
                               ? t.cases_billed
-                              : formatPKR(c.value(t as unknown as MonthlyClinicRow))}
+                              : figureFor(c, t as unknown as MonthlyClinicRow)}
                           </td>
                         ))}
                       </tr>

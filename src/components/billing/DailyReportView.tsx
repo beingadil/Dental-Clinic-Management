@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { can } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { EmptyState, DataTable } from '../common/ui';
 import { formatPKR } from '../../services/financeDomain';
@@ -27,7 +28,7 @@ import {
  * that prints, so the browser's own print (Ctrl+P) produces the same sheet.
  */
 export const DailyReportView: React.FC = () => {
-  const { cases, invoices, advancePayments, brandingSettings, showToast } = useApp();
+  const { cases, invoices, advancePayments, brandingSettings, showToast, user } = useApp();
 
   // Today by default: the report is a daily instrument first and foremost.
   const [from, setFrom] = useState<string>(() => todayISO());
@@ -119,6 +120,15 @@ export const DailyReportView: React.FC = () => {
   };
 
   const windowLabel = `${from || 'Beginning'} → ${to || 'Present'}`;
+
+  if (!can(user, 'reports:view')) {
+    return (
+      <div className="p-6 text-center text-slate-500 text-sm">
+        <p className="font-semibold text-slate-700 mb-1">Insufficient permission</p>
+        <p className="text-xs">Daily reports are available to Super Admin and Audit Checker roles only.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 print-page">

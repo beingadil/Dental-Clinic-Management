@@ -54,7 +54,7 @@ async function buildSourceDatabase(SQL: any): Promise<{ engine: SqliteEngine; is
   // through usersRepo with async hashing), so they are written directly.
   eng.run(
     `INSERT INTO users (id, username, email, name, role, password_hash, password_salt, avatar, is_super_admin, is_active, created_at, updated_at, is_hidden)
-     VALUES ('u1', 'labadmin', 'labadmin@localhost', 'Lab Admin', 'Lab Admin', 'pbkdf2$deadbeef', 'c0ffee', NULL, 0, 1, ?, ?, 0)`,
+     VALUES ('u1', 'labadmin', 'labadmin@localhost', 'Lab Admin', 'Super Admin', 'pbkdf2$deadbeef', 'c0ffee', NULL, 0, 1, ?, ?, 0)`,
     [T.now, T.now],
   );
   eng.run(

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { can, deniedTooltip } from '../../services/permissions';
 import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, QcCaseState } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
 import { formatDoctorName } from '../../utils/doctorName';
@@ -162,7 +163,7 @@ const SORT_OPTIONS: { group: string; options: { value: CaseSortKey; label: strin
 ];
 
 export const CaseListView: React.FC = () => {
-  const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently, getQcState } = useApp();
+  const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently, getQcState, user } = useApp();
 
   /* Workstation shows ACTIVE cases; the Archive tab shows completed cases
      (archived_at set). Archived rows never enter the kanban/table pipeline. */
@@ -533,7 +534,9 @@ export const CaseListView: React.FC = () => {
                 setAppliedTemplate(null);
                 setIsNewModalOpen(true);
               }}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs md:text-sm rounded-xl shadow-sm hover:shadow flex items-center gap-2 transition-all cursor-pointer"
+              disabled={!can(user, 'case:create')}
+              title={!can(user, 'case:create') ? deniedTooltip : undefined}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold text-xs md:text-sm rounded-xl shadow-sm hover:shadow flex items-center gap-2 transition-all cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 text-white" />
               <span>Create New Case</span>
@@ -1408,10 +1411,13 @@ export const CaseListView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
+                    if (!can(user, 'case:delete')) return;
                     deleteCasePermanently(victim.id);
                     setConfirmPermanentId(null);
                   }}
-                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer"
+                  disabled={!can(user, 'case:delete')}
+                  title={!can(user, 'case:delete') ? deniedTooltip : undefined}
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer"
                 >
                   Delete Forever
                 </button>

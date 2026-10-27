@@ -30,6 +30,7 @@
  */
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { can, deniedTooltip } from '../../services/permissions';
 import { currentVersion } from '../../services/updateService';
 import {
   LayoutDashboard,
@@ -46,8 +47,19 @@ import {
   BookOpen,
 } from 'lucide-react';
 
+const NAV_ACTION: Record<string, string> = {
+  dashboard: 'dashboard:view',
+  cases: 'cases:view',
+  labs: 'clinics:view',
+  billing: 'billing:view',
+  catalog: 'catalog:view',
+  analytics: 'reports:view',
+  notifications: 'notifications:view',
+  settings: 'settings:view',
+};
+
 export const Sidebar: React.FC = () => {
-  const { currentView, setCurrentView, sidebarOpen, setSidebarOpen, unreadCount, overdueCount, invoices, brandingSettings } =
+  const { currentView, setCurrentView, sidebarOpen, setSidebarOpen, unreadCount, overdueCount, invoices, brandingSettings, user } =
     useApp();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -211,16 +223,20 @@ export const Sidebar: React.FC = () => {
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentView === item.id;
+                const navAction = NAV_ACTION[item.id] ?? 'dashboard:view';
+                const disabled = !can(user, navAction as any);
                 return (
                   <button
                     key={item.id}
-                    onClick={() => go(item.id)}
-                    title={isCollapsed ? item.label : undefined}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => { if (!disabled) go(item.id); }}
+                    title={disabled ? deniedTooltip : (isCollapsed ? item.label : undefined)}
                     aria-current={isActive ? 'page' : undefined}
                     data-active={isActive}
                     className={`ds-nav-row ds-row-target active:scale-[0.98] ${
-                      isCollapsed ? 'justify-center py-3' : 'gap-3 pl-3 pr-2.5 py-2'
-                    }`}
+                      disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                    } ${isCollapsed ? 'justify-center py-3' : 'gap-3 pl-3 pr-2.5 py-2'}`}
                   >
                     <Icon
                       className={`w-[17px] h-[17px] shrink-0 transition-colors ${

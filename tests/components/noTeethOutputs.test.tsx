@@ -25,7 +25,7 @@ vi.mock('../../src/context/AppContext', () => ({
     caseAttachments: {},
     addCaseAttachment: vi.fn(),
     deleteCaseAttachment: vi.fn(),
-    user: { id: 'u1', name: 'Tester', role: 'Technician' },
+    user: { id: 'u1', name: 'Tester', role: 'Clinic Entry Manager' },
   }),
 }));
 

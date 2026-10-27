@@ -6,6 +6,7 @@ import { SyncStatusBanner } from './components/common/SyncStatusBanner';
 import { SaveFailureBanner } from './components/common/SaveFailureBanner';
 import { ConnectivityStatus } from './components/common/ConnectivityStatus';
 import { Sidebar } from './components/common/Sidebar';
+import { LockScreen } from './components/common/LockScreen';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -87,6 +88,7 @@ const MainAppContent: React.FC = () => {
 
   return (
     <div className="app-atmos h-screen bg-ds-sunken flex font-sans text-ds-ink antialiased selection:bg-ds-accent selection:text-white overflow-hidden">
+      <LockScreen />
       {/* Keyboard users land here first. Without it, reaching the dashboard
           means tabbing through the whole rail and then every header control on
           every page load — the rail comes first in DOM order because it is

@@ -1,6 +1,7 @@
 import { formatPKR } from '../../services/financeDomain';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { canPost, deniedTooltip } from '../../services/permissions';
 import { getDaysOffsetStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { DentalLab, DentalCase, PaymentRecord, Invoice } from '../../types';
@@ -44,7 +45,7 @@ interface LabDetailModalProps {
 }
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
-  const { cases, updateLab, deleteLab, labDeletionImpact, getLabFinancialSummary } = useApp();
+  const { cases, updateLab, deleteLab, labDeletionImpact, getLabFinancialSummary, user } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing'>(initialTab);
   const [isFullScreen, setIsFullScreen] = useState(true);
@@ -779,7 +780,9 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(true)}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                  disabled={!canPost(user, 'payment:record')}
+                  title={!canPost(user, 'payment:record') ? deniedTooltip : undefined}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
                 >
                   <PlusCircle className="w-3.5 h-3.5" />
                   Receive Payment
@@ -787,7 +790,9 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <button
                   type="button"
                   onClick={() => setShowAdjustmentModal(true)}
-                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                  disabled={!(canPost(user, 'credit:issue') || canPost(user, 'refund:issue') || canPost(user, 'debit:issue'))}
+                  title={!(canPost(user, 'credit:issue') || canPost(user, 'refund:issue') || canPost(user, 'debit:issue')) ? deniedTooltip : undefined}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
                 >
                   <PlusCircle className="w-3.5 h-3.5" />
                   Record Adjustment

@@ -1519,6 +1519,130 @@ export const MIGRATION_025_CLINIC_OPENING_BALANCE: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 026 - RBAC roles
+export const MIGRATION_026_RBAC_ROLES: Migration = {
+  version: 26,
+  name: 'rbac_roles',
+  rebuildsTable: true,
+  statements: [
+    `CREATE TABLE users_v26 (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('Super Admin','Clinic Entry Manager','Audit Checker')),
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      avatar TEXT,
+      is_super_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_super_admin IN (0,1)),
+      is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      is_hidden INTEGER NOT NULL DEFAULT 0 CHECK (is_hidden IN (0,1))
+    )`,
+
+    `INSERT INTO users_v26
+       (id, username, email, name, role, password_hash, password_salt, avatar,
+        is_super_admin, is_active, created_at, updated_at, is_hidden)
+     SELECT id, username, email, name, 'Super Admin',
+            password_hash, password_salt, avatar,
+            is_super_admin, is_active, created_at, updated_at, COALESCE(is_hidden, 0)
+     FROM users`,
+
+    `DROP TABLE users`,
+    `ALTER TABLE users_v26 RENAME TO users`,
+
+    `CREATE TABLE user_clinics (
+      user_id TEXT NOT NULL,
+      lab_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, lab_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (lab_id) REFERENCES labs(id) ON DELETE CASCADE
+    )`,
+
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '26')`,
+  ],
+};
+
+// ---------------------------------------------------------------- 027 - per-user permissions (RBAC v3)
+export const MIGRATION_027_USER_PERMISSIONS: Migration = {
+  version: 27,
+  name: 'user_permissions',
+  statements: [
+    `CREATE TABLE user_permissions (
+      user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      granted INTEGER NOT NULL DEFAULT 1 CHECK (granted IN (0,1)),
+      PRIMARY KEY (user_id, action),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '27')`,
+  ],
+};
+
+// ---------------------------------------------------------------- 028 - custom roles
+/**
+ * RBAC v4: roles become data. Three built-ins ship as is_system rows (their
+ * baselines stay defined in code and are merged over any rows on load); the
+ * Super Admin can add more in Settings -> Users, each carrying its own
+ * baseline tick set (permissions JSON). The users.role CHECK constraint from
+ * migration 026 is dropped by rebuilding the table without it, so custom role
+ * names can be referenced. Baseline decisive for lint: app code validates
+ * non-empty role names.
+ */
+export const MIGRATION_028_CUSTOM_ROLES: Migration = {
+  version: 28,
+  name: 'custom_roles',
+  rebuildsTable: true,
+  statements: [
+    `CREATE TABLE roles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      description TEXT,
+      permissions TEXT NOT NULL DEFAULT '[]',
+      is_system INTEGER NOT NULL DEFAULT 0 CHECK (is_system IN (0,1)),
+      created_at TEXT NOT NULL
+    )`,
+
+    `INSERT INTO roles (id, name, description, permissions, is_system, created_at)
+     VALUES ('role-super', 'Super Admin', 'Built-in: everything including the destructive set.', '[]', 1, datetime('now'))`,
+    `INSERT INTO roles (id, name, description, permissions, is_system, created_at)
+     VALUES ('role-entry', 'Clinic Entry Manager', 'Built-in: daily entry bundle (cases, payments, deposits, notifications).', '[]', 1, datetime('now'))`,
+    `INSERT INTO roles (id, name, description, permissions, is_system, created_at)
+     VALUES ('role-audit', 'Audit Checker', 'Built-in: strictly read-only across views, reports and the audit trail.', '[]', 1, datetime('now'))`,
+
+    `CREATE TABLE users_v28 (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      avatar TEXT,
+      is_super_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_super_admin IN (0,1)),
+      is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      is_hidden INTEGER NOT NULL DEFAULT 0 CHECK (is_hidden IN (0,1))
+    )`,
+
+    `INSERT INTO users_v28
+       (id, username, email, name, role, password_hash, password_salt, avatar,
+        is_super_admin, is_active, created_at, updated_at, is_hidden)
+     SELECT id, username, email, name, role,
+            password_hash, password_salt, avatar,
+            is_super_admin, is_active, created_at, updated_at, COALESCE(is_hidden, 0)
+     FROM users`,
+
+    `DROP TABLE users`,
+    `ALTER TABLE users_v28 RENAME TO users`,
+
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '28')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1545,6 +1669,9 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_023_CATALOG_CATEGORIES,
   MIGRATION_024_REMOVE_REVERSAL,
   MIGRATION_025_CLINIC_OPENING_BALANCE,
+  MIGRATION_026_RBAC_ROLES,
+  MIGRATION_027_USER_PERMISSIONS,
+  MIGRATION_028_CUSTOM_ROLES,
 ];
 
 /**

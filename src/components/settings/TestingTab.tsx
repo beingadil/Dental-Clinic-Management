@@ -1,6 +1,7 @@
 import { useTransientFlag } from '../common/useTransient';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { canManageSystem, deniedTooltip } from '../../services/permissions';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -18,7 +19,7 @@ import {
 /** TAB: TESTING & SYSTEM RESET (DANGER ZONE) — extracted verbatim from
     SettingsView (P3 split); the global backupMessage lives in the container. */
 export const TestingTab: React.FC = () => {
-  const { cases, labs, invoices, caseTypes, savedVouchers, caseNotes, caseAttachments, wipeAllData } = useApp();
+  const { cases, labs, invoices, caseTypes, savedVouchers, caseNotes, caseAttachments, wipeAllData, user } = useApp();
 
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [wipeConfirmText, setWipeConfirmText] = useState('');
@@ -38,6 +39,10 @@ export const TestingTab: React.FC = () => {
 
   // Total Data Wipe for Software Testing
   const handleExecuteFullWipe = () => {
+    if (!canManageSystem(user, 'data:wipe')) {
+      alert(deniedTooltip);
+      return;
+    }
     wipeAllData();
     setShowWipeModal(false);
     setWipeConfirmText('');

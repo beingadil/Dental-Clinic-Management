@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ACCOUNT_CODES, formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
+import { can } from '../../services/permissions';
 import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getDateStr } from '../../utils/dateUtils';
@@ -68,7 +69,7 @@ const NEEDS_CLINIC: ExportNotice = {
 };
 
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClinicId }) => {
-  const { labs, getLedgerEntries, brandingSettings, cases, invoices } = useApp();
+  const { labs, getLedgerEntries, brandingSettings, cases, invoices, user } = useApp();
 
   // Case drill-down state: which case's record is open from a ledger row.
   const [selectedCaseForModal, setSelectedCaseForModalLocal] = useState<DentalCase | null>(null);
@@ -541,6 +542,15 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
   };
 
   const handleExportPDF = () => saveStatement('PDF document');
+
+  if (!can(user, 'ledger:view')) {
+    return (
+      <div className="p-6 text-center text-slate-500 text-sm">
+        <p className="font-semibold text-slate-700 mb-1">Insufficient permission</p>
+        <p className="text-xs">The general ledger is available to Super Admin and Audit Checker roles only.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 print-page">

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { setBackupAuthorizationUser } from '../services/backupService';
+import { canPost, can, deniedTooltip, ROLE_BASELINE, roleBaselineFor, setCustomRoleBaseline } from '../services/permissions';
 import {
   DentalCase,
   DentalLab,
@@ -31,7 +32,8 @@ import {
   QcCaseState,
   QcMetrics,
   QcCommand,
-  QcReceipt
+  QcReceipt,
+  RoleDef
 } from '../types';
 import {
   buildInvoiceJournal,
@@ -90,7 +92,7 @@ import { runIntegrityCheckSafe, IntegrityReport } from '../db/integrityCheck';
 import {
   usersRepo, casesRepo, caseTemplatesRepo,
   sessionsRepo, labContactsRepo, labAddressesRepo, labPricingOverridesRepo, labReviewsRepo,
-  doctorPreferredLabsRepo, qcInspectionsRepo,
+  doctorPreferredLabsRepo, qcInspectionsRepo, userClinicsRepo, userPermissionsRepo, rolesRepo, auditRepo,
 } from '../db/repos';
 import type { UserRow } from '../db/repos';
 
@@ -119,10 +121,19 @@ interface AppContextType {
   login: (usernameOrEmail: string, passwordAttempt: string, rememberMe?: boolean) => Promise<boolean>;
   logout: () => void;
   todayStr: string;
-  addUser: (newUser: Omit<UserProfile, 'id' | 'created_at'>) => void | Promise<void>;
+  addUser: (newUser: Omit<UserProfile, 'id' | 'created_at'>) => Promise<UserProfile | undefined>;
   updateUser: (id: string, updates: Partial<UserProfile>) => void;
   deleteUser: (id: string) => void;
   changePassword: (userId: string, currentPasswordAttempt: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
+  setUserClinicScope: (userId: string, labIds: string[]) => void;
+  setUserPermissions: (userId: string, actions: string[]) => void;
+  // RBAC v4: custom roles. addRole returns the created row (undefined if the
+  // name is blank or taken); deleteRole returns false when the role is a
+  // built-in or is still referenced by users.
+  roles: RoleDef[];
+  addRole: (name: string, description: string, permissions: string[]) => RoleDef | undefined;
+  updateRole: (id: string, patch: { name?: string; description?: string; permissions?: string[] }) => void;
+  deleteRole: (id: string) => boolean;
   createInitialAdmin: (name: string, username: string, password: string) => Promise<void>;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -396,6 +407,17 @@ function safeRemoveItem(key: string): void {
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentView, setCurrentView] = useState<string>('dashboard');
 
+  // RBAC v4: roles are data. Built-in baselines stay defined in code
+  // (ROLE_BASELINE); custom roles load from the roles table and register their
+  // baseline ticks so permission fallbacks resolve before any user mapping.
+  const [roles, setRoles] = useState<RoleDef[]>(() => {
+    try {
+      const rows = rolesRepo.all() as RoleDef[];
+      rows.forEach((r) => { if (!r.is_system) setCustomRoleBaseline(r.name, r.permissions); });
+      return rows;
+    } catch { return []; }
+  });
+
   const [users, setUsers] = useState<UserProfile[]>(() => {
     if (dbMirror['users']) return dbMirror['users'] as UserProfile[];
     // Read the live engine directly. The legacy localStorage-backed service
@@ -409,6 +431,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         delete safe.password_salt;
         delete safe.password;
         safe.isSuperAdmin = !!row.is_super_admin;
+        safe.clinic_ids = userClinicsRepo.idsForUser(row.id);
+        let perms = userPermissionsRepo.forUser(row.id);
+        if (!perms.length && !userPermissionsRepo.exists(row.id) && !row.is_super_admin) {
+          const baseline = roleBaselineFor(row.role);
+          if (baseline.length) {
+            try { userPermissionsRepo.setForUser(row.id, baseline); } catch { /* best-effort */ }
+            perms = baseline;
+          }
+        }
+        safe.permissions = row.is_super_admin ? ROLE_BASELINE['Super Admin'] : perms;
         return safe as unknown as UserProfile;
       });
   });
@@ -430,6 +462,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               delete safe.password_salt;
               delete safe.password;
               safe.isSuperAdmin = !!row.is_super_admin;
+              safe.clinic_ids = userClinicsRepo.idsForUser(row.id);
+              let perms = userPermissionsRepo.forUser(row.id);
+              if (!perms.length && !userPermissionsRepo.exists(row.id) && !row.is_super_admin) {
+                const baseline = roleBaselineFor(row.role);
+                if (baseline.length) { try { userPermissionsRepo.setForUser(row.id, baseline); } catch {} perms = baseline; }
+              }
+              safe.permissions = row.is_super_admin ? ROLE_BASELINE['Super Admin'] : perms;
               return safe as UserProfile;
             }
           } else {
@@ -449,6 +488,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const genId = (prefix: string): string => {
     const uuid = globalThis.crypto?.randomUUID?.();
     return uuid ? `${prefix}-${uuid}` : `${prefix}-${Date.now()}-${randomToken(9)}`;
+  };
+
+  // Same write-guard shape as useAuthDomain's dbWrite: no-op until the engine
+  // is live, and never lets a repo throw into the render path.
+  const dbWrite = (fn: () => void): void => {
+    if (!isDatabaseReady()) return;
+    try {
+      fn();
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('[cutover] DB write failed:', e?.message || e);
+    }
+  };
+
+  // ── RBAC v4: custom roles (Super Admin only surfaces; service checks here) ──
+  const addRole = (name: string, description: string, permissions: string[]): RoleDef | undefined => {
+    const clean = (name || '').trim();
+    if (!clean) return undefined;
+    if (roles.some((r) => r.name.toLowerCase() === clean.toLowerCase())) return undefined;
+    const id = genId('role');
+    const created_at = getTodayStr();
+    const row: RoleDef = { id, name: clean, description, permissions, is_system: false, created_at };
+    try { dbWrite(() => rolesRepo.insert({ id, name: clean, description, permissions, is_system: false, created_at })); } catch { /* best-effort */ }
+    setCustomRoleBaseline(clean, permissions);
+    setRoles((prev) => [...prev, row]);
+    try {
+      auditRepo.log({
+        actor: user?.name || 'System',
+        action: 'role.created',
+        entity_type: 'role',
+        entity_id: id,
+        entity_ref: clean,
+        new_state: { permissions_count: permissions.length },
+      });
+      setAuditEvents((prev) => [
+        { id: `aud-${Date.now()}`, timestamp: new Date().toISOString(), actor: user?.name || 'System', action: 'role.created', entity_type: 'role', entity_id: id, entity_ref: clean, new_state: { permissions_count: permissions.length } },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
+    return row;
+  };
+
+  const updateRole = (id: string, patch: { name?: string; description?: string; permissions?: string[] }): void => {
+    const existing = roles.find((r) => r.id === id);
+    if (!existing || existing.is_system) return; // built-ins are code-defined; keep them locked
+    const next = { ...existing, ...patch, name: patch.name?.trim() || existing.name };
+    if (patch.name && roles.some((r) => r.id !== id && r.name.toLowerCase() === next.name.toLowerCase())) return;
+    // Users referencing the old name follow the rename.
+    try { dbWrite(() => rolesRepo.update(id, { name: next.name, description: next.description, permissions: next.permissions })); } catch { /* best-effort */ }
+    if (patch.name) {
+      try { dbWrite(() => rolesRepo.reassignUsers(existing.name, next.name)); } catch { /* best-effort */ }
+      setUsers((prev) => prev.map((u) => (u.role === existing.name ? { ...u, role: next.name } : u)));
+      if (user?.role === existing.name) setUser((prev) => (prev ? { ...prev, role: next.name } : prev));
+    }
+    setCustomRoleBaseline(next.name, next.permissions);
+    setRoles((prev) => prev.map((r) => (r.id === id ? next : r)));
+    try {
+      auditRepo.log({
+        actor: user?.name || 'System',
+        action: 'role.updated',
+        entity_type: 'role',
+        entity_id: id,
+        entity_ref: next.name,
+        old_state: { name: existing.name, permissions: existing.permissions },
+        new_state: { name: next.name, permissions: next.permissions },
+      });
+      setAuditEvents((prev) => [
+        { id: `aud-${Date.now()}`, timestamp: new Date().toISOString(), actor: user?.name || 'System', action: 'role.updated', entity_type: 'role', entity_id: id, entity_ref: next.name, new_state: { name: next.name } },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
+  };
+
+  const deleteRole = (id: string): boolean => {
+    const existing = roles.find((r) => r.id === id);
+    if (!existing || existing.is_system) return false;
+    const inUse = users.filter((u) => u.role === existing.name).length;
+    if (inUse > 0) return false; // caller surfaces the message
+    try { dbWrite(() => rolesRepo.delete(id)); } catch { /* best-effort */ }
+    setRoles((prev) => prev.filter((r) => r.id !== id));
+    try {
+      auditRepo.log({
+        actor: user?.name || 'System',
+        action: 'role.deleted',
+        entity_type: 'role',
+        entity_id: id,
+        entity_ref: existing.name,
+        old_state: { permissions: existing.permissions },
+      });
+      setAuditEvents((prev) => [
+        { id: `aud-${Date.now()}`, timestamp: new Date().toISOString(), actor: user?.name || 'System', action: 'role.deleted', entity_type: 'role', entity_id: id, entity_ref: existing.name },
+        ...prev,
+      ]);
+    } catch { /* audit is best-effort */ }
+    return true;
   };
 
   // Login backoff state (session-only, per username; see login())
@@ -488,7 +622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     savedVouchers,
     setSavedVouchers,
     setCaseNotes,
-    actorName: user ? user.name : 'Lab Admin',
+    actorName: user ? user.name : 'Super Admin',
     onWorkflowTrigger: (event, payload) => triggerAgentWorkflow(event, payload),
   });
 
@@ -763,6 +897,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateUser,
     deleteUser,
     changePassword,
+    setUserPermissions,
+    setUserClinicScope,
     getBackupData,
     wipeAllData,
   } = useAuthDomain({
@@ -904,6 +1040,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Cases CRUD
   const addCase = (caseData: Omit<DentalCase, 'id' | 'case_number' | 'created_at' | 'updated_at' | 'history'>) => {
+    if (user && !can(user, 'case:create')) throw new Error(deniedTooltip);
     const newId = genId('case');
     const caseNumber = generateCaseNumber();
     const nowStr = getNowStamp();
@@ -987,6 +1124,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updates: Partial<DentalCase>,
     note?: string
   ) => {
+    if (user && !can(user, 'case:edit')) throw new Error(deniedTooltip);
     const nowStr = getNowStamp();
 
     setCases((prev) =>
@@ -1249,6 +1387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCasePermanently = (id: string) => {
     const target = cases.find((c) => c.id === id);
+    if (user && !can(user, 'case:delete')) throw new Error(deniedTooltip);
     setCases((prev) => prev.filter((c) => c.id !== id));
     setNotifications((prev) => prev.filter((n) => n.case_id !== id));
     setQcInspections((prev) => prev.filter((q) => q.case_id !== id));
@@ -1346,6 +1485,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Labs CRUD
   const addLab = (labData: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance' | 'opening_balance_type'> & { opening_balance?: number; opening_balance_type?: 'debit' | 'credit' }) => {
+    if (user && !can(user, 'clinic:create')) throw new Error(deniedTooltip);
     const newLab: DentalLab = {
       ...labData,
       id: `lab-${Date.now()}`,
@@ -1363,6 +1503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateLab = (id: string, updates: Partial<DentalLab>) => {
+    if (user && !can(user, 'clinic:edit')) throw new Error(deniedTooltip);
     setLabs((prev) => prev.map((l) => (l.id === id ? { ...l, ...updates } : l)));
   };
 
@@ -1398,6 +1539,7 @@ const labDeletionCollections = () => ({
  * it cannot be, spread across a dozen `useState` setters.
  */
 const deleteLab = (id: string) => {
+  if (user && !can(user, 'clinic:edit')) throw new Error(deniedTooltip);
   const before = labDeletionCollections();
   const lab = before.labs.find((l) => l.id === id);
   if (!lab) return;
@@ -1534,6 +1676,7 @@ const deleteLab = (id: string) => {
 
   // Case Types CRUD
   const addCaseType = (ct: Omit<CaseType, 'id' | 'created_at'>) => {
+    if (user && !can(user, 'catalog:edit')) throw new Error(deniedTooltip);
     const newCT: CaseType = {
       ...ct,
       id: `ct-${Date.now()}`,
@@ -1543,15 +1686,18 @@ const deleteLab = (id: string) => {
   };
 
   const updateCaseType = (id: string, updates: Partial<CaseType>) => {
+    if (user && !can(user, 'catalog:edit')) throw new Error(deniedTooltip);
     setCaseTypes((prev) => prev.map((ct) => (ct.id === id ? { ...ct, ...updates } : ct)));
   };
 
   const deleteCaseType = (id: string) => {
+    if (user && !can(user, 'catalog:edit')) throw new Error(deniedTooltip);
     setCaseTypes((prev) => prev.filter((ct) => ct.id !== id));
   };
 
   // Billing & Invoices
   const bulkMarkPaid = (invoiceIds: string[], paymentDate?: string) => {
+    if (user && !canPost(user, 'payment:bulk')) throw new Error(deniedTooltip);
     const today = paymentDate || getTodayStr();
     const newJournals: JournalEntry[] = [];
     const newAudits: AuditEvent[] = [];
@@ -1796,6 +1942,10 @@ const deleteLab = (id: string) => {
     attachments?: PaymentAttachment[],
     date?: string
   ): AccountAdjustment => {
+    const action = type === 'credit_note' ? 'credit:issue'
+      : type === 'refund' ? 'refund:issue'
+      : 'debit:issue';
+    if (user && !canPost(user, action as any)) throw new Error(deniedTooltip);
     const lab = labs.find((l) => l.id === labId);
     const labName = lab ? lab.name : 'Dental Clinic';
     const adjNum = generateAdjustmentNumber(type);
@@ -1946,6 +2096,7 @@ const deleteLab = (id: string) => {
     setReconciliationItems,
     allPayments,
     actorName: user ? user.name : '',
+    user,
     pushNotifications,
     genId,
     saveVoucherToSystem,
@@ -1957,6 +2108,22 @@ const deleteLab = (id: string) => {
   const updateUserPreferences = (prefs: Partial<UserPreferences>) => {
     setUserPreferences((prev) => ({ ...prev, ...prefs }));
   };
+
+  // Clinic scope (RBAC v2): a user with no assignment rows sees every clinic;
+  // assignments narrow visibility to exactly those labs (and their invoices).
+  const allowedLabIds = useMemo(() => {
+    if (!user || user.isSuperAdmin) return null;
+    const ids = user.clinic_ids || [];
+    return ids.length ? new Set(ids) : null;
+  }, [user]);
+  const visibleLabs = useMemo(
+    () => (allowedLabIds ? labs.filter((l) => allowedLabIds.has(l.id)) : labs),
+    [labs, allowedLabIds]
+  );
+  const visibleInvoices = useMemo(
+    () => (allowedLabIds ? invoices.filter((inv) => !inv.lab_id || allowedLabIds.has(inv.lab_id)) : invoices),
+    [invoices, allowedLabIds]
+  );
 
   return (
     <AppContext.Provider
@@ -1971,15 +2138,21 @@ const deleteLab = (id: string) => {
         updateUser,
         deleteUser,
         changePassword,
+        setUserPermissions,
+        setUserClinicScope,
+        roles,
+        addRole,
+        updateRole,
+        deleteRole,
         createInitialAdmin,
         sidebarOpen,
         setSidebarOpen,
         todayStr,
 
         cases,
-        labs,
+        labs: visibleLabs,
         caseTypes,
-        invoices,
+        invoices: visibleInvoices,
         notifications,
         templates,
         labContacts,

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, PlusCircle } from 'lucide-react';
 import { formatPKR } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
+import { canPost, deniedTooltip } from '../../services/permissions';
 import { DentalLab } from '../../types';
 
 interface RecordAdjustmentModalProps {
@@ -38,7 +39,7 @@ const TYPE_LABELS: Record<AdjustmentType, { label: string; hint: string; tone: s
  * renders every type correctly — what was missing was a way to call it.
  */
 export const RecordAdjustmentModal: React.FC<RecordAdjustmentModalProps> = ({ lab, onClose }) => {
-  const { recordAccountAdjustment } = useApp();
+  const { recordAccountAdjustment, user } = useApp();
 
   const [type, setType] = useState<AdjustmentType>('credit_note');
   const [amount, setAmount] = useState('');
@@ -49,6 +50,9 @@ export const RecordAdjustmentModal: React.FC<RecordAdjustmentModalProps> = ({ la
   const [error, setError] = useState<string | null>(null);
 
   const meta = TYPE_LABELS[type];
+
+  const allowedAction = type === 'credit_note' ? 'credit:issue' : type === 'refund' ? 'refund:issue' : 'debit:issue';
+  const canSubmit = canPost(user, allowedAction as any);
 
   const validate = (): string | null => {
     const amt = Number(amount);
@@ -203,7 +207,8 @@ export const RecordAdjustmentModal: React.FC<RecordAdjustmentModalProps> = ({ la
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !canSubmit}
+              title={!canSubmit ? deniedTooltip : undefined}
               className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer transition-colors"
             >
               Record
