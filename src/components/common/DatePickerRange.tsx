@@ -340,8 +340,8 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
             <button
               type="button"
               onClick={() => {
-                onChange(today, today);
-                setPicking('from');
+                // Apply whatever the user has selected (from/to props or picks),
+                // then close. Do NOT reset to today — Done is a confirm-action.
                 setOpen(false);
               }}
               className="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[11px] font-bold rounded-lg cursor-pointer"
