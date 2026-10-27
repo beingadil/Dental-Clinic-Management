@@ -78,19 +78,14 @@ describe('buildLedgerPdf', () => {
     // Letterhead + columns present
     expect(pdf).toContain('Bright Smile Dental Lab');
     expect(pdf).toContain('GENERAL LEDGER');
-    expect(pdf).toContain('(Account: Accounts Receivable)');
-    expect(pdf).toContain('(CLINIC)');
-    expect(pdf).toContain('(DESCRIPTION / PARTICULARS)');
+    // Clean portrait: no CLINIC column, no amount headers, simple header.
+    expect(pdf).toContain('GENERAL LEDGER');
+    expect(pdf).not.toContain('(CLINIC)');
+    expect(pdf).not.toContain('(Account:');
+    expect(pdf).not.toContain('(As of:');
+    expect(pdf).not.toContain('Opening Balance');
     expect(pdf).toContain('(Page 1 of');
     expect(pdf).toContain(`(Page ${pageCount} of ${pageCount})`);
-    // Opening balance brought forward on page 1 (parens escaped in stream)
-    expect(pdf).toContain('(Opening Balance \\(b/f\\))');
-    expect(pdf).toContain('14,500,000');
-    // Footer totals: money strings verbatim (no re-rounding drift)
-    expect(pdf).toContain('(PKR 14,500,000.5)');
-    expect(pdf).toContain('(PKR 13,300,000.5)');
-    // Closing balance classification line (parens escaped in stream)
-    expect(pdf).toContain('Balance Dr \\(receivable\\)');
   });
 
   it('empty ledger still yields one valid page', () => {
@@ -100,30 +95,22 @@ describe('buildLedgerPdf', () => {
     expect(pdf).toContain('(Page 1 of 1)');
   });
 
-  it('renders canonical account label + code, and an As-of line for all-time periods', () => {
+  it('renders clean portrait with no amount headers or clinic column', () => {
     const { pdf } = buildLedgerPdf(entries.slice(0, 2), {
       ...meta,
       periodLabel: 'All Time',
       accountName: 'Accounts Receivable (Dental Clinics)',
       accountCode: '1100',
     });
-    // '·' and the name's parens are WinAnsi-escaped in the stream; assert ASCII fragments
-    expect(pdf).toContain('(Account: 1100 ');
-    expect(pdf).toContain('Accounts Receivable \\(Dental Clinics\\))');
-    expect(pdf).toContain('(As of: 2026-09-28)');
-
-    // Dated periods must NOT get an As-of line
-    const dated = buildLedgerPdf(entries.slice(0, 2), {
-      ...meta,
-      accountName: 'Accounts Receivable (Dental Clinics)',
-      accountCode: '1100',
-    });
-    expect(dated.pdf).not.toContain('(As of:');
+    expect(pdf).not.toContain('Account:');
+    expect(pdf).not.toContain('As of:');
+    expect(pdf).not.toContain('(CLINIC)');
+    expect(pdf).toContain('GENERAL LEDGER');
   });
 
   it('defaults to plain Accounts Receivable when no account override is given', () => {
     const { pdf } = buildLedgerPdf(entries.slice(0, 1), meta);
-    expect(pdf).toContain('(Account: Accounts Receivable)');
+    expect(pdf).not.toContain('Account:');
     expect(pdf).not.toContain('1100 \u00b7');
   });
 });

@@ -380,7 +380,7 @@ export function buildLedgerPdf(
     };
   });
 
-  const showsOpening = meta.openingBalance !== 0 || meta.periodLabel !== 'All Time';
+  const showsOpening = false; // User asked: simple clean portrait, no amount headers.
 
   const section: TableSection = {
     cols: planned.cols,
@@ -405,31 +405,7 @@ export function buildLedgerPdf(
           },
         ]
       : undefined,
-    totals: (ops, geo, _X, _cols, rowEndY) => {
-      /* The totals block sits just under the last row, and never lower than
-         the footer allows. */
-      let y = Math.max(rowEndY - 24, geo.CONTENT_BOTTOM + 30);
-      const line = (label: string, value: string) => {
-        ops.push({ kind: 'text', x: geo.MARGIN, y, size: 8, bold: true, grey: 0, text: label });
-        ops.push({
-          kind: 'text', x: geo.MARGIN + geo.CONTENT_W - textW(value, 8) - 2,
-          y, size: 8, bold: true, text: value,
-        });
-        y -= 13;
-      };
-      ops.push({
-        kind: 'line', x1: geo.MARGIN, y1: y + 10, x2: geo.MARGIN + geo.CONTENT_W, y2: y + 10,
-        grey: 0.35, width: 1,
-      });
-      line('Total Debits', pk(meta.totalDebits));
-      line('Total Credits', pk(meta.totalCredits));
-      line('Closing Balance', pk(meta.closingBalance));
-      line('Transactions', String(meta.transactionCount ?? 0));
-      ops.push({
-        kind: 'text', x: geo.MARGIN, y: y - 2, size: 7, grey: 0.45,
-        text: closingDrCr(meta.closingBalance),
-      });
-    },
+    totals: () => {}, // User asked: clean simple portrait, no amount headers.
   };
 
   const pages = renderTableSections(
@@ -482,8 +458,7 @@ export function buildLedgerPdf(
   return assemblePdf(pages);
 }
 
-const closingDrCr = (n: number) =>
-  n > 0 ? 'Balance Dr (receivable)' : n < 0 ? 'Balance Cr (advance held)' : 'Fully settled';
+/* Clean portrait PDF: CLINIC removed, amount/meta headers removed, portrait forced. */
 
 /* ---------- daily lab report ---------- */
 
