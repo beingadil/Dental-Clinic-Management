@@ -1,6 +1,7 @@
 import { useTransientFlag } from '../common/useTransient';
 import { printCurrentDocument } from '../../utils/printDocument';
 import { invoiceBalanceDue } from '../../services/financeDomain';
+import { buildInvoiceAccountPosition } from '../../services/invoiceAccount';
 import React, { useMemo, useState } from 'react';
 import { Invoice, DentalCase } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -42,7 +43,16 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   cases,
   onClose,
 }) => {
-  const { brandingSettings, saveVoucherToSystem, userPreferences, getLabFinancialSummary } = useApp();
+  const {
+    brandingSettings,
+    saveVoucherToSystem,
+    userPreferences,
+    getLabFinancialSummary,
+    invoices,
+    advancePayments,
+    accountAdjustments,
+    labs,
+  } = useApp();
   const [savedSuccess, flashSavedSuccess] = useTransientFlag(4000);
   const [printSettings] = useState(() => loadPrintSettings());
   const [showSections, setShowSections] = useState(false);
@@ -53,6 +63,23 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   );
 
   const remainingBalance = invoiceBalanceDue(invoice);
+
+  /* The printed sheet has to reconcile with the clinic's account, not just
+     this invoice: an advance deposit already held (or earlier unpaid invoices)
+     belongs in the opening balance, and the advance must not be subtracted a
+     second time when it was applied to this invoice. Built from the same
+     documents the ledger posts so the two cannot drift. */
+  const accountPosition = useMemo(
+    () =>
+      buildInvoiceAccountPosition({
+        invoice,
+        invoices,
+        advancePayments,
+        accountAdjustments,
+        labs,
+      }),
+    [invoice, invoices, advancePayments, accountAdjustments, labs],
+  );
 
   const applySections = (next: string[]) => {
     setEnabled(next);
@@ -204,6 +231,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
                 invoice={invoice}
                 labName={invoice.lab_name}
                 advanceBalance={getLabFinancialSummary?.(invoice.lab_id)?.advance_balance ?? 0}
+                accountPosition={accountPosition}
               />
             </div>
           </div>

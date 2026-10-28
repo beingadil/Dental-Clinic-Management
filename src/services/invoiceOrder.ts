@@ -19,7 +19,7 @@ export const invoiceEntryDate = (
 ): string => (invoice.created_at || invoice.issue_date || '').slice(0, 10);
 
 /** Number-aware so INV-0099 sorts before INV-0100. */
-const compareInvoiceNumbers = (a?: string, b?: string): number =>
+export const compareInvoiceNumbers = (a?: string, b?: string): number =>
   (a || '').localeCompare(b || '', undefined, { numeric: true });
 
 /** Sort comparator for `Array.prototype.sort` — oldest recorded first. */

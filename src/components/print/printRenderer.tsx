@@ -11,6 +11,7 @@ import {
   formatReceivedDate,
   INVOICE_DETAIL_OMIT,
 } from '../../services/ledgerCaseDetail';
+import type { InvoiceAccountPosition } from '../../services/invoiceAccount';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
 
@@ -76,6 +77,15 @@ export const DEFAULT_ENABLED: Record<DocumentKind, string[]> = {
 
 const on = (sections: string[], id: string) => sections.includes(id);
 const money = (n: number) => `PKR ${(n || 0).toLocaleString()}`;
+/* Ledger sign convention: positive is a receivable (Dr), negative is money we
+   hold on the clinic's behalf (Cr). The suffix is what stops an opening credit
+   from reading as an amount the clinic still owes. */
+const signedMoney = (n: number) => {
+  const value = n || 0;
+  if (value < 0) return `${money(Math.abs(value))} Cr`;
+  if (value > 0) return `${money(value)} Dr`;
+  return money(0);
+};
 
 /* Separator for the inline case-detail line.
    Spelled with an escape rather than a literal `·` so a mangled byte in an
@@ -154,6 +164,16 @@ interface PrintDocumentProps {
    */
   balanceInvoices?: Invoice[] | null;
   advanceBalance?: number;
+  /**
+   * Invoice mode: the clinic's account position before and after this invoice.
+   *
+   * The line-item table only knows this invoice's own amount and payments. A
+   * clinic that already holds an advance with us, or carries earlier unpaid
+   * invoices, needs that brought-forward money on the sheet as well — without
+   * it the printed closing balance says the deposit never happened. Optional
+   * so job slips, receipts and statements render exactly as before.
+   */
+  accountPosition?: InvoiceAccountPosition | null;
 }
 
 export const PrintDocument: React.FC<PrintDocumentProps> = ({
@@ -172,6 +192,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   showBalance = true,
   balanceInvoices,
   advanceBalance = 0,
+  accountPosition = null,
 }) => {
   const lab = branding;
   const paper = printSettings?.paper || 'a4';
@@ -557,6 +578,76 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   </tr>
                 </tbody>
               </table>
+            </div>
+          )}
+          {/* Account position — the part an invoice cannot see on its own.
+              The line-item table answers "what is this invoice worth and what
+              has been paid against it"; this answers "where does the clinic's
+              account stand after it". They are deliberately separate because
+              the table must keep showing this invoice's full amount even when
+              an advance settles half of it. */}
+          {on(sections, 'totals') && accountPosition && (
+            <div className="mb-4 flex justify-end">
+              <div className="w-72">
+                <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                  Account Balance
+                </div>
+                <table className="w-full border-collapse text-[11px]">
+                  <tbody>
+                    <tr className="border border-slate-300">
+                      <td className="px-3 py-1 text-slate-600">Opening Balance</td>
+                      <td className="px-3 py-1 text-right font-semibold">
+                        {signedMoney(accountPosition.openingBalance)}
+                      </td>
+                    </tr>
+                    {accountPosition.advanceDeposit > 0 && (
+                      <tr className="border border-slate-300 border-t-0">
+                        <td className="py-1 pl-6 pr-3 text-slate-500">Advance Deposit (we owe)</td>
+                        <td className="px-3 py-1 text-right text-ink-success">
+                          {money(accountPosition.advanceDeposit)}
+                        </td>
+                      </tr>
+                    )}
+                    <tr className="border border-slate-300 border-t-0">
+                      <td className="px-3 py-1 text-slate-600">This Invoice</td>
+                      <td className="px-3 py-1 text-right">{money(accountPosition.invoiceAmount)}</td>
+                    </tr>
+                    {accountPosition.cashPaid > 0 && (
+                      <tr className="border border-slate-300 border-t-0">
+                        <td className="px-3 py-1 text-slate-600">Paid (cash / bank)</td>
+                        <td className="px-3 py-1 text-right text-ink-success">
+                          {money(accountPosition.cashPaid)}
+                        </td>
+                      </tr>
+                    )}
+                    {accountPosition.creditNotes > 0 && (
+                      <tr className="border border-slate-300 border-t-0">
+                        <td className="px-3 py-1 text-slate-600">Credit Notes</td>
+                        <td className="px-3 py-1 text-right text-ink-success">
+                          -{money(accountPosition.creditNotes)}
+                        </td>
+                      </tr>
+                    )}
+                    <tr className="border-2 border-slate-900 bg-slate-100">
+                      <td className="px-3 py-2 font-bold uppercase tracking-wider">
+                        {accountPosition.closingBalance < 0
+                          ? 'Closing Balance (Cr)'
+                          : accountPosition.closingBalance > 0
+                          ? 'Closing Balance (Dr)'
+                          : 'Closing Balance'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-sm font-bold">
+                        {money(Math.abs(accountPosition.closingBalance))}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                {accountPosition.advanceApplied > 0 && (
+                  <div className="mt-1 text-right text-[9px] text-slate-500">
+                    {money(accountPosition.advanceApplied)} of this invoice was settled from the advance deposit.
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {on(sections, 'paymentHistory') && (invoice.payments || []).length > 0 && (

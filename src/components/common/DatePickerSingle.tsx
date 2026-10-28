@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { todayISO } from './DatePickerRange';
+import { addDaysISO, todayISO } from './DatePickerRange';
 
 /**
  * Enhanced single-date picker — the same calendar affordances as
- * `DatePickerRange` (month navigation, year jump, today chip, manual entry,
- * clear) for a form field that holds ONE day.
+ * `DatePickerRange` (month navigation, year jump, Today/Yesterday chips,
+ * manual entry, clear) for a form field that holds ONE day.
  *
  * Deliberately unconstrained: it has no `min`, so a past date is always
  * selectable. It is used for the case Received Date, which is a historical
@@ -131,6 +131,32 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
 
       {open && (
         <div className="absolute left-0 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-[300px] space-y-3">
+          {/* The two days a back-dated entry actually needs; anything else is
+              a calendar pick. */}
+          <div className="flex flex-wrap gap-1">
+            {[
+              { label: 'Today', iso: today },
+              { label: 'Yesterday', iso: addDaysISO(today, -1) },
+            ].map((q) => {
+              const isActive = value === q.iso;
+              return (
+                <button
+                  key={q.label}
+                  type="button"
+                  onClick={() => pick(q.iso)}
+                  aria-pressed={isActive}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                    isActive
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200'
+                  }`}
+                >
+                  {q.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="flex items-center justify-between">
             <button
               type="button"
@@ -207,13 +233,6 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
               aria-label={`${label} value`}
               className="flex-1 min-w-0 px-2 py-1.5 text-[11px] bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-400 cursor-pointer"
             />
-            <button
-              type="button"
-              onClick={() => pick(today)}
-              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg cursor-pointer whitespace-nowrap"
-            >
-              Today
-            </button>
           </div>
         </div>
       )}

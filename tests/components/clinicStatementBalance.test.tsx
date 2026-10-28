@@ -55,6 +55,12 @@ const summaryCard = (label: string) => {
 const renderModal = () =>
   render(<ClinicStatementModal isOpen onClose={() => {}} clinicId="lab-1" />);
 
+/** Open the shared period picker and choose a preset (it closes on click). */
+const pickPeriod = (label: 'This Month' | 'Last Month') => {
+  fireEvent.click(screen.getByRole('button', { name: /all time/i }));
+  fireEvent.click(screen.getByRole('button', { name: label }));
+};
+
 /** Local `YYYY-MM-DD`, `monthsAgo` months back from today. */
 const dayIn = (monthsAgo: number, day = 5): string => {
   const d = new Date();
@@ -155,7 +161,7 @@ describe('ClinicStatementModal period figures', () => {
 
   it('carries the opening balance into the period and closes on the period ledger', () => {
     renderModal();
-    fireEvent.click(screen.getByText('This Month'));
+    pickPeriod('This Month');
 
     expect(summaryCard('Opening Balance (B/F):').textContent).toContain('PKR 20,000');
     expect(summaryCard('Closing Balance (C/F):').textContent).toContain('PKR 7,000');
@@ -166,7 +172,7 @@ describe('ClinicStatementModal period figures', () => {
 
   it('shows only the period rows, so debits and credits add up to the closing balance', () => {
     renderModal();
-    fireEvent.click(screen.getByText('This Month'));
+    pickPeriod('This Month');
 
     const card = summaryCard('Closing Balance (C/F):');
     expect(card.textContent).toContain('PKR 0'); // no invoice raised this month
@@ -192,14 +198,14 @@ describe('ClinicStatementModal period figures', () => {
       },
     ];
     renderModal();
-    fireEvent.click(screen.getByText('This Month'));
+    pickPeriod('This Month');
 
     expect(summaryCard('Advance Credit in Wallet:').textContent).toContain('PKR 5,000');
   });
 
   it('leaves the balance untouched for a month with no movements', () => {
     renderModal();
-    fireEvent.click(screen.getByText('Last Month'));
+    pickPeriod('Last Month');
 
     const card = summaryCard('Closing Balance (C/F):');
     expect(card.textContent).toContain('PKR 20,000');

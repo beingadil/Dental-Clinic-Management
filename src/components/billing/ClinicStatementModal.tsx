@@ -5,6 +5,7 @@ import { downloadCSV } from '../../services/csvExport';
 import { X, Printer, Download, FileText } from 'lucide-react';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { Modal } from '../common/ui';
+import { DatePickerRange } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { caseDetailLines, caseDetailText, findCaseForEntry } from '../../services/ledgerCaseDetail';
 import { isAdvanceAppliedPayment } from '../../services/monthlyStatement';
@@ -31,9 +32,8 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
     advancePayments,
   } = useApp();
 
-  const [dateRange, setDateRange] = useState<'all' | 'this_month' | 'last_month' | 'custom'>('all');
-  const [startDate] = useState<string>('');
-  const [endDate] = useState<string>('');
+  const [from, setFrom] = useState<string>('');
+  const [to, setTo] = useState<string>('');
 
   const clinic = useMemo(() => {
     return labs.find((l) => l.id === clinicId) || labs[0];
@@ -50,31 +50,20 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
   }, [clinic, getLedgerEntries]);
 
   /* The selected Period as an inclusive [start, end] window, or null for
-     "All Time". The end is pushed to 23:59 so a payment booked earlier today
-     is never dropped by a filter whose end is `new Date()`. */
+     "All Time". Both ends are built from the LOCAL day (a bare `new Date(iso)`
+     parses UTC and can roll back a day in PKT), and the end is pushed to 23:59
+     so a payment booked earlier today is never dropped. */
   const period = useMemo<{ start: Date; end: Date } | null>(() => {
-    if (dateRange === 'all') return null;
-
-    const today = new Date();
-    const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-
-    if (dateRange === 'this_month') {
-      return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: endOfDay(today) };
-    }
-    if (dateRange === 'last_month') {
-      return {
-        start: new Date(today.getFullYear(), today.getMonth() - 1, 1),
-        end: endOfDay(new Date(today.getFullYear(), today.getMonth(), 0)),
-      };
-    }
-    // A custom range without a start date shows everything rather than a
-    // blank statement.
-    if (!startDate) return null;
+    if (!from && !to) return null;
+    const startISO = from || to;
+    const endISO = to || from;
+    const [sy, sm, sd] = startISO.split('-').map(Number);
+    const [ey, em, ed] = endISO.split('-').map(Number);
     return {
-      start: new Date(startDate),
-      end: endDate ? endOfDay(new Date(endDate)) : endOfDay(today),
+      start: new Date(sy, sm - 1, sd, 0, 0, 0, 0),
+      end: new Date(ey, em - 1, ed, 23, 59, 59, 999),
     };
-  }, [dateRange, startDate, endDate]);
+  }, [from, to]);
 
   // Filter ledger by the selected period
   const filteredLedger = useMemo(() => {
@@ -240,32 +229,14 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
         {/* Filters Bar (Hidden in Print) */}
         <div className="px-6 py-3 bg-white border-b border-slate-200 flex items-center gap-3 text-xs print:hidden">
           <span className="font-semibold text-slate-600">Period:</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setDateRange('all')}
-              className={`px-2.5 py-1 rounded-md font-semibold ${
-                dateRange === 'all' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              All Time
-            </button>
-            <button
-              onClick={() => setDateRange('this_month')}
-              className={`px-2.5 py-1 rounded-md font-semibold ${
-                dateRange === 'this_month' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              This Month
-            </button>
-            <button
-              onClick={() => setDateRange('last_month')}
-              className={`px-2.5 py-1 rounded-md font-semibold ${
-                dateRange === 'last_month' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              Last Month
-            </button>
-          </div>
+          <DatePickerRange
+            from={from}
+            to={to}
+            onChange={(f, t) => {
+              setFrom(f);
+              setTo(t);
+            }}
+          />
         </div>
 
         {/* Printable Statement Document */}

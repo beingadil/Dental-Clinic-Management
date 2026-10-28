@@ -33,6 +33,18 @@
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
 }
 
+/* The sheet is white in every theme. Dark mode remaps the app's ink utilities
+   to light-on-dark values, which would print as pale grey on white — restore
+   the light-theme inks for the classes the print renderer actually uses. */
+.dark .print-doc .text-slate-500 { color: #64748b; }
+.dark .print-doc .text-slate-600 { color: #475569; }
+.dark .print-doc .text-slate-700 { color: #334155; }
+.dark .print-doc .text-slate-900 { color: #0f172a; }
+.dark .print-doc .text-emerald-700 { color: #047857; }
+.dark .print-doc .text-amber-700 { color: #b45309; }
+.dark .print-doc .text-rose-700 { color: #be123c; }
+.dark .print-doc .text-ink-success { color: #007e51; }
+
 @media (max-width: 640px) {
   .print-preview-page {
     padding: 1.25rem 1rem;

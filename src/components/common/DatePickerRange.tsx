@@ -5,16 +5,26 @@ import { getTodayStr } from '../../utils/dateUtils';
 /**
  * Enhanced date-range picker: text inputs with a proper calendar popup —
  * month navigation, year jump, weekday header, today/out-of-month styling,
- * quick-range chips, and an explicit Clear. Values are plain `YYYY-MM-DD`
- * strings so it drops into any filter without type conversion.
+ * one standard set of quick ranges, and an explicit Clear. Values are plain
+ * `YYYY-MM-DD` strings so it drops into any filter without type conversion.
+ *
+ * The presets are deliberately IDENTICAL in every module: an operator who
+ * learns "Last Month" in Billing must not find a different menu in the ledger.
  */
+
+export interface QuickRange {
+  label: string;
+  /** '' = unset (All Time). */
+  from: string;
+  to: string;
+}
 
 interface DatePickerRangeProps {
   from: string; // '' = unset
   to: string;
   onChange: (from: string, to: string) => void;
-  /** Optional quick chips; defaults to Today / This Week / This Month / All Time. */
-  quickRanges?: { label: string; from: string; to: string }[];
+  /** Stretch the trigger to the container (for grid/form columns). */
+  fullWidth?: boolean;
   className?: string;
 }
 
@@ -31,7 +41,56 @@ const toISODate = (d: Date) => {
   return `${y}-${m}-${day}`;
 };
 
+const parseISODate = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
 export const todayISO = () => getTodayStr();
+
+/** Add calendar days to a `YYYY-MM-DD` value without leaving the local day. */
+export const addDaysISO = (iso: string, days: number) => {
+  const d = parseISODate(iso);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+};
+
+const monthStart = (iso: string, offset: number) => {
+  const d = parseISODate(iso);
+  return toISODate(new Date(d.getFullYear(), d.getMonth() + offset, 1));
+};
+
+const monthEnd = (iso: string, offset: number) => {
+  const d = parseISODate(iso);
+  return toISODate(new Date(d.getFullYear(), d.getMonth() + offset + 1, 0));
+};
+
+/**
+ * The one preset list every module shares.
+ *
+ * "This Month" and "Last Month" are the full calendar month — the range an
+ * operator means when they say "print last month", not "the 1st until today".
+ * "Last 7 Days" is today plus the six days before it (seven days total).
+ */
+export const standardQuickRanges = (today = todayISO()): QuickRange[] => [
+  { label: 'Today', from: today, to: today },
+  { label: 'Yesterday', from: addDaysISO(today, -1), to: addDaysISO(today, -1) },
+  { label: 'Last 7 Days', from: addDaysISO(today, -6), to: today },
+  { label: 'This Month', from: monthStart(today, 0), to: monthEnd(today, 0) },
+  { label: 'Last Month', from: monthStart(today, -1), to: monthEnd(today, -1) },
+  { label: 'All Time', from: '', to: '' },
+];
+
+/** Human label for a range: the preset name when it matches, else the dates. */
+export const describeQuickRange = (from: string, to: string, today = todayISO()): string => {
+  const match = standardQuickRanges(today).find(
+    (p) => (from || '') === p.from && (to || '') === p.to
+  );
+  if (match) return match.label;
+  if (from && to && from === to) return from;
+  if (from || to) return `${from || '…'} → ${to || '…'}`;
+  return 'All Time';
+};
 
 function CalendarGrid({
   viewYear,
@@ -113,23 +172,15 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
   from,
   to,
   onChange,
-  quickRanges,
+  fullWidth = false,
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fromInputRef = useRef<HTMLInputElement>(null);
 
   const today = todayISO();
-  const defaults = quickRanges || [
-    { label: 'Today', from: today, to: today },
-    {
-      label: 'This Week',
-      from: toISODate(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - new Date().getDay())),
-      to: today,
-    },
-    { label: 'This Month', from: toISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: today },
-    { label: 'All Time', from: '', to: '' },
-  ];
+  const presets = useMemo(() => standardQuickRanges(today), [today]);
 
   const [viewYear, setViewYear] = useState(() => (from ? Number(from.slice(0, 4)) : new Date().getFullYear()));
   const [viewMonth, setViewMonth] = useState(() => (from ? Number(from.slice(5, 7)) - 1 : new Date().getMonth()));
@@ -145,16 +196,27 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
-  // Keep the calendar view anchored to the active selection when opened
+  // Escape closes the popup without touching the selected range.
   useEffect(() => {
-    if (open) {
-      const anchor = picking === 'from' ? from : to;
-      const base = anchor || today;
-      setViewYear(Number(base.slice(0, 4)));
-      setViewMonth(Number(base.slice(5, 7)) - 1);
-    }
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // Anchor the calendar to the active selection when the popup OPENS. Not on
+  // every pick: choosing a start date in another month must not jump the view
+  // back to today when the calendar switches to the end date.
+  useEffect(() => {
+    if (!open) return;
+    setPicking('from');
+    const base = from || to || todayISO();
+    setViewYear(Number(base.slice(0, 4)));
+    setViewMonth(Number(base.slice(5, 7)) - 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, picking]);
+  }, [open]);
 
   const shiftMonth = (delta: number) => {
     const d = new Date(viewYear, viewMonth + delta, 1);
@@ -192,78 +254,113 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
     }
   };
 
-  const label = from || to
-    ? `${from || '…'} → ${to || '…'}`
-    : 'All Time';
+  const applyPreset = (preset: QuickRange) => {
+    onChange(preset.from, preset.to);
+    if (preset.from) {
+      setViewYear(Number(preset.from.slice(0, 4)));
+      setViewMonth(Number(preset.from.slice(5, 7)) - 1);
+    }
+    setPicking('from');
+    // One click on a preset is a complete decision — no second "Done" step.
+    setOpen(false);
+  };
+
+  const focusCustom = () => {
+    setPicking('from');
+    // The calendar and the two date fields are already open; this just puts
+    // the caret where a custom range starts.
+    requestAnimationFrame(() => fromInputRef.current?.focus());
+  };
+
+  const activePreset = presets.find(
+    (p) => (from || '') === p.from && (to || '') === p.to
+  );
+  const isCustom = !activePreset && Boolean(from || to);
+
+  const label = describeQuickRange(from, to, today);
+  const exactRange = from || to ? `${from || '…'} → ${to || '…'}` : 'All Time';
+
+  const chipBase =
+    'px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer';
+  const chipActive = 'bg-slate-900 text-white border-slate-900';
+  const chipIdle = 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200';
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
-      {/* Trigger */}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-2xs active:scale-[0.98] ${
+    <div ref={containerRef} className={`relative ${fullWidth ? 'w-full' : ''} ${className}`}>
+      {/* Trigger — a pill split into two real buttons (open + clear), never a
+          control nested inside another control. */}
+      <div
+        title={exactRange}
+        className={`flex items-center overflow-hidden rounded-xl text-xs font-semibold border transition-all shadow-2xs ${
           from || to
             ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
-            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-        }`}
-        title="Filter by date range"
+            : 'bg-white border-slate-200 text-slate-600'
+        } ${fullWidth ? 'w-full' : ''}`}
       >
-        <CalendarDays className={`w-4 h-4 shrink-0 ${from || to ? 'text-indigo-600' : 'text-ink-muted'}`} />
-        <span className="tabular-nums">{label}</span>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          className={`flex min-w-0 flex-1 items-center justify-start gap-2 py-1.5 pl-3 ${
+            from || to ? 'pr-1.5' : 'pr-3'
+          } cursor-pointer ${from || to ? 'hover:bg-indigo-100/60' : 'hover:bg-slate-50'}`}
+        >
+          <CalendarDays className={`w-4 h-4 shrink-0 ${from || to ? 'text-indigo-600' : 'text-ink-muted'}`} />
+          <span className="truncate tabular-nums">{label}</span>
+        </button>
         {(from || to) && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
+          <button
+            type="button"
+            onClick={() => {
               onChange('', '');
               setPicking('from');
+              setOpen(false);
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.stopPropagation();
-                onChange('', '');
-                setPicking('from');
-              }
-            }}
-            className="p-0.5 rounded hover:bg-indigo-100 text-indigo-500 hover:text-indigo-700"
+            aria-label="Clear date range"
             title="Clear dates"
+            className="mr-1.5 rounded-lg p-1 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
-          </span>
+          </button>
         )}
-      </button>
+      </div>
 
       {/* Popup */}
       {open && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-[300px] space-y-3">
-          {/* Quick ranges */}
+        <div
+          role="dialog"
+          aria-label="Choose date range"
+          className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5"
+        >
+          {/* Quick ranges — same list in every module. */}
           <div className="flex flex-wrap gap-1">
-            {defaults.map((q) => {
+            {presets.map((q) => {
               const isActive = (from || '') === q.from && (to || '') === q.to;
               return (
                 <button
                   key={q.label}
                   type="button"
-                  onClick={() => {
-                    onChange(q.from, q.to);
-                    if (q.from) {
-                      setViewYear(Number(q.from.slice(0, 4)));
-                      setViewMonth(Number(q.from.slice(5, 7)) - 1);
-                    }
-                    setPicking('from');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                    isActive
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                  onClick={() => applyPreset(q)}
+                  aria-pressed={isActive}
+                  className={`${chipBase} ${isActive ? chipActive : chipIdle}`}
                 >
                   {q.label}
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={focusCustom}
+              aria-pressed={isCustom}
+              className={`${chipBase} ${
+                isCustom
+                  ? chipActive
+                  : 'border-dashed border-slate-300 bg-transparent text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              Custom Range
+            </button>
           </div>
 
           {/* Month header */}
@@ -280,6 +377,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
               <select
                 value={viewMonth}
                 onChange={(e) => setViewMonth(Number(e.target.value))}
+                aria-label="Month"
                 className="text-xs font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
               >
                 {MONTHS.map((m, i) => (
@@ -289,6 +387,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
               <select
                 value={viewYear}
                 onChange={(e) => setViewYear(Number(e.target.value))}
+                aria-label="Year"
                 className="text-xs font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer tabular-nums"
               >
                 {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map((y) => (
@@ -317,9 +416,11 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
           {/* Manual inputs */}
           <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
             <input
+              ref={fromInputRef}
               type="date"
               value={from}
               onChange={(e) => handleManual('from', e.target.value)}
+              onFocus={() => setPicking('from')}
               className="flex-1 min-w-0 px-2 py-1.5 text-[11px] bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-400 cursor-pointer"
               aria-label="From date"
             />
@@ -328,6 +429,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
               type="date"
               value={to}
               onChange={(e) => handleManual('to', e.target.value)}
+              onFocus={() => setPicking('to')}
               className="flex-1 min-w-0 px-2 py-1.5 text-[11px] bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-400 cursor-pointer"
               aria-label="To date"
             />

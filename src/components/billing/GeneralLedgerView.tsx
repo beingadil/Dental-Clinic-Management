@@ -4,7 +4,6 @@ import { useApp } from '../../context/AppContext';
 import { can } from '../../services/permissions';
 import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
-import { getDateStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { ClinicPicker } from '../common/ui/ClinicPicker';
 import { 
@@ -100,42 +99,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
     if (selectedClinicId === 'all') return null;
     return labs.find((l) => l.id === selectedClinicId) || null;
   }, [labs, selectedClinicId]);
-
-  /* Quick-range helpers for the shared DatePickerRange. Every one of these
-     builds a LOCAL Date and must therefore read the local day back out —
-     toISOString() would roll a 00:00–05:00 PKT preset back to yesterday. */
-  const mondayThisWeek = () => {
-    const now = new Date();
-    const dow = now.getDay() || 7;
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - (dow - 1));
-    return getDateStr(mon);
-  };
-  const firstOfMonth = () => {
-    const n = new Date();
-    return getDateStr(new Date(n.getFullYear(), n.getMonth(), 1));
-  };
-  const endOfMonth = () => {
-    const n = new Date();
-    return getDateStr(new Date(n.getFullYear(), n.getMonth() + 1, 0));
-  };
-  const firstOfLastMonth = () => {
-    const n = new Date();
-    return getDateStr(new Date(n.getFullYear(), n.getMonth() - 1, 1));
-  };
-  const endOfLastMonth = () => {
-    const n = new Date();
-    return getDateStr(new Date(n.getFullYear(), n.getMonth(), 0));
-  };
-  const firstOfYear = () => {
-    const n = new Date();
-    return getDateStr(new Date(n.getFullYear(), 0, 1));
-  };
-  const endOfYear = () => {
-    const n = new Date();
-    return getDateStr(new Date(n.getFullYear(), 11, 31));
-  };
-
 
   // Fetch all ledger records for the selected clinic or all clinics
   const rawLedgerEntries = useMemo(() => {
@@ -591,14 +554,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
             <DatePickerRange
               from={startDate}
               to={endDate}
-              quickRanges={[
-                { label: 'Today', from: todayISO(), to: todayISO() },
-                { label: 'All Time', from: '', to: '' },
-                { label: 'This Week', from: mondayThisWeek(), to: todayISO() },
-                { label: 'This Month', from: firstOfMonth(), to: endOfMonth() },
-                { label: 'Last Month', from: firstOfLastMonth(), to: endOfLastMonth() },
-                { label: 'This Year', from: firstOfYear(), to: endOfYear() },
-              ]}
               onChange={(f, t) => {
                 setStartDate(f);
                 setEndDate(t);

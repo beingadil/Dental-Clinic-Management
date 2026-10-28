@@ -3,16 +3,22 @@ import { printCurrentDocument } from '../../utils/printDocument';
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
-import { DatePickerRange, todayISO } from '../common/DatePickerRange';
-import { getDateStr, getTodayStr } from '../../utils/dateUtils';
+import {
+  DatePickerRange,
+  describeQuickRange,
+  standardQuickRanges,
+  todayISO,
+} from '../common/DatePickerRange';
+import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
+import { compareInvoiceNumbers } from '../../services/invoiceOrder';
 import { paginateStatementInvoices } from '../../services/statementPagination';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
 import '../print/printStyles.css';
-import { Printer, X, FileSpreadsheet, Building2 } from 'lucide-react';
+import { Printer, X, FileSpreadsheet, Building2, ChevronDown, Search } from 'lucide-react';
 import { Modal } from '../common/ui';
 import { ClinicPicker } from '../common/ui/ClinicPicker';
 
@@ -22,17 +28,21 @@ interface BatchInvoicePrintModalProps {
   onClose: () => void;
 }
 
-const firstOfMonth = (d: Date = new Date()) =>
-  getDateStr(new Date(d.getFullYear(), d.getMonth(), 1));
-const lastOfMonth = (d: Date = new Date()) =>
-  getDateStr(new Date(d.getFullYear(), d.getMonth() + 1, 0));
-const lastMonthStart = () => {
-  const n = new Date();
-  return firstOfMonth(new Date(n.getFullYear(), n.getMonth() - 1, 1));
+type InvoiceStatus = 'paid' | 'partial' | 'unpaid';
+
+const STATUS_META: Record<InvoiceStatus, { label: string; chip: string }> = {
+  paid: { label: 'Paid', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  partial: { label: 'Partial', chip: 'bg-amber-50 text-amber-700 border-amber-200' },
+  unpaid: { label: 'Unpaid', chip: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
-const lastMonthEnd = () => {
-  const n = new Date();
-  return lastOfMonth(new Date(n.getFullYear(), n.getMonth() - 1, 1));
+
+/**
+ * Same derivation as the ledger's settlement badge: the money, never the
+ * stored `payment_status` (which drifts after a credit note or write-off).
+ */
+const invoiceStatus = (inv: Invoice): InvoiceStatus => {
+  if (invoiceBalanceDue(inv) <= 0) return 'paid';
+  return (inv.amount_paid || 0) > 0 ? 'partial' : 'unpaid';
 };
 
 export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
@@ -47,6 +57,15 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   const [from, setFrom] = useState<string>(() => todayISO());
   const [to, setTo] = useState<string>(() => todayISO());
   const [excluded, setExcluded] = useState<string[]>([]);
+  /* The list is a selection surface: a month can hold dozens of invoices and
+     the operator usually needs to find one or two to exclude. */
+  const [listSearch, setListSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | InvoiceStatus>('all');
+  /* The paper preview is reassurance, not the task — collapsed by default so
+     the list and the Print action fit one screen. */
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const presets = useMemo(() => standardQuickRanges(), []);
+  const thisMonth = presets.find((p) => p.label === 'This Month');
   const [printSettings] = useState(() => loadPrintSettings());
   /* Statement section list for the one-sheet batch summary. */
   const [statementSections] = useState<string[]>(() =>
@@ -83,14 +102,51 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
         if (to && d > to) return false;
         return true;
       })
-      .sort((a, b) => dateOf(a).localeCompare(dateOf(b)));
+      /* Date order, then the number minted at booking time. The old comparator
+         stopped at the date, so same-day invoices kept the store's newest-first
+         order and a statement ran INV-0048 → INV-0022 instead of entry order. */
+      .sort(
+        (a, b) =>
+          dateOf(a).localeCompare(dateOf(b)) ||
+          compareInvoiceNumbers(a.invoice_number, b.invoice_number)
+      );
   }, [invoices, labId, from, to]);
+
+  /* What the operator can see right now. Search and status narrow the picker;
+     they never change what is selected (the footer always reports the true
+     selection, including rows the filter is hiding). */
+  const visibleInvoices = useMemo(() => {
+    const q = listSearch.trim().toLowerCase();
+    return periodInvoices.filter((inv) => {
+      if (statusFilter !== 'all' && invoiceStatus(inv) !== statusFilter) return false;
+      if (!q) return true;
+      return [inv.invoice_number, inv.case_number, inv.patient_name, inv.doctor_name]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+  }, [periodInvoices, listSearch, statusFilter]);
 
   const selected = periodInvoices.filter((inv) => !excluded.includes(inv.id));
   const selectedTotal = selected.reduce(
     (sum, inv) => sum + invoiceBalanceDue(inv),
     0
   );
+
+  const visibleIds = visibleInvoices.map((inv) => inv.id);
+  const selectedVisible = visibleInvoices.filter((inv) => !excluded.includes(inv.id)).length;
+  const allVisibleSelected = visibleInvoices.length > 0 && selectedVisible === visibleInvoices.length;
+  const someVisibleSelected = selectedVisible > 0 && !allVisibleSelected;
+
+  /* Header checkbox: acts on the rows the filter is showing. Clicking an
+     indeterminate box selects all of them, the standard table behaviour. */
+  const toggleVisible = () => {
+    setExcluded((prev) => {
+      if (allVisibleSelected) {
+        return Array.from(new Set([...prev, ...visibleIds]));
+      }
+      return prev.filter((id) => !visibleIds.includes(id));
+    });
+  };
 
   /* A selection longer than one sheet is split into sheets that each fit the
      paper, so nothing is sliced mid-row. The sheet count follows the live
@@ -149,8 +205,17 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             <div>
               <h3 className="text-sm font-bold text-slate-900">Batch Print Invoices</h3>
               <p className="text-xs text-slate-500">
-                Pick a clinic and a period — every invoice in that range prints as one statement, split across as many sheets as they need. Fully paid, partly paid and unpaid all show.
+                One statement for the period — paid, partly paid and unpaid.
               </p>
+              {/* The confirmation the operator actually needs before pressing
+                  Print: which clinic, which period, how many, how much. */}
+              {selectedClinic && (
+                <p className="mt-1 text-[11px] font-semibold text-indigo-700">
+                  {selectedClinic.name} · {describeQuickRange(from, to)} ·{' '}
+                  {selected.length} invoice{selected.length === 1 ? '' : 's'} ·{' '}
+                  {formatPKR(selectedTotal)}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -163,7 +228,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               type="button"
               onClick={handlePrint}
               disabled={selected.length === 0}
-              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-ink-muted"
+              className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-ink-muted"
             >
               <Printer className="h-4 w-4" /> Print {selected.length || ''} Invoice{selected.length === 1 ? '' : 's'}
             </button>
@@ -212,19 +277,64 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             <DatePickerRange
               from={from}
               to={to}
-              className="w-full [&>button]:w-full [&>button]:justify-start"
-              quickRanges={[
-                { label: 'Today', from: todayISO(), to: todayISO() },
-                { label: 'This Month', from: firstOfMonth(), to: lastOfMonth() },
-                { label: 'Last Month', from: lastMonthStart(), to: lastMonthEnd() },
-                { label: 'All Time', from: '', to: '' },
-              ]}
+              fullWidth
               onChange={(f, t) => {
                 setFrom(f);
                 setTo(t);
               }}
             />
           </div>
+        </div>
+
+        {/* Find / exclude toolbar. The list is a picker, not a report: a
+            month can hold dozens of invoices and the usual job is "print all
+            except this one", or "only the unpaid ones". */}
+        <div className="no-print flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-6 py-2.5">
+          <div className="relative min-w-[200px] flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-muted" />
+            <input
+              type="text"
+              value={listSearch}
+              onChange={(e) => setListSearch(e.target.value)}
+              placeholder="Find patient, invoice #, case # or doctor…"
+              aria-label="Search invoices in this batch"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-3 text-xs text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-1" role="group" aria-label="Filter by payment status">
+            {(['all', 'unpaid', 'partial', 'paid'] as const).map((s) => {
+              const active = statusFilter === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatusFilter(s)}
+                  aria-pressed={active}
+                  className={`cursor-pointer rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors ${
+                    active
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {s === 'all' ? 'All' : STATUS_META[s].label}
+                </button>
+              );
+            })}
+          </div>
+          {visibleInvoices.length !== periodInvoices.length && (
+            <span className="text-[11px] tabular-nums text-slate-500">
+              {visibleInvoices.length} of {periodInvoices.length} shown
+            </span>
+          )}
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setExcluded(periodInvoices.map((inv) => inv.id))}
+              className="cursor-pointer text-[11px] font-semibold text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-slate-800"
+            >
+              Clear selection
+            </button>
+          )}
         </div>
 
         {/* Selection list */}
@@ -237,12 +347,70 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                   ? `${selectedClinic.name} has no invoices between ${from || 'the earliest record'} and ${to || 'today'}.`
                   : 'Select a clinic to continue.'}
               </p>
+              {/* A dead end is a bug: give the two periods that usually hold
+                  the invoices the operator came for. */}
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                {thisMonth && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFrom(thisMonth.from);
+                      setTo(thisMonth.to);
+                    }}
+                    className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50"
+                  >
+                    Show this month
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFrom('');
+                    setTo('');
+                  }}
+                  className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50"
+                >
+                  All time
+                </button>
+              </div>
+            </div>
+          ) : visibleInvoices.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="text-sm font-bold text-slate-800">No invoices match this filter</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Clear the search or status filter to see all {periodInvoices.length} invoices in this period.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setListSearch('');
+                  setStatusFilter('all');
+                }}
+                className="mt-3 cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50"
+              >
+                Clear filter
+              </button>
             </div>
           ) : (
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="ds-th">
-                  <th scope="col" className="w-10 py-2.5 pl-6">✓</th>
+                  <th scope="col" className="w-10 py-2.5 pl-6">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleSelected;
+                      }}
+                      onChange={toggleVisible}
+                      aria-label={
+                        allVisibleSelected
+                          ? 'Deselect all invoices shown'
+                          : 'Select all invoices shown'
+                      }
+                      className="h-4 w-4 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </th>
                   <th scope="col" className="py-2.5 px-3">Date</th>
                   <th scope="col" className="py-2.5 px-3">Invoice</th>
                   <th scope="col" className="py-2.5 px-3">Case</th>
@@ -251,17 +419,26 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {periodInvoices.map((inv) => {
+                {visibleInvoices.map((inv) => {
                   const due = invoiceBalanceDue(inv);
                   const isOn = !excluded.includes(inv.id);
                   const linkedCase = findCaseForInvoice(inv, cases);
+                  const status = STATUS_META[invoiceStatus(inv)];
                   return (
-                    <tr key={inv.id} className={isOn ? 'bg-indigo-50/40' : 'bg-white'}>
+                    <tr
+                      key={inv.id}
+                      onClick={() => toggle(inv.id)}
+                      className={`cursor-pointer transition-colors ${
+                        isOn ? 'bg-indigo-50/40' : 'bg-white hover:bg-slate-50'
+                      }`}
+                    >
                       <td className="py-2.5 pl-6 align-top">
                         <input
                           type="checkbox"
                           checked={isOn}
+                          onClick={(e) => e.stopPropagation()}
                           onChange={() => toggle(inv.id)}
+                          aria-label={`Include ${inv.invoice_number} in the batch`}
                           className="h-4 w-4 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
                       </td>
@@ -285,23 +462,58 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                       <td className="py-2.5 px-3 align-top text-slate-600">
                         {formatDoctorName(inv.doctor_name)}
                       </td>
-                      <td className="py-2.5 px-6 text-right align-top font-mono font-bold text-slate-900">
-                        {formatPKR(due)}
+                      <td className="py-2.5 px-6 text-right align-top">
+                        <div className="font-mono font-bold text-slate-900">{formatPKR(due)}</div>
+                        {/* Why the invoice is in the batch: a settled invoice
+                            shows PKR 0 and would otherwise look like a mistake. */}
+                        <span
+                          className={`mt-1 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${status.chip}`}
+                        >
+                          {status.label}
+                        </span>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-300 bg-slate-100 text-xs font-bold text-slate-900">
-                  <td colSpan={5} className="py-3 pl-6 uppercase tracking-wider">
-                    {selected.length} of {periodInvoices.length} invoices selected
-                  </td>
-                  <td className="py-3 px-6 text-right font-mono">{formatPKR(selectedTotal)}</td>
-                </tr>
-              </tfoot>
             </table>
           )}
+        </div>
+
+        {/* Selection total pinned BELOW the scroller: it is the confirmation
+            before Print, so it must not scroll away with a long list. */}
+        {periodInvoices.length > 0 && (
+          <div className="no-print flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100 px-6 py-2.5 text-xs font-bold text-slate-900">
+            <span className="uppercase tracking-wider" aria-live="polite">
+              {selected.length} of {periodInvoices.length} invoice
+              {periodInvoices.length === 1 ? '' : 's'} selected
+            </span>
+            <span className="font-mono">{formatPKR(selectedTotal)}</span>
+          </div>
+        )}
+
+        {/* Preview is reassurance, not the task. It stays in the DOM so the
+            print stylesheet has its sheets, but `hidden print:block` keeps it
+            off the screen until asked for — the list and Print fit one screen. */}
+        <div className="no-print flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-2">
+          <button
+            type="button"
+            onClick={() => setPreviewOpen((o) => !o)}
+            aria-expanded={previewOpen}
+            aria-controls="batch-print-preview"
+            className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700 transition-colors hover:text-indigo-700"
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${previewOpen ? 'rotate-180' : ''}`}
+            />
+            {previewOpen ? 'Hide preview' : 'Preview statement'}
+            <span className="font-normal text-slate-500">
+              · {pageCount} sheet{pageCount === 1 ? '' : 's'}
+            </span>
+          </button>
+          <span className="text-[11px] text-slate-500">
+            Each printed invoice is logged to billing history.
+          </span>
         </div>
 
         {/* Paper preview - one sheet per page of the selected invoices.
@@ -310,7 +522,11 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             divider on screen). NOT `.no-print`: the preview shell must stay
             printable, otherwise the whole batch comes out blank (the card
             above carries print-area). */}
-        <div className="print-preview-shell">
+        <div
+          id="batch-print-preview"
+          className={previewOpen ? '' : 'hidden print:block'}
+        >
+          <div className="print-preview-shell">
           <div className="w-full">
             {selected.length === 0 ? (
               <div className={printSettings.paper === 'letter' ? 'print-preview-page paper-letter' : 'print-preview-page'}>
@@ -344,23 +560,8 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                 </div>
               ))
             )}
+            </div>
           </div>
-        </div>
-
-        {/* Screen footer */}
-        <div className="no-print flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-3">
-          <span className="text-xs text-slate-500">
-            {pageCount > 1
-              ? `Prints as ${pageCount} sheets · each printed invoice is logged to billing history.`
-              : 'Each printed invoice is logged to billing history.'}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-lg bg-slate-100 px-4 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-200"
-          >
-            Close
-          </button>
         </div>
     </Modal>
   );
