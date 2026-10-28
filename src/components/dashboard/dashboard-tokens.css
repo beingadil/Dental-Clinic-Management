@@ -128,10 +128,11 @@
      fallback; the second derives from the operator's brand accent (set by
      applyBrandColor), so a rebrand tints the room instead of tinting it
      blue. A browser without color-mix drops the second and keeps the first. */
-  --ds-ambient-1: rgba(37, 99, 235, 0.08);
-  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 9%, transparent);
-  --ds-ambient-2: rgba(6, 182, 212, 0.06);
-  --ds-ambient-3: rgba(203, 232, 255, 0.07);
+  --ds-ambient-1: rgba(99, 102, 241, 0.16);
+  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 20%, transparent);
+  --ds-ambient-2: rgba(6, 182, 212, 0.13);
+  --ds-ambient-3: rgba(168, 85, 247, 0.10);
+  --ds-ambient-4: rgba(244, 114, 182, 0.10);
   /* A touch warmer than ambient-2 so the 'light from above' read can breathe
      without borrowing the accent's identity. Used only behind solid surfaces.
      */
@@ -147,6 +148,11 @@
      It sits ON the panel surface, never behind text, so no contrast pairing
      changes. Dark overrides it to a much fainter light rim. */
   --ds-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.75);
+
+  /* The glass edge: a bright, mostly-white hairline along each pane that
+     reads as frosted glass catching light. Dark mode swaps it for a faint
+     luminous rim so the same geometry reads on a near-black canvas. */
+  --ds-glass-line: rgba(255, 255, 255, 0.65);
 
   /* Wide, low-opacity, hue-tinted — depth without a hard edge. */
   --ds-shadow-card: 0 8px 24px -12px rgba(20, 28, 43, 0.12), 0 2px 6px -2px rgba(20, 28, 43, 0.06);
@@ -229,10 +235,10 @@
        the panels behind it show through, giving the board the depth of a
        modern glass UI instead of a flat stack of white cards. The opacity
        stays high enough that text contrast on the panel is unchanged. */
-    background: color-mix(in srgb, var(--ds-surface) 90%, transparent);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid color-mix(in srgb, var(--ds-line) 50%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 62%, transparent);
+    -webkit-backdrop-filter: blur(28px) saturate(190%);
+    backdrop-filter: blur(28px) saturate(190%);
+    border: 1px solid var(--ds-glass-line);
     border-radius: var(--ds-radius-card);
     box-shadow: var(--ds-rim), var(--ds-shadow-card),
       0 10px 30px -12px color-mix(in srgb, var(--ds-ink) 14%, transparent),
@@ -255,7 +261,7 @@
     transform: translateY(-3px);
     box-shadow: var(--ds-rim), var(--ds-shadow-lift),
       0 16px 40px -12px color-mix(in srgb, var(--ds-ink) 18%, transparent);
-    border-color: color-mix(in srgb, var(--ds-accent) 28%, var(--ds-line));
+    border-color: color-mix(in srgb, var(--ds-accent) 35%, var(--ds-glass-line));
   }
 
   /* Wrapper the dashboard sets around each panel for drag-and-drop. It must
@@ -441,10 +447,11 @@
     inset: 0;
     z-index: -1;
     pointer-events: none;
-background-image:
+    background-image:
       radial-gradient(58rem 32rem at 8% -12%, var(--ds-ambient-1), transparent 68%),
       radial-gradient(46rem 28rem at 96% 2%, var(--ds-ambient-2), transparent 70%),
-      radial-gradient(40rem 24rem at 50% 110%, var(--ds-ambient-3), transparent 72%);
+      radial-gradient(40rem 24rem at 50% 110%, var(--ds-ambient-3), transparent 72%),
+      radial-gradient(36rem 22rem at 82% 85%, var(--ds-ambient-4), transparent 70%);
   }
 
   /* Blur is deliberately confined to surfaces that do not scroll: a
@@ -457,10 +464,10 @@ background-image:
   /* Subtle glass button: translucent surface with a light blur and lift on
      hover. Keeps text legible while reading as a frosted control. */
   .ds-glass-button {
-    background: color-mix(in srgb, var(--ds-surface) 60%, transparent);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid color-mix(in srgb, var(--ds-line) 50%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 55%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+    backdrop-filter: blur(16px) saturate(170%);
+    border: 1px solid var(--ds-glass-line);
     border-radius: var(--ds-radius-pill);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--ds-ink) 6%, transparent);
     transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -472,7 +479,7 @@ background-image:
     transform: translateY(-2px);
     box-shadow: var(--ds-shadow-lift);
     border-color: color-mix(in srgb, var(--ds-accent) 28%, var(--ds-line));
-    background: color-mix(in srgb, var(--ds-surface) 92%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 80%, transparent);
   }
 
   /* ── Rank: a card is not the only container ─────────────────────────
