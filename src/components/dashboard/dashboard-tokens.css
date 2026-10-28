@@ -140,7 +140,7 @@
 
 /* ── Layer 3 · COMPONENT ──────────────────────────────────────────────── */
 :root {
-  --ds-radius-card: 22px;
+  --ds-radius-card: 24px;
   --ds-radius-pill: 9999px;
   /* A 1px inner highlight along the top edge. This is what makes a card read
      as machined rather than flat: lit from above, like a tray in a rack.
@@ -149,8 +149,8 @@
   --ds-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.75);
 
   /* Wide, low-opacity, hue-tinted — depth without a hard edge. */
-  --ds-shadow-card: 0 1px 2px rgba(20, 28, 43, 0.04), 0 1px 3px rgba(20, 28, 43, 0.03);
-  --ds-shadow-lift: 0 4px 12px -2px rgba(20, 28, 43, 0.08);
+  --ds-shadow-card: 0 8px 24px -12px rgba(20, 28, 43, 0.12), 0 2px 6px -2px rgba(20, 28, 43, 0.06);
+  --ds-shadow-lift: 0 16px 36px -16px rgba(20, 28, 43, 0.18), 0 4px 12px -4px rgba(20, 28, 43, 0.08);
 
   /* Vertical rhythm: generous ambient padding in the lead slot so the spine
      has breathing room before the packer begins. */
