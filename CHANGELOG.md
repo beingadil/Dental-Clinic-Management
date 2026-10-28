@@ -1,3 +1,26 @@
+## [2.31.2] - 2026-10-28
+
+Shared date presets, a rebuilt Batch Print Invoices dialog, and clinic account
+balances on printed invoices and statements.
+
+### Added
+- One shared date-preset menu (Today, Yesterday, Last 7 Days, This Month,
+  Last Month, Custom Range, plus an All Time reset) on every date picker.
+- Batch Print Invoices rebuild: search, settlement filters, whole-row
+  selection with a tri-state select-all, Clear selection, status chips,
+  a pinned selection total, a header summary, empty-state actions, labelled
+  checkboxes and an aria-live count, with the paper preview collapsed by
+  default.
+- Printed invoice and statement Account Balance block: opening balance,
+  advance deposit (we owe), this invoice / cases amount, paid, credit notes
+  and closing balance with Dr/Cr, including prior balances and advances.
+
+### Fixed
+- Batch-printed statements now reflect a clinic's advance deposit and prior
+  balances in both the opening and closing balances.
+- Dark-mode print sheets keep their light-theme ink and total-row background
+  so white sheets stay legible.
+
 # Changelog
 
 All notable changes to this project are documented in this file.
