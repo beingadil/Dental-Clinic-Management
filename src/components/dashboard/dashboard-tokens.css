@@ -229,7 +229,7 @@
        the panels behind it show through, giving the board the depth of a
        modern glass UI instead of a flat stack of white cards. The opacity
        stays high enough that text contrast on the panel is unchanged. */
-    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 90%, transparent);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
     backdrop-filter: blur(20px) saturate(160%);
     border: 1px solid color-mix(in srgb, var(--ds-line) 50%, transparent);
@@ -472,7 +472,7 @@ background-image:
     transform: translateY(-2px);
     box-shadow: var(--ds-shadow-lift);
     border-color: color-mix(in srgb, var(--ds-accent) 28%, var(--ds-line));
-    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 92%, transparent);
   }
 
   /* ── Rank: a card is not the only container ─────────────────────────
