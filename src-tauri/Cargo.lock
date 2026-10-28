@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "dental-solutions"
-version = "2.31.0"
+version = "2.31.1"
 dependencies = [
  "hex",
  "reqwest 0.12.28",

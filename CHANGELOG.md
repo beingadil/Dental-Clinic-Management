@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.31.1] - 2026-10-28
+
+Adjustments stay out of invoice settlement, and Receive Payment follows the
+order invoices were recorded in.
+
+### Fixed
+- Record Adjustment (credit note, debit adjustment, refund) posts to the
+  clinic ledger only. It no longer settles invoices behind the operator's
+  back, where an invoice's remaining due dropped with no payment recorded
+  against it. Invoices are settled by payments; the ledger carries the
+  adjustment as a plain CR/DR.
+- Editing or deleting a credit note recorded by 2.30–2.31 unwinds only the
+  part that was actually applied to invoices, so a neighbouring note's
+  credit is not stripped with it.
+- Receive Payment lists a clinic's open invoices in the order they were
+  recorded (oldest first) and shows the recorded date on each row. The list
+  was ordered by issue date, which editing a case's delivery date rewrites,
+  so a later booking could jump ahead of an earlier one.
+
 ## [2.30.2] - 2026-10-22
 
 Adjustment entries now reach installed copies.
