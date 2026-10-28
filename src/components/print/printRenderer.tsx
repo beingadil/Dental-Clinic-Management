@@ -92,6 +92,77 @@ const signedMoney = (n: number) => {
    editor or a shell round-trip cannot silently turn the join into something
    else. It bit us once: a PowerShell rewrite corrupted the literal and the
    printed row read "Ali Raza A? Retainer" instead of the separator. */
+/* Shared account-position block used by both the single invoice and the batch
+   statement. Keeping one renderer means the two documents cannot drift apart
+   about how an advance deposit or a prior balance is shown. */
+const AccountBalanceBlock: React.FC<{
+  position: InvoiceAccountPosition;
+  amountLabel: string;
+  paidLabel: string;
+  appliedNote?: string;
+}> = ({ position, amountLabel, paidLabel, appliedNote }) => (
+  <div className="mb-4 flex justify-end">
+    <div className="w-72">
+      <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+        Account Balance
+      </div>
+      <table className="w-full border-collapse text-[11px]">
+        <tbody>
+          <tr className="border border-slate-300">
+            <td className="px-3 py-1 text-slate-600">Opening Balance</td>
+            <td className="px-3 py-1 text-right font-semibold">
+              {signedMoney(position.openingBalance)}
+            </td>
+          </tr>
+          {position.advanceDeposit > 0 && (
+            <tr className="border border-slate-300 border-t-0">
+              <td className="py-1 pl-6 pr-3 text-slate-500">Advance Deposit (we owe)</td>
+              <td className="px-3 py-1 text-right text-ink-success">
+                {money(position.advanceDeposit)}
+              </td>
+            </tr>
+          )}
+          <tr className="border border-slate-300 border-t-0">
+            <td className="px-3 py-1 text-slate-600">{amountLabel}</td>
+            <td className="px-3 py-1 text-right">{money(position.invoiceAmount)}</td>
+          </tr>
+          <tr className="border border-slate-300 border-t-0">
+            <td className="px-3 py-1 text-slate-600">{paidLabel}</td>
+            <td className="px-3 py-1 text-right text-ink-success">
+              {money(position.cashPaid)}
+            </td>
+          </tr>
+          {position.creditNotes > 0 && (
+            <tr className="border border-slate-300 border-t-0">
+              <td className="px-3 py-1 text-slate-600">Credit Notes</td>
+              <td className="px-3 py-1 text-right text-ink-success">
+                -{money(position.creditNotes)}
+              </td>
+            </tr>
+          )}
+          <tr className="border-2 border-slate-900 bg-slate-100">
+            <td className="px-3 py-2 font-bold uppercase tracking-wider">
+              {position.closingBalance < 0
+                ? 'Closing Balance (Cr)'
+                : position.closingBalance > 0
+                ? 'Closing Balance (Dr)'
+                : 'Closing Balance'}
+            </td>
+            <td className="px-3 py-2 text-right text-sm font-bold">
+              {money(Math.abs(position.closingBalance))}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {position.advanceApplied > 0 && (
+        <div className="mt-1 text-right text-[9px] text-slate-500">
+          {money(position.advanceApplied)} {appliedNote || 'of this invoice was settled from the advance deposit.'}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
 export const SEP = ' \u00B7 ';
 
 /**
@@ -587,68 +658,11 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               the table must keep showing this invoice's full amount even when
               an advance settles half of it. */}
           {on(sections, 'totals') && accountPosition && (
-            <div className="mb-4 flex justify-end">
-              <div className="w-72">
-                <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
-                  Account Balance
-                </div>
-                <table className="w-full border-collapse text-[11px]">
-                  <tbody>
-                    <tr className="border border-slate-300">
-                      <td className="px-3 py-1 text-slate-600">Opening Balance</td>
-                      <td className="px-3 py-1 text-right font-semibold">
-                        {signedMoney(accountPosition.openingBalance)}
-                      </td>
-                    </tr>
-                    {accountPosition.advanceDeposit > 0 && (
-                      <tr className="border border-slate-300 border-t-0">
-                        <td className="py-1 pl-6 pr-3 text-slate-500">Advance Deposit (we owe)</td>
-                        <td className="px-3 py-1 text-right text-ink-success">
-                          {money(accountPosition.advanceDeposit)}
-                        </td>
-                      </tr>
-                    )}
-                    <tr className="border border-slate-300 border-t-0">
-                      <td className="px-3 py-1 text-slate-600">This Invoice</td>
-                      <td className="px-3 py-1 text-right">{money(accountPosition.invoiceAmount)}</td>
-                    </tr>
-                    {accountPosition.cashPaid > 0 && (
-                      <tr className="border border-slate-300 border-t-0">
-                        <td className="px-3 py-1 text-slate-600">Paid (cash / bank)</td>
-                        <td className="px-3 py-1 text-right text-ink-success">
-                          {money(accountPosition.cashPaid)}
-                        </td>
-                      </tr>
-                    )}
-                    {accountPosition.creditNotes > 0 && (
-                      <tr className="border border-slate-300 border-t-0">
-                        <td className="px-3 py-1 text-slate-600">Credit Notes</td>
-                        <td className="px-3 py-1 text-right text-ink-success">
-                          -{money(accountPosition.creditNotes)}
-                        </td>
-                      </tr>
-                    )}
-                    <tr className="border-2 border-slate-900 bg-slate-100">
-                      <td className="px-3 py-2 font-bold uppercase tracking-wider">
-                        {accountPosition.closingBalance < 0
-                          ? 'Closing Balance (Cr)'
-                          : accountPosition.closingBalance > 0
-                          ? 'Closing Balance (Dr)'
-                          : 'Closing Balance'}
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm font-bold">
-                        {money(Math.abs(accountPosition.closingBalance))}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                {accountPosition.advanceApplied > 0 && (
-                  <div className="mt-1 text-right text-[9px] text-slate-500">
-                    {money(accountPosition.advanceApplied)} of this invoice was settled from the advance deposit.
-                  </div>
-                )}
-              </div>
-            </div>
+            <AccountBalanceBlock
+              position={accountPosition}
+              amountLabel="This Invoice"
+              paidLabel="Paid (cash / bank)"
+            />
           )}
           {on(sections, 'paymentHistory') && (invoice.payments || []).length > 0 && (
             <div className="mb-4">
@@ -850,7 +864,15 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               </tbody>
             </table>
           )}
-          {on(sections, 'balanceSummary') && showBalance && (
+          {on(sections, 'balanceSummary') && showBalance && accountPosition && (
+            <AccountBalanceBlock
+              position={accountPosition}
+              amountLabel={balanceRows.length === 1 ? 'This Invoice' : 'Cases Amount'}
+              paidLabel="Paid"
+              appliedNote="of the selected invoices was settled from advance deposits."
+            />
+          )}
+          {on(sections, 'balanceSummary') && showBalance && !accountPosition && (
             <div className="flex justify-end mb-4">
               <table className="text-[11px] w-64">
                 <tbody>

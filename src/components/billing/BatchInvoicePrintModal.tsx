@@ -1,4 +1,6 @@
 import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import { buildStatementAccountPosition } from '../../services/invoiceAccount';
+import { buildLabFinancialSummary } from '../../services/ledgerDomain';
 import { printCurrentDocument } from '../../utils/printDocument';
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -49,7 +51,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   initialLabId,
   onClose,
 }) => {
-  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem, getLabFinancialSummary } = useApp();
+  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem, getLabFinancialSummary, advancePayments, accountAdjustments } = useApp();
 
   const [labId, setLabId] = useState<string>(initialLabId || labs[0]?.id || '');
   // Default the period to today, matching every other billing tab; the quick
@@ -161,6 +163,33 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     setExcluded((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const selectedClinic = labs.find((l) => l.id === labId);
+
+  /* The printed statement has to reconcile with the clinic's account, not just
+     the selected invoices: an advance deposit already held (or earlier unpaid
+     invoices) belongs in the opening balance. Built from the same summary the
+     ledger uses so the two cannot drift. */
+  const clinicSummary = useMemo(() => {
+    if (!selectedClinic) return null;
+    if (typeof getLabFinancialSummary === 'function') {
+      return getLabFinancialSummary(selectedClinic.id);
+    }
+    return buildLabFinancialSummary({
+      labId: selectedClinic.id,
+      invoices,
+      advancePayments: advancePayments || [],
+      accountAdjustments: accountAdjustments || [],
+      labs,
+    });
+  }, [selectedClinic, getLabFinancialSummary, invoices, labs, advancePayments, accountAdjustments]);
+
+  const statementAccountPosition = useMemo(() => {
+    if (!clinicSummary || selected.length === 0) return null;
+    return buildStatementAccountPosition({
+      invoices: selected,
+      netBalance: clinicSummary.net_balance,
+      advanceBalance: clinicSummary.advance_balance,
+    });
+  }, [clinicSummary, selected]);
 
   const handlePrint = () => {
     if (selected.length === 0) return;
@@ -556,6 +585,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                     balanceInvoices={selected}
                     showBalance={page.pageNumber === pageCount}
                     advanceBalance={selectedClinic ? (getLabFinancialSummary?.(selectedClinic.id)?.advance_balance ?? 0) : 0}
+                    accountPosition={statementAccountPosition}
                   />
                 </div>
               ))

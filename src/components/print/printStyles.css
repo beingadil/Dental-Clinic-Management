@@ -44,6 +44,12 @@
 .dark .print-doc .text-amber-700 { color: #b45309; }
 .dark .print-doc .text-rose-700 { color: #be123c; }
 .dark .print-doc .text-ink-success { color: #007e51; }
+/* Print sheets stay white in every theme, so any utility background that the
+   dark theme remaps must be pinned back to its light value here as well —
+   otherwise a "bg-slate-100" total row paints as a dark slab on a white page. */
+.dark .print-doc .bg-slate-50 { background-color: #f8fafc; }
+.dark .print-doc .bg-slate-100 { background-color: #f1f5f9; }
+.dark .print-doc .bg-white { background-color: #ffffff; }
 
 @media (max-width: 640px) {
   .print-preview-page {

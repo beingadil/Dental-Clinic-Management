@@ -176,3 +176,64 @@ export const buildInvoiceAccountPosition = ({
     closingBalance,
   };
 };
+
+export interface StatementAccountInput {
+  /** The invoices included in the statement (the whole run, not one page). */
+  invoices: Invoice[] | null;
+  /** Clinic account balance after all invoices, payments, advances and adjustments. */
+  netBalance: number;
+  /** Unallocated advance wallet held for the clinic. */
+  advanceBalance: number;
+}
+
+/**
+ * The clinic's account position for a batch statement.
+ *
+ * A statement covers several invoices, so its "opening balance" is derived by
+ * removing the selected invoices' own contribution (amount − paid − credit notes)
+ * from the clinic's current balance. That keeps the closing line equal to the
+ * clinic's true account balance while still showing what was brought forward.
+ *
+ * The same advance-deposit rule as a single invoice applies: the deposit is
+ * already inside the opening balance, so `cashPaid` keeps the advance allocations
+ * it already carries and the deposit is shown as a memo rather than subtracted a
+ * second time.
+ */
+export const buildStatementAccountPosition = ({
+  invoices,
+  netBalance,
+  advanceBalance,
+}: StatementAccountInput): InvoiceAccountPosition => {
+  const rows = invoices || [];
+
+  const invoiceAmount = roundMoney(rows.reduce((sum, inv) => sum + (inv.final_amount || 0), 0));
+  const cashPaid = roundMoney(rows.reduce((sum, inv) => sum + (inv.amount_paid || 0), 0));
+  const creditNotes = roundMoney(rows.reduce((sum, inv) => sum + (inv.credit_notes_total || 0), 0));
+  const advanceApplied = roundMoney(
+    rows.reduce((sum, inv) => {
+      return (
+        sum +
+        (inv.payments || [])
+          .filter(isAdvanceAppliedPayment)
+          .reduce((paymentSum, payment) => paymentSum + (payment.amount || 0), 0)
+      );
+    }, 0),
+  );
+
+  const openingBalance = roundMoney(netBalance - invoiceAmount + cashPaid + creditNotes);
+  const closingBalance = roundMoney(netBalance);
+  const advanceDeposit =
+    openingBalance < 0
+      ? roundMoney(Math.min(-openingBalance, Math.max(0, advanceBalance)))
+      : 0;
+
+  return {
+    openingBalance,
+    advanceDeposit,
+    advanceApplied,
+    invoiceAmount,
+    cashPaid,
+    creditNotes,
+    closingBalance,
+  };
+};
