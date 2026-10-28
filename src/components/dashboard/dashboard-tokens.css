@@ -128,11 +128,14 @@
      fallback; the second derives from the operator's brand accent (set by
      applyBrandColor), so a rebrand tints the room instead of tinting it
      blue. A browser without color-mix drops the second and keeps the first. */
-  --ds-ambient-1: rgba(99, 102, 241, 0.16);
-  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 20%, transparent);
-  --ds-ambient-2: rgba(6, 182, 212, 0.13);
-  --ds-ambient-3: rgba(168, 85, 247, 0.10);
-  --ds-ambient-4: rgba(244, 114, 182, 0.10);
+  --ds-ambient-1: rgba(99, 102, 241, 0.28);
+  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 30%, transparent);
+  --ds-ambient-2: rgba(6, 182, 212, 0.24);
+  --ds-ambient-3: rgba(168, 85, 247, 0.22);
+  --ds-ambient-4: rgba(244, 114, 182, 0.20);
+  /* The tinted canvas beneath the blobs: without it the board reads as white
+     with a few coloured spots instead of coloured air behind glass. */
+  --ds-ambient-base: linear-gradient(180deg, rgba(240, 242, 255, 0.9), rgba(253, 251, 255, 0.55));
   /* A touch warmer than ambient-2 so the 'light from above' read can breathe
      without borrowing the accent's identity. Used only behind solid surfaces.
      */
@@ -451,7 +454,8 @@
       radial-gradient(58rem 32rem at 8% -12%, var(--ds-ambient-1), transparent 68%),
       radial-gradient(46rem 28rem at 96% 2%, var(--ds-ambient-2), transparent 70%),
       radial-gradient(40rem 24rem at 50% 110%, var(--ds-ambient-3), transparent 72%),
-      radial-gradient(36rem 22rem at 82% 85%, var(--ds-ambient-4), transparent 70%);
+      radial-gradient(36rem 22rem at 82% 85%, var(--ds-ambient-4), transparent 70%),
+      var(--ds-ambient-base);
   }
 
   /* Blur is deliberately confined to surfaces that do not scroll: a
@@ -504,18 +508,6 @@
     padding-right: 0;
   }
 
-  /* Reference: a rule, not a container. `border` is reset before `border-top`
-     deliberately — the shorthand would otherwise re-add all four edges. */
-  .ds-rank-reference .ds-panel {
-    background: transparent;
-    border: none;
-    border-top: 1px solid var(--ds-line);
-    border-radius: 0;
-    box-shadow: none;
-    padding-left: 0;
-    padding-right: 0;
-    padding-top: calc(var(--ds-pad-card) * 0.7);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

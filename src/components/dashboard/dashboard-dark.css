@@ -68,11 +68,12 @@
     /* Ambient atmosphere on a near-black canvas needs a touch more presence
        to read at all. Same rule as light: fallback first, brand-derived
        second, static, behind content only. */
-    --ds-ambient-1: rgba(129, 140, 248, 0.22);
-    --ds-ambient-1: color-mix(in srgb, var(--brand-600) 24%, transparent);
-    --ds-ambient-2: rgba(34, 211, 238, 0.14);
-    --ds-ambient-3: rgba(168, 85, 247, 0.13);
-    --ds-ambient-4: rgba(236, 72, 153, 0.09);
+    --ds-ambient-1: rgba(129, 140, 248, 0.32);
+    --ds-ambient-1: color-mix(in srgb, var(--brand-600) 34%, transparent);
+    --ds-ambient-2: rgba(34, 211, 238, 0.24);
+    --ds-ambient-3: rgba(168, 85, 247, 0.22);
+    --ds-ambient-4: rgba(236, 72, 153, 0.16);
+    --ds-ambient-base: linear-gradient(180deg, rgba(30, 34, 66, 0.72), rgba(12, 14, 30, 0.4));
 
     /* Luminous glass edge: the same bright hairline the light theme paints,
        dialled down to a faint glow so frosted panes read against the aurora

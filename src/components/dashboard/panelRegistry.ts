@@ -44,9 +44,11 @@ export const PANEL_KEYS = Object.keys(PANEL_LABELS);
  *               hangs off.
  * - `primary`   the working set — a real card, the thing you read every
  *               morning.
- * - `reference` borderless and hairline-ruled: looked up, not read. This is
- *               where roughly 40% of the page's chrome stops existing without
- *               a single fact going away.
+ * - `reference` looked-up-not-read panels. They now render as the same glass
+ *               card as `primary` — the old borderless hairline treatment
+ *               read as "broken transparent panels" on the aurora canvas, so
+ *               it was retired; the rank remains as a semantic hook for
+ *               future quieter treatments.
  */
 export type PanelRank = 'lead' | 'primary' | 'reference';
 
