@@ -2,15 +2,19 @@
  * Adjustment attribution.
  *
  * The invoice module lists money documents on the invoice row they belong to.
- * Payments carry an invoice id; clinic-level adjustments do not. Credit notes
- * are applied FIFO (oldest open invoice first), so replaying them against the
- * clinic's invoices has to land them on exactly those rows — otherwise an
- * adjustment "disappears" from the one screen that can correct it. Surcharges
- * and refunds never touch invoice balances, but still need a display home.
+ * Payments carry an invoice id; clinic-level adjustments do not. A credit note
+ * recorded today does NOT settle an invoice — it is a ledger row on the clinic
+ * account — so it lands on a row only as a `clinicLevel` display home, the
+ * same as a surcharge or a refund. Notes recorded by 2.30–2.31 were applied
+ * FIFO, and replaying those against the clinic's invoice credits still has to
+ * land them on exactly the rows they paid down.
  */
 import { describe, it, expect } from 'vitest';
 import type { AccountAdjustment, Invoice } from '../../src/types';
-import { attributeAdjustmentsToInvoices } from '../../src/services/adjustmentAttribution';
+import {
+  attributeAdjustmentsToInvoices,
+  attributedCreditTotal,
+} from '../../src/services/adjustmentAttribution';
 
 const invoice = (over: Partial<Invoice>): Invoice =>
   ({
@@ -154,8 +158,53 @@ describe('attributeAdjustmentsToInvoices', () => {
     expect(map.size).toBe(0);
   });
 
+  it('parks an unapplied credit note as a clinic-level document, not a settlement', () => {
+    // Record Adjustment posts to the ledger only: the invoices carry no
+    // credits, so the note must not claim any of their capacity.
+    const map = attributeAdjustmentsToInvoices(
+      [INV_A(), INV_B()],
+      [adjustment({ amount: 10000 })],
+    );
+
+    expect(map.get('inv-b')).toEqual([
+      expect.objectContaining({ amount: 10000, clinicLevel: true }),
+    ]);
+    expect(map.has('inv-a')).toBe(false);
+  });
+
   it('leaves invoices without adjustments out of the map', () => {
     const map = attributeAdjustmentsToInvoices([INV_A(), INV_B()], []);
     expect(map.size).toBe(0);
+  });
+});
+
+describe('attributedCreditTotal', () => {
+  it('is zero for a note the current build never applied', () => {
+    expect(
+      attributedCreditTotal('adj-1', [INV_A(), INV_B()], [adjustment({ amount: 10000 })]),
+    ).toBe(0);
+  });
+
+  it('counts only the portion of a legacy note that sits in invoice credits', () => {
+    // 2.30–2.31 applied notes FIFO; only 40,000 of this 50,000 note landed.
+    const legacy = adjustment({ amount: 50000 });
+    expect(attributedCreditTotal(legacy.id, [INV_A(40000)], [legacy])).toBe(40000);
+  });
+
+  it('stops at the clinic’s own invoices', () => {
+    const legacy = adjustment({ amount: 10000 });
+    const otherClinic = invoice({ id: 'inv-x', lab_id: 'lab-2', credit_notes_total: 10000 });
+    expect(attributedCreditTotal(legacy.id, [otherClinic], [legacy])).toBe(0);
+  });
+
+  it('is zero for surcharges and refunds, which never touch invoices', () => {
+    const dr = adjustment({ id: 'adj-dr', type: 'debit_adjustment', amount: 2500 });
+    const refund = adjustment({ id: 'adj-ref', type: 'refund', amount: 1500 });
+    expect(attributedCreditTotal('adj-dr', [INV_A(2500)], [dr, refund])).toBe(0);
+    expect(attributedCreditTotal('adj-ref', [INV_A(2500)], [dr, refund])).toBe(0);
+  });
+
+  it('is zero for an id that is not on file', () => {
+    expect(attributedCreditTotal('missing', [INV_A(1000)], [])).toBe(0);
   });
 });

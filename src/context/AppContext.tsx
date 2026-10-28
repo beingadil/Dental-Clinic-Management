@@ -64,6 +64,7 @@ import {
   buildLedgerEntries,
 } from '../services/ledgerDomain';
 import { nextReservedInvoiceNumber } from '../services/invoiceNumbering';
+import { attributedCreditTotal } from '../services/adjustmentAttribution';
 import { buildLabDeletionImpact, applyLabDeletion } from '../services/labDeletion';
 import type { LabDeletionImpact } from '../services/labDeletion';
 import { applyBrandColor } from '../services/brandingTheme';
@@ -1969,21 +1970,14 @@ const deleteLab = (id: string) => {
       attachments: attachments || []
     };
 
+    /* Ledger only. A Record Adjustment entry is a journal line on the clinic's
+       account: it moves the closing balance and nothing else. It never pays
+       down, discounts or otherwise settles an invoice — invoices are settled by
+       payments, and an unapplied credit is what the ledger shows as a credit
+       row. (2.30–2.31 applied credit notes FIFO at this point, which dropped an
+       invoice's remaining due and could flip it to Paid with no payment behind
+       it — not what the operator recorded.) */
     setAccountAdjustments((prev) => [newAdj, ...prev]);
-
-    // CREDIT NOTES AUTO-APPLY: a credit entry reduces what the clinic owes, so
-    // it must land on the oldest unpaid invoice first (FIFO), the same way a
-    // payment does. Without this the credit note shows in the ledger but never
-    // touches an invoice's effective balance, so the books disagree.
-    if (type === 'credit_note') {
-      applyClinicCredit(labId, amount);
-    }
-
-    // Debit adjustments are clinic-level: they show as a debit row in the ledger
-    // and buildLabFinancialSummary already adds them to total_debit_adjustments.
-    // They do NOT touch individual invoices — there is no debit_adjustments_total
-    // field on an invoice, and modifying final_amount would double-count (once
-    // here, once in the ledger row).
 
     pushNotifications(
       buildAdjustmentNotification({ id: genId('notif'), kind: type, adjNum, labId, labName, amount, reason, at: nowStr }),
@@ -1993,17 +1987,21 @@ const deleteLab = (id: string) => {
   };
 
   /**
-   * Remove an adjustment and undo its money effect. Credit notes (and
-   * write-offs, if any older row carries that type) come back off the invoices
-   * they paid down, so the clinic's credits always equal the notes still on
-   * file. Persistence follows the ordinary state sync, same as every other
-   * billing command.
+   * Remove an adjustment and undo its money effect.
+   *
+   * For every document recorded by the current build the ledger row IS the
+   * effect, so deleting one just drops the row. Notes recorded by 2.30–2.31
+   * were applied FIFO to invoices before that rule changed, so the portion
+   * still sitting in invoice credits is unwound — `attributedCreditTotal`
+   * reads it off the replay instead of assuming the whole note landed, which
+   * would strip an unrelated note's credit off the invoices.
    */
   const deleteAccountAdjustment = (id: string): boolean => {
     const adj = accountAdjustments.find((a) => a.id === id);
     if (!adj) return false;
-    if (adj.type === 'credit_note' || adj.type === 'write_off') {
-      reverseClinicCredit(adj.lab_id, adj.amount, adj.invoice_id);
+    const applied = attributedCreditTotal(id, invoices, accountAdjustments);
+    if (applied > 0) {
+      reverseClinicCredit(adj.lab_id, applied, adj.invoice_id);
     }
     setAccountAdjustments((prev) => prev.filter((a) => a.id !== id));
     if (adj.journal_id) {
@@ -2015,9 +2013,12 @@ const deleteLab = (id: string) => {
   /**
    * Correct an adjustment in place. Amount, reason, date and reference are
    * editable; the document type stays fixed because the number prefix (CR/DR/
-   * REF) and the posted journal both derive from it. A changed credit amount is
-   * reversed from the invoices and re-applied, so the invoice module and the
-   * ledger move together.
+   * REF) and the posted journal both derive from it.
+   *
+   * Changing the amount of a legacy note — one recorded when credit notes were
+   * still applied to invoices — reverses the portion that actually landed and
+   * applies the new amount, so the invoice module and the ledger move together.
+   * Notes recorded now were never applied, so editing one is ledger-only.
    */
   const updateAccountAdjustment = (
     id: string,
@@ -2029,8 +2030,9 @@ const deleteLab = (id: string) => {
     const nextAmount = patch.amount === undefined ? adj.amount : patch.amount;
     if (!Number.isFinite(nextAmount) || nextAmount <= 0) return false;
 
-    if ((adj.type === 'credit_note' || adj.type === 'write_off') && nextAmount !== adj.amount) {
-      reverseClinicCredit(adj.lab_id, adj.amount, adj.invoice_id);
+    const applied = attributedCreditTotal(id, invoices, accountAdjustments);
+    if (applied > 0 && nextAmount !== adj.amount) {
+      reverseClinicCredit(adj.lab_id, applied, adj.invoice_id);
       applyClinicCredit(adj.lab_id, nextAmount, adj.invoice_id);
     }
 

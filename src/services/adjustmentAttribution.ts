@@ -3,16 +3,18 @@ import type { AccountAdjustment, Invoice } from '../types';
 /**
  * Which adjustments belong on which invoice row.
  *
- * Payments already carry `invoice_id`; a clinic-level credit note does not.
- * Credit notes are applied FIFO across a clinic's open invoices (see
- * `recordAccountAdjustment`), so the same replay is used here to give every
- * note a home on the rows it paid down — no extra allocation table, and old
- * rows recorded before this existed still land somewhere.
+ * Payments already carry `invoice_id`; a clinic-level adjustment does not.
+ * `recordAccountAdjustment` posts these documents to the ledger only — a
+ * credit note does not settle an invoice — so a note recorded today is parked
+ * on a row with `clinicLevel: true`, exactly like a surcharge or a refund.
+ * That row is not a settlement claim: it is the one place the invoice module
+ * can read, correct or delete the document instead of it vanishing into the
+ * ledger.
  *
- * Debit adjustments and refunds recorded at clinic level do not touch invoice
- * balances at all. They are parked on the clinic's oldest invoice row with
- * `clinicLevel: true`, purely so the document can be read, corrected or
- * deleted from the invoice module instead of disappearing into the ledger.
+ * The replay below still matters for rows recorded by 2.30–2.31, which DID
+ * apply credit notes FIFO across the clinic's open invoices. Those invoice
+ * credits are real, so replaying them gives each old note a home on the rows
+ * it paid down — no extra allocation table.
  */
 
 export interface AttributedAdjustment {
@@ -146,4 +148,35 @@ export const attributeAdjustmentsToInvoices = (
   }
 
   return result;
+};
+
+/**
+ * How much of one adjustment is currently reflected in invoice credits.
+ *
+ * Notes recorded by the current build are never applied, so this is 0 for
+ * them. Notes recorded by 2.30–2.31 were applied FIFO, and deleting or
+ * re-amounting one still has to unwind exactly the portion that landed — the
+ * whole amount would strip an unrelated note's credit off the invoices.
+ */
+export const attributedCreditTotal = (
+  adjustmentId: string,
+  invoices: Invoice[],
+  adjustments: AccountAdjustment[],
+): number => {
+  const adjustment = adjustments.find((a) => a.id === adjustmentId);
+  if (!adjustment) return 0;
+  if (adjustment.type !== 'credit_note' && adjustment.type !== 'write_off') return 0;
+
+  const clinicInvoices = invoices.filter((inv) => inv.lab_id === adjustment.lab_id);
+  const clinicAdjustments = adjustments.filter((a) => a.lab_id === adjustment.lab_id);
+
+  let total = 0;
+  for (const rows of attributeAdjustmentsToInvoices(clinicInvoices, clinicAdjustments).values()) {
+    for (const row of rows) {
+      // `clinicLevel` rows are the display home for a document that did not
+      // land on an invoice — counting them would unwind the whole note.
+      if (row.adjustment.id === adjustmentId && !row.clinicLevel) total += row.amount;
+    }
+  }
+  return total;
 };

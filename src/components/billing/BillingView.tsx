@@ -1000,14 +1000,15 @@ export const BillingView: React.FC = () => {
         }}
       />
 
-      {/* Deleting an adjustment moves money. A credit note comes back off the
-          invoices it paid down, so the consequences name both directions. */}
+      {/* Deleting an adjustment moves money. The ledger row is the whole
+          effect — adjustments never settle invoices — so the consequences name
+          the direction the clinic's balance moves. */}
       <ConfirmDialog
         open={!!adjustmentToDelete}
         title={`Delete adjustment ${adjustmentToDelete?.adjustment_number || ''}`}
         consequences={[
           adjustmentToDelete?.type === 'credit_note'
-            ? `The credit is reversed from ${adjustmentToDelete?.lab_name || 'the clinic'}'s invoices and balance, so the clinic's balance rises by ${(adjustmentToDelete?.amount || 0).toLocaleString()} PKR.`
+            ? `The credit leaves ${adjustmentToDelete?.lab_name || 'the clinic'}'s ledger, so the clinic's balance rises by ${(adjustmentToDelete?.amount || 0).toLocaleString()} PKR.`
             : adjustmentToDelete?.type === 'debit_adjustment'
             ? `${adjustmentToDelete?.lab_name || 'The clinic'}'s balance falls by ${(adjustmentToDelete?.amount || 0).toLocaleString()} PKR.`
             : `The ${adjustmentToDelete?.type?.replace('_', ' ') || 'adjustment'} leaves the invoice list and the ledger.`,
