@@ -1,4 +1,5 @@
 import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import { compareInvoiceEntryOrder, invoiceEntryDate } from '../../services/invoiceOrder';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PaymentAttachment } from '../../types';
@@ -125,16 +126,16 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
     }
   }, [isOpen, effectiveClinicId, initialInvoiceId, labs]);
 
-  // Outstanding invoices for the selected clinic, OLDEST FIRST.
+  // Outstanding invoices for the selected clinic, in ENTRY ORDER — oldest
+  // recorded first.
   //
   // The auto-allocation below walks this list and takes from each invoice until
-  // the cash runs out, so the order here is the order money is applied. A
-  // clinic's oldest unpaid invoice is the one that has been waiting longest
-  // and must be settled first; sorting newest-first (the array's default
-  // order, since invoices are prepended on creation) meant a payment silently
-  // settled the newest invoice while the oldest stayed open. Sorting by
-  // issue_date, then by invoice_number as a tie-break, gives a stable
-  // oldest-first order even when two invoices share a date.
+  // the cash runs out, so the order here is the order money is applied: the
+  // invoice that has been on the books longest is settled first. Sorting by
+  // `issue_date` (the old rule) looked right but was not: editing a case's
+  // delivery date rewrites the invoice's issue date, so a later booking could
+  // jump ahead of an earlier one. The booking day is `created_at`; same-day
+  // invoices fall back to the invoice number, minted in booking order.
   const clinicInvoices = useMemo(() => {
     return invoices
       .filter((inv) => {
@@ -142,12 +143,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         const due = invoiceBalanceDue(inv);
         return due > 0;
       })
-      .sort((a, b) => {
-        const da = a.issue_date || a.created_at || '';
-        const db = b.issue_date || b.created_at || '';
-        if (da !== db) return da < db ? -1 : 1;
-        return (a.invoice_number || '').localeCompare(b.invoice_number || '');
-      });
+      .sort(compareInvoiceEntryOrder);
   }, [invoices, clinicId]);
 
   /* The open invoices narrowed by whatever the operator typed. Searchable on the
@@ -622,7 +618,13 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                                 Pt {String(patientId)}
                               </span>
                             )}
-                            <span className="text-slate-500">• Due: {inv.due_date}</span>
+                            {/* Both dates, so the list's entry order is
+                                legible: the row is sorted by the day it was
+                                recorded, not by its due date. */}
+                            <span className="text-slate-500">
+                              • Recorded: {invoiceEntryDate(inv) || '—'}
+                            </span>
+                            <span className="text-slate-500">• Due: {inv.due_date || '—'}</span>
                           </div>
                           <div className="text-[11px] text-slate-500 mt-0.5">
                             Total: {formatPKR(inv.final_amount)} | Balance Due: <strong className="text-slate-800 font-mono">{formatPKR(due)}</strong>

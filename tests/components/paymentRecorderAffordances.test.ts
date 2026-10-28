@@ -67,6 +67,17 @@ describe('payment recorder', () => {
     expect(source).toMatch(/visibleAllocations\.map/);
   });
 
+  it('lists open invoices in the order they were recorded', () => {
+    // Entry order, not issue_date: a case edit rewrites the invoice's issue
+    // date, so sorting by it lets a later booking jump the queue.
+    expect(source).toMatch(/from '\.\.\/\.\.\/services\/invoiceOrder'/);
+    expect(source).toMatch(/\.sort\(compareInvoiceEntryOrder\)/);
+    expect(source).not.toMatch(/issue_date \|\| a\.created_at/);
+    // The row carries the date the order is based on, or the order looks
+    // arbitrary beside a due date alone.
+    expect(source).toMatch(/Recorded: \{invoiceEntryDate\(inv\)/);
+  });
+
   it('shares one ClinicPicker rather than three copies of the dropdown', () => {
     // The other two surfaces must consume the same component, or the copies
     // drift apart again and the operator meets two different pickers.
