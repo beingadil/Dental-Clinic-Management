@@ -118,25 +118,29 @@
   /* Numbers must align in columns — the whole point of tabular figures here. */
   --ds-numeric: 'JetBrains Mono', ui-monospace, monospace;
 
+  /* Typography roles. Display for headings/hero numerals, body for prose. */
+  --ds-font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ds-font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
   /* Ambient atmosphere: two very low-alpha washes painted behind every
      dashboard panel. Static, never animated — DESIGN.md bans an animated
      mesh, and this is depth, not motion. The first declaration is the
      fallback; the second derives from the operator's brand accent (set by
      applyBrandColor), so a rebrand tints the room instead of tinting it
      blue. A browser without color-mix drops the second and keeps the first. */
-  --ds-ambient-1: rgba(37, 99, 235, 0.055);
-  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 6%, transparent);
-  --ds-ambient-2: rgba(6, 182, 212, 0.04);
-  --ds-ambient-3: rgba(203, 232, 255, 0.04);
+  --ds-ambient-1: rgba(37, 99, 235, 0.08);
+  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 9%, transparent);
+  --ds-ambient-2: rgba(6, 182, 212, 0.06);
+  --ds-ambient-3: rgba(203, 232, 255, 0.07);
   /* A touch warmer than ambient-2 so the 'light from above' read can breathe
      without borrowing the accent's identity. Used only behind solid surfaces.
      */
-  --ds-ambient-3: rgba(203, 232, 255, 0.05);
+  --ds-ambient-3: rgba(203, 232, 255, 0.08);
 }
 
 /* ── Layer 3 · COMPONENT ──────────────────────────────────────────────── */
 :root {
-  --ds-radius-card: 16px;
+  --ds-radius-card: 22px;
   --ds-radius-pill: 9999px;
   /* A 1px inner highlight along the top edge. This is what makes a card read
      as machined rather than flat: lit from above, like a tray in a rack.
@@ -225,13 +229,14 @@
        the panels behind it show through, giving the board the depth of a
        modern glass UI instead of a flat stack of white cards. The opacity
        stays high enough that text contrast on the panel is unchanged. */
-    background: color-mix(in srgb, var(--ds-surface) 74%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    backdrop-filter: blur(18px) saturate(150%);
-    border: 1px solid color-mix(in srgb, var(--ds-line) 55%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid color-mix(in srgb, var(--ds-line) 50%, transparent);
     border-radius: var(--ds-radius-card);
     box-shadow: var(--ds-rim), var(--ds-shadow-card),
-      0 8px 24px -12px color-mix(in srgb, var(--ds-ink) 12%, transparent);
+      0 10px 30px -12px color-mix(in srgb, var(--ds-ink) 14%, transparent),
+      0 4px 12px -4px color-mix(in srgb, var(--ds-ink) 8%, transparent);
     /* Density: padding + font scale follow the mode tokens. */
     padding: var(--ds-pad-card);
     font-size: calc(13px * var(--ds-font-scale));
@@ -247,9 +252,9 @@
                 border-color 200ms ease;
   }
   .ds-panel:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
     box-shadow: var(--ds-rim), var(--ds-shadow-lift),
-      0 12px 28px -12px color-mix(in srgb, var(--ds-ink) 16%, transparent);
+      0 16px 40px -12px color-mix(in srgb, var(--ds-ink) 18%, transparent);
     border-color: color-mix(in srgb, var(--ds-accent) 28%, var(--ds-line));
   }
 
@@ -365,6 +370,10 @@
     height: 36px;
     border-radius: 10px;
     flex-shrink: 0;
+    -webkit-backdrop-filter: blur(8px) saturate(140%);
+    backdrop-filter: blur(8px) saturate(140%);
+    border: 1px solid color-mix(in srgb, var(--ds-line) 40%, transparent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--ds-ink) 6%, transparent);
   }
 
   /* Motion is transform/opacity only, and always short. */
@@ -434,7 +443,8 @@
     pointer-events: none;
 background-image:
       radial-gradient(58rem 32rem at 8% -12%, var(--ds-ambient-1), transparent 68%),
-      radial-gradient(46rem 28rem at 96% 2%, var(--ds-ambient-2), transparent 70%);
+      radial-gradient(46rem 28rem at 96% 2%, var(--ds-ambient-2), transparent 70%),
+      radial-gradient(40rem 24rem at 50% 110%, var(--ds-ambient-3), transparent 72%);
   }
 
   /* Blur is deliberately confined to surfaces that do not scroll: a
@@ -442,6 +452,27 @@ background-image:
   .ds-glass {
     -webkit-backdrop-filter: blur(14px) saturate(150%);
     backdrop-filter: blur(14px) saturate(150%);
+  }
+
+  /* Subtle glass button: translucent surface with a light blur and lift on
+     hover. Keeps text legible while reading as a frosted control. */
+  .ds-glass-button {
+    background: color-mix(in srgb, var(--ds-surface) 60%, transparent);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid color-mix(in srgb, var(--ds-line) 50%, transparent);
+    border-radius: var(--ds-radius-pill);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--ds-ink) 6%, transparent);
+    transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 160ms ease,
+                border-color 160ms ease,
+                background 160ms ease;
+  }
+  .ds-glass-button:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--ds-shadow-lift);
+    border-color: color-mix(in srgb, var(--ds-accent) 28%, var(--ds-line));
+    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
   }
 
   /* ── Rank: a card is not the only container ─────────────────────────

@@ -141,7 +141,7 @@ const PanelHead: React.FC<{
       </div>
     </div>
     {action && (
-      <button type="button" onClick={action.onClick} className="ds-link mt-1.5 shrink-0">
+      <button type="button" onClick={action.onClick} className="ds-link mt-1.5 shrink-0 ds-glass-button">
         {action.label}
       </button>
     )}
@@ -513,7 +513,7 @@ export const NeedsAttention: React.FC<{
                   {row.count} {row.title}
                 </span>
                 {!dim && (
-                  <button type="button" onClick={() => onReview(row.key)} className="ds-link shrink-0">
+                  <button type="button" onClick={() => onReview(row.key)} className="ds-link shrink-0 ds-glass-button">
                     View
                   </button>
                 )}
@@ -908,7 +908,7 @@ export const RevenueCollections: React.FC<{
             ))}
           </dl>
 
-          <button type="button" onClick={onInvoices} className="ds-link mt-3">
+          <button type="button" onClick={onInvoices} className="ds-link mt-3 ds-glass-button">
             Open receivables <ArrowRight className="w-3 h-3 inline -mt-0.5" />
           </button>
         </div>
