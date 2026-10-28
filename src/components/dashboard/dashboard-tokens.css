@@ -128,14 +128,16 @@
      fallback; the second derives from the operator's brand accent (set by
      applyBrandColor), so a rebrand tints the room instead of tinting it
      blue. A browser without color-mix drops the second and keeps the first. */
-  --ds-ambient-1: rgba(99, 102, 241, 0.28);
-  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 30%, transparent);
-  --ds-ambient-2: rgba(6, 182, 212, 0.24);
-  --ds-ambient-3: rgba(168, 85, 247, 0.22);
-  --ds-ambient-4: rgba(244, 114, 182, 0.20);
+  --ds-ambient-1: rgba(99, 102, 241, 0.14);
+  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 16%, transparent);
+  --ds-ambient-2: rgba(6, 182, 212, 0.13);
+  --ds-ambient-3: rgba(168, 85, 247, 0.13);
+  --ds-ambient-4: rgba(244, 114, 182, 0.12);
   /* The tinted canvas beneath the blobs: without it the board reads as white
-     with a few coloured spots instead of coloured air behind glass. */
-  --ds-ambient-base: linear-gradient(180deg, rgba(240, 242, 255, 0.9), rgba(253, 251, 255, 0.55));
+     with a few coloured spots instead of coloured air behind glass. Kept
+     near-white - the reference look is a LIGHT canvas with vivid colour
+     blobs, not a flood; panels must read brighter than the air. */
+  --ds-ambient-base: linear-gradient(180deg, rgba(245, 245, 255, 0.8), rgba(250, 250, 255, 0.4));
   /* A touch warmer than ambient-2 so the 'light from above' read can breathe
      without borrowing the accent's identity. Used only behind solid surfaces.
      */
@@ -238,7 +240,7 @@
        the panels behind it show through, giving the board the depth of a
        modern glass UI instead of a flat stack of white cards. The opacity
        stays high enough that text contrast on the panel is unchanged. */
-    background: color-mix(in srgb, var(--ds-surface) 62%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
     -webkit-backdrop-filter: blur(28px) saturate(190%);
     backdrop-filter: blur(28px) saturate(190%);
     border: 1px solid var(--ds-glass-line);
@@ -424,30 +426,27 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* ── Ambient wash canvas ────────────────────────────────────────────
-     The dashboard root. `isolation: isolate` opens a stacking context so the
-     negative-z pseudo-element paints behind this element's CONTENT but stays
-     inside it — without the isolation the wash would escape behind the app
-     shell. `pointer-events: none` keeps it out of hit-testing entirely.
-
-     Deliberately NOT on cards: the wash must never sit behind text, or the
-     contrast audit's bg>text grading would no longer describe what is on
-     screen. Depth goes behind the instruments, never under the readings.
-
-     The wash is now layered in two stacked passes: a soft radial mesh (the
-     warmer, lower layer) and a far crisper, brighter pin of light above it
-     low enough to read as atmosphere rather than a second tint. Both remain
-     far-low-alpha, so the same bg>text grading that grades the solid surface
-     still describes what is actually on screen.
-     */
   .ds-ambient {
     position: relative;
     isolation: isolate;
   }
+  /* The aurora wash, painted on a dedicated layer BEHIND the dashboard
+     content (z-index -1 inside the isolated context). It deliberately does
+     NOT live on the scroll container's own background: a background painted
+     on `main` rasterizes as a FLAT fill of each layer's first colour stop -
+     geometry and falloff thrown away - which flooded the whole board solid
+     periwinkle. On this normal absolute layer the radial falloff renders
+     correctly. Negative insets counter main's padding so the colour reaches
+     the column edges: no inset "card" boundary, no empty corners. Top and
+     left overhang is scroll-safe (never scrollable directions); the right
+     overhang is clipped by main's overflow-x-clip. */
   .ds-ambient::before {
     content: '';
     position: absolute;
-    inset: 0;
+    top: -24px;
+    left: -24px;
+    right: -24px;
+    bottom: 0;
     z-index: -1;
     pointer-events: none;
     background-image:

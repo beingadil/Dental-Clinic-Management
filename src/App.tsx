@@ -139,7 +139,7 @@ const MainAppContent: React.FC = () => {
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 lg:pb-5 overflow-y-auto dental-grid-bg focus-visible:outline-none"
+          className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 lg:pb-5 overflow-x-clip overflow-y-auto dental-grid-bg focus-visible:outline-none"
         >
           <div className="w-full max-w-[1880px] 2xl:max-w-[2100px] mx-auto space-y-6">
             <ErrorBoundary>
