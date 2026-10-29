@@ -1,15 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can, deniedTooltip } from '../../services/permissions';
-import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, QcCaseState } from '../../types';
+import { DentalCase, CaseStatus, PriorityLevel, QcCaseState } from '../../types';
 import { CaseDetailModal } from './CaseDetailModal';
 import { formatDoctorName } from '../../utils/doctorName';
 import { CaseDetailView } from './CaseDetailView';
-import { CaseTemplateModal } from './CaseTemplateModal';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
-import { PageHeader, EmptyState, CaseStatusBadge, PriorityBadge, usePagination, Modal, DataTable } from '../common/ui';
+import { PageHeader, EmptyState, CaseStatusBadge, PriorityBadge, usePagination, DataTable } from '../common/ui';
 import { 
   PlusCircle, 
   Search, 
@@ -17,7 +16,6 @@ import {
   ArrowDownAZ,
   ArrowUpZA,
   ArrowRight,
-  Bookmark, 
   AlertTriangle, 
   Clock, 
   Calendar,
@@ -213,8 +211,6 @@ export const CaseListView: React.FC = () => {
   const [bulkPrintModalOpen, setBulkPrintModalOpen] = useState(false);
   const [bulkPrintType, setBulkPrintType] = useState<'slips' | 'invoices'>('slips');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [appliedTemplate, setAppliedTemplate] = useState<CaseTemplate | null>(null);
-  const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
 
   // Drag & drop state
   const [draggedCaseId, setDraggedCaseId] = useState<string | null>(null);
@@ -521,24 +517,14 @@ export const CaseListView: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => setTemplateLibraryOpen(true)}
-              className="ds-glass-pill font-semibold text-xs px-3.5 flex items-center gap-1.5 cursor-pointer"
-            >
-              <Bookmark className="w-4 h-4 text-slate-500" />
-              <span className="hidden md:inline">Preset Templates</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => {
-                setAppliedTemplate(null);
                 setIsNewModalOpen(true);
               }}
               disabled={!can(user, 'case:create')}
               title={!can(user, 'case:create') ? deniedTooltip : undefined}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold text-xs md:text-sm rounded-xl shadow-sm hover:shadow flex items-center gap-2 transition-all cursor-pointer"
+              className="ds-glass-pill text-xs md:text-sm disabled:opacity-50 cursor-pointer"
             >
-              <PlusCircle className="w-4 h-4 text-white" />
+              <PlusCircle className="w-4 h-4" />
               <span>Create New Case</span>
             </button>
           </div>
@@ -578,7 +564,7 @@ export const CaseListView: React.FC = () => {
       )}
 
       {/* Filter and Control Toolbar */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm space-y-3">
+      <div className="ds-glass-card rounded-2xl p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Search Field */}
           <div className="relative">
@@ -597,7 +583,7 @@ export const CaseListView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
+              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
             >
               <option value="all">All Statuses</option>
               <option value="received">Received</option>
@@ -615,7 +601,7 @@ export const CaseListView: React.FC = () => {
             <select
               value={labFilter}
               onChange={(e) => setLabFilter(e.target.value)}
-              className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-700"
+              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none focus:border-indigo-500 text-slate-700"
             >
               <option value="all">All Dental Clinics</option>
               {labs.map((l) => (
@@ -631,7 +617,7 @@ export const CaseListView: React.FC = () => {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-700"
+              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none focus:border-indigo-500 text-slate-700"
             >
               <option value="all">All Priorities</option>
               <option value="urgent">Urgent Only</option>
@@ -647,7 +633,7 @@ export const CaseListView: React.FC = () => {
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as CaseSortKey)}
               aria-label="Sort cases by"
-              className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-medium"
+              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none text-slate-700 font-medium"
             >
               {SORT_OPTIONS.map((group) => (
                 <optgroup key={group.group} label={group.group}>
@@ -771,7 +757,7 @@ export const CaseListView: React.FC = () => {
               <select
                 value={archiveClinic}
                 onChange={(e) => setArchiveClinic(e.target.value)}
-                className="w-full lg:w-64 p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                className="ds-glass-select w-full lg:w-64 p-2 text-xs rounded-xl font-medium text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
                 <option value="all">All Clinics ({labs.length})</option>
                 {labs.map((l) => (
@@ -1101,7 +1087,7 @@ export const CaseListView: React.FC = () => {
                                   updateCase(c.id, { status: e.target.value as CaseStatus });
                                 }}
                                 title="Change stage"
-                                className="text-[10px] bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-medium text-slate-700 focus:outline-none"
+                                className="ds-glass-select text-[10px] rounded px-1.5 py-0.5 font-medium text-slate-700 focus:outline-none"
                               >
                                 <option value="received">Recv</option>
                                 <option value="in_progress">Prog</option>
@@ -1478,11 +1464,9 @@ export const CaseListView: React.FC = () => {
       {(selectedCase || isNewModalOpen) && (
         <CaseDetailModal
           initialCase={selectedCase}
-          appliedTemplate={appliedTemplate}
           onClose={() => {
             setSelectedCase(null);
             setIsNewModalOpen(false);
-            setAppliedTemplate(null);
           }}
         />
       )}
@@ -1503,27 +1487,6 @@ export const CaseListView: React.FC = () => {
           />
         );
       })()}
-
-      {/* Template Preset Gallery Modal.
-          `hideClose` because the library draws its own close control — Modal
-          would otherwise add a second one in the opposite corner. Everything
-          else (backdrop, focus trap, Escape, aria-modal) comes from Modal. */}
-      <Modal
-        open={templateLibraryOpen}
-        onClose={() => setTemplateLibraryOpen(false)}
-        label="Case template library"
-        maxWidth="max-w-3xl"
-        hideClose
-      >
-        <CaseTemplateModal
-          onClose={() => setTemplateLibraryOpen(false)}
-          onApplyTemplate={(tmpl) => {
-            setAppliedTemplate(tmpl);
-            setTemplateLibraryOpen(false);
-            setIsNewModalOpen(true);
-          }}
-        />
-      </Modal>
 
       {/* Case Job Slip Printable Modal */}
       {printSlipCase && (

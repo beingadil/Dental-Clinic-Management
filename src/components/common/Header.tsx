@@ -673,11 +673,11 @@ export const Header: React.FC = () => {
               setShowUserMenu(!showUserMenu);
               setShowNotifMenu(false);
             }}
-            className="ds-row-target h-9 flex items-center gap-2.5 p-1 pr-2 hover:bg-ds-sunken rounded-lg transition-colors active:scale-[0.98] text-left cursor-pointer"
+            className="ds-row-target h-9 flex items-center gap-2.5 p-1 pr-2 hover:bg-ds-sunken rounded-full transition-colors active:scale-[0.98] text-left cursor-pointer"
             aria-label="Account menu"
             aria-expanded={showUserMenu}
           >
-            <span className="ds-avatar" aria-hidden="true">
+            <span className="ds-avatar !rounded-full" aria-hidden="true">
               {getUserInitials(user?.name)}
             </span>
             <span className="hidden md:flex flex-col justify-center text-left">

@@ -2,7 +2,7 @@ import { formatPKR } from '../../services/financeDomain';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTransientMessage } from '../common/useTransient';
 import { useApp } from '../../context/AppContext';
-import { DentalCase, CaseStatus, PriorityLevel, CaseTemplate, ToothDetail, CaseAttachment } from '../../types';
+import { DentalCase, CaseStatus, PriorityLevel, ToothDetail, CaseAttachment } from '../../types';
 import Odontogram, { type OdontogramData } from './Odontogram';
 import { CaseNotesPanel } from './CaseNotesPanel';
 import { CaseQcPanel } from './CaseQcPanel';
@@ -117,7 +117,6 @@ const NestedDialog: React.FC<{ onClose: () => void; label: string; children: Rea
 
 interface CaseDetailModalProps {
   initialCase?: DentalCase | null; // null if creating new case
-  appliedTemplate?: CaseTemplate | null;
   /** Pre-selected shade for a NEW case (e.g. picked in the dashboard shade guide). */
   initialShade?: string | null;
   onClose: () => void;
@@ -142,7 +141,6 @@ type StepKey = 'basics' | 'chart' | 'schedule';
 
 export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   initialCase,
-  appliedTemplate,
   initialShade,
   onClose,
 }) => {
@@ -182,7 +180,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [patientName, setPatientName] = useState(initialCase?.patient_name || '');
   const [labId, setLabId] = useState(initialCase?.lab_id || labs[0]?.id || '');
   const [caseTypeId, setCaseTypeId] = useState(
-    initialCase?.case_type_id || appliedTemplate?.case_type_id || caseTypes[0]?.id || ''
+    initialCase?.case_type_id || caseTypes[0]?.id || ''
   );
   const [doctorName, setDoctorName] = useState(initialCase?.doctor_name || '');
   const [pendingAttachments, setPendingAttachments] = useState<Omit<CaseAttachment, 'id' | 'case_id' | 'uploaded_at'>[]>([]);
@@ -193,7 +191,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
      all from one unasked-for default. A case must start at what was actually
      chosen. An existing case or a template still restores its own teeth. */
   const [selectedTeeth, setSelectedTeeth] = useState<number[]>(
-    initialCase?.selected_teeth || appliedTemplate?.selected_teeth || []
+    initialCase?.selected_teeth || []
   );
   const [toothDetails, setToothDetails] = useState<Record<number, ToothDetail>>(
     initialCase?.tooth_details || {}
@@ -204,7 +202,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   /* Bench routing (migration 015). Empty means "not routed yet", which the
      dashboard reports as Unassigned rather than guessing. */
   const [department, setDepartment] = useState<string>(initialCase?.department || '');
-  const [shade, setShade] = useState(initialCase?.shade || appliedTemplate?.shade || initialShade || 'A2');
+  const [shade, setShade] = useState(initialCase?.shade || initialShade || 'A2');
 
   /* Priority seed, in precedence order: an existing case keeps what it has, a
    * template may carry its own default, and otherwise the LAB's default applies.
@@ -212,7 +210,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
    * read — every new case silently started at 'normal' regardless of it — so a
    * lab that set "urgent" for a rush-only workflow got 'normal' instead. */
   const seedPriority: PriorityLevel =
-    initialCase?.priority || appliedTemplate?.default_priority || defaultPriority || 'normal';
+    initialCase?.priority || defaultPriority || 'normal';
 
   const [priority, setPriority] = useState<PriorityLevel>(seedPriority);
   const [deliveryDate, setDeliveryDate] = useState(
@@ -242,11 +240,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [uploadNotice, flashUploadNotice] = useTransientMessage(3000);
 
   const [price, setPrice] = useState<number>(
-    initialCase?.price || caseTypes.find((ct) => ct.id === (initialCase?.case_type_id || appliedTemplate?.case_type_id))?.base_price || caseTypes[0]?.base_price || 0
+    initialCase?.price || caseTypes.find((ct) => ct.id === initialCase?.case_type_id)?.base_price || caseTypes[0]?.base_price || 0
   );
   const [discount, setDiscount] = useState<number>(initialCase?.discount || 0);
   const [instructions, setInstructions] = useState(
-    initialCase?.instructions || appliedTemplate?.instructions || ''
+    initialCase?.instructions || ''
   );
   const [status, setStatus] = useState<CaseStatus>(initialCase?.status || 'received');
   const [photoUrl, setPhotoUrl] = useState<string>(initialCase?.photo_url || '');
