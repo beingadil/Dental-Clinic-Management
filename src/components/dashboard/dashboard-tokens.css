@@ -236,11 +236,12 @@
   /* The one card shell. Every panel is this + a header row + content, so
      radius, border and elevation are defined once and cannot drift. */
   .ds-panel {
-    /* Glassmorphism: a translucent, frosted surface so the ambient wash and
-       the panels behind it show through, giving the board the depth of a
-       modern glass UI instead of a flat stack of white cards. The opacity
-       stays high enough that text contrast on the panel is unchanged. */
-    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
+    /* Glassmorphism, Tahoe grade: the pane is mostly TRANSPARENT — fill
+       dropped from 72% to 34% surface so the ambient wash refracts through
+       and the rim/blur do the defining. The dark theme reads the same token
+       at its own surface colour. Blur stays high so text on the thin fill
+       keeps its contrast. */
+    background: color-mix(in srgb, var(--ds-surface) 34%, transparent);
     -webkit-backdrop-filter: blur(28px) saturate(190%);
     backdrop-filter: blur(28px) saturate(190%);
     border: 1px solid var(--ds-glass-line);

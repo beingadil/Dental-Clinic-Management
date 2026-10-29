@@ -308,9 +308,13 @@
    */
   .ds-headerbar {
     height: var(--ds-header-h);
-    background: color-mix(in srgb, var(--ds-surface) 68%, transparent);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    backdrop-filter: blur(24px) saturate(180%);
+    /* Tahoe grade, matching the rail: mostly-transparent pane, blur +
+       saturation pulling the canvas through, rim and gloss doing the work.
+       Slightly denser than the rail (38% vs the rail's ~32% effective) —
+       this pane overlays scrolling CONTENT, not just wallpaper. */
+    background: color-mix(in srgb, var(--ds-surface) 38%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid var(--ds-glass-line);
     border-radius: 20px;
     margin: 12px 12px 0;
