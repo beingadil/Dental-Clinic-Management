@@ -479,7 +479,7 @@ export const CaseListView: React.FC = () => {
         actions={
           <div className="flex flex-wrap items-center gap-2.5">
             {/* View Toggle */}
-            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+            <div className="bg-white/25 p-1 rounded-full flex items-center gap-1 border border-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
               <button
                 type="button"
                 onClick={() => { setShowArchive(false); handleViewModeChange('table'); }}
@@ -522,7 +522,7 @@ export const CaseListView: React.FC = () => {
             <button
               type="button"
               onClick={() => setTemplateLibraryOpen(true)}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors border border-slate-200 shadow-2xs cursor-pointer"
+              className="ds-glass-pill font-semibold text-xs px-3.5 flex items-center gap-1.5 cursor-pointer"
             >
               <Bookmark className="w-4 h-4 text-slate-500" />
               <span className="hidden md:inline">Preset Templates</span>
