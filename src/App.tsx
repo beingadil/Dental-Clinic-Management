@@ -42,8 +42,8 @@ const SettingsView = lazy(() =>
 const CatalogView = lazy(() =>
   import('./components/catalog/CatalogView').then((m) => ({ default: m.CatalogView }))
 );
-const PrintInvoicesView = lazy(() =>
-  import('./components/billing/PrintInvoicesView').then((m) => ({ default: m.PrintInvoicesView }))
+const BatchInvoicePrintModal = lazy(() =>
+  import('./components/billing/BatchInvoicePrintModal').then((m) => ({ default: m.BatchInvoicePrintModal }))
 );
 
 const MainAppContent: React.FC = () => {
@@ -154,7 +154,7 @@ const MainAppContent: React.FC = () => {
 
                 {currentView === 'billing' && <BillingView />}
 
-                {currentView === 'print-invoices' && <PrintInvoicesView />}
+                {currentView === 'print-invoices' && <BatchInvoicePrintModal onClose={() => app.setCurrentView('billing')} />}
 
                 {currentView === 'catalog' && <CatalogView />}
 

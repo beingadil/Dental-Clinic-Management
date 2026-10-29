@@ -26,7 +26,6 @@ import {
   Move,
   Printer,
   CheckSquare,
-  Receipt,
   Pencil,
   Archive,
   ArchiveRestore,
@@ -160,13 +159,7 @@ const SORT_OPTIONS: { group: string; options: { value: CaseSortKey; label: strin
   },
 ];
 
-export interface CaseListViewProps {
-  /** Which print pipeline the bulk bar leads with. Defaults to job slips
-   *  (the Workstation); the dedicated Print Invoices view passes 'invoices'. */
-  primaryBulkType?: 'slips' | 'invoices';
-}
-
-export const CaseListView: React.FC<CaseListViewProps> = ({ primaryBulkType = 'slips' }) => {
+export const CaseListView: React.FC = () => {
   const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently, getQcState, user } = useApp();
 
   /* Workstation shows ACTIVE cases; the Archive tab shows completed cases
@@ -639,17 +632,13 @@ export const CaseListView: React.FC<CaseListViewProps> = ({ primaryBulkType = 's
             <button
               type="button"
               onClick={() => {
-                setBulkPrintType(primaryBulkType);
+                setBulkPrintType('slips');
                 setBulkPrintModalOpen(true);
               }}
-              className={
-                primaryBulkType === 'invoices'
-                  ? 'px-4 py-2 bg-fill-success hover:bg-fill-success text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer'
-                  : 'px-4 py-2 ds-glass-pill font-bold text-xs flex items-center gap-2 transition-all cursor-pointer'
-              }
+              className="px-4 py-2 ds-glass-pill font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
             >
-              {primaryBulkType === 'invoices' ? <Receipt className="w-4 h-4" /> : <Printer className="w-4 h-4" />}
-              <span>{primaryBulkType === 'invoices' ? 'Print Invoices' : 'Print Job Slips'} ({selectedCaseIds.length})</span>
+              <Printer className="w-4 h-4" />
+              <span>Print Job Slips ({selectedCaseIds.length})</span>
             </button>
             {/* Quick status bulk actions. Each opens a confirmation naming the count and
                 the target — these write to every selected row at once, and
