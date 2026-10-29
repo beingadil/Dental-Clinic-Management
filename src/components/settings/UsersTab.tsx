@@ -9,6 +9,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { Modal, DataTable } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { useTransientMessage, TransientBanner } from '../common/useTransient';
 
 /** TAB: USER MANAGEMENT (ADMIN ONLY) — extracted verbatim from SettingsView (P3 split). */
@@ -340,19 +341,16 @@ export const UsersTab: React.FC = () => {
 
                 <div>
                   <label className="block text-[13px] font-bold text-slate-700 mb-1">System Role *</label>
-                  <select
+                  <GlassSelect
                     value={newUserForm.role}
-                    onChange={(e) => {
-                      const role = e.target.value;
-                      // Picking a role pre-ticks its baseline (built-in or custom); Super Admin can still adjust below.
+                    onChange={(v) => {
+                      const role = v;
                       setNewUserForm((f) => ({ ...f, role, permissions: [...roleBaselineFor(role)] }));
                     }}
-                    className="w-full p-3 text-sm ds-glass-select rounded-xl font-bold"
-                  >
-                    {['Super Admin', 'Clinic Entry Manager', 'Audit Checker', ...(roles || []).filter((r) => !r.is_system).map((r) => r.name)].map((roleName) => (
-                      <option key={roleName} value={roleName}>{roleName}</option>
-                    ))}
-                  </select>
+                    ariaLabel="System role"
+                    className="w-full p-3 text-sm font-bold"
+                    options={['Super Admin', 'Clinic Entry Manager', 'Audit Checker', ...(roles || []).filter((r) => !r.is_system).map((r) => r.name)].map((roleName) => ({ value: roleName, label: roleName }))}
+                  />
                 </div>
 
                 {/* Role rights summary — what this role may actually do. */}

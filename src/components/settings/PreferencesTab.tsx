@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { auditRepo } from '../../db/repos';
 import { Sliders, LayoutGrid, Lock, LockOpen, Save, Trash2, Play, RotateCcw, Sun, Moon, Monitor } from 'lucide-react';
 import { isThemeMode, type ThemeMode } from '../../theme/theme';
@@ -112,15 +113,13 @@ const DashboardLayoutCard: React.FC = () => {
       {/* Density */}
       <div>
         <label className="block text-xs font-bold text-slate-700 mb-1">Panel density</label>
-        <select
+        <GlassSelect
           value={userPreferences?.dashboard_density || 'default'}
-          onChange={(e) => updateUserPreferences({ dashboard_density: e.target.value as DashboardDensity })}
-          className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-        >
-          {DENSITY_OPTIONS.map((d) => (
-            <option key={d.value} value={d.value}>{d.label}</option>
-          ))}
-        </select>
+          onChange={(v) => updateUserPreferences({ dashboard_density: v as DashboardDensity })}
+          ariaLabel="Dashboard density"
+          className="w-full p-2.5 text-xs font-bold"
+          options={DENSITY_OPTIONS.map((d) => ({ value: d.value, label: d.label }))}
+        />
         <p className="mt-1 text-[11px] text-slate-500">{DENSITY_OPTIONS.find((d) => d.value === (userPreferences?.dashboard_density || 'default'))?.hint}</p>
       </div>
 
@@ -236,30 +235,34 @@ export const PreferencesTab: React.FC = () => {
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Default Priority for New Cases</label>
-          <select
+          <GlassSelect
             value={userPreferences?.default_priority || 'normal'}
-            onChange={(e) => updateUserPreferences({ default_priority: e.target.value as any })}
-            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold capitalize"
-          >
-            <option value="low">Low Priority</option>
-            <option value="normal">Normal Priority</option>
-            <option value="rush">Rush Priority</option>
-            <option value="urgent">Urgent Priority</option>
-          </select>
+            onChange={(v) => updateUserPreferences({ default_priority: v as any })}
+            ariaLabel="Default priority"
+            className="w-full p-2.5 text-xs font-bold capitalize"
+            options={[
+              { value: 'low', label: 'Low Priority' },
+              { value: 'normal', label: 'Normal Priority' },
+              { value: 'rush', label: 'Rush Priority' },
+              { value: 'urgent', label: 'Urgent Priority' },
+            ]}
+          />
         </div>
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Interface Zoom</label>
-          <select
+          <GlassSelect
             value={String(userPreferences?.ui_zoom || 1)}
-            onChange={(e) => updateUserPreferences({ ui_zoom: Number(e.target.value) })}
-            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-          >
-            <option value="0.85">Smaller (85%)</option>
-            <option value="1">Default (100%)</option>
-            <option value="1.1">Larger (110%)</option>
-            <option value="1.25">Largest (125%)</option>
-          </select>
+            onChange={(v) => updateUserPreferences({ ui_zoom: Number(v) })}
+            ariaLabel="Interface zoom"
+            className="w-full p-2.5 text-xs font-bold"
+            options={[
+              { value: '0.85', label: 'Smaller (85%)' },
+              { value: '1', label: 'Default (100%)' },
+              { value: '1.1', label: 'Larger (110%)' },
+              { value: '1.25', label: 'Largest (125%)' },
+            ]}
+          />
           <p className="text-[11px] text-slate-500 mt-1">Applies to the whole interface instantly; printed documents are never scaled.</p>
         </div>
 
@@ -295,14 +298,16 @@ export const PreferencesTab: React.FC = () => {
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Auto-Save Voucher Log</label>
-          <select
+          <GlassSelect
             value={userPreferences?.auto_print_job_slips ? 'true' : 'false'}
-            onChange={(e) => updateUserPreferences({ auto_print_job_slips: e.target.value === 'true' })}
-            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-          >
-            <option value="true">Enabled (Auto-log to voucher registry on print)</option>
-            <option value="false">Disabled (Manual prompt only)</option>
-          </select>
+            onChange={(v) => updateUserPreferences({ auto_print_job_slips: v === 'true' })}
+            ariaLabel="Auto-print job slips"
+            className="w-full p-2.5 text-xs font-bold"
+            options={[
+              { value: 'true', label: 'Enabled (Auto-log to voucher registry on print)' },
+              { value: 'false', label: 'Disabled (Manual prompt only)' },
+            ]}
+          />
         </div>
 
         {/* Professional settings */}
@@ -311,58 +316,66 @@ export const PreferencesTab: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Date Format</label>
-              <select
+              <GlassSelect
                 value={userPreferences?.date_format || 'DD/MM/YYYY'}
-                onChange={(e) => updateUserPreferences({ date_format: e.target.value as any })}
-                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-              >
-                <option value="DD/MM/YYYY">DD/MM/YYYY (31/12/2026)</option>
-                <option value="MM/DD/YYYY">MM/DD/YYYY (12/31/2026)</option>
-                <option value="YYYY-MM-DD">YYYY-MM-DD (2026-12-31)</option>
-              </select>
+                onChange={(v) => updateUserPreferences({ date_format: v as any })}
+                ariaLabel="Date format"
+                className="w-full p-2.5 text-xs font-bold"
+                options={[
+                  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (31/12/2026)' },
+                  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2026)' },
+                  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2026-12-31)' },
+                ]}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Number Format</label>
-              <select
+              <GlassSelect
                 value={userPreferences?.number_format || '1,000.00'}
-                onChange={(e) => updateUserPreferences({ number_format: e.target.value as any })}
-                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-              >
-                <option value="1,000.00">1,000.00 (comma thousands, dot decimal)</option>
-                <option value="1.000,00">1.000,00 (dot thousands, comma decimal)</option>
-              </select>
+                onChange={(v) => updateUserPreferences({ number_format: v as any })}
+                ariaLabel="Number format"
+                className="w-full p-2.5 text-xs font-bold"
+                options={[
+                  { value: '1,000.00', label: '1,000.00 (comma thousands, dot decimal)' },
+                  { value: '1.000,00', label: '1.000,00 (dot thousands, comma decimal)' },
+                ]}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Time Zone</label>
-              <select
+              <GlassSelect
                 value={userPreferences?.time_zone || 'local'}
-                onChange={(e) => updateUserPreferences({ time_zone: e.target.value })}
-                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-              >
-                <option value="local">Local (device time zone)</option>
-                <option value="Asia/Karachi">Asia/Karachi (PKT, UTC+5)</option>
-                <option value="Asia/Dubai">Asia/Dubai (GST, UTC+4)</option>
-                <option value="Europe/London">Europe/London (GMT/BST)</option>
-                <option value="America/New_York">America/New_York (EST/EDT)</option>
-                <option value="UTC">UTC</option>
-              </select>
+                onChange={(v) => updateUserPreferences({ time_zone: v })}
+                ariaLabel="Time zone"
+                className="w-full p-2.5 text-xs font-bold"
+                options={[
+                  { value: 'local', label: 'Local (device time zone)' },
+                  { value: 'Asia/Karachi', label: 'Asia/Karachi (PKT, UTC+5)' },
+                  { value: 'Asia/Dubai', label: 'Asia/Dubai (GST, UTC+4)' },
+                  { value: 'Europe/London', label: 'Europe/London (GMT/BST)' },
+                  { value: 'America/New_York', label: 'America/New_York (EST/EDT)' },
+                  { value: 'UTC', label: 'UTC' },
+                ]}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Auto-Backup Interval</label>
-              <select
+              <GlassSelect
                 value={String(userPreferences?.auto_backup_interval_min ?? 0)}
-                onChange={(e) => updateUserPreferences({ auto_backup_interval_min: Number(e.target.value) })}
-                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-              >
-                <option value="0">Off (manual only)</option>
-                <option value="15">Every 15 minutes</option>
-                <option value="30">Every 30 minutes</option>
-                <option value="60">Every hour</option>
-                <option value="1440">Daily</option>
-              </select>
+                onChange={(v) => updateUserPreferences({ auto_backup_interval_min: Number(v) })}
+                ariaLabel="Auto-backup interval"
+                className="w-full p-2.5 text-xs font-bold"
+                options={[
+                  { value: '0', label: 'Off (manual only)' },
+                  { value: '15', label: 'Every 15 minutes' },
+                  { value: '30', label: 'Every 30 minutes' },
+                  { value: '60', label: 'Every hour' },
+                  { value: '1440', label: 'Daily' },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -371,14 +384,16 @@ export const PreferencesTab: React.FC = () => {
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Auto-Archive Delivered Cases</label>
-          <select
+          <GlassSelect
             value={userPreferences?.auto_archive_completed_cases === false ? 'false' : 'true'}
-            onChange={(e) => updateUserPreferences({ auto_archive_completed_cases: e.target.value === 'true' })}
-            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-          >
-            <option value="true">Enabled (Archive delivered cases older than 30 days on startup)</option>
-            <option value="false">Disabled (Cases stay in the workstation until archived manually)</option>
-          </select>
+            onChange={(v) => updateUserPreferences({ auto_archive_completed_cases: v === 'true' })}
+            ariaLabel="Auto-archive completed cases"
+            className="w-full p-2.5 text-xs font-bold"
+            options={[
+              { value: 'true', label: 'Enabled (Archive delivered cases older than 30 days on startup)' },
+              { value: 'false', label: 'Disabled (Cases stay in the workstation until archived manually)' },
+            ]}
+          />
         </div>
       </div>
 
