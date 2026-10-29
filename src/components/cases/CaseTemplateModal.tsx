@@ -99,7 +99,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+            className="px-3 py-1.5 ds-glass-pill font-semibold text-xs flex items-center gap-1.5 transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>{showCreateForm ? 'Cancel' : 'New Preset Template'}</span>
@@ -213,7 +213,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="submit"
-              className="px-4 py-1.5 bg-blue-600 text-white font-semibold text-xs rounded-lg shadow-xs hover:bg-blue-700"
+              className="px-4 py-1.5 ds-glass-pill font-semibold text-xs"
             >
               Save Template Preset
             </button>
@@ -268,7 +268,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
               {onApplyTemplate && (
                 <button
                   onClick={() => onApplyTemplate(t)}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                  className="w-full py-2 ds-glass-pill font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>Apply This Template to New Case</span>

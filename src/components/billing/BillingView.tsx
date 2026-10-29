@@ -364,7 +364,7 @@ export const BillingView: React.FC = () => {
                   setUnifiedModalMode('payment');
                   setIsUnifiedRecordModalOpen(true);
                 }}
-                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                className="px-4 py-2 ds-glass-pill active:scale-[0.98] font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer"
               >
                 <ArrowDownLeft className="w-4 h-4 shrink-0" />
                 <span>
@@ -415,7 +415,7 @@ export const BillingView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleBulkPay}
-                  className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                  className="px-3.5 py-2 ds-glass-pill active:scale-[0.98] font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>Bulk Mark Paid ({selectedIds.length})</span>

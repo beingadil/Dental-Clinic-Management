@@ -81,7 +81,7 @@ const Boot: React.FC = () => {
         <div className="text-ink-danger font-semibold text-lg">Database failed to initialize</div>
         <div className="text-slate-600 text-sm max-w-md font-mono break-words">{error}</div>
         <button
-          className="mt-3 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+          className="mt-3 px-4 py-2 ds-glass-pill text-sm font-medium"
           onClick={() => window.location.reload()}
         >
           Retry

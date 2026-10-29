@@ -227,7 +227,7 @@ export const AccountTab: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer"
+              className="px-6 py-2.5 ds-glass-pill font-bold text-xs transition-all flex items-center gap-2 cursor-pointer"
             >
               <Check className="w-4 h-4" />
               <span>Save Profile Changes</span>

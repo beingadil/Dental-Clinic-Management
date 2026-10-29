@@ -114,7 +114,7 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
             <button
               type="button"
               onClick={save}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 ds-glass-pill text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               Save Changes

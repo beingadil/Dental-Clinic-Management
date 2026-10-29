@@ -462,7 +462,7 @@ export const CatalogView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleAddCategory}
-                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                className="px-4 py-2 ds-glass-pill text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add category
@@ -703,7 +703,7 @@ export const CatalogView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSaveSla}
-                  className="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                  className="px-4 py-1.5 ds-glass-pill text-xs font-bold transition-colors cursor-pointer"
                 >
                   Save SLA
                 </button>

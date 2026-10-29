@@ -573,7 +573,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
             onClick={handleExportPDF}
             title="Download ledger statement as PDF (selectable text, real pages)"
             aria-label="Download ledger statement as PDF"
-            className="shrink-0 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="shrink-0 py-2.5 px-4 ds-glass-pill font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <FileDown className="w-4 h-4" />
             <span>Export PDF</span>
@@ -620,7 +620,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
           <button
             type="button"
             onClick={() => setIsPreviewActive(true)}
-            className="shrink-0 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="shrink-0 py-2.5 px-4 ds-glass-pill font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <Eye className="w-4 h-4" />
             <span>Preview</span>

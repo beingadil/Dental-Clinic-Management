@@ -78,7 +78,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({ payment, o
               <p className="text-sm font-medium">{currentAttachment.file_name}</p>
               <button
                 onClick={() => handleDownload(currentAttachment)}
-                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer"
+                className="px-4 py-2 ds-glass-pill text-xs font-semibold flex items-center gap-2 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 <span>Download Attachment ({currentAttachment.file_size})</span>

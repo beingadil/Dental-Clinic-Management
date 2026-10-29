@@ -155,7 +155,7 @@ export const DailyReportView: React.FC = () => {
             onClick={handleExportPDF}
             title="Download the report as a PDF (selectable text, real pages)"
             aria-label="Download the daily lab report as a PDF"
-            className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="px-3 py-1.5 ds-glass-pill text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <FileDown className="w-3.5 h-3.5" /> Export PDF
           </button>

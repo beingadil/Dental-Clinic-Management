@@ -109,7 +109,7 @@ export const LockScreen: React.FC = () => {
         <button
           type="submit"
           disabled={checking || !password}
-          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm cursor-pointer"
+          className="w-full py-2.5 ds-glass-pill disabled:opacity-50 font-bold text-xs cursor-pointer"
         >
           {checking ? 'Checking…' : 'Unlock'}
         </button>

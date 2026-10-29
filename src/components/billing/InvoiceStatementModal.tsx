@@ -182,7 +182,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
             <button
               type="button"
               onClick={handleSaveAndPrint}
-              className="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-4 py-1.5 ds-glass-pill font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Printer className="w-4 h-4" /> Save &amp; Print
             </button>

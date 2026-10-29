@@ -122,7 +122,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
           </h3>
           <button
             onClick={() => setShowAddContact(!showAddContact)}
-            className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 flex items-center gap-1"
+            className="px-3 py-1 ds-glass-pill text-xs font-semibold flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5" /> Add Contact
           </button>
@@ -193,7 +193,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
             <div className="flex justify-end gap-2">
               <button
                 type="submit"
-                className="px-4 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg"
+                className="px-4 py-1.5 ds-glass-pill text-xs font-semibold"
               >
                 Save Contact
               </button>

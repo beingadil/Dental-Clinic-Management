@@ -152,7 +152,7 @@ const DashboardLayoutCard: React.FC = () => {
           <button
             type="button"
             onClick={saveLayout}
-            className="ds-tap inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+            className="ds-tap inline-flex items-center gap-1.5 px-3 py-2 ds-glass-pill text-xs font-bold cursor-pointer"
           >
             <Save className="w-3.5 h-3.5" /> Save current
           </button>

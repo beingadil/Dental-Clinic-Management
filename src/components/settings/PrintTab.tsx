@@ -288,7 +288,7 @@ export const PrintTab: React.FC = () => {
         <div className="flex items-center gap-3 pt-2">
           <button
             type="submit"
-            className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
+            className="px-5 py-2.5 ds-glass-pill font-bold text-xs cursor-pointer"
           >
             Save Print Settings
           </button>

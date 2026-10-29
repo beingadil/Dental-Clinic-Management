@@ -492,7 +492,7 @@ export const BulkPrintModal: React.FC<BulkPrintModalProps> = ({
             <button
               type="button"
               onClick={() => handlePrint()}
-              className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+              className="px-6 py-2.5 ds-glass-pill font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4" /> Print All Batch Documents
             </button>

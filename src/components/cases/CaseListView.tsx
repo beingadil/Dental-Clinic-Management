@@ -218,8 +218,6 @@ export const CaseListView: React.FC = () => {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [labFilter, setLabFilter] = useState<string>('all');
-  const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [dueSoonOnly, setDueSoonOnly] = useState(false);
   /* Default order is newest-registered first. The workstation is an intake
      queue: the row you want is the row you just typed, and with delivery_date
@@ -332,12 +330,6 @@ export const CaseListView: React.FC = () => {
     // Status
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
 
-    // Lab
-    if (labFilter !== 'all' && c.lab_id !== labFilter) return false;
-
-    // Priority
-    if (priorityFilter !== 'all' && c.priority !== priorityFilter) return false;
-
     // Due Soon (<24h or threshold)
     if (dueSoonOnly) {
       const { isWarning } = checkCaseWarning(c);
@@ -347,7 +339,7 @@ export const CaseListView: React.FC = () => {
     return true;
   }).sort((a, b) => {
     return compareCases(a, b, sortBy) * (sortOrder === 'asc' ? 1 : -1);
-  }), [activeCases, searchTerm, statusFilter, labFilter, priorityFilter, dueSoonOnly, sortBy, sortOrder, todayStr]);
+  }), [activeCases, searchTerm, statusFilter, dueSoonOnly, sortBy, sortOrder, todayStr]);
 
   /* Archive tab list: date range on delivery date, clinic dropdown, search —
      the same controls every other module uses (shared DatePickerRange). */
@@ -439,7 +431,7 @@ export const CaseListView: React.FC = () => {
     pagination: casesPagination,
   } = usePagination(filteredCases, {
     initialPageSize: 50,
-    resetKey: `${searchTerm}|${statusFilter}|${labFilter}|${priorityFilter}|${dueSoonOnly}|${sortBy}|${sortOrder}|${showArchive}`,
+    resetKey: `${searchTerm}|${statusFilter}|${dueSoonOnly}|${sortBy}|${sortOrder}|${showArchive}`,
   });
 
   // Bulk selection helper functions
@@ -565,7 +557,7 @@ export const CaseListView: React.FC = () => {
 
       {/* Filter and Control Toolbar */}
       <div className="ds-glass-card rounded-2xl p-4 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {/* Search Field */}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
@@ -593,37 +585,6 @@ export const CaseListView: React.FC = () => {
               <option value="delivered">Delivered</option>
               <option value="revision">Revision</option>
               <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          {/* Lab Filter */}
-          <div>
-            <select
-              value={labFilter}
-              onChange={(e) => setLabFilter(e.target.value)}
-              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none focus:border-indigo-500 text-slate-700"
-            >
-              <option value="all">All Dental Clinics</option>
-              {labs.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Priority Filter */}
-          <div>
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none focus:border-indigo-500 text-slate-700"
-            >
-              <option value="all">All Priorities</option>
-              <option value="urgent">Urgent Only</option>
-              <option value="high">High Priority</option>
-              <option value="normal">Normal</option>
-              <option value="low">Low</option>
             </select>
           </div>
 
@@ -680,7 +641,7 @@ export const CaseListView: React.FC = () => {
                 setBulkPrintType('slips');
                 setBulkPrintModalOpen(true);
               }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
+              className="px-4 py-2 ds-glass-pill font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>Print Job Slips ({selectedCaseIds.length})</span>
@@ -1149,8 +1110,6 @@ export const CaseListView: React.FC = () => {
                 onAction={() => {
                   setSearchTerm('');
                   setStatusFilter('all');
-                  setLabFilter('all');
-                  setPriorityFilter('all');
                   setDueSoonOnly(false);
                 }}
               />

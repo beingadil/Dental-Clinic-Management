@@ -46,7 +46,7 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             <SavePdfButton suggestedName={`Receipt_${payment.payment_number || payment.id}.pdf`} />
             <button
               onClick={handlePrint}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              className="px-3.5 py-1.5 text-xs font-semibold ds-glass-pill transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print Slip</span>

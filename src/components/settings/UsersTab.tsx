@@ -72,7 +72,7 @@ export const UsersTab: React.FC = () => {
               clearUserMsg();
               setNewUserForm({ name: '', username: '', email: '', role: 'Clinic Entry Manager', password: '', permissions: [...ROLE_BASELINE['Clinic Entry Manager']] });
             }}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 flex items-center gap-2 cursor-pointer self-start sm:self-auto"
+            className="px-4 py-2.5 ds-glass-pill font-bold text-xs flex items-center gap-2 cursor-pointer self-start sm:self-auto"
           >
             <UserPlus className="w-4 h-4" />
             <span>Add New User</span>
@@ -450,7 +450,7 @@ export const UsersTab: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md shadow-indigo-600/20 cursor-pointer flex items-center gap-1.5"
+                  className="px-5 py-2 ds-glass-pill font-bold cursor-pointer flex items-center gap-1.5"
                 >
                   <UserPlus className="w-4 h-4" /> Create User
                 </button>
@@ -502,7 +502,7 @@ export const UsersTab: React.FC = () => {
                   setResetPwdUserId(null);
                   flashUserMsg('success', 'User password reset successfully!');
                 }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
+                className="px-4 py-2 ds-glass-pill disabled:opacity-50 font-bold text-xs cursor-pointer"
               >
                 Update Password
               </button>
@@ -553,7 +553,7 @@ export const UsersTab: React.FC = () => {
                   if (scopeUserId) setUserClinicScope(scopeUserId, scopeSelected);
                   setScopeUserId(null);
                 }}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg cursor-pointer"
+                className="px-3 py-1.5 ds-glass-pill text-xs font-semibold cursor-pointer"
               >
                 Save scope
               </button>
@@ -639,7 +639,7 @@ export const UsersTab: React.FC = () => {
                   if (permUserId) setUserPermissions(permUserId, permSelected);
                   setPermUserId(null);
                 }}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg cursor-pointer"
+                className="px-3 py-1.5 ds-glass-pill text-xs font-semibold cursor-pointer"
               >
                 Save permissions
               </button>
@@ -759,7 +759,7 @@ export const UsersTab: React.FC = () => {
                   }
                   setRoleModal(null);
                 }}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg cursor-pointer"
+                className="px-3 py-1.5 ds-glass-pill text-xs font-semibold cursor-pointer"
               >
                 {roleModal.mode === 'add' ? 'Create role' : 'Save role'}
               </button>

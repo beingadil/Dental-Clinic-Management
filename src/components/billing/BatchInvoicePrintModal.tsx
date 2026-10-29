@@ -257,7 +257,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               type="button"
               onClick={handlePrint}
               disabled={selected.length === 0}
-              className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-ink-muted"
+              className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap ds-glass-pill px-4 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-ink-muted"
             >
               <Printer className="h-4 w-4" /> Print {selected.length || ''} Invoice{selected.length === 1 ? '' : 's'}
             </button>

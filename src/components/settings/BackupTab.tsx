@@ -484,7 +484,7 @@ export const BackupTab: React.FC<{
             </button>
             <button
               onClick={handleExportSqliteDump}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              className="w-full py-2.5 ds-glass-pill font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {/* Same reason as the .dentalbackup button above; blue-200
                   remaps to #1c3f66, which was 1.58:1 on this blue fill. */}
@@ -603,7 +603,7 @@ export const BackupTab: React.FC<{
             <button
               onClick={() => sqlInputRef.current?.click()}
               disabled={sqlBusy}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+              className="w-full py-2.5 ds-glass-pill disabled:opacity-50 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <FileCode className="w-4 h-4" />
               <span>{sqlBusy ? 'Analysing…' : 'Select & Validate a .sql Dump'}</span>

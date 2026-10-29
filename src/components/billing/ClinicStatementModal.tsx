@@ -210,7 +210,7 @@ export const ClinicStatementModal: React.FC<ClinicStatementModalProps> = ({
             <SavePdfButton suggestedName={`Statement_${clinic?.name?.replace(/\s+/g, '_') || 'Clinic'}_${getTodayStr()}.pdf`} />
             <button
               onClick={handlePrint}
-              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 text-xs font-semibold ds-glass-pill flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               Print Statement

@@ -775,7 +775,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-5 py-2.5 text-xs font-semibold ds-glass-pill transition-colors flex items-center gap-2 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               {mode === 'advance' ? 'Post Deposit & Issue Receipt' : 'Post Payment & Issue Receipt'}

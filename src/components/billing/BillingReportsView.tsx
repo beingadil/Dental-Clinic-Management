@@ -502,7 +502,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               onClick={handleExportMonthlyPDF}
               title="Download the statement as a PDF (selectable text, one month per page)"
               aria-label="Download the monthly statement as a PDF"
-              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 ds-glass-pill text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
             >
               <FileDown className="w-3.5 h-3.5" />
               <span>Export PDF</span>

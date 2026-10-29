@@ -328,7 +328,7 @@ export const LoginPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={!setupReady}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-lg bg-brand-600 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white transition-all hover:bg-brand-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2.5 ds-glass-pill px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
                 >
                   {setupBusy ? (
                     <>Creating account&hellip;</>
@@ -434,7 +434,7 @@ export const LoginPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-lg bg-brand-600 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white transition-all hover:bg-brand-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2.5 ds-glass-pill px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
                 >
                   {isSubmitting ? (
                     <>Signing in&hellip;</>

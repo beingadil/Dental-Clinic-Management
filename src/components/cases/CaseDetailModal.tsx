@@ -805,7 +805,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={handleApplyPreferredLab}
-                      className={`shrink-0 rounded-full bg-brand-600 px-3 py-1 text-[10px] font-bold text-white transition-all duration-500 hover:bg-brand-700 active:scale-[0.97] ${EASE}`}
+                      className={`shrink-0 ds-glass-pill px-3 text-[10px] font-bold active:scale-[0.97] ${EASE}`}
                     >
                       Auto-select
                     </button>
@@ -1694,7 +1694,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={goNext}
-                    className={`group inline-flex items-center gap-2 rounded-full bg-slate-900 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(15,23,42,0.55)] transition-all duration-500 hover:bg-brand-600 active:scale-[0.98] ${EASE}`}
+                    className={`group inline-flex items-center gap-2 ds-glass-pill py-2.5 pl-5 pr-2.5 text-xs font-bold active:scale-[0.98] ${EASE}`}
                   >
                     <span>Continue</span>
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
@@ -1705,7 +1705,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={commitCase}
-                    className={`group inline-flex items-center gap-2 rounded-full bg-brand-600 py-2.5 pl-5 pr-2.5 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(79,70,229,0.45)] transition-all duration-500 hover:bg-brand-700 active:scale-[0.98] ${EASE}`}
+                    className={`group inline-flex items-center gap-2 ds-glass-pill py-2.5 pl-5 pr-2.5 text-xs font-bold active:scale-[0.98] ${EASE}`}
                   >
                     <span>{isEdit ? 'Save Changes' : 'Create Dental Case'}</span>
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-px">
@@ -1801,7 +1801,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => openFileInBrowser(previewModalAttachment.file_url, previewModalAttachment.filename, previewModalAttachment.file_type)}
-                  className={`inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-brand-600 active:scale-[0.97] ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 ds-glass-pill px-4 py-2 text-xs font-bold active:scale-[0.97] ${EASE}`}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open in browser
@@ -1854,7 +1854,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveAsTemplate}
-                  className={`inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-5 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-brand-700 active:scale-[0.97] ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 ds-glass-pill px-5 py-2 text-xs font-bold active:scale-[0.97] ${EASE}`}
                 >
                   <Bookmark className="h-3.5 w-3.5" />
                   Save Preset

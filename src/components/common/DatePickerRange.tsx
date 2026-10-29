@@ -446,7 +446,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
                 // then close. Do NOT reset to today — Done is a confirm-action.
                 setOpen(false);
               }}
-              className="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[11px] font-bold rounded-lg cursor-pointer"
+              className="px-2.5 py-1 ds-glass-pill text-[11px] font-bold cursor-pointer"
             >
               Done
             </button>

@@ -377,7 +377,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                     </label>
                     <button
                       type="submit"
-                      className="px-3 py-1.5 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold transition-colors"
+                      className="px-3 py-1.5 ds-glass-pill text-xs font-semibold transition-colors"
                     >
                       Apply Advance
                     </button>
@@ -612,7 +612,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenPaymentModal(invoice)}
-                className="px-4 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold ds-glass-pill flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <ArrowDownLeft className="w-4 h-4" />
                 Collect Payment

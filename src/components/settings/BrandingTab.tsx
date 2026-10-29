@@ -382,7 +382,7 @@ export const BrandingTab: React.FC = () => {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg text-xs shadow-2xs transition-colors flex items-center gap-2 cursor-pointer"
+            className="px-5 py-2 ds-glass-pill font-semibold text-xs transition-colors flex items-center gap-2 cursor-pointer"
           >
             <Check className="w-4 h-4" />
             <span>Save Branding Settings</span>

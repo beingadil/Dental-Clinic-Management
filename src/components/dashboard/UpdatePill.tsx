@@ -81,7 +81,7 @@ export function UpdatePill() {
       actions = (
         <button
           onClick={() => void runAutoUpdate()}
-          className="ml-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
+          className="ml-2 px-3 py-1.5 ds-glass-pill text-[11px] font-bold cursor-pointer flex items-center gap-1.5"
         >
           <Download className="w-3.5 h-3.5" />
           Install

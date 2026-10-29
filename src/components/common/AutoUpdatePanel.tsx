@@ -257,7 +257,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
               <>
                 <button
                   onClick={() => void applyStagedUpdate()}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
+                  className="px-3.5 py-2 ds-glass-pill text-[11px] font-bold cursor-pointer flex items-center gap-1.5"
                 >
                   <Power className="w-3.5 h-3.5" />
                   Restart &amp; Apply Updates
@@ -273,7 +273,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
             {failed && (
               <button
                 onClick={() => void runAutoUpdate()}
-                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
+                className="px-3.5 py-2 ds-glass-pill text-[11px] font-bold cursor-pointer flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Try again
