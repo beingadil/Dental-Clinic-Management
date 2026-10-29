@@ -89,3 +89,4 @@ brag.mp4
 # rather than committed: the video is ~4.6 MB and the screenshots add ~4 MB
 # of binaries that a reviewer never needs to clone.
 hackathon-assets/
+/freebuff-sites-build/

@@ -1,3 +1,42 @@
+## [2.31.3] - 2026-10-29
+
+Print Invoices as its own page with true A4/Letter paper and a zoom control,
+plus a round of shell fixes: dialogs stop hiding behind the header, the
+workstation's case form opens full screen, and its search no longer types into
+the global command bar.
+
+### Added
+- Print Invoices page (Billing & Invoices → Print Invoices): multi-sheet
+  statement preview on real paper geometry (A4 794×1123, Letter 816×1056 — the
+  same numbers the pagination budgets rows against), Fit / 75% / 100% zoom, a
+  centred page mat instead of a left-pinned sheet, clinic and date-range
+  filters, search, status chips and Save as PDF / Print.
+
+### Changed
+- Preferences and Add User dropdowns use the shared glass select rather than the
+  OS menu, so they match every other control in the app.
+- The rail's Billing & Invoices group header now takes the same glass capsule as
+  the rest of the nav, and its submenu entry reads "Print Invoices".
+- The duplicate "Batch Print Invoices" button in the Billing header is gone —
+  printing has its own page now.
+
+### Fixed
+- Dashboard dialogs (KPI cards, workflow stages, quick actions, View panels)
+  opened behind the sticky header: `.ds-ambient` isolated the board into its own
+  stacking context, so a `z-50` overlay lost to the header's `z-30` and its own
+  title bar slid under the bar.
+- Create New Case from the Dental Workstation opens the same full-window editor
+  as the dashboard. `contain: content` on `<main>` made main the containing
+  block for every dialog rendered inside it.
+- The dot-grid canvas is painted on the app shell instead of `<main>`, removing
+  the tinted square that separated the header from the board.
+- The header's own `w-full` (on top of its 12px side margins) hung 24px past the
+  column and clipped its right rounded corner at the window edge.
+- The workstation's filter box no longer types into the header's global search;
+  a query from the command bar still lands in the workstation.
+- Printed Account Balance block is 320px with nowrap figures, so "Closing
+  Balance (Dr)" and its amount can no longer wrap apart.
+
 ## [2.31.2] - 2026-10-28
 
 Shared date presets, a rebuilt Batch Print Invoices dialog, and clinic account
