@@ -42,6 +42,9 @@ const SettingsView = lazy(() =>
 const CatalogView = lazy(() =>
   import('./components/catalog/CatalogView').then((m) => ({ default: m.CatalogView }))
 );
+const PrintInvoicesView = lazy(() =>
+  import('./components/billing/PrintInvoicesView').then((m) => ({ default: m.PrintInvoicesView }))
+);
 
 const MainAppContent: React.FC = () => {
   // The whole context object is kept (not just the fields the shell needs)
@@ -150,6 +153,8 @@ const MainAppContent: React.FC = () => {
                 {currentView === 'labs' && <LabListView />}
 
                 {currentView === 'billing' && <BillingView />}
+
+                {currentView === 'print-invoices' && <PrintInvoicesView />}
 
                 {currentView === 'catalog' && <CatalogView />}
 

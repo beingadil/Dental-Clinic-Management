@@ -38,6 +38,7 @@ import {
   FolderKanban,
   Building2,
   Receipt,
+  Printer,
   BarChart3,
   Bell,
   Settings,
@@ -46,6 +47,7 @@ import {
   PanelLeftOpen,
   Activity,
   BookOpen,
+  ChevronDown,
 } from 'lucide-react';
 
 const NAV_ACTION: Record<string, string> = {
@@ -53,6 +55,7 @@ const NAV_ACTION: Record<string, string> = {
   cases: 'cases:view',
   labs: 'clinics:view',
   billing: 'billing:view',
+  'print-invoices': 'billing:view',
   catalog: 'catalog:view',
   analytics: 'reports:view',
   notifications: 'notifications:view',
@@ -64,6 +67,7 @@ export const Sidebar: React.FC = () => {
     useApp();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const unpaidInvoicesCount = invoices.filter((i) => i.payment_status !== 'paid').length;
 
@@ -80,6 +84,7 @@ export const Sidebar: React.FC = () => {
     icon: React.FC<{ className?: string }>;
     badge?: string;
     tone?: 'warn' | 'risk' | 'neutral';
+    children?: { id: string; label: string; icon: React.FC<{ className?: string }> }[];
   }
 
   const navGroups = useMemo<{ groupTitle: string; items: NavItem[] }[]>(() => [
@@ -106,6 +111,10 @@ export const Sidebar: React.FC = () => {
           icon: Receipt,
           badge: unpaidInvoicesCount > 0 ? `${unpaidInvoicesCount}` : undefined,
           tone: 'neutral',
+          children: [
+            { id: 'billing', label: 'Invoice Rec', icon: Receipt },
+            { id: 'print-invoices', label: 'Printing', icon: Printer },
+          ],
         },
         { id: 'catalog', label: 'Price List & Catalog', icon: BookOpen },
       ],
@@ -223,6 +232,77 @@ export const Sidebar: React.FC = () => {
               )}
               {group.items.map((item) => {
                 const Icon = item.icon;
+                const hasChildren = !!item.children?.length;
+                const isParentActive = hasChildren && item.children!.some((c) => c.id === currentView);
+                const isExpanded = expanded[item.id] ?? isParentActive;
+
+                if (hasChildren) {
+                  return (
+                    <div key={item.id} className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setExpanded((e) => ({ ...e, [item.id]: !isExpanded }))}
+                        aria-expanded={isExpanded}
+                        aria-current={isParentActive ? 'page' : undefined}
+                        className={`ds-nav-row ds-row-target active:scale-[0.98] cursor-pointer ${
+                          isCollapsed ? 'justify-center py-3' : 'gap-3 pl-3 pr-2.5 py-2'
+                        }`}
+                      >
+                        <Icon
+                          className={`w-[17px] h-[17px] shrink-0 transition-colors ${
+                            isParentActive ? 'text-ds-accent' : 'text-ds-muted'
+                          }`}
+                        />
+                        {!isCollapsed && (
+                          <>
+                            <span className="truncate flex-1">{item.label}</span>
+                            <ChevronDown
+                              className={`w-3.5 h-3.5 shrink-0 text-ds-muted transition-transform ${
+                                isExpanded ? 'rotate-180' : ''
+                              }`}
+                              aria-hidden="true"
+                            />
+                          </>
+                        )}
+                        {!isCollapsed && item.badge && (
+                          <span className="ds-nav-badge" data-tone={item.tone ?? 'neutral'}>
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                      {isExpanded && !isCollapsed && item.children!.map((child) => {
+                        const ChildIcon = child.icon;
+                        const childActive = currentView === child.id;
+                        const childAction = NAV_ACTION[child.id] ?? 'dashboard:view';
+                        const childDisabled = !can(user, childAction as any);
+                        return (
+                          <button
+                            key={child.id}
+                            type="button"
+                            disabled={childDisabled}
+                            onClick={() => { if (!childDisabled) go(child.id); }}
+                            title={childDisabled ? deniedTooltip : undefined}
+                            aria-current={childActive ? 'page' : undefined}
+                            data-active={childActive}
+                            className={`ds-nav-row ds-row-target active:scale-[0.98] ml-3 ${
+                              !childDisabled && !childActive ? 'ds-glass-pill-row' : ''
+                            } ${
+                              childDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                            } gap-3 pl-3 pr-2.5 py-1.5`}
+                          >
+                            <ChildIcon
+                              className={`w-[15px] h-[15px] shrink-0 transition-colors ${
+                                childActive ? 'text-ds-accent' : 'text-ds-muted'
+                              }`}
+                            />
+                            <span className="truncate text-[12px]">{child.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+
                 const isActive = currentView === item.id;
                 const navAction = NAV_ACTION[item.id] ?? 'dashboard:view';
                 const disabled = !can(user, navAction as any);
