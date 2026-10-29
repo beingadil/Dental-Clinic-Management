@@ -65,10 +65,10 @@ export const Drawer: React.FC<DrawerProps> = ({
         aria-modal="true"
         aria-label={labelledBy ? undefined : label}
         aria-labelledby={labelledBy}
-        className={`w-full ${maxWidth} bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 print:shadow-none ${cardClassName}`}
+        className={`w-full ${maxWidth} ds-glass-pane h-full flex flex-col animate-in slide-in-from-right duration-200 print:shadow-none ${cardClassName}`}
       >
         {(header || !hideClose) && (
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+          <div className="px-6 py-4 border-b border-ds-line bg-ds-surface/50 flex items-center justify-between gap-3 shrink-0">
             <div className="min-w-0">{header}</div>
             {!hideClose && (
               <button
@@ -84,7 +84,7 @@ export const Drawer: React.FC<DrawerProps> = ({
         )}
         {bodyClassName ? <div className={bodyClassName}>{children}</div> : children}
         {footer && (
-          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex flex-wrap items-center justify-end gap-2.5 shrink-0">
+          <div className="px-6 py-4 border-t border-ds-line bg-ds-surface/55 flex flex-wrap items-center justify-end gap-2.5 shrink-0">
             {footer}
           </div>
         )}

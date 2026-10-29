@@ -87,7 +87,7 @@ export const Modal: React.FC<ModalProps> = ({
         aria-modal="true"
         aria-label={labelledBy ? undefined : label}
         aria-labelledby={labelledBy}
-        className={`bg-white rounded-2xl shadow-2xl border border-slate-200 w-full ${maxWidth} overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto ${cardClassName}`}
+        className={`ds-glass-pane rounded-2xl w-full ${maxWidth} overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto ${cardClassName}`}
       >
         {(header || !hideClose) && (
           <div
@@ -108,7 +108,7 @@ export const Modal: React.FC<ModalProps> = ({
         )}
         {bodyClassName ? <div className={bodyClassName}>{children}</div> : children}
         {footer && (
-          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex flex-wrap items-center justify-end gap-2.5">
+          <div className="px-6 py-4 border-t border-ds-line bg-ds-surface/55 flex flex-wrap items-center justify-end gap-2.5">
             {footer}
           </div>
         )}

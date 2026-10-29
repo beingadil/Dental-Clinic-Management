@@ -527,6 +527,36 @@
     outline-offset: 2px;
   }
 
+  /* Glass pane — the dialog/drawer surface, one definition for every modal
+     in the app. Screen: dense translucent glass (80% white) so forms stay
+     legible on top of the dark canvas. PRINT: forced opaque — the print
+     contracts ship these cards to paper, and paper gets no blur. The pane
+     is denser than the dashboard panels on purpose: dialogs carry forms,
+     not scenery. */
+  .ds-glass-pane {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.7));
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+    backdrop-filter: blur(20px) saturate(170%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+      0 24px 64px -24px rgba(20, 28, 43, 0.45);
+  }
+  @media print {
+    /* Paper: the pane goes opaque. Blur behind ink is mud, and the print
+       contracts (print-area cards) expect real surfaces. The dark theme's
+       whisper fill is scoped to @media screen, so the .dark selector here is
+       belt-and-suspenders — it keeps the specific case explicit. */
+    .ds-glass-pane,
+    .dark .ds-glass-pane {
+      background: #ffffff;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      border-color: #e2e8f0;
+      box-shadow: none;
+    }
+  }
+
   /* Glass chip — the capsule material for NON-interactive hints (the layout
      bar's "Locked" note). Same fill/rim/gloss as the nav-row glass, but a
      span, so no affordance signals. No backdrop blur: it sits on glass that
