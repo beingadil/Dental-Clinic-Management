@@ -1055,7 +1055,7 @@ export const QuickActions: React.FC<{ actions: QuickAction[] }> = ({ actions }) 
             key={action.key}
             type="button"
             onClick={action.onClick}
-            className="ds-tap group flex items-center gap-2.5 rounded-lg border border-ds-line bg-ds-surface px-2.5 py-2 text-left cursor-pointer hover:border-ds-accent-ring hover:bg-ds-accent-soft/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent"
+            className="ds-glass-pill-row ds-tap group flex items-center gap-2.5 px-2.5 py-2 text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent !rounded-2xl"
           >
             <span className={`ds-icon-tile !w-8 !h-8 rounded-lg ${TONE_ICON_BG[action.tone]}`}>
               <Icon className="w-4 h-4" strokeWidth={2} />

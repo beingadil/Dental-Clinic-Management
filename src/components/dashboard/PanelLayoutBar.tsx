@@ -43,7 +43,7 @@ export const PanelLayoutBar: React.FC<{
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-surface px-2.5 py-1 text-[11px] font-semibold text-ds-ink-soft hover:border-ds-accent-ring hover:text-ds-accent cursor-pointer"
+            className="ds-glass-pill text-[12px]"
           >
             <EyeOff className="w-3.5 h-3.5" />
             {hiddenCount} hidden
@@ -73,7 +73,7 @@ export const PanelLayoutBar: React.FC<{
       )}
 
       {dragLocked && (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-sunken px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
+        <span className="ds-glass-chip inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
           <Lock className="w-3.5 h-3.5" />
           Locked — unlock in Settings → Preferences
         </span>

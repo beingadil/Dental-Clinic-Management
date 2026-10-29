@@ -40,7 +40,7 @@ export function ThemeToggle() {
       role="radiogroup"
       aria-label="Interface theme"
       title={`Theme: ${currentLabel}`}
-      className="shrink-0 flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100/80 border border-slate-200/80"
+      className="shrink-0 flex items-center gap-0.5 p-0.5 rounded-full bg-white/30 border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
     >
       {OPTIONS.map(({ mode, label, hint, Icon }) => {
         const active = mode === current;
@@ -53,7 +53,7 @@ export function ThemeToggle() {
             title={hint}
             onClick={() => updateUserPreferences({ theme_mode: mode })}
             className={[
-              'w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer',
+              'w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer',
               active
                 ? 'bg-white text-indigo-600 shadow-2xs ring-1 ring-slate-200/70'
                 : 'text-slate-500 hover:text-slate-900 hover:bg-white/70',
