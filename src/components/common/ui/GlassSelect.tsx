@@ -15,6 +15,8 @@ export interface GlassSelectProps {
   ariaLabel?: string;
   className?: string;
   menuClassName?: string;
+  /** Mirror of the native select's disabled state — the trigger renders inert. */
+  disabled?: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
   ariaLabel,
   className = '',
   menuClassName = '',
+  disabled = false,
 }) => {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -190,13 +193,14 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
       <button
         type="button"
         ref={triggerRef}
+        disabled={disabled}
         onClick={() => (open ? (triggerRef.current?.focus(), setOpen(false)) : openMenu())}
         onKeyDown={onTriggerKeyDown}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-label={ariaLabel}
-        className={`ds-glass-select flex w-full items-center justify-between gap-2 rounded-xl text-left ${className}`}
+        className={`ds-glass-select flex w-full items-center justify-between gap-2 rounded-xl text-left disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       >
         <span className="truncate">{current?.label ?? value}</span>
         <ChevronDown

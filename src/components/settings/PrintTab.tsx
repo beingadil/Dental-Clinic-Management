@@ -10,6 +10,7 @@ import {
 import { DocumentKind, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
 import { PreviewFrame } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { useApp } from '../../context/AppContext';
 import {
   CheckCircle2,
@@ -64,49 +65,57 @@ export const PrintTab: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Paper Size</label>
-            <select
+            <GlassSelect
               value={printSettingsForm.paper}
-              onChange={(e) => setPrintSettingsForm((p) => ({ ...p, paper: e.target.value as PrintSettings['paper'] }))}
-              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-            >
-              <option value="a4">A4 (210 × 297 mm)</option>
-              <option value="letter">US Letter (8.5 × 11 in)</option>
-            </select>
+              onChange={(v) => setPrintSettingsForm((p) => ({ ...p, paper: v as PrintSettings['paper'] }))}
+              ariaLabel="Paper size"
+              className="w-full p-2.5 text-xs font-bold"
+              options={[
+                { value: 'a4', label: 'A4 (210 × 297 mm)' },
+                { value: 'letter', label: 'US Letter (8.5 × 11 in)' },
+              ]}
+            />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Page Margins</label>
-            <select
+            <GlassSelect
               value={printSettingsForm.margin}
-              onChange={(e) => setPrintSettingsForm((p) => ({ ...p, margin: e.target.value as PrintSettings['margin'] }))}
-              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-            >
-              <option value="narrow">Narrow (8 mm)</option>
-              <option value="normal">Normal (12 mm)</option>
-              <option value="wide">Wide (18 mm)</option>
-            </select>
+              onChange={(v) => setPrintSettingsForm((p) => ({ ...p, margin: v as PrintSettings['margin'] }))}
+              ariaLabel="Page margins"
+              className="w-full p-2.5 text-xs font-bold"
+              options={[
+                { value: 'narrow', label: 'Narrow (8 mm)' },
+                { value: 'normal', label: 'Normal (12 mm)' },
+                { value: 'wide', label: 'Wide (18 mm)' },
+              ]}
+            />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Text Size</label>
-            <select
+            <GlassSelect
               value={printSettingsForm.fontSize}
-              onChange={(e) => setPrintSettingsForm((p) => ({ ...p, fontSize: e.target.value as PrintSettings['fontSize'] }))}
-              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-            >
-              <option value="compact">Compact</option>
-              <option value="normal">Normal</option>
-              <option value="large">Large</option>
-            </select>
+              onChange={(v) => setPrintSettingsForm((p) => ({ ...p, fontSize: v as PrintSettings['fontSize'] }))}
+              ariaLabel="Text size"
+              className="w-full p-2.5 text-xs font-bold"
+              options={[
+                { value: 'compact', label: 'Compact' },
+                { value: 'normal', label: 'Normal' },
+                { value: 'large', label: 'Large' },
+              ]}
+            />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Job Slip Style</label>
-            <select
+            <GlassSelect
               value={printSettingsForm.jobSlipStyle}
-              onChange={(e) => setPrintSettingsForm((p) => ({ ...p, jobSlipStyle: e.target.value as PrintSettings['jobSlipStyle'] }))}
-              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
-            >
-              <option value="compact">Compact tag (100 × 95 mm, 6-up on A4)</option>
-              <option value="full">Full-page lab card (A4)</option>
-            </select>
+              onChange={(v) => setPrintSettingsForm((p) => ({ ...p, jobSlipStyle: v as PrintSettings['jobSlipStyle'] }))}
+              ariaLabel="Job slip style"
+              className="w-full p-2.5 text-xs font-bold"
+              options={[
+                { value: 'compact', label: 'Compact tag (100 × 95 mm, 6-up on A4)' },
+                { value: 'full', label: 'Full-page lab card (A4)' },
+              ]}
+            />
           </div>
         </div>
 
@@ -214,16 +223,18 @@ export const PrintTab: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Logo Position</label>
-              <select
+              <GlassSelect
                 value={printSettingsForm.logoPosition}
                 disabled={!printSettingsForm.showLogo}
-                onChange={(e) => setPrintSettingsForm((p) => ({ ...p, logoPosition: e.target.value as PrintSettings['logoPosition'] }))}
-                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold disabled:opacity-50"
-              >
-                <option value="left">Left (letterhead style)</option>
-                <option value="center">Centered above name</option>
-                <option value="right">Right</option>
-              </select>
+                onChange={(v) => setPrintSettingsForm((p) => ({ ...p, logoPosition: v as PrintSettings['logoPosition'] }))}
+                ariaLabel="Logo position"
+                className="w-full p-2.5 text-xs font-bold"
+                options={[
+                  { value: 'left', label: 'Left (letterhead style)' },
+                  { value: 'center', label: 'Centered above name' },
+                  { value: 'right', label: 'Right' },
+                ]}
+              />
             </div>
             <div className="flex items-end">
               <p className="text-[11px] text-slate-500">Upload or replace the logo itself in Branding &amp; Identity. Every invoice and job slip prints live from its own dialog.</p>
