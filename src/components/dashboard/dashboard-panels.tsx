@@ -442,7 +442,7 @@ export const ProductionWorkflow: React.FC<{
               title={`${stage.count} ${stage.unit} in ${stage.label}${
                 age ? ` · oldest here ${age}` : ''
               }`}
-              className={`flex-1 basis-[86px] min-w-0 rounded-xl ${TONE_ICON_BG[stage.tone]} px-1.5 py-3 text-center cursor-pointer transition hover:brightness-[0.97] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent`}
+              className={`flex-1 basis-[86px] min-w-0 rounded-2xl ds-glass-chip px-1.5 py-3 text-center cursor-pointer transition hover:brightness-[0.97] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent`}
             >
               <span className="block text-[11px] font-bold text-ds-ink-soft truncate">
                 {stage.label}
