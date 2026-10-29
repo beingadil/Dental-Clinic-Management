@@ -225,7 +225,7 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as QueueSortKey)}
-              className="p-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-700 focus:outline-none"
+              className="p-1.5 text-xs ds-glass-select rounded-lg font-semibold text-slate-700 focus:outline-none"
             >
               <option value="due_date">Due Date</option>
               <option value="priority">Priority</option>

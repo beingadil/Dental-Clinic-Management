@@ -85,6 +85,12 @@ const inputCls = `w-full rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate
   placeholder:text-ink-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${EASE}
   hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-600/40`;
 
+// Selects in this form wear the glass material instead of the solid input fill:
+// same rhythm as the inputs, but translucent with a luminous rim (fill-only —
+// this modal is itself a glass pane, so no second backdrop layer).
+const selectCls = `w-full rounded-xl ds-glass-select px-3.5 py-2.5 text-sm text-slate-900 transition-all duration-500 ${EASE}
+  hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-brand-600/40`;
+
 const bezelCard = `rounded-[1.5rem] bg-slate-900/[0.035] p-1.5 ring-1 ring-slate-900/10 shadow-[0_1px_2px_rgba(15,23,42,0.06)]`;
 const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-white p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)]`;
 
@@ -779,7 +785,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 }}
                 aria-invalid={!!errors.labId}
                 aria-describedby={errors.labId ? 'case-lab-id-error' : undefined}
-                className={inputCls}
+                className={selectCls}
               >
                 {labs.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -813,7 +819,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 id="case-type-id"
                 value={caseTypeId}
                 onChange={(e) => setCaseTypeId(e.target.value)}
-                className={inputCls}
+                className={selectCls}
               >
                 {caseTypes.map((ct) => (
                   <option key={ct.id} value={ct.id}>

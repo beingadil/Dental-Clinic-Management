@@ -126,9 +126,9 @@ export const ClinicPicker: React.FC<ClinicPickerProps> = ({
             requestAnimationFrame(() => inputRef.current?.focus());
           }
         }}
-        className={`w-full border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
+        className={`w-full rounded-xl flex items-center justify-between cursor-pointer transition-all ${
           compact ? 'p-2.5' : 'px-3 py-2.5'
-        } ${open ? t.open : 'border-slate-300 bg-white hover:bg-slate-50'}`}
+        } ${open ? t.open : 'ds-glass-select'}`}
       >
         <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
           <Search className="w-4 h-4 text-slate-500 shrink-0" />
@@ -153,7 +153,7 @@ export const ClinicPicker: React.FC<ClinicPickerProps> = ({
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-72 overflow-y-auto p-2 space-y-1"
+          className="ds-popover absolute left-0 right-0 mt-1.5 z-50 max-h-72 overflow-y-auto p-2 space-y-1"
         >
           <div className="p-1.5 sticky top-0 bg-white border-b border-slate-100 mb-1">
             <div className="relative">

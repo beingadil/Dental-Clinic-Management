@@ -162,7 +162,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
               <select
                 value={caseTypeId}
                 onChange={(e) => setCaseTypeId(e.target.value)}
-                className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full p-2 text-xs ds-glass-select rounded-lg focus:outline-none focus:border-blue-500"
               >
                 {caseTypes.map((ct) => (
                   <option key={ct.id} value={ct.id}>
@@ -189,7 +189,7 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
-                className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="w-full p-2 text-xs ds-glass-select rounded-lg"
               >
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>

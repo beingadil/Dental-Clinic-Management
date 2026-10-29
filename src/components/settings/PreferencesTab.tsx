@@ -115,7 +115,7 @@ const DashboardLayoutCard: React.FC = () => {
         <select
           value={userPreferences?.dashboard_density || 'default'}
           onChange={(e) => updateUserPreferences({ dashboard_density: e.target.value as DashboardDensity })}
-          className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+          className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
         >
           {DENSITY_OPTIONS.map((d) => (
             <option key={d.value} value={d.value}>{d.label}</option>
@@ -239,7 +239,7 @@ export const PreferencesTab: React.FC = () => {
           <select
             value={userPreferences?.default_priority || 'normal'}
             onChange={(e) => updateUserPreferences({ default_priority: e.target.value as any })}
-            className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold capitalize"
+            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold capitalize"
           >
             <option value="low">Low Priority</option>
             <option value="normal">Normal Priority</option>
@@ -253,7 +253,7 @@ export const PreferencesTab: React.FC = () => {
           <select
             value={String(userPreferences?.ui_zoom || 1)}
             onChange={(e) => updateUserPreferences({ ui_zoom: Number(e.target.value) })}
-            className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
           >
             <option value="0.85">Smaller (85%)</option>
             <option value="1">Default (100%)</option>
@@ -298,7 +298,7 @@ export const PreferencesTab: React.FC = () => {
           <select
             value={userPreferences?.auto_print_job_slips ? 'true' : 'false'}
             onChange={(e) => updateUserPreferences({ auto_print_job_slips: e.target.value === 'true' })}
-            className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
           >
             <option value="true">Enabled (Auto-log to voucher registry on print)</option>
             <option value="false">Disabled (Manual prompt only)</option>
@@ -314,7 +314,7 @@ export const PreferencesTab: React.FC = () => {
               <select
                 value={userPreferences?.date_format || 'DD/MM/YYYY'}
                 onChange={(e) => updateUserPreferences({ date_format: e.target.value as any })}
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
               >
                 <option value="DD/MM/YYYY">DD/MM/YYYY (31/12/2026)</option>
                 <option value="MM/DD/YYYY">MM/DD/YYYY (12/31/2026)</option>
@@ -327,7 +327,7 @@ export const PreferencesTab: React.FC = () => {
               <select
                 value={userPreferences?.number_format || '1,000.00'}
                 onChange={(e) => updateUserPreferences({ number_format: e.target.value as any })}
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
               >
                 <option value="1,000.00">1,000.00 (comma thousands, dot decimal)</option>
                 <option value="1.000,00">1.000,00 (dot thousands, comma decimal)</option>
@@ -339,7 +339,7 @@ export const PreferencesTab: React.FC = () => {
               <select
                 value={userPreferences?.time_zone || 'local'}
                 onChange={(e) => updateUserPreferences({ time_zone: e.target.value })}
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
               >
                 <option value="local">Local (device time zone)</option>
                 <option value="Asia/Karachi">Asia/Karachi (PKT, UTC+5)</option>
@@ -355,7 +355,7 @@ export const PreferencesTab: React.FC = () => {
               <select
                 value={String(userPreferences?.auto_backup_interval_min ?? 0)}
                 onChange={(e) => updateUserPreferences({ auto_backup_interval_min: Number(e.target.value) })}
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
               >
                 <option value="0">Off (manual only)</option>
                 <option value="15">Every 15 minutes</option>
@@ -374,7 +374,7 @@ export const PreferencesTab: React.FC = () => {
           <select
             value={userPreferences?.auto_archive_completed_cases === false ? 'false' : 'true'}
             onChange={(e) => updateUserPreferences({ auto_archive_completed_cases: e.target.value === 'true' })}
-            className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+            className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
           >
             <option value="true">Enabled (Archive delivered cases older than 30 days on startup)</option>
             <option value="false">Disabled (Cases stay in the workstation until archived manually)</option>

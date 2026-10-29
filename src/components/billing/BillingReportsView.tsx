@@ -550,7 +550,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                className="p-2 text-xs ds-glass-select rounded-xl font-bold"
               >
                 {visibleBlocks.map((b) => (
                   <option key={b.month} value={b.month}>

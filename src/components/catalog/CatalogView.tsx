@@ -592,7 +592,7 @@ export const CatalogView: React.FC = () => {
                         value={reassignTarget}
                         onChange={(e) => setReassignTarget(e.target.value)}
                         aria-label="Move materials to"
-                        className="px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500 text-slate-800"
+                        className="px-2.5 py-1.5 text-xs ds-glass-select border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500 text-slate-800"
                       >
                         {categories
                           .filter((c) => c.id !== deleteTargetId)
@@ -974,7 +974,7 @@ export const CatalogView: React.FC = () => {
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-800"
+                    className="w-full p-2 text-xs ds-glass-select rounded-lg font-bold text-slate-800 focus:outline-none focus:border-slate-400"
                   >
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -1053,7 +1053,7 @@ export const CatalogView: React.FC = () => {
                     <select
                       value={unitBasis}
                       onChange={(e) => setUnitBasis(e.target.value)}
-                      className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 text-slate-900"
+                      className="w-full p-2 text-xs ds-glass-select rounded-lg font-bold text-slate-900 focus:outline-none focus:border-slate-400"
                     >
                       {UNIT_BASIS_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>

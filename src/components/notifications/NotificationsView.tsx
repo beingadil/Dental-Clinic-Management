@@ -612,7 +612,7 @@ export const NotificationsView: React.FC = () => {
                 <select
                   value={testNotificationType}
                   onChange={(e) => setTestNotificationType(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-medium"
+                  className="w-full px-3 py-2 text-xs ds-glass-select rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-medium"
                 >
                   <option value="overdue_case">Overdue Case Alert</option>
                   <option value="unpaid_invoice">Unpaid Invoice Alert</option>

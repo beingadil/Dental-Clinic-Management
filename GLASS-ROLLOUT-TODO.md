@@ -25,11 +25,12 @@ Do NOT close this file until every box is checked and v2.31.3 is released.
 - [x] Batch A: Modal + Drawer → `.ds-glass-pane`; footers/drawer strips via ds tokens (9b66507)
 - [x] Batch B-1: CaseListView view-toggle glass capsule + Preset Templates pill (834f14f)
 - [x] Batch B-2: EmptyState (card+icon tile+action pill) → glass/ds tokens; Create New Case → ds-glass-pill
+- [x] Batch C: `.ds-glass-card` + `.ds-glass-select` materials; CaseListView filter card + 6 selects; template gallery removal; header admin pill round
 
 ## USER REQUESTS (this round, from preview)
-- [x] Remove "Preset Templates" button and its code completely (CaseListView) — button + state + modal wiring if orphaned
-- [ ] Apply glass to the status-filter cards AND `<select>` dropdowns everywhere in the software
-- [ ] Fix header admin pill rounding (not perfectly rounded)
+- [x] Remove "Preset Templates" button and its code completely (CaseListView) — button + state + modal wiring + the dead appliedTemplate prop/fallbacks in CaseDetailModal
+- [x] Glass for filter cards + dropdowns — `.ds-glass-card` + `.ds-glass-select` defined; applied to CaseListView (toolbar card + all 6 selects). ROLLOUT TO OTHER VIEWS still open below.
+- [x] Header admin pill rounding — rounded-full + round avatar circle
 
 ## REMAINING BATCHES
 - [ ] CaseListView filter card → `.ds-glass-card`; status chips → glass chip + white plate active; selects → `.ds-glass-select`

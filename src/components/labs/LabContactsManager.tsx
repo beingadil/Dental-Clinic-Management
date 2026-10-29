@@ -251,7 +251,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
                 <select
                   value={aType}
                   onChange={(e) => setAType(e.target.value as any)}
-                  className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                  className="w-full p-2 text-xs ds-glass-select rounded-lg"
                 >
                   <option value="billing">Billing Address</option>
                   <option value="shipping">Shipping / Dispatch Bay</option>

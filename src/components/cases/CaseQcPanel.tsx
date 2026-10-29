@@ -318,7 +318,7 @@ export const CaseQcPanel: React.FC<CaseQcPanelProps> = ({ caseId, caseNumber, lo
                 <select
                   value={reasonCode}
                   onChange={(e) => setReasonCode(e.target.value as QcReasonCode | '')}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  className="w-full text-xs px-3 py-2 ds-glass-select rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
                 >
                   <option value="">— none —</option>
                   {QC_REASON_CODES.map((code) => (

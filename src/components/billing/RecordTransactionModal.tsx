@@ -414,7 +414,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               <select
                 value={method}
                 onChange={(e) => setMethod(e.target.value as any)}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                className="w-full text-xs px-3 py-2 rounded-lg ds-glass-select focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
               >
                 <option value="cash">Cash in Hand</option>
                 <option value="bank">Bank Transfer / Online / IBFT</option>

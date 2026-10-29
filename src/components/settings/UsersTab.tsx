@@ -347,7 +347,7 @@ export const UsersTab: React.FC = () => {
                       // Picking a role pre-ticks its baseline (built-in or custom); Super Admin can still adjust below.
                       setNewUserForm((f) => ({ ...f, role, permissions: [...roleBaselineFor(role)] }));
                     }}
-                    className="w-full p-3 text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                    className="w-full p-3 text-sm ds-glass-select rounded-xl font-bold"
                   >
                     {['Super Admin', 'Clinic Entry Manager', 'Audit Checker', ...(roles || []).filter((r) => !r.is_system).map((r) => r.name)].map((roleName) => (
                       <option key={roleName} value={roleName}>{roleName}</option>

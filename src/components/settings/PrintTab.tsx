@@ -67,7 +67,7 @@ export const PrintTab: React.FC = () => {
             <select
               value={printSettingsForm.paper}
               onChange={(e) => setPrintSettingsForm((p) => ({ ...p, paper: e.target.value as PrintSettings['paper'] }))}
-              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
             >
               <option value="a4">A4 (210 × 297 mm)</option>
               <option value="letter">US Letter (8.5 × 11 in)</option>
@@ -78,7 +78,7 @@ export const PrintTab: React.FC = () => {
             <select
               value={printSettingsForm.margin}
               onChange={(e) => setPrintSettingsForm((p) => ({ ...p, margin: e.target.value as PrintSettings['margin'] }))}
-              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
             >
               <option value="narrow">Narrow (8 mm)</option>
               <option value="normal">Normal (12 mm)</option>
@@ -90,7 +90,7 @@ export const PrintTab: React.FC = () => {
             <select
               value={printSettingsForm.fontSize}
               onChange={(e) => setPrintSettingsForm((p) => ({ ...p, fontSize: e.target.value as PrintSettings['fontSize'] }))}
-              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
             >
               <option value="compact">Compact</option>
               <option value="normal">Normal</option>
@@ -102,7 +102,7 @@ export const PrintTab: React.FC = () => {
             <select
               value={printSettingsForm.jobSlipStyle}
               onChange={(e) => setPrintSettingsForm((p) => ({ ...p, jobSlipStyle: e.target.value as PrintSettings['jobSlipStyle'] }))}
-              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+              className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold"
             >
               <option value="compact">Compact tag (100 × 95 mm, 6-up on A4)</option>
               <option value="full">Full-page lab card (A4)</option>
@@ -218,7 +218,7 @@ export const PrintTab: React.FC = () => {
                 value={printSettingsForm.logoPosition}
                 disabled={!printSettingsForm.showLogo}
                 onChange={(e) => setPrintSettingsForm((p) => ({ ...p, logoPosition: e.target.value as PrintSettings['logoPosition'] }))}
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-50"
+                className="w-full p-2.5 text-xs ds-glass-select rounded-xl font-bold disabled:opacity-50"
               >
                 <option value="left">Left (letterhead style)</option>
                 <option value="center">Centered above name</option>

@@ -87,7 +87,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
                   const ct = caseTypes.find((c) => c.id === e.target.value);
                   if (ct) setCustomPrice(Math.round(ct.base_price * 0.9));
                 }}
-                className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="w-full p-2 text-xs ds-glass-select rounded-lg"
               >
                 {caseTypes.map((ct) => (
                   <option key={ct.id} value={ct.id}>

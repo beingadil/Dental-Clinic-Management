@@ -165,7 +165,7 @@ export function PaginationBar({
           <select
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="px-1.5 py-1 text-[11px] bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold cursor-pointer focus:outline-none focus:border-indigo-500"
+            className="px-1.5 py-1 text-[11px] ds-glass-select rounded-lg text-slate-700 font-semibold cursor-pointer focus:outline-none focus:border-indigo-500"
           >
             {PAGE_SIZE_OPTIONS.map((size) => (
               <option key={size} value={size}>

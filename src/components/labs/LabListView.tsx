@@ -288,7 +288,7 @@ export const LabListView: React.FC = () => {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-700 focus:outline-none"
+            className="p-2 text-xs ds-glass-select rounded-xl font-semibold text-slate-700 focus:outline-none"
           >
             <option value="cases">Sort by Total Cases</option>
             <option value="name">Sort by Name</option>
