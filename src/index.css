@@ -554,7 +554,11 @@
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
-  opacity: 0.5;
+  /* Raised from 0.5: the floating glass rail refracts whatever sits behind
+     it, and at half strength there was nothing to refract — the pane read
+     as plain frosted white. The shell aurora IS the wallpaper the Tahoe-
+     style chrome is meant to show. */
+  opacity: 0.72;
 }
 .app-atmos::after {
   content: '';
