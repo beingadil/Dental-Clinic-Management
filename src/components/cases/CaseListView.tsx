@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can, deniedTooltip } from '../../services/permissions';
 import { DentalCase, CaseStatus, PriorityLevel, QcCaseState } from '../../types';
@@ -159,8 +159,31 @@ const SORT_OPTIONS: { group: string; options: { value: CaseSortKey; label: strin
   },
 ];
 
-export const CaseListView: React.FC = () => {
-  const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently, getQcState, user } = useApp();
+export interface CaseListViewProps {
+  /** Opens the app-shell create dialog. The workstation's own copy lived inside
+   *  <main>, so it was positioned against the scrolling content column while the
+   *  dashboard's — rendered by App.tsx at shell level — covered the whole window.
+   *  Routing both through the same shell-level dialog is what makes the button
+   *  open the same full-screen editor on either view. */
+  onOpenNewCaseModal?: () => void;
+}
+
+export const CaseListView: React.FC<CaseListViewProps> = ({ onOpenNewCaseModal }) => {
+  const { cases, labs, searchTerm: globalSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently, getQcState, user } = useApp();
+
+  /*
+   * The workstation keeps its OWN search string.
+   *
+   * It used to read and write the app-wide quick search, the same state the
+   * header's command bar is bound to — so every letter typed into this filter
+   * was also typed into the header, and a header query silently re-filtered the
+   * board. One-way handoff only: the header ("view in workstation") and the
+   * notifications list can PUSH a term in, this box never writes back out.
+   */
+  const [searchTerm, setSearchTerm] = useState(globalSearchTerm);
+  useEffect(() => {
+    if (globalSearchTerm) setSearchTerm(globalSearchTerm);
+  }, [globalSearchTerm]);
 
   /* Workstation shows ACTIVE cases; the Archive tab shows completed cases
      (archived_at set). Archived rows never enter the kanban/table pipeline. */
@@ -209,7 +232,6 @@ export const CaseListView: React.FC = () => {
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [bulkPrintModalOpen, setBulkPrintModalOpen] = useState(false);
   const [bulkPrintType, setBulkPrintType] = useState<'slips' | 'invoices'>('slips');
-  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
 
   // Drag & drop state
   const [draggedCaseId, setDraggedCaseId] = useState<string | null>(null);
@@ -508,9 +530,7 @@ export const CaseListView: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => {
-                setIsNewModalOpen(true);
-              }}
+              onClick={() => onOpenNewCaseModal?.()}
               disabled={!can(user, 'case:create')}
               title={!can(user, 'case:create') ? deniedTooltip : undefined}
               className="ds-glass-pill text-xs md:text-sm disabled:opacity-50 cursor-pointer"
@@ -1399,12 +1419,11 @@ export const CaseListView: React.FC = () => {
       )}
 
       {/* Case Detail / Create Modal */}
-      {(selectedCase || isNewModalOpen) && (
+      {selectedCase && (
         <CaseDetailModal
           initialCase={selectedCase}
           onClose={() => {
             setSelectedCase(null);
-            setIsNewModalOpen(false);
           }}
         />
       )}

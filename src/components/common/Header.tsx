@@ -237,7 +237,13 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="ds-headerbar ds-glass sticky top-0 z-30 flex items-center justify-between gap-4 sm:gap-6 shrink-0 w-full px-4 sm:px-6">
+    /* No `w-full` here on purpose. `.ds-headerbar` carries its own 12px side
+       margins, and `w-full` resolves against the column (100%) *ignoring* them
+       — so the bar hung 24px past the column and its right rounded corner was
+       cut off at the window edge while the left corner sat 12px in. As a flex
+       item in the column, the default `stretch` sizes it to column-minus-margin,
+       which is the symmetric inset the corner radius was drawn for. */
+    <header className="ds-headerbar ds-glass sticky top-0 z-30 flex items-center justify-between gap-4 sm:gap-6 shrink-0 px-4 sm:px-6">
       {/* ZONE A · Mobile drawer toggle + brand lockup. Same `.ds-brand-mark`
           geometry as the rail, so the two do not read as two logos. */}
       <div className="flex items-center shrink-0">

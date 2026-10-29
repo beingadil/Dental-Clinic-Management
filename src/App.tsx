@@ -42,8 +42,8 @@ const SettingsView = lazy(() =>
 const CatalogView = lazy(() =>
   import('./components/catalog/CatalogView').then((m) => ({ default: m.CatalogView }))
 );
-const BatchInvoicePrintModal = lazy(() =>
-  import('./components/billing/BatchInvoicePrintModal').then((m) => ({ default: m.BatchInvoicePrintModal }))
+const PrintInvoicesView = lazy(() =>
+  import('./components/billing/PrintInvoicesView').then((m) => ({ default: m.PrintInvoicesView }))
 );
 
 const MainAppContent: React.FC = () => {
@@ -89,7 +89,7 @@ const MainAppContent: React.FC = () => {
   }
 
   return (
-    <div className="app-atmos h-screen bg-ds-sunken flex font-sans text-ds-ink antialiased selection:bg-ds-accent selection:text-white overflow-hidden">
+    <div className="app-atmos dental-grid-bg h-screen bg-ds-sunken flex font-sans text-ds-ink antialiased selection:bg-ds-accent selection:text-white overflow-hidden">
       <LockScreen />
       {/* Keyboard users land here first. Without it, reaching the dashboard
           means tabbing through the whole rail and then every header control on
@@ -136,10 +136,22 @@ const MainAppContent: React.FC = () => {
             final row of every view sat underneath the navigation and could not
             be read or tapped. Axis utilities only (px/pt/pb, never p-*) so no
             shorthand can fight the bottom value at a breakpoint. */}
+        {/* The dot grid is the CANVAS, so it is painted on the shell above
+            (`.app-atmos`) — not here. On `main` it was a rectangle that started
+            exactly at the header's bottom edge and 12px inside the header's
+            rounded corner, so the texture read as a tinted square separating
+            the header from the board.
+
+            `contain-content` is gone for a harder reason: `contain: content`
+            includes LAYOUT containment, which makes `main` the containing block
+            for `position: fixed` descendants. Every view's dialog is rendered
+            inside this element, so "Create New Case" opened a centred card
+            inside the content column instead of a full-screen editor (the
+            dashboard's version lived in App.tsx, outside main, and was fine). */}
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 lg:pb-5 overflow-x-clip overflow-y-auto dental-grid-bg focus-visible:outline-none contain-content"
+          className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 lg:pb-5 overflow-x-clip overflow-y-auto focus-visible:outline-none"
         >
           <div className="w-full max-w-[1880px] 2xl:max-w-[2100px] mx-auto space-y-6">
             <ErrorBoundary>
@@ -148,13 +160,19 @@ const MainAppContent: React.FC = () => {
                   <DashboardView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
                 )}
 
-                {currentView === 'cases' && <CaseListView />}
+                {/* The same shell-level create dialog the dashboard asks for:
+                    a view's own dialog would be positioned by `<main>`, not by
+                    the window, so it opened inside the content column instead of
+                    full screen. */}
+                {currentView === 'cases' && (
+                  <CaseListView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
+                )}
 
                 {currentView === 'labs' && <LabListView />}
 
                 {currentView === 'billing' && <BillingView />}
 
-                {currentView === 'print-invoices' && <BatchInvoicePrintModal fullScreen onClose={() => app.setCurrentView('billing')} />}
+                {currentView === 'print-invoices' && <PrintInvoicesView />}
 
                 {currentView === 'catalog' && <CatalogView />}
 

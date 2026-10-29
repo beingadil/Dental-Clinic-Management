@@ -427,12 +427,27 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
+  /* NO `isolation: isolate` here, deliberately.
+
+     It used to be, to keep the wash's negative z-index local. But isolation
+     also makes this element a STACKING CONTEXT — which trapped every dialog
+     the dashboard opens inside it. A queue panel is `fixed inset-0 z-50`; with
+     the dashboard isolated, that `z-50` only competed among this element's
+     children, and the whole dashboard layer still painted below the header's
+     `z-30`. Result: open any KPI or stage button on the board and the panel's
+     own title bar slid UNDER the sticky header, cut off at the top, while the
+     header stayed bright and clickable above the scrim.
+
+     Removing it lets those dialogs join the shell's stacking context
+     (`.app-atmos` is itself isolated), which is where `z-50` can actually beat
+     the header. The wash keeps working: `z-index: -1` now resolves against
+     the shell, and negative layers paint above that context's own background
+     but below all of its content — still behind the board, never over it. */
   .ds-ambient {
     position: relative;
-    isolation: isolate;
   }
   /* The aurora wash, painted on a dedicated layer BEHIND the dashboard
-     content (z-index -1 inside the isolated context). It deliberately does
+     content (z-index -1, resolved against the app shell). It deliberately does
      NOT live on the scroll container's own background: a background painted
      on `main` rasterizes as a FLAT fill of each layer's first colour stop -
      geometry and falloff thrown away - which flooded the whole board solid
@@ -525,6 +540,19 @@
   .ds-glass-pill:focus-visible {
     outline: 2px solid var(--ds-accent);
     outline-offset: 2px;
+  }
+
+  /* Small capsule — the same frosted control at 28px, for control strips
+     (preview toggles, zoom steppers) where a 36px pill would outweigh the
+     content beside it. Geometry only on purpose: pair it with
+     `.ds-glass-pill`, so fill, rim, hover and the dark reading stay in the one
+     definition above and cannot drift. */
+  .ds-glass-pill-sm {
+    height: 28px;
+    padding: 0 12px;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
   }
 
   /* Glass pane — the dialog/drawer surface, one definition for every modal
