@@ -152,7 +152,7 @@ export const Sidebar: React.FC = () => {
           mobile dock's safe-area padding and the collapsed rail's icon
           centring have to agree with it. */}
       <aside
-        className={`ds-rail ds-rail-float fixed lg:static top-0 left-0 z-50 lg:z-auto h-screen shrink-0 flex flex-col transition-all duration-300 ease-out ${
+        className={`ds-rail ds-rail-float fixed lg:static top-0 left-0 z-50 lg:z-auto h-screen shrink-0 flex flex-col transition-[width,transform] duration-200 ease-out ${
           isCollapsed ? 'w-[var(--ds-rail-w-collapsed)]' : 'w-[var(--ds-rail-w)]'
         } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
