@@ -160,7 +160,13 @@ const SORT_OPTIONS: { group: string; options: { value: CaseSortKey; label: strin
   },
 ];
 
-export const CaseListView: React.FC = () => {
+export interface CaseListViewProps {
+  /** Which print pipeline the bulk bar leads with. Defaults to job slips
+   *  (the Workstation); the dedicated Print Invoices view passes 'invoices'. */
+  primaryBulkType?: 'slips' | 'invoices';
+}
+
+export const CaseListView: React.FC<CaseListViewProps> = ({ primaryBulkType = 'slips' }) => {
   const { cases, labs, searchTerm, setSearchTerm, updateCase, brandingSettings, todayStr, archiveCase, restoreCase, deleteCasePermanently, getQcState, user } = useApp();
 
   /* Workstation shows ACTIVE cases; the Archive tab shows completed cases
@@ -633,25 +639,17 @@ export const CaseListView: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                setBulkPrintType('slips');
+                setBulkPrintType(primaryBulkType);
                 setBulkPrintModalOpen(true);
               }}
-              className="px-4 py-2 ds-glass-pill font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
+              className={
+                primaryBulkType === 'invoices'
+                  ? 'px-4 py-2 bg-fill-success hover:bg-fill-success text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer'
+                  : 'px-4 py-2 ds-glass-pill font-bold text-xs flex items-center gap-2 transition-all cursor-pointer'
+              }
             >
-              <Printer className="w-4 h-4" />
-              <span>Print Job Slips ({selectedCaseIds.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setBulkPrintType('invoices');
-                setBulkPrintModalOpen(true);
-              }}
-              className="px-4 py-2 bg-fill-success hover:bg-fill-success text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
-            >
-              <Receipt className="w-4 h-4" />
-              <span>Print Invoices ({selectedCaseIds.length})</span>
+              {primaryBulkType === 'invoices' ? <Receipt className="w-4 h-4" /> : <Printer className="w-4 h-4" />}
+              <span>{primaryBulkType === 'invoices' ? 'Print Invoices' : 'Print Job Slips'} ({selectedCaseIds.length})</span>
             </button>
             {/* Quick status bulk actions. Each opens a confirmation naming the count and
                 the target — these write to every selected row at once, and

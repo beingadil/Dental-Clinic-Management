@@ -51,7 +51,7 @@ export function useAuthDomain(deps: {
   setUser: React.Dispatch<React.SetStateAction<UserProfile | null>>;
   users: UserProfile[];
   setUsers: React.Dispatch<React.SetStateAction<UserProfile[]>>;
-  setCurrentView: (view: 'dashboard' | 'cases' | 'labs' | 'billing' | 'catalog' | 'analytics' | 'inbox' | 'settings') => void;
+  setCurrentView: (view: 'dashboard' | 'cases' | 'labs' | 'billing' | 'print-invoices' | 'catalog' | 'analytics' | 'inbox' | 'settings') => void;
   loginBackoffState: React.MutableRefObject<Map<string, { count: number; lastFail: number; until: number }>>;
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   genId: (prefix: string) => string;
