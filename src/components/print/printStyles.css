@@ -179,6 +179,91 @@
   }
 }
 
+/* =========================================================================
+   Print Invoices — the page-level preview mat.
+
+   The old preview sat in a flex row whose child claimed the full width, so a
+   max-width sheet pinned itself to the left edge: one gutter, on one side, and
+   a sheet that never looked centred. The stack below is a centred column, and
+   the dashed rule between sheets is replaced by plain space — two sheets of
+   ONE statement read as a stack, not as two printouts stapled together.
+
+   The pane also stops being a nested scroller: a `max-height` here clipped the
+   sheet mid-row and added a second scrollbar inside a page that already
+   scrolls, which is what made the preview feel unmanaged. The page scrolls.
+   ========================================================================= */
+
+/* The mat is the viewport the paper is fitted into, so a FIXED height is
+   deliberate: the zoom-to-fit calculation reads this box, and a
+   content-driven height would feed its own result back into itself (every
+   measurement would shrink the sheet, which would shrink the measurement). */
+.print-invoices-mat {
+  background: #eef2f7;
+  padding: 1.5rem 1rem;
+  height: clamp(240px, calc(100vh - 17rem), 900px);
+  overflow: auto;
+  display: block;
+  border-radius: 0;
+}
+
+.dark .print-invoices-mat {
+  background: #16233a;
+}
+
+/* Real paper, not a wide card: A4 is 794×1123px at 96dpi and Letter is
+   816×1056px, which is also the geometry `statementPagination` budgets rows
+   against — so a sheet is exactly one page tall and its content never spills.
+   `--sheet-zoom` is written by the view's Fit/75%/100% control. */
+.print-invoices-stack {
+  --sheet-w: 794px;
+  --sheet-h: 1123px;
+  display: block;
+  width: var(--sheet-w);
+  margin: 0 auto;
+  zoom: var(--sheet-zoom, 1);
+}
+
+.print-invoices-stack--letter {
+  --sheet-w: 816px;
+  --sheet-h: 1056px;
+}
+
+.print-invoices-stack .print-preview-page {
+  width: 100%;
+  max-width: none;
+  height: var(--sheet-h);
+  min-height: 0;
+}
+
+/* One gap between sheets instead of the dashed "two printouts" divider. */
+.print-invoices-stack .print-doc-page + .print-doc-page {
+  margin-top: 2rem;
+  padding-top: 2.5rem;
+  border-top: 0;
+}
+
+@media print {
+  .print-invoices-mat,
+  .dark .print-invoices-mat {
+    background: transparent !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  /* The zoom is a viewing aid: paper prints at 100%, in normal flow. */
+  .print-invoices-stack {
+    zoom: 1 !important;
+    width: auto !important;
+    margin: 0 !important;
+  }
+  .print-invoices-stack .print-preview-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+}
+
 @media print {
   .print-doc-page {
     break-inside: avoid;

@@ -18,7 +18,6 @@ import {
   transactionCsvRows,
   type UnifiedTransaction,
 } from '../../services/transactionRegister';
-import { BatchInvoicePrintModal } from './BatchInvoicePrintModal';
 import { RecordTransactionModal } from './RecordTransactionModal';
 import { JournalEntryModal } from './JournalEntryModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
@@ -62,7 +61,7 @@ export const BillingView: React.FC = () => {
     updatePaymentV2,
     deleteAccountAdjustment,
     updateAccountAdjustment,
-    user
+    user,
   } = useApp();
 
   // Core navigation. Clinic accounts, the double-entry ledger, the audit
@@ -104,7 +103,6 @@ export const BillingView: React.FC = () => {
   const [unifiedModalLabId, setUnifiedModalLabId] = useState<string | undefined>(undefined);
   const [unifiedModalInvoiceId, setUnifiedModalInvoiceId] = useState<string | undefined>(undefined);
   const [clinicStatementModalId, setClinicStatementModalId] = useState<string | null>(null);
-  const [batchPrintOpen, setBatchPrintOpen] = useState<boolean>(false);
 
 
   const [printModalInvoice, setPrintModalInvoice] = useState<Invoice | null>(null);
@@ -374,15 +372,9 @@ export const BillingView: React.FC = () => {
                 </span>
               </button>
 
-            <button
-              type="button"
-              onClick={() => setBatchPrintOpen(true)}
-              className="ds-glass-pill active:scale-[0.98] font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer"
-              title="Print every invoice for one clinic over a month or date range - paid, partly paid and unpaid"
-            >
-              <Printer className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>Batch Print Invoices</span>
-            </button>
+            {/* Batch printing has its own module page under Billing & Invoices
+                (sidebar → Print Invoices), so the duplicate entry point that
+                used to sit in this header is gone. */}
 
             {clinicFilter !== 'all' && (
               <button
@@ -917,14 +909,6 @@ export const BillingView: React.FC = () => {
           isOpen={!!clinicStatementModalId}
           onClose={() => setClinicStatementModalId(null)}
           clinicId={clinicStatementModalId}
-        />
-      )}
-
-      {/* Batch print — every invoice for a clinic over a period, paid ones included */}
-      {batchPrintOpen && (
-        <BatchInvoicePrintModal
-          initialLabId={clinicFilter !== 'all' ? clinicFilter : undefined}
-          onClose={() => setBatchPrintOpen(false)}
         />
       )}
 

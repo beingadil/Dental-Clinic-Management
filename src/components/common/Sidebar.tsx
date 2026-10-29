@@ -113,7 +113,7 @@ export const Sidebar: React.FC = () => {
           tone: 'neutral',
           children: [
             { id: 'billing', label: 'Invoice Rec', icon: Receipt },
-            { id: 'print-invoices', label: 'Printing', icon: Printer },
+            { id: 'print-invoices', label: 'Print Invoices', icon: Printer },
           ],
         },
         { id: 'catalog', label: 'Price List & Catalog', icon: BookOpen },
@@ -244,7 +244,17 @@ export const Sidebar: React.FC = () => {
                         onClick={() => setExpanded((e) => ({ ...e, [item.id]: !isExpanded }))}
                         aria-expanded={isExpanded}
                         aria-current={isParentActive ? 'page' : undefined}
-                        className={`ds-nav-row ds-row-target active:scale-[0.98] cursor-pointer ${
+                        /* This row is the one nav item built from the
+                           `children` branch, and it was the only one rendered
+                           without `.ds-glass-pill-row` — every plain item and
+                           every child gets its frosted capsule from one of the
+                           two conditionals below, so the group header sat as a
+                           bare row with no fill, rim or shadow. It is a control
+                           like the rest of the rail, not a heading, so it now
+                           borrows the same glass. It never takes the active
+                           plate (`data-active`): that belongs to the child page
+                           the operator is actually on. */
+                        className={`ds-nav-row ds-row-target ds-glass-pill-row active:scale-[0.98] cursor-pointer ${
                           isCollapsed ? 'justify-center py-3' : 'gap-3 pl-3 pr-2.5 py-2'
                         }`}
                       >

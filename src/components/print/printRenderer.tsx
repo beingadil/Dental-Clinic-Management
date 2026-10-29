@@ -102,7 +102,11 @@ const AccountBalanceBlock: React.FC<{
   appliedNote?: string;
 }> = ({ position, amountLabel, paidLabel, appliedNote }) => (
   <div className="mb-4 flex justify-end">
-    <div className="w-72">
+    {/* 320px, not 288px: at 288 the closing row could not hold "CLOSING BALANCE
+        (DR)" and its figure at once, so the label wrapped to two lines and the
+        amount broke after "PKR" — the one figure on the sheet that must read as
+        a single number. The figures below are also nowrap for the same reason. */}
+    <div className="w-80">
       <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
         Account Balance
       </div>
@@ -110,45 +114,45 @@ const AccountBalanceBlock: React.FC<{
         <tbody>
           <tr className="border border-slate-300">
             <td className="px-3 py-1 text-slate-600">Opening Balance</td>
-            <td className="px-3 py-1 text-right font-semibold">
+            <td className="whitespace-nowrap px-3 py-1 text-right font-semibold">
               {signedMoney(position.openingBalance)}
             </td>
           </tr>
           {position.advanceDeposit > 0 && (
             <tr className="border border-slate-300 border-t-0">
               <td className="py-1 pl-6 pr-3 text-slate-500">Advance Deposit (we owe)</td>
-              <td className="px-3 py-1 text-right text-ink-success">
+              <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
                 {money(position.advanceDeposit)}
               </td>
             </tr>
           )}
           <tr className="border border-slate-300 border-t-0">
             <td className="px-3 py-1 text-slate-600">{amountLabel}</td>
-            <td className="px-3 py-1 text-right">{money(position.invoiceAmount)}</td>
+            <td className="whitespace-nowrap px-3 py-1 text-right">{money(position.invoiceAmount)}</td>
           </tr>
           <tr className="border border-slate-300 border-t-0">
             <td className="px-3 py-1 text-slate-600">{paidLabel}</td>
-            <td className="px-3 py-1 text-right text-ink-success">
+            <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
               {money(position.cashPaid)}
             </td>
           </tr>
           {position.creditNotes > 0 && (
             <tr className="border border-slate-300 border-t-0">
               <td className="px-3 py-1 text-slate-600">Credit Notes</td>
-              <td className="px-3 py-1 text-right text-ink-success">
+              <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
                 -{money(position.creditNotes)}
               </td>
             </tr>
           )}
           <tr className="border-2 border-slate-900 bg-slate-100">
-            <td className="px-3 py-2 font-bold uppercase tracking-wider">
+            <td className="whitespace-nowrap px-3 py-2 font-bold uppercase tracking-wider">
               {position.closingBalance < 0
                 ? 'Closing Balance (Cr)'
                 : position.closingBalance > 0
                 ? 'Closing Balance (Dr)'
                 : 'Closing Balance'}
             </td>
-            <td className="px-3 py-2 text-right text-sm font-bold">
+            <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold">
               {money(Math.abs(position.closingBalance))}
             </td>
           </tr>
