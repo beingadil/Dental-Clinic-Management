@@ -41,11 +41,20 @@ import type {
  * bug, not just the instance: opening balances, voided invoices, write-offs
  * â€” whatever the ledger posts, the statement closes at.
  *
- * The analytic columns (Billed, Collected, Advance Used, notes) are the
- * ledger entries bucketed by ledger side, plus `advance_applied` which is
- * still walked from the invoice payment records: in the ledger an applied
- * advance is a 0/0 memo (the deposit already carried the credit), so the
- * amount to show under "Advance Used" lives only on the payment row.
+ * The analytic columns are bucketed by what each posting IS:
+ *
+ *  - `collected` IS THE LEDGER'S CREDIT COLUMN, VERBATIM. Every credit the
+ *    engine posts for the clinic-month - a settlement, an advance deposit,
+ *    a credit note, an opening credit - rides into that one figure, so the
+ *    statement totals exactly the credits the General Ledger tab totals
+ *    for the same period (its footer prints the same sum). A credit that
+ *    lives on the ledger but not in `collected` is a reconciliation
+ *    break; this report exists to never produce one.
+ *
+ *  - `advance_applied` ("Advance Used") is walked from the invoice payment
+ *    records, because in the ledger an applied advance is a 0/0 memo: the
+ *    deposit already carried the credit in the month it was banked, so the
+ *    application must not be counted a second time. It settles nothing new.
  *
  * Sign convention matches the ledger's running balance (net receivable):
  * positive means the clinic owes us, negative means the clinic is in credit.
@@ -65,13 +74,19 @@ export interface MonthlyClinicRow {
   cases_billed: number;
   /** Charges raised in this month. */
   billed: number;
-  /** Invoice settlements received in this month, cash and advance-sourced. */
+  /**
+   * THE LEDGER'S CREDIT COLUMN for this clinic-month: settlements, advance
+   * deposits, credit notes and an opening credit — every credit the ledger
+   * posts, exactly the total the General Ledger's Credit column prints.
+   */
   collected: number;
-  /** Advance deposits banked in this month. */
+  /** Advance deposits banked in this month (also inside `collected`). */
   advance_received: number;
   /** Advance credit spent against invoices in this month. */
   advance_applied: number;
+  /** Credit notes issued in this month (also inside `collected`). */
   credit_notes: number;
+  /** Debit adjustments, surcharges and refunds posted in this month. */
   debit_adjustments: number;
   /** Balance brought forward from the previous month (0 for the first month). */
   opening_balance: number;
@@ -104,10 +119,11 @@ const monthKey = (value?: string): string => {
 };
 
 /**
- * A payment that spends the advance wallet rather than cash. These are counted
- * inside `collected` (they settle an invoice) and added back in
- * `advance_applied`, because the deposit already reduced the balance in the
- * month it was banked â€” applying it is net-neutral to the clinic.
+ * An application is a 0/0 memo inside the ledger engine: the deposit already
+ * carried the credit in the month it was banked, so the ledger's Credit
+ * column (and therefore the statement's `collected`) does not repeat it. The
+ * amount is walked from the invoice payment rows ONLY for the "Advance Used"
+ * column and the advance-wallet math.
  */
 export const isAdvanceAppliedPayment = (p: PaymentRecord): boolean =>
   p.payment_method === 'advance' || p.payment_type === 'advance_allocation' || !!p.advance_payment_id;
@@ -221,18 +237,16 @@ export const buildMonthlyStatements = (input: {
   };
 
   // Advance applications are 0/0 memos in the ledger (the deposit already
-  // carried the credit), so the amount they USE is walked from the invoice
-  // payment rows and dated by its payment date like every other movement.
-  // They settle an invoice too, so they count inside `collected` and are
-  // added back in `advance_applied` -- net-neutral to the closing balance,
-  // which reads the ledger directly.
+  // carried the credit), so the ledger's Credit column never includes them.
+  // The amount they USE is walked from the invoice payment rows — dated by
+  // the payment date like every other movement — and surfaces ONLY as the
+  // "Advance Used" column and the wallet math. It never enters `collected`.
   const applied = new Map<string, number>(); // "month|labId" -> amount used
   (invoices || []).forEach((inv) => {
     (inv?.payments || []).forEach((p) => {
       if (!isAdvanceAppliedPayment(p)) return;
       const month = monthKey(p.payment_date || inv.created_at);
-      const flow = bucket(month, p.lab_id || inv.lab_id, p.lab_name || inv.lab_name);
-      flow.collected += p.amount || 0;
+      bucket(month, p.lab_id || inv.lab_id, p.lab_name || inv.lab_name);
       const key = `${month}|${p.lab_id || inv.lab_id}`;
       applied.set(key, (applied.get(key) || 0) + (p.amount || 0));
     });
@@ -250,10 +264,15 @@ export const buildMonthlyStatements = (input: {
       }
     }
     if (entry.credit > 0 && entry.debit === 0) {
-      // Settlements, advance deposits and credit notes: credits.
-      if (entry.entry_type === 'payment') flow.collected += entry.credit;
-      else if (entry.entry_type === 'advance_payment') flow.advance_received += entry.credit;
-      else flow.credit_notes += entry.credit;
+      // THE CREDIT COLUMN, VERBATIM: every credit the ledger posts — a
+      // settlement, an advance deposit, a credit note, an opening credit —
+      // rides into `collected` so the statement's Collected (Cr) figure is,
+      // by construction, the same total the General Ledger's Credit column
+      // prints for the clinic-month. Buckets below are the ledger's own
+      // detail, and stay additive-only views of the same credits.
+      flow.collected += entry.credit;
+      if (entry.entry_type === 'advance_payment') flow.advance_received += entry.credit;
+      else if (entry.entry_type === 'credit_note') flow.credit_notes += entry.credit;
     }
   });
 
@@ -276,20 +295,17 @@ export const buildMonthlyStatements = (input: {
       const prior = running.get(labId) || { closing: 0, advance_credit: 0 };
       const opening_balance = roundMoney(prior.closing);
       const advance_applied = roundMoney(applied.get(`${month}|${labId}`) || 0);
-      // This month's ledger postings aggregated for the clinic, carried from
-      // where the ledger left that clinic last month: the same sum the
-      // engine's per-clinic running balance (the General Ledger tab reads it
-      // through filterLabId) carries at this month's last posting. Advance
-      // applications settle an invoice and add right back (the deposit was
-      // already credited in its own month), so they are net-neutral.
+      // The closing balance is the ledger's own running balance for this
+      // clinic at this month's last posting: opening + the month's debits
+      // (invoices + adjustments) - the month's credits (`collected`, which
+      // is the Credit column verbatim — settlements, deposits, notes,
+      // opening credit). Advance applications are 0/0 memos that neither
+      // side of this identity sees, so no add-back exists.
       const closing_balance = roundMoney(
         opening_balance +
-          flow.billed -
-          flow.collected -
-          flow.advance_received +
-          advance_applied -
-          flow.credit_notes +
-          flow.debit_adjustments
+          flow.billed +
+          flow.debit_adjustments -
+          flow.collected
       );
       const advance_credit = roundMoney(
         Math.max(0, prior.advance_credit + flow.advance_received - advance_applied)

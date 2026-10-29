@@ -4,6 +4,7 @@ import {
   formatMonthLabel,
 } from '../../src/services/monthlyStatement';
 import { buildLabFinancialSummary, buildLedgerEntries } from '../../src/services/ledgerDomain';
+import { roundMoney } from '../../src/services/financeDomain';
 import type { Invoice, PaymentRecord, AdvancePayment, AccountAdjustment } from '../../src/types';
 
 /**
@@ -122,18 +123,37 @@ describe('buildMonthlyStatements', () => {
     expect(blocks.map((b) => b.month)).toEqual(['2026-03', '2026-02']);
   });
 
-  it('files a collection in the month the cash landed, not the invoice month', () => {
-    // Feb's invoice is paid in March; March must show the collection.
-    expect(row(march).collected).toBe(20000);
-    expect(row(february).collected).toBe(0);
+  it('files a collection in the month the money (or credit) landed, not the invoice month', () => {
+    // March: 15,000 cash + 3,000 credit note — the ledger's Credit column.
+    expect(row(march).collected).toBe(18000);
+    // February: the 10,000 advance deposit banked — a credit on the ledger.
+    expect(row(february).collected).toBe(10000);
   });
 
-  it('counts an applied advance once as a settlement and once as advance applied', () => {
+  it('never double-counts an applied advance: it is Advance Used, never a second credit', () => {
     expect(row(march).advance_applied).toBe(5000);
-    // 15,000 bank + 5,000 spent from the wallet.
-    expect(row(march).collected).toBe(20000);
-    // The deposit is NOT a settlement in its own month.
+    // Collected is the ledger's Credit column — the 5,000 application is a
+    // 0/0 memo there, so only the 15,000 bank credit shows, once.
+    expect(row(march).collected).toBe(18000);
+    // The deposit was the credit, banked in February.
+    expect(row(february).collected).toBe(10000);
     expect(row(february).advance_received).toBe(10000);
+  });
+
+  it('matches the General Ledger Credit column exactly, clinic by clinic-month', () => {
+    // THE CONTRACT the report exists for: for every clinic-month the
+    // statement's `collected` equals the sum of every credit entry the
+    // ledger engine posts for that clinic in that month.
+    const ledger = buildLedgerEntries({ invoices: INVOICES, advancePayments: ADVANCES, accountAdjustments: ADJUSTMENTS });
+    const creditsByClinicMonth = new Map<string, number>();
+    ledger.forEach((e) => {
+      const key = `${e.date.slice(0, 7)}|${e.lab_id}`;
+      creditsByClinicMonth.set(key, (creditsByClinicMonth.get(key) || 0) + (e.credit || 0));
+    });
+    blocks.forEach((b) => b.rows.forEach((r) => {
+      const credits = creditsByClinicMonth.get(`${b.month}|${r.lab_id}`) || 0;
+      expect(roundMoney(r.collected)).toBe(roundMoney(credits));
+    }));
   });
 
   it('tracks the unallocated advance wallet across months', () => {
@@ -284,7 +304,7 @@ describe('buildMonthlyStatements', () => {
       clinics: 1,
       cases_billed: 1,
       billed: 25000,
-      collected: 20000,
+      collected: 18000,
       advance_received: 0,
       advance_applied: 5000,
       credit_notes: 3000,

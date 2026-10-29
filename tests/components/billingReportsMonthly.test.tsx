@@ -241,10 +241,11 @@ describe('BillingReportsView monthly statement', () => {
     expect(within(march).queryByText('Closing (C/F)')).toBeNull();
   });
 
-  it('months the settlement by the month the cash landed', () => {
+  it('months the settlement by the month the money or credit landed', () => {
     const [march] = tables();
-    // 15,000 bank + 5,000 from the advance wallet.
-    expect(figure(march, clinicRow(march), 'Collected (Cr)')).toBe('PKR 20,000');
+    // Collected (Cr) is the ledger's Credit column: 15,000 bank cash plus the
+    // 3,000 credit note. The 5,000 advance application is a 0/0 memo there.
+    expect(figure(march, clinicRow(march), 'Collected (Cr)')).toBe('PKR 18,000');
   });
 
   it('shows the balance brought forward as the ledger closing balance with its Dr/Cr side', () => {
