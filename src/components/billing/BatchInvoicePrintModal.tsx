@@ -226,8 +226,8 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
       label="Batch invoice printing"
       hideClose
       maxWidth={fullScreen ? 'max-w-full' : 'max-w-5xl'}
-      backdropClassName={fullScreen ? 'bg-transparent no-print-backdrop' : 'bg-slate-900/70 no-print-backdrop'}
-      cardClassName={`print-area printable-area relative ${fullScreen ? 'h-[calc(100dvh-2rem)] rounded-2xl mx-4 my-4' : ''}`}
+      backdropClassName={fullScreen ? 'bg-ds-sunken no-print-backdrop' : 'bg-slate-900/70 no-print-backdrop'}
+      cardClassName={`print-area printable-area relative ${fullScreen ? 'h-[calc(100dvh)] rounded-none border-0 shadow-none mx-0 my-0 animate-none' : ''}`}
       headerClassName="no-print flex flex-col gap-3 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
       header={
         <>
