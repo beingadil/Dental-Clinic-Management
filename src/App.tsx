@@ -154,7 +154,7 @@ const MainAppContent: React.FC = () => {
 
                 {currentView === 'billing' && <BillingView />}
 
-                {currentView === 'print-invoices' && <BatchInvoicePrintModal onClose={() => app.setCurrentView('billing')} />}
+                {currentView === 'print-invoices' && <BatchInvoicePrintModal fullScreen onClose={() => app.setCurrentView('billing')} />}
 
                 {currentView === 'catalog' && <CatalogView />}
 

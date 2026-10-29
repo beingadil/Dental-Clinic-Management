@@ -28,6 +28,9 @@ interface BatchInvoicePrintModalProps {
   /** Clinic pre-selected from the billing filter, if any. */
   initialLabId?: string;
   onClose: () => void;
+  /** When true, the printer fills the viewport (used by the Billing → Printing
+   *  sub-tab) instead of floating as a dialog over the app shell. */
+  fullScreen?: boolean;
 }
 
 type InvoiceStatus = 'paid' | 'partial' | 'unpaid';
@@ -50,6 +53,7 @@ const invoiceStatus = (inv: Invoice): InvoiceStatus => {
 export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   initialLabId,
   onClose,
+  fullScreen = false,
 }) => {
   const { labs, invoices, cases, brandingSettings, saveVoucherToSystem, getLabFinancialSummary, advancePayments, accountAdjustments } = useApp();
 
@@ -221,9 +225,9 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
       onClose={onClose}
       label="Batch invoice printing"
       hideClose
-      maxWidth="max-w-5xl"
-      backdropClassName="bg-slate-900/70 no-print-backdrop"
-      cardClassName="print-area printable-area relative"
+      maxWidth={fullScreen ? 'max-w-full' : 'max-w-5xl'}
+      backdropClassName={fullScreen ? 'bg-ds-sunken no-print-backdrop' : 'bg-slate-900/70 no-print-backdrop'}
+      cardClassName={`print-area printable-area relative ${fullScreen ? 'h-[calc(100dvh-2rem)] rounded-2xl' : ''}`}
       headerClassName="no-print flex flex-col gap-3 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
       header={
         <>
@@ -232,7 +236,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
               <FileSpreadsheet className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Batch Print Invoices</h3>
+              <h3 className="text-lg font-extrabold tracking-tight text-slate-900">Batch Print Invoices</h3>
               <p className="text-xs text-slate-500">
                 One statement for the period — paid, partly paid and unpaid.
               </p>
