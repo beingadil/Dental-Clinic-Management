@@ -2,6 +2,7 @@ import { formatPKR } from '../../services/financeDomain';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CaseTemplate } from '../../types';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { Bookmark, Plus, Trash2, Check, Search, ShieldAlert, X } from 'lucide-react';
 
 interface CaseTemplateModalProps {
@@ -159,17 +160,13 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Default Material / Case Type</label>
-              <select
+              <GlassSelect
                 value={caseTypeId}
-                onChange={(e) => setCaseTypeId(e.target.value)}
-                className="w-full p-2 text-xs ds-glass-select rounded-lg focus:outline-none focus:border-blue-500"
-              >
-                {caseTypes.map((ct) => (
-                  <option key={ct.id} value={ct.id}>
-                    {ct.name} ({formatPKR(ct.base_price)})
-                  </option>
-                ))}
-              </select>
+                onChange={setCaseTypeId}
+                ariaLabel="Default case type"
+                className="w-full p-2 text-xs"
+                options={caseTypes.map((ct) => ({ value: ct.id, label: `${ct.name} (${formatPKR(ct.base_price)})` }))}
+              />
             </div>
           </div>
 
@@ -186,16 +183,18 @@ export const CaseTemplateModal: React.FC<CaseTemplateModalProps> = ({ onApplyTem
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Default Priority</label>
-              <select
+              <GlassSelect
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as any)}
-                className="w-full p-2 text-xs ds-glass-select rounded-lg"
-              >
-                <option value="low">Low</option>
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
+                onChange={(v) => setPriority(v as any)}
+                ariaLabel="Default priority"
+                className="w-full p-2 text-xs"
+                options={[
+                  { value: 'low', label: 'Low' },
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'high', label: 'High' },
+                  { value: 'urgent', label: 'Urgent' },
+                ]}
+              />
             </div>
           </div>
 

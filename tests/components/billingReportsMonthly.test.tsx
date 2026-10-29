@@ -178,15 +178,15 @@ import { BillingReportsView } from '../../src/components/billing/BillingReportsV
 
 /** Newest month first, so tables[0] is March and tables[1] is February. */
 const tables = () => screen.getAllByRole('table');
-const selectMonth = (label: string) => {
-  let selects: HTMLSelectElement[] = [];
-  try { selects = screen.getAllByRole('combobox') as HTMLSelectElement[]; } catch { return; }
-  const select = selects.find((s) => s?.options && Array.from(s.options).some((o) => /2026/.test(o.textContent || '')));
-  if (!select) return;
-  const option = Array.from(select.options).find((o) => o.textContent?.includes(label));
-  if (option) {
-    fireEvent.change(select, { target: { value: option.value } });
-  }
+const selectMonth = async (label: string) => {
+  const triggers = screen.getAllByRole('button').filter((b) => /2026/.test(b.textContent || ''));
+  const trigger = triggers[0];
+  if (!trigger) return;
+  fireEvent.click(trigger);
+  await waitFor(() => expect(screen.getAllByRole('option').some((o) => (o.textContent || '').includes(label))).toBe(true));
+  const option = screen.getAllByRole('option').find((o) => (o.textContent || '').includes(label));
+  if (option) fireEvent.click(option);
+  await waitFor(() => expect(screen.getAllByRole('table').length).toBeGreaterThan(0));
 };
 const clinicRow = (table: HTMLElement) =>
   within(table).getByText('Al-Noor Clinic').closest('tr') as HTMLElement;
@@ -330,8 +330,8 @@ describe('choosing which clinics are in the statement', () => {
     fireEvent.click(option);
   };
 
-  it('takes a clinic out of every month at once', () => {
-    selectMonth('February 2026');
+  it('takes a clinic out of every month at once', async () => {
+    await selectMonth('February 2026');
     expect(within(tables()[0]).getByText('Al-Noor Clinic')).toBeTruthy();
     expect(within(tables()[0]).getByText('Beta Dental')).toBeTruthy();
 
@@ -343,10 +343,10 @@ describe('choosing which clinics are in the statement', () => {
     expect(within(tables()[0]).getByText('Al-Noor Clinic')).toBeTruthy();
   });
 
-  it('recomputes the month total from the clinics that are left', () => {
+  it('recomputes the month total from the clinics that are left', async () => {
     /* The February month total covers both clinics: 40,000 + 12,000. Take
        one away and the total has to follow, or the footer is a lie. */
-    selectMonth('February 2026');
+    await selectMonth('February 2026');
     const februaryTotal = () => figure(tables()[0], footerRow(tables()[0]), 'Billed (Dr)');
     expect(februaryTotal()).toBe('PKR 52,000');
 

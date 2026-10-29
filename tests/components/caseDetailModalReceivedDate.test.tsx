@@ -38,8 +38,10 @@ async function openScheduleStep() {
   fireEvent.change(screen.getByPlaceholderText(/Tariq Mahmood/i), { target: { value: 'Tariq Test' } });
   await waitFor(() => expect(screen.queryByRole('button', { name: /continue/i })).toBeTruthy());
   // The case type is required before the wizard leaves the basics step.
-  const typeSelect = screen.getAllByRole('combobox')[1] ?? screen.getAllByRole('combobox')[0];
-  fireEvent.change(typeSelect, { target: { value: 'ct-1' } });
+  const typeSelect = screen.getByRole('button', { name: /case procedure/i });
+  fireEvent.click(typeSelect);
+  await waitFor(() => expect(screen.getAllByRole('option').some((o) => /zirconia/i.test(o.textContent || ''))).toBe(true));
+  fireEvent.click(screen.getAllByRole('option').find((o) => /zirconia/i.test(o.textContent || ''))!);
   fireEvent.click(screen.getByRole('button', { name: /continue/i })); // → teeth step
   await waitFor(() => expect(screen.getAllByText(/FDI Charting/i).length).toBeGreaterThan(0));
   // The chart step requires at least one tooth before it will advance.

@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, ExternalLink, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import type { DentalCase, CaseStatus, PriorityLevel } from '../../types';
 import { EmptyState, Badge, CaseStatusBadge } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { Search, ShieldAlert, CheckCircle2, TrendingUp } from 'lucide-react';
 import { getTodayStr, daysDiff } from '../../utils/dateUtils';
 
@@ -222,15 +223,17 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
             />
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <select
+            <GlassSelect
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as QueueSortKey)}
-              className="p-1.5 text-xs ds-glass-select rounded-lg font-semibold text-slate-700 focus:outline-none"
-            >
-              <option value="due_date">Due Date</option>
-              <option value="priority">Priority</option>
-              <option value="age">Case Age</option>
-            </select>
+              onChange={(v) => setSortBy(v as QueueSortKey)}
+              ariaLabel="Sort queue by"
+              className="w-auto p-1.5 text-xs font-semibold"
+              options={[
+                { value: 'due_date', label: 'Due Date' },
+                { value: 'priority', label: 'Priority' },
+                { value: 'age', label: 'Case Age' },
+              ]}
+            />
             <button
               type="button"
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}

@@ -46,9 +46,10 @@ Do NOT close this file until every box is checked and v2.31.3 is released.
 - SKIP by design: TabsNav, Pagination pages, DatePicker day cells, DeliveryCalendar tiles, PrintTab toggles — toggle chips, not CTAs
 
 ## BATCHES AFTER D
-- [ ] View head/filter cards in Catalog, Labs, Billing, Notifications → ds-glass-card roll-out
-- [ ] CaseListView dark sticky CTA bar → .ds-glass-dark
-- [ ] LoginPage auth card → glass pane
+- [x] View-head/filter/toolbars + content/table cards → `.ds-glass-card` roll-out: CatalogView (head, 2 section cards, table container, product rows `bg-ds-surface/55`, empty), LabListView (toolbar, lab rows, table container, empty), NotificationsView (filter toolbar, list container; test-notif modal → ds-glass-pane), BillingView (secondary white toolbar buttons → ds-glass-pill, density label chip translucent, table container)
+- CASE RULE learned: never leave a `border`/`border-*` utility on a ds-glass-card — the utility's border-color/width overrides the glass rim (utilities layer wins). Drop them entirely.
+- [x] LoginPage — already fully glass-built (`auth-glass` console + title card + stage lighting, dark themed); audit find retired
+- [x] CaseListView dark sticky CTA bar → `.ds-glass-dark` (new material: 82/66% slate scrim, blur 20, white/12 rim; badge + ghost buttons go translucent white/10; gross deliverable keeps semantic fill-success); the bulk-status confirm button and the archive restore button become glass pills
 - [ ] Modals' inner header/footer buttons → glass pill (they come from callers)
 - [ ] DESIGN.md: document glass system + no-nested-blur rule
 - [ ] Release v2.31.3: bump versions (package.json, package-lock.json, src-tauri/Cargo.toml, Cargo.lock, tauri.conf.json), CHANGELOG, gates, tag, push, verify installers + update-manifest.json

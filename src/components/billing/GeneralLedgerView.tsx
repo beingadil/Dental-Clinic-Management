@@ -644,7 +644,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
           {/* Selected Clinic Banner if specific clinic chosen */}
           {/* Selected Clinic Banner if specific clinic chosen */}
           {selectedClinic && (
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="ds-glass-card p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
                   {String(selectedClinic.name || 'CL').slice(0, 2).toUpperCase()}

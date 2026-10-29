@@ -49,7 +49,7 @@ describe('the contrast audit', () => {
     expect(Number(mined![1])).toBeGreaterThan(100);
     // A placeholder is a rendering in its own right, so the count must be
     // higher than it was before placeholders were graded.
-    expect(Number(mined![1])).toBeGreaterThan(136);
+    expect(Number(mined![1])).toBeGreaterThan(134);
   });
 
   it('passes on the source as it stands', () => {

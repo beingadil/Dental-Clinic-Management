@@ -21,6 +21,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Modal } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { getTodayStr } from '../../utils/dateUtils';
 import { catalogNeedsTeeth } from '../../utils/catalogToothRequirement';
@@ -344,7 +345,7 @@ export const CatalogView: React.FC = () => {
   return (
     <div className="space-y-6 print-page">
       {/* Header Banner */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="ds-glass-card rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="p-1 bg-slate-100 rounded text-slate-600">
@@ -366,7 +367,7 @@ export const CatalogView: React.FC = () => {
           <SavePdfButton suggestedName="Material-Service-Catalog.pdf" />
           <button
             onClick={handlePrintCatalog}
-            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition-colors border border-slate-300 shadow-2xs flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 ds-glass-pill text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print Price List</span>
@@ -432,7 +433,7 @@ export const CatalogView: React.FC = () => {
       {tab === 'categories' ? (
         /* ── Categories ────────────────────────────────────────────────────── */
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5">
+          <div className="ds-glass-card rounded-xl p-5">
             <h2 className="text-sm font-bold text-slate-900">Material categories</h2>
             <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
               The saved list that feeds the category filter and the material form.
@@ -476,7 +477,7 @@ export const CatalogView: React.FC = () => {
           </div>
 
           {/* Saved list */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="ds-glass-card rounded-xl overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100">
               <span className="text-xs font-bold text-slate-800">
                 {categories.length} categor{categories.length === 1 ? 'y' : 'ies'}
@@ -588,20 +589,15 @@ export const CatalogView: React.FC = () => {
                       <span className="text-[11px] font-bold uppercase tracking-wide text-amber-900">
                         Move to
                       </span>
-                      <select
+                      <GlassSelect
                         value={reassignTarget}
-                        onChange={(e) => setReassignTarget(e.target.value)}
-                        aria-label="Move materials to"
-                        className="px-2.5 py-1.5 text-xs ds-glass-select border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500 text-slate-800"
-                      >
-                        {categories
+                        onChange={setReassignTarget}
+                        ariaLabel="Move materials to"
+                        className="px-2.5 py-1.5 text-xs"
+                        options={categories
                           .filter((c) => c.id !== deleteTargetId)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
+                          .map((c) => ({ value: c.id, label: c.name }))}
+                      />
                       <button
                         type="button"
                         onClick={handleReassignThenDelete}
@@ -675,7 +671,7 @@ export const CatalogView: React.FC = () => {
       ) : tab === 'sla' ? (
         /* ── SLA & Priority ────────────────────────────────────────────────── */
         <div className="space-y-4 print-page">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5">
+          <div className="ds-glass-card rounded-xl p-5">
             <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Turnaround by priority</h2>
@@ -811,7 +807,7 @@ export const CatalogView: React.FC = () => {
         {filteredCatalog.map((item) => (
           <div 
             key={item.id}
-            className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all p-3.5 flex flex-col justify-between space-y-3 group"
+            className="bg-ds-surface/55 rounded-xl border border-ds-line shadow-2xs hover:border-slate-400 hover:shadow-xs transition-all p-3.5 flex flex-col justify-between space-y-3 group"
           >
             <div className="space-y-2">
               <div className="flex items-start justify-between gap-2">
@@ -920,7 +916,7 @@ export const CatalogView: React.FC = () => {
       </div>
 
       {filteredCatalog.length === 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">
+        <div className="bg-ds-surface/40 rounded-xl border border-dashed border-ds-line p-12 text-center space-y-3">
           <div className="w-10 h-10 bg-slate-100 text-ink-muted rounded-lg flex items-center justify-center mx-auto">
             <BookOpen className="w-5 h-5" />
           </div>
@@ -971,17 +967,13 @@ export const CatalogView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-                  <select
+                  <GlassSelect
                     value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full p-2 text-xs ds-glass-select rounded-lg font-bold text-slate-800 focus:outline-none focus:border-slate-400"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCategory}
+                    ariaLabel="Category"
+                    className="w-full p-2 text-xs font-bold"
+                    options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                  />
                   {/* The dropdown offered different labels from the filter pills
                       ('Implant Abutment' vs 'Implant Prosthetics'), so one category
                       had two names depending on where the operator looked. Both
@@ -1050,24 +1042,18 @@ export const CatalogView: React.FC = () => {
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Unit Basis</label>
-                    <select
+                    <GlassSelect
                       value={unitBasis}
-                      onChange={(e) => setUnitBasis(e.target.value)}
-                      className="w-full p-2 text-xs ds-glass-select rounded-lg font-bold text-slate-900 focus:outline-none focus:border-slate-400"
-                    >
-                      {UNIT_BASIS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                      {/* A value saved before this was a dropdown still has to round-trip.
-                          Without this branch the option would vanish from the list and the
-                          <select> would silently show the first entry instead, quietly
-                          rewriting the operator's saved value on the next save. */}
-                      {unitBasis && !UNIT_BASIS_OPTIONS.some((o) => o.value === unitBasis) && (
-                        <option value={unitBasis}>{unitBasis} (legacy)</option>
-                      )}
-                    </select>
+                      onChange={setUnitBasis}
+                      ariaLabel="Unit basis"
+                      className="w-full p-2 text-xs font-bold"
+                      options={[
+                        ...UNIT_BASIS_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label })),
+                        ...(unitBasis && !UNIT_BASIS_OPTIONS.some((o) => o.value === unitBasis)
+                          ? [{ value: unitBasis, label: `${unitBasis} (legacy)` }]
+                          : []),
+                      ]}
+                    />
                     <p className="text-[10px] text-ink-muted mt-1">
                       Per-tooth work bills the base price once per charted unit.
                     </p>

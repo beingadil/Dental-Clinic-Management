@@ -120,7 +120,8 @@ describe('CaseQcPanel', () => {
     render(<CaseQcPanel caseId="case-1" />);
     openPanel();
     fireEvent.click(screen.getByRole('radio', { name: /fail/i }));
-    fireEvent.change(screen.getByDisplayValue('— none —'), { target: { value: 'occlusion' } });
+    fireEvent.click(screen.getByRole('button', { name: /reason code/i }));
+    fireEvent.click(screen.getByRole('option', { name: /occlusion/i }));
     fireEvent.click(screen.getByRole('button', { name: /record inspection/i }));
 
     expect(recordQcCase).toHaveBeenCalledWith(

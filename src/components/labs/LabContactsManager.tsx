@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { LabAddress } from '../../types';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { UserCheck, MapPin, Plus, Trash2 } from 'lucide-react';
 
 interface LabContactsManagerProps {
@@ -248,15 +249,17 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Address Type</label>
-                <select
+                <GlassSelect
                   value={aType}
-                  onChange={(e) => setAType(e.target.value as any)}
-                  className="w-full p-2 text-xs ds-glass-select rounded-lg"
-                >
-                  <option value="billing">Billing Address</option>
-                  <option value="shipping">Shipping / Dispatch Bay</option>
-                  <option value="lab_location">Lab Main Facility</option>
-                </select>
+                  onChange={(v) => setAType(v as any)}
+                  ariaLabel="Address type"
+                  className="w-full p-2 text-xs"
+                  options={[
+                    { value: 'billing', label: 'Billing Address' },
+                    { value: 'shipping', label: 'Shipping / Dispatch Bay' },
+                    { value: 'lab_location', label: 'Lab Main Facility' },
+                  ]}
+                />
               </div>
 
               <div>

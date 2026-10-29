@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Trash2, CheckCircle2 } from 'lucide-react';
 import { Modal } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { formatPKR } from '../../services/financeDomain';
 import type { PaymentRecord, PaymentMethod } from '../../types';
 import type { PaymentPatch } from '../../context/hooks/useTransactionCommands';
@@ -157,7 +158,7 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full text-sm px-3 py-2 ds-glass-select rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -165,18 +166,13 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
             <label htmlFor="edit-pay-method" className="block text-xs font-semibold text-slate-700 mb-1">
               Payment Channel *
             </label>
-            <select
-              id="edit-pay-method"
+            <GlassSelect
               value={method}
-              onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-              className="w-full text-sm px-3 py-2 rounded-lg ds-glass-select focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {METHODS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setMethod(v as PaymentMethod)}
+              ariaLabel="Payment channel"
+              className="w-full px-3 py-2 text-sm"
+              options={METHODS.map((m) => ({ value: m.value, label: m.label }))}
+            />
           </div>
 
           <div className="sm:col-span-2">

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can, deniedTooltip } from '../../services/permissions';
 import { AppNotification } from '../../types';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { 
   Bell, 
   AlertTriangle, 
@@ -299,7 +300,7 @@ export const NotificationsView: React.FC = () => {
       </div>
 
       {/* Tabs and In-Module Search Filter */}
-      <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      <div className="ds-glass-card rounded-xl p-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         {/* Filter Tabs */}
         <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0">
           {[
@@ -406,7 +407,7 @@ export const NotificationsView: React.FC = () => {
       )}
 
       {/* Notifications List */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+      <div className="ds-glass-card rounded-xl overflow-hidden">
         {/* List Header with Select All */}
         <div className="px-4 py-3 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between text-xs font-semibold text-slate-600">
           <div className="flex items-center gap-3">
@@ -588,7 +589,7 @@ export const NotificationsView: React.FC = () => {
       {/* Test Notification Creation Modal */}
       {showTestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="ds-glass-pane rounded-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
@@ -609,16 +610,18 @@ export const NotificationsView: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Alert Category
                 </label>
-                <select
+                <GlassSelect
                   value={testNotificationType}
-                  onChange={(e) => setTestNotificationType(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs ds-glass-select rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-medium"
-                >
-                  <option value="overdue_case">Overdue Case Alert</option>
-                  <option value="unpaid_invoice">Unpaid Invoice Alert</option>
-                  <option value="status_change">Quality Control / Status Update</option>
-                  <option value="system">General System Announcement</option>
-                </select>
+                  onChange={(v) => setTestNotificationType(v as any)}
+                  ariaLabel="Alert category"
+                  className="w-full px-3 py-2 text-xs font-medium"
+                  options={[
+                    { value: 'overdue_case', label: 'Overdue Case Alert' },
+                    { value: 'unpaid_invoice', label: 'Unpaid Invoice Alert' },
+                    { value: 'status_change', label: 'Quality Control / Status Update' },
+                    { value: 'system', label: 'General System Announcement' },
+                  ]}
+                />
               </div>
 
               <div>

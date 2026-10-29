@@ -116,8 +116,12 @@ async function reachChartStep(caseTypeId: string) {
   render(<CaseDetailModal initialShade="A2" onClose={vi.fn()} />);
   fireEvent.change(screen.getByPlaceholderText(DOCTOR_PLACEHOLDER), { target: { value: 'Tariq Test' } });
   await waitFor(() => expect(screen.queryByRole('button', { name: /continue/i })).toBeTruthy());
-  const typeSelect = screen.getAllByRole('combobox')[1] ?? screen.getAllByRole('combobox')[0];
-  fireEvent.change(typeSelect, { target: { value: caseTypeId } });
+  const typeSelect = screen.getByRole('button', { name: /case procedure/i });
+  fireEvent.click(typeSelect);
+  const optionName = caseTypeId === 'ct-retainer' ? /clear retainer/i : caseTypeId === 'ct-legacy' ? /^retainer /i : /zirconia/i;
+  await waitFor(() => expect(screen.getAllByRole('option').some((o) => optionName.test(o.textContent || ''))).toBe(true));
+  const opt = screen.getAllByRole('option').find((o) => optionName.test(o.textContent || ''));
+  if (opt) fireEvent.click(opt);
   fireEvent.click(screen.getByRole('button', { name: /continue/i }));
   await waitFor(() => expect(screen.getAllByText(/FDI Charting/i).length).toBeGreaterThan(0));
 }

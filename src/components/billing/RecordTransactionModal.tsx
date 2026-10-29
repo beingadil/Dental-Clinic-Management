@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { Modal } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import ClinicPicker from '../common/ui/ClinicPicker';
 import { getTodayStr, getNowStamp } from '../../utils/dateUtils';
 
@@ -411,20 +412,18 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Payment Channel *
               </label>
-              <select
+              <GlassSelect
                 value={method}
-                onChange={(e) => setMethod(e.target.value as any)}
-                className="w-full text-xs px-3 py-2 rounded-lg ds-glass-select focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-              >
-                <option value="cash">Cash in Hand</option>
-                <option value="bank">Bank Transfer / Online / IBFT</option>
-                <option value="cheque">Cheque / Demand Draft</option>
-                {mode === 'payment' && (
-                  <option value="advance" disabled={clinicAdvanceWallet <= 0}>
-                    Clinic Credit Wallet ({formatPKR(clinicAdvanceWallet)})
-                  </option>
-                )}
-              </select>
+                onChange={(v) => setMethod(v as any)}
+                ariaLabel="Payment channel"
+                className="w-full px-3 py-2 text-xs"
+                options={[
+                  { value: 'cash', label: 'Cash in Hand' },
+                  { value: 'bank', label: 'Bank Transfer / Online / IBFT' },
+                  { value: 'cheque', label: 'Cheque / Demand Draft' },
+                  ...(mode === 'payment' ? [{ value: 'advance', label: `Clinic Credit Wallet (${formatPKR(clinicAdvanceWallet)})` }] : []),
+                ]}
+              />
             </div>
           </div>
 
@@ -456,7 +455,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                className="w-full text-xs px-3 py-2 ds-glass-select rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
                 required
               />
             </div>

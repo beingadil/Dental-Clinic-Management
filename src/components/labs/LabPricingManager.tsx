@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { getTodayStr } from '../../utils/dateUtils';
 import { Plus, Trash2, Tag } from 'lucide-react';
 import { DataTable } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 
 interface LabPricingManagerProps {
   labId: string;
@@ -80,21 +81,17 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Case Material Type</label>
-              <select
+              <GlassSelect
                 value={caseTypeId}
-                onChange={(e) => {
-                  setCaseTypeId(e.target.value);
-                  const ct = caseTypes.find((c) => c.id === e.target.value);
+                onChange={(v) => {
+                  setCaseTypeId(v);
+                  const ct = caseTypes.find((c) => c.id === v);
                   if (ct) setCustomPrice(Math.round(ct.base_price * 0.9));
                 }}
-                className="w-full p-2 text-xs ds-glass-select rounded-lg"
-              >
-                {caseTypes.map((ct) => (
-                  <option key={ct.id} value={ct.id}>
-                    {ct.name} (Std {formatPKR(ct.base_price)})
-                  </option>
-                ))}
-              </select>
+                ariaLabel="Case material type"
+                className="w-full p-2 text-xs"
+                options={caseTypes.map((ct) => ({ value: ct.id, label: `${ct.name} (Std ${formatPKR(ct.base_price)})` }))}
+              />
             </div>
 
             <div>

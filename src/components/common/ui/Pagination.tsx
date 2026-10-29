@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { GlassSelect } from './GlassSelect';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 /** Page sizes offered in the size selector. */
@@ -162,17 +163,13 @@ export function PaginationBar({
         </span>
         <label className="flex items-center gap-1.5">
           <span className="sr-only">Rows per page</span>
-          <select
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="px-1.5 py-1 text-[11px] ds-glass-select rounded-lg text-slate-700 font-semibold cursor-pointer focus:outline-none focus:border-indigo-500"
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>
-                {size} / page
-              </option>
-            ))}
-          </select>
+          <GlassSelect
+            value={String(pageSize)}
+            onChange={(v) => onPageSizeChange(Number(v))}
+            ariaLabel="Rows per page"
+            className="px-1.5 py-1 text-[11px] font-semibold"
+            options={PAGE_SIZE_OPTIONS.map((size) => ({ value: String(size), label: `${size} / page` }))}
+          />
         </label>
       </div>
 

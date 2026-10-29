@@ -10,6 +10,7 @@ import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
 import { openFileInBrowser } from '../../utils/fileUtils';
 import { useDialogBehavior } from '../common/ui/useDialogBehavior';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { LAB_DEPARTMENTS } from '../../utils/labDepartments';
 import { stripDoctorHonorific } from '../../utils/doctorName';
 import { catalogNeedsTeeth, billableUnits } from '../../utils/catalogToothRequirement';
@@ -84,12 +85,6 @@ const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean; html
 const inputCls = `w-full rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 ring-1 ring-slate-200
   placeholder:text-ink-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${EASE}
   hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-600/40`;
-
-// Selects in this form wear the glass material instead of the solid input fill:
-// same rhythm as the inputs, but translucent with a luminous rim (fill-only —
-// this modal is itself a glass pane, so no second backdrop layer).
-const selectCls = `w-full rounded-xl ds-glass-select px-3.5 py-2.5 text-sm text-slate-900 transition-all duration-500 ${EASE}
-  hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-brand-600/40`;
 
 const bezelCard = `rounded-[1.5rem] bg-slate-900/[0.035] p-1.5 ring-1 ring-slate-900/10 shadow-[0_1px_2px_rgba(15,23,42,0.06)]`;
 const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-white p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)]`;
@@ -776,23 +771,19 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   </button>
                 )}
               </div>
-              <select
-                id="case-lab-id"
+              <GlassSelect
                 value={labId}
-                onChange={(e) => {
-                  setLabId(e.target.value);
+                onChange={(v) => {
+                  setLabId(v);
                   if (errors.labId) setErrors((prev) => ({ ...prev, labId: '' }));
                 }}
-                aria-invalid={!!errors.labId}
-                aria-describedby={errors.labId ? 'case-lab-id-error' : undefined}
-                className={selectCls}
-              >
-                {labs.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.phone ? `${l.name} (${l.phone})` : l.name}
-                  </option>
-                ))}
-              </select>
+                ariaLabel="Laboratory"
+                className="w-full px-3.5 py-2.5 text-sm"
+                options={labs.map((l) => ({
+                  value: l.id,
+                  label: l.phone ? `${l.name} (${l.phone})` : l.name,
+                }))}
+              />
               {errors.labId && (
                 <p id="case-lab-id-error" className="mt-1 text-[11px] font-medium text-ink-danger">{errors.labId}</p>
               )}
@@ -815,18 +806,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             </div>
             <div>
               <FieldLabel required htmlFor="case-type-id">Case Procedure / Type</FieldLabel>
-              <select
-                id="case-type-id"
+              <GlassSelect
                 value={caseTypeId}
-                onChange={(e) => setCaseTypeId(e.target.value)}
-                className={selectCls}
-              >
-                {caseTypes.map((ct) => (
-                  <option key={ct.id} value={ct.id}>
-                    {ct.name} ({formatPKR(ct.base_price)})
-                  </option>
-                ))}
-              </select>
+                onChange={setCaseTypeId}
+                ariaLabel="Case procedure / type"
+                className="w-full px-3.5 py-2.5 text-sm"
+                options={caseTypes.map((ct) => ({ value: ct.id, label: `${ct.name} (${formatPKR(ct.base_price)})` }))}
+              />
             </div>
           </div>
     </div>
@@ -1286,7 +1272,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowJobSlipModal(true)}
-                  className={`inline-flex items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-white/20 active:scale-[0.97] ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full ds-glass-dark-chip px-4 py-2 text-xs font-bold text-white transition-all duration-500 active:scale-[0.97] ${EASE}`}
                   title="Print Job Slip / Workstation Routing Ticket"
                 >
                   <Printer className="h-4 w-4" />
@@ -1297,7 +1283,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setTemplateModalOpen(true)}
-                  className={`hidden items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-white transition-all duration-500 hover:bg-white/20 active:scale-[0.97] md:inline-flex ${EASE}`}
+                  className={`hidden items-center gap-1.5 rounded-full ds-glass-dark-chip px-4 py-2 text-xs font-bold text-white transition-all duration-500 active:scale-[0.97] md:inline-flex ${EASE}`}
                   title="Save the current teeth, shade and instructions as a reusable preset"
                 >
                   <Bookmark className="h-4 w-4" />
@@ -1307,7 +1293,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsFullScreen(!isFullScreen)}
-                className="rounded-full p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                className="rounded-full p-2 text-slate-300 transition-colors ds-glass-dark-chip hover:text-white"
                 title={isFullScreen ? 'Restore window size' : 'Expand to full page'}
                 aria-label={isFullScreen ? 'Restore window size' : 'Expand to full page'}
               >
@@ -1316,7 +1302,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-full p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                className="rounded-full p-2 text-slate-300 transition-colors ds-glass-dark-chip hover:text-white"
                 aria-label="Close case details"
               >
                 <X className="h-5 w-5" />

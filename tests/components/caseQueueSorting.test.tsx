@@ -64,7 +64,8 @@ describe('case queue sorting', () => {
     openQueue();
     expect(renderedOrder()).toEqual(['DS-0002', 'DS-0003', 'DS-0001']);
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'priority' } });
+    fireEvent.click(screen.getByRole('button', { name: /sort queue by/i }));
+  fireEvent.click(screen.getByRole('option', { name: /priority/i }));
 
     // urgent → high → low
     expect(renderedOrder()).toEqual(['DS-0002', 'DS-0003', 'DS-0001']);
@@ -72,7 +73,8 @@ describe('case queue sorting', () => {
 
   it('reverses when the direction is toggled', () => {
     openQueue();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'priority' } });
+    fireEvent.click(screen.getByRole('button', { name: /sort queue by/i }));
+  fireEvent.click(screen.getByRole('option', { name: /priority/i }));
     const toggle = screen.getByRole('button', { name: /ascending/i });
 
     fireEvent.click(toggle);
@@ -84,7 +86,8 @@ describe('case queue sorting', () => {
 
   it('sorts by age from registration, ignoring the promised delivery date', () => {
     openQueue();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'age' } });
+    fireEvent.click(screen.getByRole('button', { name: /sort queue by/i }));
+  fireEvent.click(screen.getByRole('option', { name: /case age/i }));
 
     // Registered 01st, 05th, 09th — note DS-0001 has the LATEST delivery date
     // but the EARLIEST registration. A comparator that mixed in delivery_date
@@ -94,7 +97,8 @@ describe('case queue sorting', () => {
 
   it('keeps the case number as a stable tiebreak inside one due date', () => {
     openQueue();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'age' } });
+    fireEvent.click(screen.getByRole('button', { name: /sort queue by/i }));
+  fireEvent.click(screen.getByRole('option', { name: /case age/i }));
     const toggle = screen.getByRole('button', { name: /ascending/i });
 
     fireEvent.click(toggle);

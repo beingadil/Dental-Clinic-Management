@@ -377,7 +377,7 @@ export const BillingView: React.FC = () => {
             <button
               type="button"
               onClick={() => setBatchPrintOpen(true)}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
+              className="ds-glass-pill active:scale-[0.98] font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer"
               title="Print every invoice for one clinic over a month or date range - paid, partly paid and unpaid"
             >
               <Printer className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -388,7 +388,7 @@ export const BillingView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setClinicStatementModalId(clinicFilter)}
-                className="px-3.5 py-2 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-800 border border-slate-300 font-semibold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
+                className="ds-glass-pill active:scale-[0.98] font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer"
                 title="Open the official statement of account for the selected clinic"
               >
                 <FileSpreadsheet className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -403,7 +403,7 @@ export const BillingView: React.FC = () => {
 
             {selectedIds.length > 0 && (
               <>
-                <label className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-xl shadow-2xs">
+                <label className="flex items-center gap-2 px-3 py-1.5 bg-ds-surface/60 border border-ds-line rounded-xl">
                   <span className="text-xs font-semibold text-slate-600 shrink-0">Payment date</span>
                   <input
                     type="date"
@@ -448,14 +448,14 @@ export const BillingView: React.FC = () => {
               <>
                 <button
                   onClick={handleExportInvoicesCSV}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-3 py-1.5 ds-glass-pill text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-slate-500" />
                   <span>Export Invoices CSV</span>
                 </button>
                 <button
                   onClick={handleExportTransactionsCSV}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-3 py-1.5 ds-glass-pill text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-slate-500" />
                   {/* Named for what it now exports. It was "Transactions" because
@@ -472,7 +472,7 @@ export const BillingView: React.FC = () => {
               because every other table in the app already sits inside a card its
               view owns and adopting it card-in-card doubled the hairline, the shadow
               and fought the radius. The card stays here, where it always was. */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
+          <div className="ds-glass-card rounded-2xl overflow-hidden">
           <DataTable<Invoice>
             data={visibleInvoices}
             rowKey={(inv) => inv.id}

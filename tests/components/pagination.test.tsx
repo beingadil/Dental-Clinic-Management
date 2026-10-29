@@ -108,7 +108,8 @@ describe('usePagination', () => {
     fireEvent.click(screen.getByLabelText('Page 4'));
     expect(meta()).toBe('page=4 total=40 pages=4');
     expect(shownRows()).toEqual([31, 32, 33, 34, 35, 36, 37, 38, 39, 40]);
-    fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: /rows per page/i }));
+    fireEvent.click(screen.getByRole('option', { name: /50 \/ page/i }));
     expect(meta()).toBe('page=1 total=40 pages=1');
     expect(shownRows()).toHaveLength(40);
     expect(shownRows()[0]).toBe(1);

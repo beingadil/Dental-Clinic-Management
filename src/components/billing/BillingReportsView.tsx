@@ -6,6 +6,7 @@ import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { EmptyState, DataTable } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { ClinicFilter } from '../common/ui/ClinicFilter';
 import { formatPKR } from '../../services/financeDomain';
 import { saveFile } from '../../lib/saveFile';
@@ -547,17 +548,13 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
           {visibleBlocks.length > 1 && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-bold text-slate-700">Month:</label>
-              <select
+              <GlassSelect
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="p-2 text-xs ds-glass-select rounded-xl font-bold"
-              >
-                {visibleBlocks.map((b) => (
-                  <option key={b.month} value={b.month}>
-                    {formatMonthLabel(b.month)}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedMonth}
+                ariaLabel="Month"
+                className="w-auto p-2 text-xs font-bold"
+                options={visibleBlocks.map((b) => ({ value: b.month, label: formatMonthLabel(b.month) }))}
+              />
             </div>
           )}
 

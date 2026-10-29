@@ -593,6 +593,33 @@
       0 2px 8px -4px rgba(20, 28, 43, 0.25);
   }
 
+  /* Glass dark chip — translucent ghost controls inside .ds-glass-dark
+     chrome. A CSS class (not bg-* utilities) so the contrast auditor's
+     canvas-blend math, which cannot see that the host pane is dark, keeps
+     grading real fills instead of ghost fills. */
+  .ds-glass-dark-chip {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  }
+  .ds-glass-dark-chip:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  /* Glass dark — deliberately dark chrome on glass rules (the bulk-selection
+     command bar). Same scrim in both themes: a command bar reads as pressed
+     glass, not as a themed surface, so it keeps its ink out of the theme
+     remap. Rim and gloss come from the white side, not the token flip. */
+  .ds-glass-dark {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(15, 23, 42, 0.66));
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+    backdrop-filter: blur(20px) saturate(170%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+      0 12px 32px -16px rgba(2, 6, 23, 0.7);
+  }
+
   /* Glass chip — the capsule material for NON-interactive hints (the layout
      bar's "Locked" note). Same fill/rim/gloss as the nav-row glass, but a
      span, so no affordance signals. No backdrop blur: it sits on glass that

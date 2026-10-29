@@ -6,6 +6,7 @@ import { formatDoctorName } from '../../utils/doctorName';
 import { usePagination } from '../common/ui/Pagination';
 import { Modal } from '../common/ui/Modal';
 import { DataTable } from '../common/ui';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import { formatPKR } from '../../services/financeDomain';
 import { 
   Building2, 
@@ -235,7 +236,7 @@ export const LabListView: React.FC = () => {
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer self-start sm:self-auto"
+          className="px-4 py-2.5 ds-glass-pill font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer self-start sm:self-auto"
         >
           <PlusCircle className="w-4 h-4" />
           <span>Register New Clinic</span>
@@ -243,7 +244,7 @@ export const LabListView: React.FC = () => {
       </div>
 
       {/* Toolbar */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="ds-glass-card rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:max-w-md">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
           <input
@@ -285,14 +286,16 @@ export const LabListView: React.FC = () => {
               <span>List</span>
             </button>
           </div>
-          <select
+          <GlassSelect
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="p-2 text-xs ds-glass-select rounded-xl font-semibold text-slate-700 focus:outline-none"
-          >
-            <option value="cases">Sort by Total Cases</option>
-            <option value="name">Sort by Name</option>
-          </select>
+            onChange={(v) => setSortBy(v as any)}
+            ariaLabel="Sort labs by"
+            className="w-44 p-2 text-xs font-semibold"
+            options={[
+              { value: 'cases', label: 'Sort by Total Cases' },
+              { value: 'name', label: 'Sort by Name' },
+            ]}
+          />
           <button
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
             className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 transition-colors cursor-pointer"
@@ -307,7 +310,7 @@ export const LabListView: React.FC = () => {
       {viewMode === 'grid' && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredLabs.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-ink-muted text-xs bg-white rounded-2xl border border-dashed border-slate-200">
+          <div className="col-span-full py-12 text-center text-ink-muted text-xs bg-ds-surface/40 rounded-2xl border border-dashed border-ds-line">
             No dental clinics found matching search.
           </div>
         ) : (
@@ -321,7 +324,7 @@ export const LabListView: React.FC = () => {
               <div
                 key={lab.id}
                 onClick={() => setSelectedLab(lab)}
-                className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between gap-4 group"
+                className="p-5 bg-ds-surface/55 rounded-2xl border border-ds-line hover:border-indigo-300 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between gap-4 group"
               >
                 <div>
                   {/* Top Row: Icon, Name & Case Activity */}
@@ -412,7 +415,7 @@ export const LabListView: React.FC = () => {
       {/* Dense clinic directory: one row per clinic, all contact fields at a
           glance. Shares the search, sort and render cap with the card grid. */}
       {viewMode === 'list' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="ds-glass-card rounded-2xl overflow-hidden">
           {/* DataTable owns the <tr>, so the "click a row to open the clinic"
               behaviour rides a delegated click on the wrapper instead of an
               onClick on the row itself. */}

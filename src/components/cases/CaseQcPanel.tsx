@@ -23,6 +23,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { GlassSelect } from '../common/ui/GlassSelect';
 import {
   QC_REASON_CODES,
   QC_REASON_LABELS,
@@ -315,18 +316,13 @@ export const CaseQcPanel: React.FC<CaseQcPanelProps> = ({ caseId, caseNumber, lo
                 <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Reason code {result === 'fail' ? '' : '(optional)'}
                 </label>
-                <select
+                <GlassSelect
                   value={reasonCode}
-                  onChange={(e) => setReasonCode(e.target.value as QcReasonCode | '')}
-                  className="w-full text-xs px-3 py-2 ds-glass-select rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-                >
-                  <option value="">— none —</option>
-                  {QC_REASON_CODES.map((code) => (
-                    <option key={code} value={code}>
-                      {QC_REASON_LABELS[code]}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setReasonCode(v as QcReasonCode | '')}
+                  ariaLabel="Reason code"
+                  className="w-full px-3 py-2 text-xs"
+                  options={[{ value: '', label: '— none —' }, ...QC_REASON_CODES.map((code) => ({ value: code, label: QC_REASON_LABELS[code] }))]}
+                />
               </div>
 
               <div>

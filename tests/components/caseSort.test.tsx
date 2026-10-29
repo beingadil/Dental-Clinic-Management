@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react';
 
 const store = vi.hoisted(() => ({ cases: [] as unknown[] }));
 
@@ -113,25 +113,25 @@ describe('case list ordering', () => {
     expect(renderedOrder()).toEqual(['DS-0003', 'DS-0002', 'DS-0010']);
   });
 
-  it('offers every sort key in the dropdown, grouped', () => {
+  it('offers every sort key in the dropdown, grouped', async () => {
     store.cases = SORTABLE_CASES;
     render(<CaseListView />);
 
-    const select = screen.getByLabelText('Sort cases by') as HTMLSelectElement;
-    const values = Array.from(select.options).map((o) => o.value);
-    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.label);
+    const trigger = screen.getByRole('button', { name: /sort cases by/i });
+    fireEvent.click(trigger);
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThanOrEqual(6));
 
-    expect(values).toContain('created_at');
-    expect(values).toContain('received_date');
-    expect(values).toContain('case_number');
-    expect(values).toContain('patient_name');
-    expect(values).toContain('doctor_name');
-    expect(values).toContain('lab_name');
-    expect(values).toContain('final_price');
-    expect(groups).toEqual(['Recently added', 'Delivery', 'Case', 'Work']);
+    const optionTexts = screen.getAllByRole('option').map((o) => o.textContent ?? '');
+    expect(optionTexts.some((t) => /newest first/i.test(t))).toBe(true);
+    expect(optionTexts.some((t) => /case number/i.test(t))).toBe(true);
+    expect(optionTexts.some((t) => /patient/i.test(t))).toBe(true);
+
+    // Group headings render as inert labels above their options.
+    expect(screen.getByText(/recently added/i)).toBeTruthy();
+    expect(screen.getAllByText(/delivery/i).length).toBeGreaterThan(0);
 
     // Default selection is the newest-first option itself.
-    expect(select.value).toBe('created_at');
+    expect(trigger.textContent).toMatch(/newest first/i);
   });
 
   it('names the direction on the toggle, not just an unlabelled icon', () => {

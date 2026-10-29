@@ -1,10 +1,10 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 
 export interface GlassSelectOption {
   value: string;
   label: string;
-  /** Optional group heading row — renders once per distinct group, in order. */
   group?: string;
 }
 
@@ -12,28 +12,21 @@ export interface GlassSelectProps {
   value: string;
   onChange: (value: string) => void;
   options: GlassSelectOption[];
-  /** Accessible name for the trigger. */
   ariaLabel?: string;
-  /** Width / padding utilities for the trigger, e.g. `w-full p-2 text-xs`. */
   className?: string;
-  /** Extra positioning for the menu, e.g. `left-auto right-0 w-64`. */
   menuClassName?: string;
 }
 
 /**
  * Shared glass dropdown — one open-menu material for every native `<select>`.
  *
- * WHY IT EXISTS
- * A native select's option list is OS-drawn: no CSS can glass it. Operators
- * called that mismatch out (frosted trigger, legacy paper menu). This
- * component replaces the control wholesale: the trigger wears the same
- * `.ds-glass-select` fill so swaps are visual drop-ins, and the menu is the
- * shared `ds-popover` material with fill-only rows — a popover that blurs
- * never hosts a second blur inside it (the nested-backdrop jank rule).
- *
- * SEMANTICS: role=listbox triggered by a combobox-pattern button, linear
- * keyboard nav (arrows / home / end / enter / escape), click-outside close,
- * focus restore to the trigger. Groups render as inert headings.
+ * The menu is PORTALed to document.body and positioned with fixed coords taken
+ * from the trigger rect. Reason: the trigger lives inside toolbars/cards that
+ * carry their own stacking contexts and `overflow-hidden`/`overflow-auto`, so
+ * an in-flow absolutely-positioned menu was being clipped or sat beneath
+ * later siblings (the Workstation board). Portaling removes the menu from
+ * every ancestor's clipping and stacking, so the open list always reads on
+ * top — and one fix covers every module using this component.
  */
 export const GlassSelect: React.FC<GlassSelectProps> = ({
   value,
@@ -45,6 +38,7 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -55,8 +49,6 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
     [options, value]
   );
 
-  // Selectable rows only (group headings are inert), with edge-bounds clamped
-  // navigation shared by keyboard and scroll-into-view.
   const rows = useMemo(() => {
     const acc: (GlassSelectOption | { heading: string })[] = [];
     const seen = new Set<string>();
@@ -75,10 +67,28 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
     [rows]
   );
 
+  // Measure the trigger and re-measure while open so the portaled menu tracks
+  // the trigger across scroll/resize instead of freezing at open-time coords.
+  const measure = () => {
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (r) setCoords({ top: r.bottom + 6, left: r.left, width: r.width });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onDocMouseDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) {
+      if (!wrapRef.current?.contains(e.target as Node) && !listRef.current?.contains(e.target as Node)) {
         triggerRef.current?.focus();
         setOpen(false);
       }
@@ -87,7 +97,6 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [open]);
 
-  // Keep the active row visible while arrowing.
   useEffect(() => {
     if (!open) return;
     const el = listRef.current?.querySelector('[data-active="true"]');
@@ -129,6 +138,53 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
     }
   };
 
+  const menu = open && coords ? createPortal(
+    <div
+      id={listId}
+      ref={listRef}
+      role="listbox"
+      onKeyDown={onMenuKeyDown}
+      tabIndex={-1}
+      className={`ds-popover fixed z-[10000] max-h-72 overflow-y-auto p-1.5 space-y-0.5 ${menuClassName}`}
+      style={{ top: coords.top, left: coords.left, width: coords.width }}
+    >
+      {rows.map((row) => {
+        if ('heading' in row) {
+          return (
+            <div
+              key={`g-${row.heading}`}
+              className="px-2 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 select-none"
+            >
+              {row.heading}
+            </div>
+          );
+        }
+        const isSelected = row.value === value;
+        const rowSelectableIdx = selectable.findIndex((o) => o.value === row.value);
+        return (
+          <button
+            key={row.value}
+            type="button"
+            role="option"
+            aria-selected={isSelected}
+            data-active={rowSelectableIdx === active}
+            onClick={() => commit(row.value)}
+            onMouseEnter={() => setActive(rowSelectableIdx)}
+            className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs font-semibold transition-colors ${
+              isSelected
+                ? 'bg-white shadow-xs ring-1 ring-slate-900/10 text-slate-900'
+                : 'text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            <span className="truncate">{row.label}</span>
+            {isSelected && <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
+          </button>
+        );
+      })}
+    </div>,
+    document.body
+  ) : null;
+
   return (
     <div ref={wrapRef} className="relative">
       <button
@@ -148,53 +204,7 @@ export const GlassSelect: React.FC<GlassSelectProps> = ({
           aria-hidden="true"
         />
       </button>
-
-      {open && (
-        <div
-          id={listId}
-          ref={listRef}
-          role="listbox"
-          onKeyDown={onMenuKeyDown}
-          tabIndex={-1}
-          className={`ds-popover absolute left-0 right-0 top-full mt-1.5 z-50 max-h-72 overflow-y-auto p-1.5 space-y-0.5 ${menuClassName}`}
-        >
-          {rows.map((row) => {
-            if ('heading' in row) {
-              return (
-                <div
-                  key={`g-${row.heading}`}
-                  className="px-2 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 select-none"
-                >
-                  {row.heading}
-                </div>
-              );
-            }
-            const isSelected = row.value === value;
-            const rowSelectableIdx = selectable.findIndex(
-              (o) => o.value === row.value
-            );
-            return (
-              <button
-                key={row.value}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                data-active={rowSelectableIdx === active}
-                onClick={() => commit(row.value)}
-                onMouseEnter={() => setActive(rowSelectableIdx)}
-                className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs font-semibold transition-colors ${
-                  isSelected
-                    ? 'bg-white shadow-xs ring-1 ring-slate-900/10 text-slate-900'
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <span className="truncate">{row.label}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {menu}
     </div>
   );
 };

@@ -592,20 +592,13 @@ export const CaseListView: React.FC = () => {
 
           {/* Sort By Controls */}
           <div className="flex items-center gap-2">
-            <select
+            <GlassSelect
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as CaseSortKey)}
-              aria-label="Sort cases by"
-              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none text-slate-700 font-medium"
-            >
-              {SORT_OPTIONS.map((group) => (
-                <optgroup key={group.group} label={group.group}>
-                  {group.options.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+              onChange={(v) => setSortBy(v as CaseSortKey)}
+              ariaLabel="Sort cases by"
+              className="w-48 p-2 text-xs font-medium"
+              options={SORT_OPTIONS.flatMap((g) => g.options.map((o) => ({ value: o.value, label: o.label, group: g.group })))}
+            />
             <button
               type="button"
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
@@ -625,9 +618,9 @@ export const CaseListView: React.FC = () => {
 
       {/* STICKY BULK ACTION BAR */}
       {selectedCaseIds.length > 0 && (
-        <div className="sticky top-4 z-20 bg-slate-900 text-white rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 animate-in fade-in slide-in-from-top-2">
+        <div className="ds-glass-dark sticky top-4 z-20 text-white rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
-            <div className="px-3 py-1.5 bg-indigo-600 text-white font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-xs">
+            <div className="px-3 py-1.5 ds-glass-dark-chip text-white font-extrabold text-xs rounded-xl flex items-center gap-2">
               <CheckSquare className="w-4 h-4" />
               <span>{selectedCaseIds.length} Cases Selected</span>
             </div>
@@ -669,8 +662,8 @@ export const CaseListView: React.FC = () => {
                 key={next}
                 type="button"
                 onClick={() => setBulkStatusTarget(next)}
-                className={`px-3 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-colors cursor-pointer ${
-                  next === 'delivered' ? 'bg-fill-success hover:bg-fill-success' : 'bg-slate-800 hover:bg-slate-700'
+                className={`px-3 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition-colors cursor-pointer ${
+                  next === 'delivered' ? 'bg-fill-success hover:bg-fill-success' : 'ds-glass-dark-chip'
                 }`}
                 title={`Mark all ${selectedCaseIds.length} selected case(s) as ${STATUS_LABELS[next]}`}
               >
@@ -688,7 +681,7 @@ export const CaseListView: React.FC = () => {
             <button
               type="button"
               onClick={clearSelection}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              className="px-3 py-2 ds-glass-dark-chip text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
             >
               Deselect
             </button>
@@ -717,16 +710,13 @@ export const CaseListView: React.FC = () => {
                 to={archiveTo}
                 onChange={(f, t) => { setArchiveFrom(f); setArchiveTo(t); }}
               />
-              <select
+              <GlassSelect
                 value={archiveClinic}
-                onChange={(e) => setArchiveClinic(e.target.value)}
-                className="ds-glass-select w-full lg:w-64 p-2 text-xs rounded-xl font-medium text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="all">All Clinics ({labs.length})</option>
-                {labs.map((l) => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))}
-              </select>
+                onChange={setArchiveClinic}
+                ariaLabel="Filter archive by clinic"
+                className="w-full lg:w-64 p-2 text-xs font-medium"
+                options={[{ value: 'all', label: `All Clinics (${labs.length})` }, ...labs.map((l) => ({ value: l.id, label: l.name }))]}
+              />
               {(archiveFrom || archiveTo || archiveSearch || archiveClinic !== 'all') && (
                 <button
                   type="button"
@@ -1412,7 +1402,7 @@ export const CaseListView: React.FC = () => {
                   clearSelection();
                   setBulkStatusTarget(null);
                 }}
-                className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer"
+                className="px-4 py-1.5 ds-glass-pill text-xs font-semibold cursor-pointer"
               >
                 Mark {STATUS_LABELS[bulkStatusTarget]}
               </button>
