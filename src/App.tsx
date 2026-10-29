@@ -4,7 +4,6 @@ import { Header } from './components/common/Header';
 import { AutoUpdatePanel } from './components/common/AutoUpdatePanel';
 import { SyncStatusBanner } from './components/common/SyncStatusBanner';
 import { SaveFailureBanner } from './components/common/SaveFailureBanner';
-import { ConnectivityStatus } from './components/common/ConnectivityStatus';
 import { Sidebar } from './components/common/Sidebar';
 import { LockScreen } from './components/common/LockScreen';
 import { LoginPage } from './components/auth/LoginPage';
@@ -120,12 +119,10 @@ const MainAppContent: React.FC = () => {
             them at close. Cleared by the next successful save. */}
         <SaveFailureBanner />
 
-        {/* Connectivity + last-save status. Quiet when healthy, loud when offline
-            or when the last save failed. Lives above the header so it is visible
-            from every view without scrolling. */}
-        <div className="px-3 pt-2 sm:px-4 lg:px-5">
-          <ConnectivityStatus />
-        </div>
+        {/* Connectivity + last-save status moved into the rail's version
+            strip (Sidebar.tsx) — the sidebar is persistent on every view, so
+            the status is still visible without scrolling, and the header
+            becomes a clean floating pane. */}
 
         {/* Top Header */}
         <Header />

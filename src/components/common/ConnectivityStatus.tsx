@@ -3,7 +3,7 @@ import { WifiOff, Cloud, CloudOff } from 'lucide-react';
 import { getLastSaveAt, getLastSaveError } from '../../db/persistence';
 
 /**
- * Connectivity status pill for the app header.
+ * Connectivity status pill for the sidebar's version strip.
  *
  * Two things the operator needs to know without digging into Settings:
  *
@@ -66,12 +66,12 @@ export const ConnectivityStatus: React.FC = () => {
   if (!online) {
     return (
       <div
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold"
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold"
         role="status"
         aria-live="polite"
         title="You are offline. Changes are saved locally and will sync when connectivity returns."
       >
-        <WifiOff className="w-3.5 h-3.5" />
+        <WifiOff className="w-3 h-3" />
         <span>Offline</span>
       </div>
     );
@@ -80,12 +80,12 @@ export const ConnectivityStatus: React.FC = () => {
   if (saveError) {
     return (
       <div
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold"
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold"
         role="status"
         aria-live="polite"
         title={saveError}
       >
-        <CloudOff className="w-3.5 h-3.5" />
+        <CloudOff className="w-3 h-3" />
         <span>Save failed</span>
       </div>
     );
@@ -93,12 +93,12 @@ export const ConnectivityStatus: React.FC = () => {
 
   return (
     <div
-      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-500 text-xs font-medium"
+      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-ds-muted text-[11px] font-medium"
       role="status"
       aria-live="polite"
       title={lastSave ? `Last successful save: ${lastSave}` : 'No save yet this session'}
     >
-      <Cloud className="w-3.5 h-3.5" />
+      <Cloud className="w-3 h-3" />
       <span>Saved {formatAge(lastSave)}</span>
     </div>
   );

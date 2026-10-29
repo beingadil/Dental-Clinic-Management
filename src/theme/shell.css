@@ -239,6 +239,25 @@
     outline: 2px solid var(--ds-accent);
     outline-offset: -2px;
   }
+  /* Glass rows — the frosted-capsule material adapted to the full-width nav
+     row: the row keeps its own height and padding, and swaps the 10px plate
+     for a capsule pane. Declared AFTER `.ds-nav-row` so it wins the equal-
+     specificity ties (radius, background). Only INACTIVE rows carry this
+     class in the markup; the active row keeps its filled plate outright. */
+  .ds-glass-pill-row {
+    border-radius: 9999px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.28));
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.65),
+      0 8px 20px -10px rgba(20, 28, 43, 0.14);
+  }
+  .ds-glass-pill-row:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.36));
+    color: var(--ds-ink);
+  }
 
   /* ── Nav badge ───────────────────────────────────────────────────────────
      A count, not a sticker. `rounded-full` on every number is the pill-badge
@@ -280,16 +299,25 @@
 
   /*
    * ── Header bar ─────────────────────────────────────────────────────────
-   * Glass, not blur-for-its-own-sake. A 1px inner rim along the bottom is what
-   * separates a translucent bar from the canvas it floats over; without it the
-   * blur reads as a smudge. Height is a token because the sidebar's brand row
-   * has to line up with it or the two chrome bars read as two different apps.
+   * A floating glass pane, not a full-bleed strip: inset from the window
+   * edges, rounded on every corner, blurred, standing off the canvas on a
+   * deep soft shadow. The 1px inner rim along the top is what separates a
+   * translucent pane from the canvas it floats over; without it the blur
+   * reads as a smudge. Height stays a token because the rail's brand row
+   * has to line up with it or the two chrome panes read as two different
+   * apps.
    */
   .ds-headerbar {
     height: var(--ds-header-h);
-    background: color-mix(in srgb, var(--ds-surface) 86%, transparent);
-    border-bottom: 1px solid var(--ds-line);
-    box-shadow: 0 1px 0 0 var(--ds-line);
+    background: color-mix(in srgb, var(--ds-surface) 68%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--ds-glass-line);
+    border-radius: 20px;
+    margin: 12px 12px 0;
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.8),
+      0 12px 32px -16px rgba(20, 28, 43, 0.3);
   }
   /* Fallback for a browser without color-mix: a plain opaque bar is wrong in
      neither theme, it simply loses the translucency. */
@@ -510,4 +538,47 @@
   .ds-iconbtn:active {
     transform: none;
   }
+}
+
+/*
+ * ── Floating glass rail (desktop ≥1024px) ───────────────────────────────
+ * The rail lifts off the canvas as its own frosted pane — inset from the
+ * window edges, rounded on every corner, blurred, with the shell aurora
+ * showing around it. Mobile is untouched: the drawer and the dock are
+ * full-bleed by design, and a floating pane inside a phone viewport spends
+ * its margins on nothing.
+ *
+ * This block is deliberately UNLAYERED. Declarations outside any cascade
+ * layer beat layered ones, so this wins against `.ds-rail` (in the
+ * components layer above) and against the aside's `h-screen` utility
+ * without needing `!important`.
+ */
+@media (min-width: 1024px) {
+  .ds-rail-float {
+    margin: 12px 0 12px 12px;
+    height: calc(100dvh - 24px);
+    border: 1px solid var(--ds-glass-line);
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--ds-surface) 62%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.8),
+      0 4px 16px -8px rgba(20, 28, 43, 0.16),
+      0 24px 48px -24px rgba(20, 28, 43, 0.35);
+  }
+  .dark .ds-rail-float {
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+      0 4px 16px -8px rgba(0, 0, 0, 0.5),
+      0 24px 48px -24px rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* Dark readings for the floating header: the inner rim drops from white to
+   a whisper and the standing shadow deepens to black. */
+.dark .ds-headerbar {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+    0 12px 32px -16px rgba(0, 0, 0, 0.7);
 }

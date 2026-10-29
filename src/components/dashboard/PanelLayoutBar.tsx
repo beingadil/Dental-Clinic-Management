@@ -83,7 +83,7 @@ export const PanelLayoutBar: React.FC<{
         type="button"
         onClick={onReset}
         title="Reset the dashboard layout"
-        className="ds-tap ds-hit inline-flex items-center gap-1.5 rounded-full border border-ds-line bg-ds-surface px-2.5 py-1 text-[11px] font-semibold text-ds-muted hover:text-ds-ink cursor-pointer"
+        className="ds-hit ds-glass-pill text-[12px]"
       >
         <RotateCcw className="w-3.5 h-3.5" />
         Reset layout

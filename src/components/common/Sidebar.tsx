@@ -32,6 +32,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can, deniedTooltip } from '../../services/permissions';
 import { currentVersion } from '../../services/updateService';
+import { ConnectivityStatus } from './ConnectivityStatus';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -151,7 +152,7 @@ export const Sidebar: React.FC = () => {
           mobile dock's safe-area padding and the collapsed rail's icon
           centring have to agree with it. */}
       <aside
-        className={`ds-rail fixed lg:static top-0 left-0 z-50 lg:z-auto h-screen shrink-0 flex flex-col transition-all duration-300 ease-out ${
+        className={`ds-rail ds-rail-float fixed lg:static top-0 left-0 z-50 lg:z-auto h-screen shrink-0 flex flex-col transition-all duration-300 ease-out ${
           isCollapsed ? 'w-[var(--ds-rail-w-collapsed)]' : 'w-[var(--ds-rail-w)]'
         } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
@@ -235,6 +236,8 @@ export const Sidebar: React.FC = () => {
                     aria-current={isActive ? 'page' : undefined}
                     data-active={isActive}
                     className={`ds-nav-row ds-row-target active:scale-[0.98] ${
+                      !disabled && !isActive ? 'ds-glass-pill-row' : ''
+                    } ${
                       disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                     } ${isCollapsed ? 'justify-center py-3' : 'gap-3 pl-3 pr-2.5 py-2'}`}
                   >
@@ -276,13 +279,16 @@ export const Sidebar: React.FC = () => {
               v{currentVersion()}
             </span>
           ) : (
-            <div className="flex items-center justify-between gap-2">
+            <div className="space-y-2">
+              <ConnectivityStatus />
+              <div className="flex items-center justify-between gap-2">
               <span className="truncate text-[10px] font-semibold tracking-wider text-ds-muted uppercase">
                 {brandingSettings.appName || 'Dental Solutions'}
               </span>
               <span className="font-mono text-[10px] text-ds-muted tabular-nums shrink-0">
                 v{currentVersion()}
               </span>
+              </div>
             </div>
           )}
         </div>

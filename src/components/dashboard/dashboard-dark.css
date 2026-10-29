@@ -65,6 +65,35 @@
     /* The meter track is a surface, not ink. */
     --p-slate-100: #16202f;
 
+    /* Frosted capsule, dark reading: same thin rim and transparent fill on
+       the dark canvas, text flipped to light ink. */
+    .ds-glass-pill {
+      color: var(--ds-ink);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.12),
+        0 8px 20px -10px rgba(0, 0, 0, 0.55);
+    }
+    .ds-glass-pill:hover {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+      box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
+        0 10px 24px -10px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Glass nav rows, dark reading: whisper fill, rim dimmed to a hairline. */
+    .ds-glass-pill-row {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.12),
+        0 8px 20px -10px rgba(0, 0, 0, 0.55);
+    }
+    .ds-glass-pill-row:hover {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+    }
+
     /* Ambient atmosphere on a near-black canvas needs a touch more presence
        to read at all. Same rule as light: fallback first, brand-derived
        second, static, behind content only. */
