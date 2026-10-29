@@ -42,14 +42,19 @@ Do NOT close this file until every box is checked and v2.31.3 is released.
 
 ## USER ROUND 3 (dropdowns: open-menu + removals)
 - [x] Removed the two toolbar filters the user pointed at: Priority (All Priorities) and Dental Clinics (All Dental Clinics) — select blocks + state + filter-chain conditions + deps + resetKey + Clear-All handler; toolbar grid 5→3 cols
-- [ ] THE OPEN DROPDOWN MENU IS STILL NATIVE/OS-STYLE: replace native <select> with a custom glass dropdown component (searchable like ClinicPicker) app-wide — ~45 selects: toolbar, archive clinic, DatePickers month/year, Settings tabs (Preferences x9, Print x5), UsersTab role, RecordTransaction/EditPayment method, BillingReportsView month, CaseQueueModal sort, LabPricingManager caseType, CatalogView dialog selects, CaseDetailModal lab/case-type (selectCls), CaseQcPanel reason-code. Build ONE shared .ds-glass-menu component, then swap surface by surface. NEVER blur inside glass panes/lists — fill-only rows, white-plate selected row.
+- [x] THE OPEN DROPDOWN MENU IS STILL NATIVE/OS-STYLE: shared `GlassSelect` component built (portal to document.body, fixed coords, z-10000, keyboard nav, aria listbox) — fixes the z-index/clipping collapse; converted all remaining native selects except the Settings tabs (PreferencesTab 9, PrintTab 5, UsersTab role) which are next. NEVER blur inside glass panes/lists — fill-only rows, white-plate selected row.
 - SKIP by design: TabsNav, Pagination pages, DatePicker day cells, DeliveryCalendar tiles, PrintTab toggles — toggle chips, not CTAs
 
 ## BATCHES AFTER D
 - [x] View-head/filter/toolbars + content/table cards → `.ds-glass-card` roll-out: CatalogView (head, 2 section cards, table container, product rows `bg-ds-surface/55`, empty), LabListView (toolbar, lab rows, table container, empty), NotificationsView (filter toolbar, list container; test-notif modal → ds-glass-pane), BillingView (secondary white toolbar buttons → ds-glass-pill, density label chip translucent, table container)
 - CASE RULE learned: never leave a `border`/`border-*` utility on a ds-glass-card — the utility's border-color/width overrides the glass rim (utilities layer wins). Drop them entirely.
 - [x] LoginPage — already fully glass-built (`auth-glass` console + title card + stage lighting, dark themed); audit find retired
-- [x] CaseListView dark sticky CTA bar → `.ds-glass-dark` (new material: 82/66% slate scrim, blur 20, white/12 rim; badge + ghost buttons go translucent white/10; gross deliverable keeps semantic fill-success); the bulk-status confirm button and the archive restore button become glass pills
+- [x] CaseListView dark sticky CTA bar → `.ds-glass-dark` (new material: 82/66% slate scrim, blur 20, white/12 rim; badge + ghost buttons go translucent white/10; bulk deliverable keeps semantic fill-success); the bulk-status confirm button and the archive restore button become glass pills
+- [x] EmptyState → borderless full-area centered state (box removed)
+- [x] Header bar → full capsule (admin pill rounds cleanly at the end)
+- [x] Performance pass: memoized sidebar navGroups, will-change on the rail, contain-content on the main scroller, motion-reduce on the rail transition
+- [ ] Settings tabs (PreferencesTab 9, PrintTab 5, UsersTab role) → GlassSelect
+- [x] LoginPage — already glass-built (auth-glass); audit retired
 - [ ] Modals' inner header/footer buttons → glass pill (they come from callers)
 - [ ] DESIGN.md: document glass system + no-nested-blur rule
-- [ ] Release v2.31.3: bump versions (package.json, package-lock.json, src-tauri/Cargo.toml, Cargo.lock, tauri.conf.json), CHANGELOG, gates, tag, push, verify installers + update-manifest.json
+- [ ] Release v2.31.3: bump versions, CHANGELOG, gates, tag, push, verify installers + update-manifest.json
