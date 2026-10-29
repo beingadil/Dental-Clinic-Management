@@ -8,7 +8,7 @@ import { CaseDetailView } from './CaseDetailView';
 import { CaseJobSlipModal } from './CaseJobSlipModal';
 import { BulkPrintModal } from './BulkPrintModal';
 import { CaseProgressIndicator } from './CaseProgressIndicator';
-import { PageHeader, EmptyState, CaseStatusBadge, PriorityBadge, usePagination, DataTable } from '../common/ui';
+import { PageHeader, EmptyState, CaseStatusBadge, PriorityBadge, usePagination, DataTable, GlassSelect } from '../common/ui';
 import { 
   PlusCircle, 
   Search, 
@@ -557,35 +557,37 @@ export const CaseListView: React.FC = () => {
 
       {/* Filter and Control Toolbar */}
       <div className="ds-glass-card rounded-2xl p-4 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {/* Search Field */}
-          <div className="relative">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Search Field — half the row: the operand the desk reaches for most, taller than the narrow selectors beside it */}
+          <div className="relative lg:col-span-2">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search Case #, Patient, Phone, Clinic, Doctor, Type..."
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="ds-glass-select w-full pl-9 pr-3 py-2 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
           </div>
 
           {/* Status Filter */}
           <div>
-            <select
+            <GlassSelect
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="ds-glass-select w-full p-2 text-xs rounded-xl focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
-            >
-              <option value="all">All Statuses</option>
-              <option value="received">Received</option>
-              <option value="in_progress">In Progress</option>
-              <option value="qc">QC Quality</option>
-              <option value="ready">Ready</option>
-              <option value="delivered">Delivered</option>
-              <option value="revision">Revision</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
+              onChange={setStatusFilter}
+              ariaLabel="Filter by status"
+              className="w-full p-2 text-xs"
+              options={[
+                { value: 'all', label: 'All Statuses' },
+                { value: 'received', label: 'Received' },
+                { value: 'in_progress', label: 'In Progress' },
+                { value: 'qc', label: 'QC Quality' },
+                { value: 'ready', label: 'Ready' },
+                { value: 'delivered', label: 'Delivered' },
+                { value: 'revision', label: 'Revision' },
+                { value: 'cancelled', label: 'Cancelled' },
+              ]}
+            />
           </div>
 
           {/* Sort By Controls */}

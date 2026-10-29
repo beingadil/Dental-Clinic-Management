@@ -10,3 +10,4 @@ export * from './TabsNav';
 export * from './DataTable';
 export * from './FilterBar';
 export * from './Pagination';
+export * from './GlassSelect';
