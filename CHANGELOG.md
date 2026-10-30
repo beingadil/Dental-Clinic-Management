@@ -1,3 +1,45 @@
+## [2.31.4] - 2026-10-30
+
+Analytics & Reports becomes a nav group of two destinations, printed statements
+finally fill their paper instead of leaving half of it blank, and dark mode's
+glass is rebuilt over a real blurred wallpaper.
+
+### Added
+- Analytics & Reports is a nav GROUP now — General Ledger and Reports &
+  Statements are separate destinations in the rail, the same shape Billing &
+  Invoices already has with Invoice Rec and Print Invoices. The tab strip that
+  used to live inside the page is gone.
+- Daily Lab Report: the case-type filter is a checklist. Tick any number of
+  types (Zirconia + PFM) and the production sheet, the counts and the per-clinic
+  roll-up all narrow to them together, instead of one report per type.
+- Daily Lab Report: Cases / By clinic switch, so the clinic breakdown is its own
+  reading of the same window rather than a section bolted under the sheet.
+- Glass select learned a multi-select mode: a tick box on every row, the menu
+  stays open while ticking, and the trigger names the filter ("Zirconia +1").
+- Per-clinic work detail: a clinic's row opens the cases behind its total.
+
+### Changed
+- Statement pagination fills each sheet to the paper's real capacity. Rows are
+  priced from the same inline case line the printer prints (one shared
+  formatter), so a page closes when it is full rather than when a coarse
+  estimate says it is.
+- Batch invoice printing is compact: 4px of padding per cell was 8px of dead
+  height per row, so markedly more invoices fit on one A4/Letter sheet. The
+  balance block still prints only on the final page.
+- The Daily Lab Report's month shortcut is gone; the date pickers own the
+  window, so there is one control per decision.
+- Dark mode: panels are transparent glass over a pre-blurred wallpaper (baked
+  into the asset, not filtered at runtime) with no per-card fill, so KPI cards
+  keep the light behind them instead of turning into blue slabs.
+
+### Fixed
+- General Ledger opened from the rail showed nothing: the view is now routed by
+  the group's own tab declaration instead of a hard-coded tab id.
+- A scoped report with no matching work said nothing about which types it had
+  asked for; the empty state and the PDF now name every ticked type.
+- The case-type menu could be cut off at the bottom of the window; it flips
+  above the trigger and caps its own height when there is no room below.
+
 ## [2.31.3] - 2026-10-29
 
 Print Invoices as its own page with true A4/Letter paper and a zoom control,
