@@ -122,26 +122,16 @@
   --ds-font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --ds-font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-  /* Ambient atmosphere: two very low-alpha washes painted behind every
-     dashboard panel. Static, never animated — DESIGN.md bans an animated
-     mesh, and this is depth, not motion. The first declaration is the
-     fallback; the second derives from the operator's brand accent (set by
-     applyBrandColor), so a rebrand tints the room instead of tinting it
-     blue. A browser without color-mix drops the second and keeps the first. */
-  --ds-ambient-1: rgba(99, 102, 241, 0.14);
-  --ds-ambient-1: color-mix(in srgb, var(--brand-600) 16%, transparent);
-  --ds-ambient-2: rgba(6, 182, 212, 0.13);
-  --ds-ambient-3: rgba(168, 85, 247, 0.13);
-  --ds-ambient-4: rgba(244, 114, 182, 0.12);
-  /* The tinted canvas beneath the blobs: without it the board reads as white
-     with a few coloured spots instead of coloured air behind glass. Kept
-     near-white - the reference look is a LIGHT canvas with vivid colour
-     blobs, not a flood; panels must read brighter than the air. */
-  --ds-ambient-base: linear-gradient(180deg, rgba(245, 245, 255, 0.8), rgba(250, 250, 255, 0.4));
-  /* A touch warmer than ambient-2 so the 'light from above' read can breathe
-     without borrowing the accent's identity. Used only behind solid surfaces.
-     */
-  --ds-ambient-3: rgba(203, 232, 255, 0.08);
+  /* The board paints NO atmosphere of its own.
+
+     It used to own a five-layer wash (`--ds-ambient-1..4` plus a tinted base)
+     drawn across the whole column. That was a second background stacked on the
+     room's, and the seams showed: the wash's edges are rectangles, so the board
+     carried a faint hard-edged panel behind its own panels, and its falloff
+     never lined up with the shell's. The room now provides the wallpaper for
+     everything (`.app-atmos::before`) and every surface is glass over it, so
+     the tokens are gone rather than set to transparent — a transparent layer is
+     still a layer someone will later fill in. */
 }
 
 /* ── Layer 3 · COMPONENT ──────────────────────────────────────────────── */
@@ -236,14 +226,15 @@
   /* The one card shell. Every panel is this + a header row + content, so
      radius, border and elevation are defined once and cannot drift. */
   .ds-panel {
-    /* Glassmorphism, Tahoe grade: the pane is mostly TRANSPARENT — fill
-       dropped from 72% to 34% surface so the ambient wash refracts through
-       and the rim/blur do the defining. The dark theme reads the same token
-       at its own surface colour. Blur stays high so text on the thin fill
-       keeps its contrast. */
-    background: color-mix(in srgb, var(--ds-surface) 34%, transparent);
-    -webkit-backdrop-filter: blur(28px) saturate(190%);
-    backdrop-filter: blur(28px) saturate(190%);
+    /* Glassmorphism, Tahoe grade: the pane is a whisper of surface so the wall
+       refracts through it, and the rim plus the blur do the defining. Fill went
+       72% -> 34% -> 18%: on a photograph, 34% still read as a tinted slab,
+       because a fill that heavy hides the very thing the blur is meant to
+       sample. Blur stays high (and saturation with it) so ink on the thin fill
+       keeps its contrast against a bright wall. */
+    background: color-mix(in srgb, var(--ds-surface) 18%, transparent);
+    -webkit-backdrop-filter: blur(28px) saturate(210%);
+    backdrop-filter: blur(28px) saturate(210%);
     border: 1px solid var(--ds-glass-line);
     border-radius: var(--ds-radius-card);
     box-shadow: var(--ds-rim), var(--ds-shadow-card),
@@ -427,50 +418,15 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* NO `isolation: isolate` here, deliberately.
+  /* `.ds-ambient` is now only a positioning context — it owns no wash.
 
-     It used to be, to keep the wash's negative z-index local. But isolation
-     also makes this element a STACKING CONTEXT — which trapped every dialog
-     the dashboard opens inside it. A queue panel is `fixed inset-0 z-50`; with
-     the dashboard isolated, that `z-50` only competed among this element's
-     children, and the whole dashboard layer still painted below the header's
-     `z-30`. Result: open any KPI or stage button on the board and the panel's
-     own title bar slid UNDER the sticky header, cut off at the top, while the
-     header stayed bright and clickable above the scrim.
-
-     Removing it lets those dialogs join the shell's stacking context
-     (`.app-atmos` is itself isolated), which is where `z-50` can actually beat
-     the header. The wash keeps working: `z-index: -1` now resolves against
-     the shell, and negative layers paint above that context's own background
-     but below all of its content — still behind the board, never over it. */
+     The background it used to paint is gone (see the token note above); the
+     room's wallpaper shows through instead. `position: relative` stays because
+     the board's own overlays resolve against this element, and because
+     `isolation: isolate` must NOT come back: it would make the board a stacking
+     context and trap every `z-50` dialog it opens under the sticky header. */
   .ds-ambient {
     position: relative;
-  }
-  /* The aurora wash, painted on a dedicated layer BEHIND the dashboard
-     content (z-index -1, resolved against the app shell). It deliberately does
-     NOT live on the scroll container's own background: a background painted
-     on `main` rasterizes as a FLAT fill of each layer's first colour stop -
-     geometry and falloff thrown away - which flooded the whole board solid
-     periwinkle. On this normal absolute layer the radial falloff renders
-     correctly. Negative insets counter main's padding so the colour reaches
-     the column edges: no inset "card" boundary, no empty corners. Top and
-     left overhang is scroll-safe (never scrollable directions); the right
-     overhang is clipped by main's overflow-x-clip. */
-  .ds-ambient::before {
-    content: '';
-    position: absolute;
-    top: -24px;
-    left: -24px;
-    right: -24px;
-    bottom: 0;
-    z-index: -1;
-    pointer-events: none;
-    background-image:
-      radial-gradient(58rem 32rem at 8% -12%, var(--ds-ambient-1), transparent 68%),
-      radial-gradient(46rem 28rem at 96% 2%, var(--ds-ambient-2), transparent 70%),
-      radial-gradient(40rem 24rem at 50% 110%, var(--ds-ambient-3), transparent 72%),
-      radial-gradient(36rem 22rem at 82% 85%, var(--ds-ambient-4), transparent 70%),
-      var(--ds-ambient-base);
   }
 
   /* Blur is deliberately confined to surfaces that do not scroll: a
@@ -692,4 +648,42 @@
   }
   .ds-meter-fill { transform: scaleX(1) !important; }
   .ds-enter { opacity: 1 !important; transform: none !important; }
+}
+
+/* ── The workflow band is a READOUT, not a card ────────────────────────
+ *
+ * `ProductionWorkflow` renders a `<section class="ds-panel">` like every other
+ * panel, so it inherits the card shell: a fill, a rim, and a two-layer drop
+ * shadow. On a flat canvas that is a card. On the photographed wallpaper it is
+ * worse than that — the shadow's falloff lands on an image, so the band grows a
+ * soft dark rectangle around itself that reads as an accidental second panel,
+ * and no panel fill value fixes it because the shadow is what draws the square.
+ *
+ * The stage tiles inside are the surfaces in this band; the wrapper is furniture
+ * around them. So the wrapper gives up fill, rim, blur, radius and shadow and
+ * becomes a plain section sitting on the wall.
+ *
+ * Deliberately OUTSIDE `@layer components`, unlike every rule above: the dark
+ * overrides in dashboard-dark.css are unlayered, and unlayered styles beat
+ * layered ones whatever the specificity. Inside the layer this rule would lose
+ * to `.dark .ds-panel` and the banner would reappear in dark mode — which is
+ * the only theme it was reported in. `.ds-ambient` raises specificity to
+ * (0,3,0) so it also beats dashboard-dark.css on load order. */
+.ds-ambient .ds-panel[data-purpose='production-workflow'],
+.ds-ambient .ds-panel[data-purpose='production-workflow']:hover {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transform: none;
+}
+
+/* With the card shell gone the band needs no horizontal padding either — the
+   stage tiles line up with the KPI row above them instead of sitting in a
+   phantom card's gutter. */
+.ds-ambient .ds-panel[data-purpose='production-workflow'] {
+  padding-left: 0;
+  padding-right: 0;
 }

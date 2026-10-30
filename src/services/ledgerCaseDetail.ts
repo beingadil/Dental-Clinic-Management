@@ -55,6 +55,46 @@ export const INVOICE_DETAIL_OMIT: CaseDetailLabel[] = [
   'Delivery Date',
 ];
 
+/**
+ * Detail rows a printed STATEMENT suppresses.
+ *
+ * Deliberately NOT the invoice list: the invoice prints `Units`, while a
+ * statement row shows the tooth list instead, because teeth are what a clinic
+ * reconciles against and the unit count is already its own column. The two
+ * lists have to be named separately or someone will "fix" the invoice list and
+ * silently change what a statement prints.
+ *
+ * It exists because the printed statement and `statementPagination` drifted:
+ * the renderer passed this inline array while the paginator priced rows from
+ * INVOICE_DETAIL_OMIT, so the paginator was measuring a one-line cell that
+ * printed as a tooth list. A model that prices a different string than the one
+ * that prints cannot predict the paper.
+ */
+export const STATEMENT_DETAIL_OMIT: CaseDetailLabel[] = [
+  'Shade',
+  'Received Date',
+  'Units',
+  'Delivery Date',
+];
+
+/**
+ * The separator for the inline case line — `Ali Raza · Zirconia · #11, #21`.
+ *
+ * One spelling, shared by the printed statement and the paginator that prices
+ * its rows: the paginator counts characters, so a separator it does not know
+ * about is a line it does not see.
+ */
+export const CASE_DETAIL_SEP = ' \u00B7 ';
+
+/** The inline case line: every remaining detail value, joined for one cell. */
+export const caseDetailInlineText = (
+  c: DentalCase,
+  { omit = [] }: CaseDetailOptions = {},
+): string =>
+  caseDetailLines(c, { omit })
+    .map((l) => l.value)
+    .join(CASE_DETAIL_SEP);
+
 export interface CaseDetailOptions {
   /**
    * Rows to suppress, for a consumer that already shows that fact somewhere

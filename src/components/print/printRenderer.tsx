@@ -6,10 +6,13 @@ import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { caseHasChartedTeeth, billableUnits } from '../../utils/catalogToothRequirement';
 import {
+  CASE_DETAIL_SEP,
+  caseDetailInlineText,
   caseDetailLines,
   findCaseForInvoice,
   formatReceivedDate,
   INVOICE_DETAIL_OMIT,
+  STATEMENT_DETAIL_OMIT,
 } from '../../services/ledgerCaseDetail';
 import type { InvoiceAccountPosition } from '../../services/invoiceAccount';
 
@@ -167,7 +170,9 @@ const AccountBalanceBlock: React.FC<{
   </div>
 );
 
-export const SEP = ' \u00B7 ';
+/* The inline case separator, re-exported from the shared formatter so the
+   printed cell and the paginator that prices it spell it once. */
+export const SEP = CASE_DETAIL_SEP;
 
 /**
  * Settlement status for a printed invoice, derived from the BALANCE.
@@ -784,7 +789,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                       otherwise the column would be blank for exactly the rows a
                       clinic most needs to chase. */}
                   {['Date', 'Invoice #', 'Case', 'Price', 'Units', 'Total', 'Paid'].map((h) => (
-                    <th key={h} className={h === 'Paid' ? 'border border-slate-400 bg-slate-100 px-2 py-1 text-center font-bold' : 'border border-slate-400 bg-slate-100 px-2 py-1 text-left font-bold'} style={{ backgroundColor: '#f1f5f9', color: '#0f172a' }}>{h}</th>
+                    <th key={h} className={h === 'Paid' ? 'border border-slate-400 bg-slate-100 px-2 py-0.5 text-center font-bold' : 'border border-slate-400 bg-slate-100 px-2 py-0.5 text-left font-bold'} style={{ backgroundColor: '#f1f5f9', color: '#0f172a' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -801,16 +806,14 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   /* Statement rows show the tooth list instead of the unit
                      count — units are a column above, teeth are what the
                      clinic reconciles against in the case detail line. */
-                  const detail = linkedCase
-                    ? caseDetailLines(linkedCase, {
-                        omit: [
-                          'Shade',
-                          'Received Date',
-                          'Units',
-                          'Delivery Date',
-                        ],
-                      })
-                    : [];
+                  /* The omit list is STATEMENT_DETAIL_OMIT, shared with
+                     statementPagination. It used to be written inline here
+                     while the paginator priced INVOICE_DETAIL_OMIT — two
+                     different lists, so the paginator measured a cell with
+                     Units on it and the sheet printed a tooth list instead. */
+                  const detailText = linkedCase
+                    ? caseDetailInlineText(linkedCase, { omit: STATEMENT_DETAIL_OMIT })
+                    : '';
                   const received = linkedCase ? formatReceivedDate(linkedCase) : '';
                   /* Per-unit base price and the unit count behind this invoice. */
                   const units = linkedCase
@@ -820,6 +823,13 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     ? linkedCase.price / units
                     : inv.final_amount;
                   return (
+                  /* `py-0.5`, not `py-1`: 4px of vertical padding per cell is
+                     8px of dead height on a row whose text box is 13px, and a
+                     statement runs to dozens of rows. Measured at 21px bare /
+                     33px with a one-line detail, against 25 / 37 before —
+                      four more invoices on an A4 sheet before the paginator
+                     has to start a new one. statementPagination.ROW_PX_BARE is
+                     measured from THIS markup. */
                   <tr key={inv.id}>
                     {/* Date leads the row. The operator reads a statement as
                         "what arrived, when", so the day the work came in sits
@@ -827,10 +837,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                         Header and body moved together — the two are separate
                         maps, and swapping one alone would silently misalign
                         every column under it. */}
-                    <td className="border border-slate-400 px-2 py-1 align-top">
+                    <td className="border border-slate-400 px-2 py-0.5 align-top">
                       {received || inv.issue_date || inv.created_at?.slice(0, 10) || '—'}
                     </td>
-                    <td className="border border-slate-400 px-2 py-1 align-top font-bold">{inv.invoice_number}</td>
+                    <td className="border border-slate-400 px-2 py-0.5 align-top font-bold">{inv.invoice_number}</td>
                     {/* The job the invoice is against. The received date is NOT
                         repeated here: the `Date` column above already
                         carries it, and printing the same date twice on one row
@@ -845,18 +855,18 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                         reader wants the case identified, not annotated, so the
                         facts are joined inline and the labels drop away; the
                         same words are all still present. */}
-                    <td className="border border-slate-400 px-2 py-1 align-top">
+                    <td className="border border-slate-400 px-2 py-0.5 align-top">
                       <span className="block font-semibold">{inv.case_number || '—'}</span>
-                      {detail.length > 0 && (
+                      {detailText && (
                         <div className="text-[9px] leading-tight text-slate-700">
-                          {detail.map((d) => d.value).join(SEP)}
+                          {detailText}
                         </div>
                       )}
                     </td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{money(pricePerUnit)}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top">{units}</td>
-                    <td className="border border-slate-400 px-2 py-1 text-right align-top font-bold">{money(inv.final_amount)}</td>
-                    <td className="border border-slate-400 px-2 py-1 align-top font-semibold">
+                    <td className="border border-slate-400 px-2 py-0.5 text-right align-top">{money(pricePerUnit)}</td>
+                    <td className="border border-slate-400 px-2 py-0.5 text-right align-top">{units}</td>
+                    <td className="border border-slate-400 px-2 py-0.5 text-right align-top font-bold">{money(inv.final_amount)}</td>
+                    <td className="border border-slate-400 px-2 py-0.5 align-top font-semibold">
                       {invoiceBalanceDue(inv) <= 0 ? 'Full' : (inv.amount_paid || 0) > 0 ? 'Partial' : 'Unpaid'}
                     </td>
                   </tr>

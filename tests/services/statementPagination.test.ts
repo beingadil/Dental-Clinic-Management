@@ -5,7 +5,9 @@ import {
   rowHeightPx,
   fontScale,
   ROW_PX_BARE,
+  DETAIL_LINE_PX,
   BALANCE_BLOCK_PX,
+  balanceBlockPx,
 } from '../../src/services/statementPagination';
 import type { Invoice, DentalCase } from '../../src/types';
 
@@ -62,32 +64,49 @@ describe('rowHeightPx', () => {
     expect(rowHeightPx(invoice('a'), [])).toBe(ROW_PX_BARE);
   });
 
-  it('charges a linked case exactly one detail line, whatever it carries', () => {
-    // CHANGED (compact invoice). This asserted ROW_PX_BARE for `bareCase` on
-    // the premise that a linked case could produce zero detail lines, and a
-    // 124px cost for a seven-row case on the premise the block was a
-    // two-column grid. Both premises died when the block became a single
-    // inline line: it is one line whenever a case resolves, no matter how many
-    // facts are in it.
-    //
-    // The load-bearing property is that CONSTANT-ness. A case with one fact and
-    // a case with seven must price identically, because that is precisely what
-    // stops a fortnightly batch spilling onto sheets the paper does not need.
-    // Written relative to ROW_PX_BARE so the measured bare height stays visible.
-    expect(rowHeightPx(invoice('a', { case_id: 'c1' }), [bareCase('c1')])).toBe(
-      ROW_PX_BARE + 11,
+  it('charges a case with nothing to print under the number as a bare row', () => {
+    // `bareCase` has no patient, no procedure and no charting, so the cell
+    // prints its case number and nothing else. The statement's omit list drops
+    // `Units` (it is a column), which is what made the old expectation of a
+    // detail line wrong for THIS document — an empty cell costs no detail line.
+    expect(rowHeightPx(invoice('a', { case_id: 'c1' }), [bareCase('c1')])).toBe(ROW_PX_BARE);
+  });
+
+  it('charges a linked case one detail line for its first line of text', () => {
+    // Written relative to the constants so the measured heights stay visible.
+    expect(rowHeightPx(invoice('a', { case_id: 'c1' }), [detailedCase('c1')])).toBe(
+      ROW_PX_BARE + DETAIL_LINE_PX,
     );
   });
 
-  it('prices a fact-heavy case the same as a near-empty one', () => {
-    // The regression this guards: the old grid model charged ceil(n / 2)
+  it('prices a fact-heavy case the same as a one-fact case', () => {
+    // The regression this guarded: the old grid model charged ceil(n / 2)
     // lines, so a case with more facts cost more height and pushed a run onto
-    // extra pages even though the printed cell was the same single line.
-    const bare = rowHeightPx(invoice('a', { case_id: 'c1' }), [bareCase('c1')]);
+    // extra pages even though the printed cell was the same single line. What
+    // may change the price now is the LENGTH of that line (it wraps), never the
+    // number of facts on it.
+    const oneFact = { id: 'c1', case_number: 'C-1', patient_name: 'Jane Doe' } as unknown as DentalCase;
     const tall = rowHeightPx(invoice('a', { case_id: 'c1' }), [detailedCase('c1')]);
-    expect(tall).toBe(bare);
+    expect(tall).toBe(rowHeightPx(invoice('a', { case_id: 'c1' }), [oneFact]));
     // And still more than an invoice with no resolvable case at all.
     expect(tall).toBeGreaterThan(rowHeightPx(invoice('a'), []));
+  });
+
+  it('charges an extra line for a detail long enough to wrap', () => {
+    // A full-arch tooth list does not fit the Case cell on one line, and the
+    // old model had no allowance for the second — which is how a sheet that
+    // "fits" ended up printing past the bottom of the paper.
+    const fullArch = {
+      id: 'c1',
+      case_number: 'C-1',
+      patient_name: 'Muhammad Abdul Rehman Khan',
+      case_type_name: 'Full Arch Zirconia Rehabilitation',
+      selected_teeth: [11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25, 26, 27],
+    } as unknown as DentalCase;
+    const oneLine = rowHeightPx(invoice('a', { case_id: 'c1' }), [detailedCase('c1')]);
+    const wrapped = rowHeightPx(invoice('a', { case_id: 'c1' }), [fullArch]);
+    expect(wrapped).toBeGreaterThan(oneLine);
+    expect(wrapped).toBe(ROW_PX_BARE + DETAIL_LINE_PX * 2);
   });
 
   });
@@ -117,13 +136,21 @@ describe('sheetBudgetPx', () => {
 });
 
 describe('paginateStatementInvoices', () => {
-  const fits = (pages: ReturnType<typeof paginateStatementInvoices>, settings: Parameters<typeof sheetBudgetPx>[0]) =>
+  const fits = (
+    pages: ReturnType<typeof paginateStatementInvoices>,
+    settings: Parameters<typeof sheetBudgetPx>[0],
+    // The cases the pages were built against. Pricing the check from `[]`
+    // measured every row as a bare one, so a run of detail rows was asserted
+    // against a budget it had actually been split to fit, not the one it
+    // prints into.
+    cases: DentalCase[] = [],
+  ) =>
     pages.every((page, i) => {
       const budget = sheetBudgetPx(settings, {
         continued: i > 0,
         withBalance: i === pages.length - 1,
       });
-      const height = page.rows.reduce((s, inv) => s + rowHeightPx(inv, []), 0);
+      const height = page.rows.reduce((s, inv) => s + rowHeightPx(inv, cases), 0);
       return height <= budget;
     });
 
@@ -163,8 +190,8 @@ describe('paginateStatementInvoices', () => {
     const settings = { paper: 'a4' as const, fontSize: 'normal' as const };
     const pages = paginateStatementInvoices(invoices, cases, settings);
 
-    expect(fits(pages, settings)).toBe(true);
-    // CHANGED (compact invoice): eight detail-heavy rows are 45px each now,
+    expect(fits(pages, settings, cases)).toBe(true);
+    // CHANGED (compact invoice): eight detail-heavy rows are 33px each now,
     // where the old grid model priced them at 124px and split them over two
     // sheets. They fit one. The invariant this guards — every row lands inside
     // its own sheet's budget — is unchanged and still asserted by `fits`; the
@@ -180,25 +207,47 @@ describe('paginateStatementInvoices', () => {
     const settings = { paper: 'a4' as const, fontSize: 'normal' as const };
     const pages = paginateStatementInvoices(invoices, cases, settings);
 
-    expect(fits(pages, settings)).toBe(true);
+    expect(fits(pages, settings, cases)).toBe(true);
     expect(pages.flatMap((p) => p.rows).map((i) => i.id)).toEqual(invoices.map((i) => i.id));
   });
 
-  it('spreads rows evenly instead of filling the first sheet and orphaning the rest', () => {
+  it('fills each sheet to its budget before spilling onto the next', () => {
+    // The operator's report: "there is so much space left and it still takes
+    // invoices to the next page". Pages used to be split evenly, so a run that
+    // needed a second sheet for its totals alone printed two half-empty pages.
     const cases = [detailedCase('c1')];
-    const invoices = Array.from({ length: 14 }, (_, i) => invoice(String(i), { case_id: 'c1' }));
-    const pages = paginateStatementInvoices(invoices, cases, { paper: 'a4', fontSize: 'normal' });
+    const invoices = Array.from({ length: 24 }, (_, i) => invoice(String(i), { case_id: 'c1' }));
+    const settings = { paper: 'a4' as const, fontSize: 'normal' as const };
+    const pages = paginateStatementInvoices(invoices, cases, settings);
 
     expect(pages.length).toBeGreaterThan(1);
-    const counts = pages.map((p) => p.rows.length);
-    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+    const first = pages[0].rows.reduce((s, inv) => s + rowHeightPx(inv, cases), 0);
+    const firstBudget = sheetBudgetPx(settings, {
+      withBalance: pages.length === 1,
+      balancePx: balanceBlockPx(null),
+    });
+    // Not "within a row of full": the first sheet is at least 90% spent.
+    expect(first).toBeGreaterThan(firstBudget * 0.9);
+  });
+
+  it('does not leave a single row alone on the last sheet', () => {
+    // 23 detail rows fill one sheet 22 deep; the 23rd would print above the
+    // totals on an otherwise empty page, so one row is moved down with it.
+    const cases = [detailedCase('c1')];
+    const invoices = Array.from({ length: 23 }, (_, i) => invoice(String(i), { case_id: 'c1' }));
+    const pages = paginateStatementInvoices(invoices, cases, { paper: 'a4', fontSize: 'normal' });
+
+    expect(pages.length).toBe(2);
+    expect(pages[1].rows.length).toBeGreaterThanOrEqual(2);
+    expect(pages.flatMap((p) => p.rows).map((i) => i.id)).toEqual(invoices.map((i) => i.id));
   });
 
   it('does not add a sheet just to make room for the totals', () => {
     const settings = { paper: 'a4' as const, fontSize: 'normal' as const };
-    // As many bare rows as the totals sheet can hold, and no more.
+    // As many bare rows as the totals sheet can hold, and no more. The block is
+    // priced for the position the paginator is given, which is none here.
     const rowsOnTotalsSheet = Math.floor(
-      sheetBudgetPx(settings, { withBalance: true }) / ROW_PX_BARE,
+      sheetBudgetPx(settings, { withBalance: true, balancePx: balanceBlockPx(null) }) / ROW_PX_BARE,
     );
     const invoices = Array.from({ length: rowsOnTotalsSheet }, (_, i) => invoice(String(i)));
     // A single sheet of bare rows plus the totals still fits one page.

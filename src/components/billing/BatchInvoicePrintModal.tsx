@@ -154,15 +154,6 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     });
   };
 
-  /* A selection longer than one sheet is split into sheets that each fit the
-     paper, so nothing is sliced mid-row. The sheet count follows the live
-     print settings — switch to Letter or Large text and it re-paginates. */
-  const pages = useMemo(
-    () => paginateStatementInvoices(selected, cases, printSettings),
-    [selected, cases, printSettings]
-  );
-  const pageCount = pages.length;
-
   const toggle = (id: string) =>
     setExcluded((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
@@ -194,6 +185,16 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
       advanceBalance: clinicSummary.advance_balance,
     });
   }, [clinicSummary, selected]);
+
+  /* A selection longer than one sheet is split into sheets that each fit the
+     paper, so nothing is sliced mid-row. The sheet count follows the live
+     print settings — switch to Letter or Large text and it re-paginates — and
+     is sized against the totals block this clinic's position actually prints. */
+  const pages = useMemo(
+    () => paginateStatementInvoices(selected, cases, printSettings, statementAccountPosition),
+    [selected, cases, printSettings, statementAccountPosition]
+  );
+  const pageCount = pages.length;
 
   const handlePrint = () => {
     if (selected.length === 0) return;

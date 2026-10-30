@@ -355,6 +355,171 @@ describe('the PDF export', () => {
   });
 });
 
+describe('a report scoped to one case type', () => {
+  const base = {
+    invoices: [],
+    advancePayments: [],
+    from: '2026-10-01',
+    to: '2026-10-31',
+  };
+
+  const rahatZirconia = mkCase({
+    id: 'c1',
+    case_number: 'DS-0001',
+    lab_id: 'lab-1',
+    lab_name: 'Rahat Dental',
+    case_type_name: 'Zirconia',
+    final_price: 20000,
+    received_date: '2026-10-02',
+  });
+  const rahatPfm = mkCase({
+    id: 'c2',
+    case_number: 'DS-0002',
+    lab_id: 'lab-1',
+    lab_name: 'Rahat Dental',
+    case_type_name: 'PFM Crown',
+    final_price: 9000,
+    received_date: '2026-10-03',
+  });
+  const cityZirconia = mkCase({
+    id: 'c3',
+    case_number: 'DS-0003',
+    lab_id: 'lab-2',
+    lab_name: 'City Dental',
+    case_type_name: 'Zirconia',
+    final_price: 30000,
+    received_date: '2026-10-04',
+    units_count: 3,
+  });
+
+  it('keeps only the requested type in the sheet and the totals', () => {
+    const report = buildDailyLabReport({
+      ...base,
+      cases: [rahatZirconia, rahatPfm, cityZirconia],
+      caseType: 'Zirconia',
+    });
+    expect(report.production.map((r) => r.caseNumber)).toEqual(['DS-0003', 'DS-0001']);
+    expect(report.received).toBe(2);
+    expect(report.caseType).toBe('Zirconia');
+  });
+
+  it('matches the type narrowly, not by substring', () => {
+    /* "Crown" must not pull in "Zirconia Crown" or "PFM Crown": the operator
+       asked for one treatment, and a substring match silently widens it. */
+    const report = buildDailyLabReport({
+      ...base,
+      cases: [
+        mkCase({ id: 'a', case_type_name: 'Crown', final_price: 100 }),
+        mkCase({ id: 'b', case_type_name: 'PFM Crown', final_price: 200 }),
+      ],
+      caseType: 'Crown',
+    });
+    expect(report.production).toHaveLength(1);
+    expect(report.production[0].price).toBe(100);
+  });
+
+  it('folds case and surrounding whitespace, because the data is typed by hand', () => {
+    const report = buildDailyLabReport({
+      ...base,
+      cases: [mkCase({ case_type_name: ' zirconia ' })],
+      caseType: 'ZIRCONIA',
+    });
+    expect(report.production).toHaveLength(1);
+  });
+
+  it('groups the work per clinic, biggest value first', () => {
+    const report = buildDailyLabReport({
+      ...base,
+      cases: [rahatZirconia, rahatPfm, cityZirconia],
+      caseType: 'Zirconia',
+    });
+    expect(report.byClinic).toHaveLength(2);
+    expect(report.byClinic[0]).toMatchObject({
+      labName: 'City Dental',
+      cases: 1,
+      units: 3,
+      value: 30000,
+    });
+    expect(report.byClinic[1]).toMatchObject({
+      labName: 'Rahat Dental',
+      cases: 1,
+      value: 20000,
+    });
+    // The drill-down is the same rows the sheet shows, not a second derivation.
+    expect(report.byClinic[1].rows[0].caseNumber).toBe('DS-0001');
+  });
+
+  it('counts every type when the filter is the "all" sentinel', () => {
+    const all = buildDailyLabReport({
+      ...base,
+      cases: [rahatZirconia, rahatPfm, cityZirconia],
+      caseType: 'all',
+    });
+    expect(all.received).toBe(3);
+    expect(all.caseType).toBe('');
+    // Ranked by value: City's single 30,000 case outranks Rahat's 29,000 pair.
+    expect(all.byClinic[0]).toMatchObject({ labName: 'City Dental', cases: 1, value: 30000 });
+    const rahat = all.byClinic.find((r) => r.labName === 'Rahat Dental');
+    expect(rahat).toMatchObject({ cases: 2, value: 29000 });
+    expect(rahat?.rows).toHaveLength(2);
+  });
+
+  it('still names the type when nothing matched it', () => {
+    /* An empty sheet is a real answer ("no zirconia in September"), and it has
+       to say which question it answered. */
+    const report = buildDailyLabReport({
+      ...base,
+      cases: [rahatPfm],
+      caseType: 'Aligners',
+    });
+    expect(report.received).toBe(0);
+    expect(report.byClinic).toHaveLength(0);
+    expect(report.caseType).toBe('Aligners');
+  });
+});
+
+describe('a report scoped to several case types', () => {
+  const cases = [
+    mkCase({ id: 'z', case_number: 'DS-0001', case_type_name: 'Zirconia', received_date: '2026-10-02', final_price: 20000 }),
+    mkCase({ id: 'e', case_number: 'DS-0002', case_type_name: 'E.max', received_date: '2026-10-03', final_price: 15000 }),
+    mkCase({ id: 'p', case_number: 'DS-0003', case_type_name: 'PFM Crown', received_date: '2026-10-04', final_price: 9000 }),
+  ];
+
+  const build = (caseTypes: string[] | undefined) =>
+    buildDailyLabReport({
+      cases,
+      invoices: [],
+      advancePayments: [],
+      from: '2026-10-01',
+      to: '2026-10-31',
+      caseTypes,
+    });
+
+  it('keeps every ticked type and drops the rest', () => {
+    /* "Zirconia and E.max this month" is ONE question, so it must be one
+       report: the sheet, the received count and the clinic roll-up all read
+       the same scoped list. */
+    const report = build(['Zirconia', 'E.max']);
+    expect(report.production.map((r) => r.caseNumber)).toEqual(['DS-0002', 'DS-0001']);
+    expect(report.received).toBe(2);
+    expect(report.caseType).toBe('Zirconia + E.max');
+  });
+
+  it('treats no ticks as every type', () => {
+    expect(build([]).received).toBe(3);
+    expect(build(undefined).received).toBe(3);
+    expect(build(['all']).caseType).toBe('');
+  });
+
+  it('folds hand-typed duplicates out of the label', () => {
+    // A type differing only in case is the same type; "Zirconia + zirconia"
+    // would read as two filters and count nothing twice.
+    const report = build(['Zirconia', ' zirconia ']);
+    expect(report.caseType).toBe('Zirconia');
+    expect(report.received).toBe(1);
+  });
+});
+
 describe('the date helpers', () => {
   it('reads the business date, not the record time', () => {
     expect(invoiceIssuedDate(mkInvoice({ issue_date: '2026-10-17' }))).toBe('2026-10-17');

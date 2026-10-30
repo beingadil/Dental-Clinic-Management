@@ -9,6 +9,7 @@ import { LockScreen } from './components/common/LockScreen';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { reportsTabForView } from './components/common/financeTabs';
 
 // View modules are code-split: each mounts only when its tab is opened. The
 // app shell (auth, sidebar, header, toasts) stays in the eager chunk so first
@@ -54,6 +55,9 @@ const MainAppContent: React.FC = () => {
   // the render closure it was created in, so a stale handle books duplicates.
   const app = useApp();
   const { user, currentView, selectedCaseForModal, setSelectedCaseForModal } = app;
+  // Analytics & Reports is a nav GROUP of two views; the rail (and the role
+  // login redirect) hands over a view id, this resolves which surface it is.
+  const reportsTab = reportsTabForView(currentView);
   const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
   const appRef = React.useRef(app);
   appRef.current = app;
@@ -176,7 +180,12 @@ const MainAppContent: React.FC = () => {
 
                 {currentView === 'catalog' && <CatalogView />}
 
-                {currentView === 'analytics' && <ReportsView />}
+                {/* Analytics & Reports is a GROUP now, the way Billing & Invoices
+                    is: each of its tabs is its own view id, so the rail opens
+                    the ledger or the statements directly instead of landing on
+                    a page that then has to be told which tab to show. Resolved
+                    from the declaration so no view id is spelled here. */}
+                {reportsTab && <ReportsView activeTab={reportsTab} />}
 
                 {currentView === 'notifications' && <NotificationsView />}
 

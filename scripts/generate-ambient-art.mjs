@@ -125,6 +125,12 @@ function authHero() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" role="presentation">\n  <defs>\n${defs}\n  </defs>\n${shapes}\n</svg>\n`;
 }
 
+/* Dark mode's atmosphere is NOT generated: it is the Tahoe wallpaper the user
+ * supplied, cropped to 16:9 and pre-blurred into src/assets/art/tahoe-wall.jpg
+ * (see the note in src/theme/dark.css). An earlier generated approximation of
+ * it lived here; it was replaced rather than kept alongside, because two
+ * wallpapers in one repo is how the wrong one ends up shipped.
+ */
 mkdirSync(OUT_DIR, { recursive: true });
 
 const files = [

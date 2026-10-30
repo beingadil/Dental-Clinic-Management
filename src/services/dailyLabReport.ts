@@ -36,11 +36,29 @@ export interface DailyReportInput {
   to: string;
   /** Include archived cases. Off by default: an archived case is history. */
   includeArchived?: boolean;
+  /**
+   * Restrict the report to some case types ("Zirconia", "Aligners", …).
+   *
+   * An empty list, or the entries `'all'`, mean every type. The match is exact
+   * on the type NAME after trimming and lower-casing, not a substring match:
+   * "Crown" must not swallow "Zirconia Crown" AND "PFM Crown", or the
+   * operator's clinic totals would quietly include work they did not ask for.
+   *
+   * The operator can tick several treatments at once ("zirconia and e.max this
+   * month"), so the filter is a SET. One filter, applied once, so the sheet and
+   * the per-clinic totals can never disagree about which work is in scope.
+   */
+  caseTypes?: string[];
+  /** Single-type shorthand for callers that only ever ask about one treatment. */
+  caseType?: string;
 }
 
 /** One case as it appears in the production sheet. */
 export interface ProductionRow {
   id: string;
+  /** The clinic's id. Carried on the row so grouping never has to look the
+   *  case up again — a report over a few thousand cases should stay linear. */
+  labId: string;
   caseNumber: string;
   receivedDate: string;
   deliveryDate: string;
@@ -78,9 +96,32 @@ export interface ClinicRow {
   advanceCredit: number;
 }
 
+/** One clinic's work in the window, for the chosen case type.
+ *
+ * This is the "who sent us how much of this, and what is it worth" view: the
+ * question an operator asks when a clinic rings up about a specific treatment
+ * rather than about their account. `cases` carries the individual rows so the
+ * UI can open the detail without a second query or a second derivation rule.
+ */
+export interface ClinicWorkRow {
+  labId: string;
+  labName: string;
+  doctor: string;
+  cases: number;
+  units: number;
+  /** Sum of the case prices — the work's value, not what is owed on it.
+   *  Money owed is the invoice's business, and a case may not be invoiced yet. */
+  value: number;
+  rows: ProductionRow[];
+}
+
 export interface DailyLabReport {
   from: string;
   to: string;
+  /** The case-type filter this report was built with (`''` = all types). */
+  caseType: string;
+  /** Per-clinic work for the window and the chosen type, biggest value first. */
+  byClinic: ClinicWorkRow[];
   /** Cases received in the window. */
   received: number;
   /** Cases whose delivery date falls in the window. */
@@ -109,10 +150,34 @@ const DAY_MS = 86_400_000;
 export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => {
   const { cases, invoices, advancePayments, from, to, includeArchived } = input;
 
+  /* One list of requested types, whichever way the caller supplied them, with
+     hand-typed duplicates folded together so the label cannot read
+     "Zirconia + zirconia". */
+  const requestedTypes: string[] = [];
+  const seenTypes = new Set<string>();
+  for (const raw of input.caseTypes?.length ? input.caseTypes : input.caseType ? [input.caseType] : []) {
+    const label = (raw || '').trim();
+    const key = label.toLowerCase();
+    if (!key || key === 'all' || seenTypes.has(key)) continue;
+    seenTypes.add(key);
+    requestedTypes.push(label);
+  }
+  const isAllTypes = requestedTypes.length === 0;
+  const caseTypeName = (c: DentalCase) =>
+    (c.case_type_name || c.case_type || '').trim();
+
   const liveCases = includeArchived ? cases : cases.filter((c) => !c.archived_at);
 
+  /* The type filter is applied ONCE, here, and everything below reads this
+     list — the production sheet, the clinic counts and the per-clinic work
+     breakdown. Filtering at each use site is how the header total and the rows
+     under it drift apart. */
+  const scopedCases = isAllTypes
+    ? liveCases
+    : liveCases.filter((c) => seenTypes.has(caseTypeName(c).toLowerCase()));
+
   /* ---- Production sheet: every case received in the window. */
-  const production: ProductionRow[] = liveCases
+  const production: ProductionRow[] = scopedCases
     .filter((c) => inRange(caseReceivedDate(c), from, to))
     .map((c) => {
       const received = caseReceivedDate(c);
@@ -132,6 +197,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
         : 0;
       return {
         id: c.id,
+        labId: c.lab_id,
         caseNumber: c.case_number,
         receivedDate: received,
         deliveryDate: delivery,
@@ -155,7 +221,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
     .sort((a, b) => (a.receivedDate < b.receivedDate ? 1 : a.receivedDate > b.receivedDate ? -1 : a.caseNumber.localeCompare(b.caseNumber)));
 
   /* ---- Cases due for delivery in the window. */
-  const due = liveCases.filter((c) => inRange((c.delivery_date || '').slice(0, 10), from, to));
+  const due = scopedCases.filter((c) => inRange((c.delivery_date || '').slice(0, 10), from, to));
 
   /* ---- Money moved in the window. */
   const windowInvoices = invoices.filter((inv) => inRange(invoiceIssuedDate(inv), from, to));
@@ -205,7 +271,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
     return row;
   };
 
-  for (const c of liveCases) {
+  for (const c of scopedCases) {
     if (inRange(caseReceivedDate(c), from, to)) {
       const row = labFor(c.lab_id, c.lab_name);
       row.casesReceived += 1;
@@ -241,7 +307,37 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
     .filter((r) => r.casesReceived || r.casesDue || r.invoicesRaised || r.paymentsReceived || r.outstanding > 0)
     .sort((a, b) => b.casesReceived - a.casesReceived || a.labName.localeCompare(b.labName));
 
-  const open = liveCases.filter(
+  /* ---- Per-clinic WORK for the window's type: who sent this kind of job,
+   *  how many, how many units, and what it was worth. Grouped from the same
+   *  production rows the sheet shows, so a click-through can never disagree
+   *  with the list it came from. */
+  const byClinicMap = new Map<string, ClinicWorkRow>();
+  for (const row of production) {
+    const labId = row.labId || row.clinic;
+    let entry = byClinicMap.get(labId);
+    if (!entry) {
+      entry = {
+        labId,
+        labName: row.clinic,
+        doctor: '',
+        cases: 0,
+        units: 0,
+        value: 0,
+        rows: [],
+      };
+      byClinicMap.set(labId, entry);
+    }
+    entry.cases += 1;
+    entry.units += row.units || 0;
+    entry.value += row.price || 0;
+    if (!entry.doctor && row.doctor && row.doctor !== '—') entry.doctor = row.doctor;
+    entry.rows.push(row);
+  }
+  const byClinic = [...byClinicMap.values()].sort(
+    (a, b) => b.value - a.value || b.cases - a.cases || a.labName.localeCompare(b.labName)
+  );
+
+  const open = scopedCases.filter(
     (c) => c.status !== 'delivered' && c.status !== 'cancelled' && inRange(caseReceivedDate(c), from, to)
   ).length;
 
@@ -262,6 +358,10 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
     advanceValue,
     advanceCredit,
     totalOutstanding,
+    /* The label, not the case fold: a filter that matches nothing still has to
+       say WHICH types they were, or the empty sheet looks like a bug. */
+    caseType: requestedTypes.join(' + '),
+    byClinic,
     production,
     clinics,
   };

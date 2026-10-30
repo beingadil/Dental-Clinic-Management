@@ -144,12 +144,6 @@ export const PrintInvoicesView: React.FC = () => {
   const selectedVisible = visibleInvoices.filter((inv) => !excluded.includes(inv.id)).length;
   const allVisibleSelected = visibleInvoices.length > 0 && selectedVisible === visibleInvoices.length;
 
-  const pages = useMemo(
-    () => paginateStatementInvoices(selected, cases, printSettings),
-    [selected, cases, printSettings]
-  );
-  const pageCount = pages.length;
-
   const selectedClinic = labs.find((l) => l.id === labId);
 
   const clinicSummary = useMemo(() => {
@@ -174,6 +168,15 @@ export const PrintInvoicesView: React.FC = () => {
       advanceBalance: clinicSummary.advance_balance,
     });
   }, [clinicSummary, selected]);
+
+  /* Paginated AFTER the account position, because the totals block the final
+     sheet carries is sized from it — an advance deposit or a credit note is a
+     line of that block, and the sheet has to reserve exactly what prints. */
+  const pages = useMemo(
+    () => paginateStatementInvoices(selected, cases, printSettings, statementAccountPosition),
+    [selected, cases, printSettings, statementAccountPosition]
+  );
+  const pageCount = pages.length;
 
   const toggle = (id: string) =>
     setExcluded((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

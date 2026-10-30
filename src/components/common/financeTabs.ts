@@ -67,6 +67,16 @@ export type BillingTab = 'invoices';
 export type ReportsTab = 'general_ledger' | 'statements';
 
 /**
+ * The sidebar entry the Reports group opens on.
+ *
+ * `analytics` is the id the Audit Checker role is routed to on login, and the
+ * rail keeps it for the first tab rather than renaming the landing view under
+ * the role that depends on it. The second tab is its own view id, exactly as
+ * `print-invoices` is beside `billing`.
+ */
+export const REPORTS_ENTRY_ID = 'analytics';
+
+/**
  * `as const` is load-bearing, not cosmetic.
  *
  * It keeps each entry's `id` as its LITERAL type, which is what lets the guard
@@ -85,6 +95,40 @@ export const REPORTS_TABS = [
   { id: 'general_ledger', label: 'General Ledger', icon: BookOpen },
   { id: 'statements', label: 'Reports & Statements', icon: FileSpreadsheet },
 ] as const satisfies readonly TabItem<ReportsTab>[];
+
+/**
+ * The tab a shell view id shows, or `null` when the view is not this group's.
+ *
+ * The rail opens the ledger under `REPORTS_ENTRY_ID`, because that id is also
+ * what the Audit Checker role is routed to at login — it predates the split and
+ * is kept rather than renamed under the role that depends on it. Everything
+ * else is matched straight against the declaration, so resolving a view id never
+ * needs a second copy of the tab ids in the shell.
+ */
+export const reportsTabForView = (view: string): ReportsTab | null => {
+  const direct = REPORTS_TABS.find((tab) => tab.id === view);
+  if (direct) return direct.id;
+  return view === REPORTS_ENTRY_ID ? REPORTS_TABS[0].id : null;
+};
+
+/**
+ * The two surfaces of the Reports group, as sidebar children.
+ *
+ * Billing & Invoices was split into a group of two views (Invoice Rec, Print
+ * Invoices) and the operator asked for the same shape here: General Ledger and
+ * Reports & Statements are separate destinations in the rail, not a tab strip
+ * inside one page. Deriving the children from REPORTS_TABS keeps the rail, the
+ * tab ids and the render branches from drifting into three lists.
+ *
+ * `REPORTS_ENTRY_ID` supplies the id for the first child, because a child may
+ * not reuse the group's own id when the group's id is also a route the app
+ * already hands out (the role login redirect).
+ */
+export const REPORTS_NAV = REPORTS_TABS.map((tab, idx) => ({
+  id: idx === 0 ? REPORTS_ENTRY_ID : tab.id,
+  label: tab.label,
+  icon: tab.icon,
+})) as readonly { id: string; label: string; icon: (typeof REPORTS_TABS)[number]['icon'] }[];
 
 export type FinanceViewName = 'BillingView' | 'ReportsView';
 

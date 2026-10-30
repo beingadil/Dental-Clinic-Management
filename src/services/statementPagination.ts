@@ -1,8 +1,9 @@
 import { Invoice, DentalCase } from '../types';
+import type { InvoiceAccountPosition } from './invoiceAccount';
 import {
-  caseDetailLines,
+  caseDetailInlineText,
   findCaseForInvoice,
-  INVOICE_DETAIL_OMIT,
+  STATEMENT_DETAIL_OMIT,
 } from './ledgerCaseDetail';
 
 /**
@@ -31,38 +32,110 @@ const PAGE_HEIGHT_PX: Record<string, number> = {
 };
 
 /** `.print-preview-page` padding as print.css overrides it (0.75rem/1rem). */
-const PAGE_PADDING_PX = 28;
+const PAGE_PADDING_PX = 24;
 
 /**
- * Everything on a sheet that is not an invoice row: clinic header, title,
- * statement-for grid, period line, table head, table margin, footer — plus the
- * page padding. Measured against the rendered statement at full width.
+ * Everything on a sheet that is not an invoice row: brand header, title, the
+ * statement-for grid, the period line, the table head, the table's bottom
+ * margin, the footer — the padding above is counted separately.
+ *
+ * MEASURED, not estimated. The previous 370 was carried over from the tall
+ * header the sheet used to have; the rendered statement's chrome is 291px at
+ * the current type sizes (brand block 58, title block 44, statement-for 30,
+ * period 15, table head 21, table margin 16, footer 52), so every sheet was
+ * charged ~80px it did not spend. That is roughly two rows per sheet, which is
+ * the "only a handful of invoices per page" the operator reported.
  */
-const SHEET_CHROME_PX = 370;
+const SHEET_CHROME_PX = 267;
 
 /** The extra "Period (continued)" line that sheets after the first carry. */
-const CONTINUED_LINE_PX = 29;
+const CONTINUED_LINE_PX = 27;
 
 /**
- * The totals block (Total Billed / Total Paid / Outstanding) and its margin.
- * It prints on the final sheet only, so that sheet holds less table.
- */
-export const BALANCE_BLOCK_PX = 84;
-
-/** A row with no detail line and a single-line date: one text line + padding. */
-export const ROW_PX_BARE = 34;
-
-/**
- * The detail line, when present, is the extra text line under the case number.
+ * The totals block measured on the sheet: heading + margin + four lines
+ * (Opening, Cases Amount, Paid, Closing).
  *
- * It was a two-column `<dl>` costing ceil(n / 2) grid lines at 20px each plus
- * 10px of block chrome, so a case with seven detail rows was priced at 124px —
- * four lines tall — while only ONE line actually prints. The model then
- * over-charged every sheet and pushed runs onto extra pages the paper did not
- * need, which is the exact problem the compact invoice was meant to solve.
- * The row is now the bare line plus one 11px line, whatever the fact count.
+ * One line per optional fact is added by `balanceBlockPx`, so a statement with
+ * neither an advance deposit nor a credit note does not pay for the worst case.
+ * The old constant was 84 — the heading and margin alone — so any statement
+ * carrying an advance deposit overran its own sheet and the browser pushed the
+ * closing rows onto a fresh page.
  */
-const DETAIL_LINE_PX = 11;
+const BALANCE_BASE_PX = 173;
+
+/** One optional line of the block (Advance Deposit, Credit Notes). */
+const BALANCE_ROW_PX = 25;
+
+/** The "settled from the advance deposit" note under the block. */
+const BALANCE_NOTE_PX = 20;
+
+/**
+ * The totals block at its worst: every optional line present.
+ *
+ * Exported because the sheet budget has to have a default for callers that do
+ * not know the account position, and a default has to be the safe end of the
+ * range.
+ */
+export const BALANCE_BLOCK_PX =
+  BALANCE_BASE_PX + BALANCE_ROW_PX * 2 + BALANCE_NOTE_PX;
+
+/**
+ * Rendered height of the totals block for a clinic's position.
+ *
+ * `null` means the sheet prints the fallback three-line summary instead of the
+ * account block, which is measured smaller but is reserved generously: it is
+ * the sheet that carries the closing figure, and a spilled total reads as a
+ * statement that lost its balance.
+ */
+export const balanceBlockPx = (
+  position?: InvoiceAccountPosition | null,
+): number => {
+  if (!position) return BALANCE_BASE_PX;
+  let height = BALANCE_BASE_PX;
+  if (position.advanceDeposit > 0) height += BALANCE_ROW_PX;
+  if (position.creditNotes > 0) height += BALANCE_ROW_PX;
+  if (position.advanceApplied > 0) height += BALANCE_NOTE_PX;
+  return height;
+};
+
+/**
+ * A row with no detail line and a single-line date: one text line + padding.
+ *
+ * Measured at 21px with the statement table's `py-0.5` cells (8px text box +
+ * 2+2px padding + 1px borders each side). It was 34, which priced every bare
+ * row a third taller than it prints.
+ */
+export const ROW_PX_BARE = 21;
+
+/**
+ * The detail line under the case number, per printed line of it.
+ *
+ * Measured at 12px (9px type, `leading-tight`) for each line the cell wraps
+ * to. It was a flat 11px for the FIRST line only, with no allowance for the
+ * second — and a long tooth list genuinely wraps.
+ */
+export const DETAIL_LINE_PX = 12;
+
+/**
+ * Characters that fit on one line of the Case cell.
+ *
+ * Measured against the rendered table: the auto layout gives the Case column
+ * ~426px of a 762px table, and 9px Georgia sets at ~3.96px per character, so
+ * ~108 characters fit. 96 is used, i.e. a ~10% margin for wider glyphs and a
+ * narrower column when the other columns' content is long. A detail that fits
+ * in 96 characters is priced one line — over-estimating here costs rows on
+ * every sheet, so the measured number is kept close rather than padded.
+ */
+const DETAIL_CHARS_PER_LINE = 96;
+
+/**
+ * Ceiling on the detail allowance.
+ *
+ * A pathological tooth list that wraps past three lines is priced at three: the
+ * row still prints every line, and the sheet keeps a known bound instead of a
+ * single runaway row stealing the rest of the paper.
+ */
+const MAX_DETAIL_LINES = 3;
 
 /** The zoom applied by `.print-fs-*`; a zoomed-out sheet fits more rows. */
 const FONT_SCALE: Record<string, number> = {
@@ -74,17 +147,24 @@ const FONT_SCALE: Record<string, number> = {
 /**
  * Rendered height of one invoice row, in CSS pixels at 100% zoom.
  *
- * The `omit` list MUST match the one the statement renderer passes. They were
- * silently divergent: the renderer suppressed Shade, Received Date, Teeth and
- * Delivery Date while this priced all seven rows. A model that disagrees with
- * the thing it models cannot predict the paper, so the list is shared rather
- * than written twice — see INVOICE_DETAIL_OMIT.
+ * The cell's text comes from `caseDetailInlineText` with STATEMENT_DETAIL_OMIT —
+ * the SAME two calls the statement renderer makes — so the paginator prices the
+ * string that prints. They were silently divergent: the renderer suppressed
+ * Shade, Received Date, Units and Delivery Date while this priced
+ * INVOICE_DETAIL_OMIT, which suppresses Teeth instead of Units. The statement
+ * prints a tooth list, so the paginator was pricing a shorter line than the one
+ * that reached the paper — and a longer line wraps.
  */
 export const rowHeightPx = (inv: Invoice, cases: DentalCase[]): number => {
   const linked = findCaseForInvoice(inv, cases);
-  const lines = linked ? caseDetailLines(linked, { omit: INVOICE_DETAIL_OMIT }).length : 0;
-  if (lines === 0) return ROW_PX_BARE;
-  return ROW_PX_BARE + DETAIL_LINE_PX;
+  if (!linked) return ROW_PX_BARE;
+  const text = caseDetailInlineText(linked, { omit: STATEMENT_DETAIL_OMIT });
+  if (!text) return ROW_PX_BARE;
+  const lines = Math.min(
+    MAX_DETAIL_LINES,
+    Math.max(1, Math.ceil(text.length / DETAIL_CHARS_PER_LINE)),
+  );
+  return ROW_PX_BARE + DETAIL_LINE_PX * lines;
 };
 
 /** Zoom factor for a font-scale setting. */
@@ -98,13 +178,18 @@ export const fontScale = (fontSize?: string): number => FONT_SCALE[fontSize || '
  */
 export const sheetBudgetPx = (
   printSettings?: { paper?: 'a4' | 'letter'; fontSize?: 'compact' | 'normal' | 'large' },
-  opts?: { continued?: boolean; withBalance?: boolean },
+  opts?: {
+    continued?: boolean;
+    withBalance?: boolean;
+    /** Exact height of the totals block, from `balanceBlockPx`. */
+    balancePx?: number;
+  },
 ): number => {
   const paper = printSettings?.paper || 'a4';
   const height = PAGE_HEIGHT_PX[paper] ?? PAGE_HEIGHT_PX.a4;
   let budget = height - PAGE_PADDING_PX - SHEET_CHROME_PX;
   if (opts?.continued) budget -= CONTINUED_LINE_PX;
-  if (opts?.withBalance) budget -= BALANCE_BLOCK_PX;
+  if (opts?.withBalance) budget -= opts.balancePx ?? BALANCE_BLOCK_PX;
   return Math.floor(budget / fontScale(printSettings?.fontSize));
 };
 
@@ -115,45 +200,52 @@ export interface StatementPage<T> {
 }
 
 /**
- * Greedily fill `pageCount` sheets as evenly as the budgets allow.
+ * The fewest rows a final sheet may hold before rows are moved down to it.
  *
- * Evenness matters on paper: a run of 7 rows split 6/1 wastes a sheet's worth
- * of paper and reads badly. Each page takes rows while it is under its share
- * of the run and within its pixel budget, and always keeps at least one row
- * back for each page still to come. A row taller than a whole sheet is given
- * its own page rather than looped on — the browser clips that one row instead
- * of the batch silently dropping an invoice.
+ * One row sitting above an otherwise empty sheet, with the totals block under
+ * it, reads as a printing failure. Two is the smallest tail that looks
+ * deliberate. Only ever costs the previous sheet one row of fill.
  */
-const splitEvenly = <T>(
+const MIN_TAIL_ROWS = 2;
+
+/**
+ * Fill `pageCount` sheets to their own budgets, in order.
+ *
+ * This replaced an even split. Evenness was chosen so a run of 7 rows would not
+ * print 6 on one sheet and 1 on the next — but it achieved that by capping every
+ * sheet at `total / pages`, so a run that needed a second sheet for its totals
+ * block alone printed two half-empty pages: the operator's report was "there is
+ * so much space left and it still takes invoices to the next page". Paging now
+ * behaves the way paper does: each sheet is filled to its budget, and only the
+ * overflow continues.
+ *
+ * The one deliberate exception is the anti-orphan rule below: a final sheet
+ * with a single row gives one row back, so the tail reads as a page rather than
+ * as a stray line plus totals. A row taller than a whole sheet is given its own
+ * page rather than looped on — the browser clips that one row instead of the
+ * batch silently dropping an invoice.
+ */
+const fillSheets = <T>(
   rows: T[],
   weightOf: (row: T) => number,
   budgets: number[],
 ): StatementPage<T>[] => {
   const weights = rows.map((row) => Math.max(1, weightOf(row)));
-  const total = weights.reduce((s, w) => s + w, 0);
   const pages: StatementPage<T>[] = [];
   let index = 0;
-  let used = 0;
 
   for (let p = 0; p < budgets.length && index < rows.length; p++) {
     const budget = budgets[p];
     const pagesLeft = budgets.length - p - 1;
-    const share = Math.ceil((total - used) / (pagesLeft + 1));
     const pageRows: T[] = [];
     let pageWeight = 0;
 
     while (index < rows.length && rows.length - index > pagesLeft) {
       const w = weights[index];
-      // Leave room for the remaining pages. With none left there is nothing to
-      // reserve, so the only limit on this sheet is its own budget.
-      const wouldLeaveEnough =
-        pagesLeft === 0 || total - used - pageWeight - w <= pagesLeft * budget;
-      if (pageRows.length > 0 && (pageWeight + w > budget || !wouldLeaveEnough)) break;
-      if (pageRows.length === 0 && pageWeight + w > budget && pagesLeft === 0) break;
+      if (pageRows.length > 0 && pageWeight + w > budget) break;
       pageRows.push(rows[index]);
       pageWeight += w;
       index += 1;
-      if (pageWeight >= share && pageRows.length > 0) break;
     }
 
     if (pageRows.length === 0 && index < rows.length) {
@@ -161,8 +253,26 @@ const splitEvenly = <T>(
       pageRows.push(rows[index]);
       index += 1;
     }
-    used += pageWeight;
+
     pages.push({ rows: pageRows, pageNumber: p + 1 });
+  }
+
+  // Anti-orphan: move rows down off the previous sheet while the final sheet is
+  // still too thin, and only where they still fit its (smaller) budget.
+  const last = pages[pages.length - 1];
+  if (last && pages.length > 1) {
+    let prev = pages[pages.length - 2];
+    let lastWeight = last.rows.reduce((s, r) => s + weightOf(r), 0);
+    const lastBudget = budgets[budgets.length - 1];
+    while (
+      last.rows.length < MIN_TAIL_ROWS &&
+      prev.rows.length > 1 &&
+      lastWeight + weightOf(prev.rows[prev.rows.length - 1]) <= lastBudget
+    ) {
+      const moved = prev.rows.pop()!;
+      last.rows.unshift(moved);
+      lastWeight += weightOf(moved);
+    }
   }
 
   return pages;
@@ -174,25 +284,34 @@ const splitEvenly = <T>(
  *
  * Sheet count is the smallest that fits the run: each candidate count is laid
  * out and accepted only when every row lands inside its sheet's pixel budget,
- * the final sheet included. Rows are spread evenly across the sheets so a run
- * that needs two pages does not print seven rows on one and one on the other.
+ * the final sheet included. Each sheet is filled to its own budget, so a run
+ * that spills leaves the minimum paper behind rather than halving itself.
  */
 export const paginateStatementInvoices = (
   invoices: Invoice[],
   cases: DentalCase[],
   printSettings?: { paper?: 'a4' | 'letter'; fontSize?: 'compact' | 'normal' | 'large' },
+  /**
+   * The clinic's account position, when the caller has one. It only exists to
+   * size the totals block exactly: the block grows a line for an advance
+   * deposit and for credit notes, and reserving the worst case for every run
+   * costs a statement with neither two rows of table on its last sheet.
+   */
+  accountPosition?: InvoiceAccountPosition | null,
 ): StatementPage<Invoice>[] => {
   if (invoices.length === 0) return [];
   const weightOf = (inv: Invoice) => rowHeightPx(inv, cases);
+  const balancePx = balanceBlockPx(accountPosition);
 
   for (let pageCount = 1; pageCount <= invoices.length; pageCount++) {
     const budgets = Array.from({ length: pageCount }, (_, p) =>
       sheetBudgetPx(printSettings, {
         continued: p > 0,
         withBalance: p === pageCount - 1,
+        balancePx,
       })
     );
-    const pages = splitEvenly(invoices, weightOf, budgets);
+    const pages = fillSheets(invoices, weightOf, budgets);
     const fits = pages.reduce((s, p) => s + p.rows.length, 0) === invoices.length &&
       pages.every((p, i) => p.rows.reduce((s, inv) => s + weightOf(inv), 0) <= budgets[i]);
     if (fits) return pages;

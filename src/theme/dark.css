@@ -556,12 +556,39 @@
     background-image: radial-gradient(circle, rgb(148 163 184 / 0.28) 1px, transparent 1px);
   }
 
-  /* The generated atmosphere, re-read for a near-black canvas. The aurora is
-     lifted because the same alpha over #f6f7f9 is a tint and over #0b1220 is
-     nothing; the grain is lifted for the same reason, then capped — noise
-     against black reads far stronger than noise against white. */
+  /* The atmosphere, re-read for a near-black canvas.
+
+     Dark mode swaps the wallpaper, it does not merely lift it. The aurora is a
+     wash of small orbs drawn for a PALE room; over near-black there is almost
+     nothing there for a frosted pane to refract, which is why the glass read as
+     flat dark blocks. Dark mode now runs the Tahoe wall — the same wallpaper
+     macOS 26 ships, cropped to 16:9 and pre-blurred.
+
+     The blur is BAKED INTO THE ASSET (src/assets/art/tahoe-wall.jpg, prepared
+     with ffmpeg: 1920x1080, gblur sigma 30, slightly darkened). Blurring at
+     paint time with `filter: blur()` here would force the compositor to blur a
+     full-window surface on every scroll, since panels above it scroll; a
+     pre-blurred 29 kB JPEG costs nothing and looks identical.
+
+     The first gradient is a scrim, not decoration: the wallpaper is a bright
+     blue photograph, and glass panes over it at 5% white would put 15px body
+     ink on mid-blue. It holds the room at roughly 55% brightness so the panes
+     keep their contrast while the wall still reads as colour behind them.
+
+     The grain is lifted for the old reason (noise reads stronger against black
+     than against white), then capped. */
   .dark .app-atmos::before {
-    opacity: 0.85;
+    background-image:
+      linear-gradient(180deg, rgba(6, 12, 26, 0.72), rgba(3, 7, 16, 0.82)),
+      url('../assets/art/tahoe-wall.jpg');
+    opacity: 1;
+  }
+
+  /* A dot grid is a texture for an empty canvas. Over a photograph it reads as
+     noise on top of an image, so dark mode drops it and lets the wallpaper be
+     the only texture. */
+  .dark .dental-grid-bg {
+    background-image: none;
   }
   .dark .app-atmos::after {
     opacity: 0.05;

@@ -131,16 +131,6 @@
         0 2px 8px -4px rgba(0, 0, 0, 0.55);
     }
 
-    /* Ambient atmosphere on a near-black canvas needs a touch more presence
-       to read at all. Same rule as light: fallback first, brand-derived
-       second, static, behind content only. */
-    --ds-ambient-1: rgba(129, 140, 248, 0.24);
-    --ds-ambient-1: color-mix(in srgb, var(--brand-600) 26%, transparent);
-    --ds-ambient-2: rgba(34, 211, 238, 0.17);
-    --ds-ambient-3: rgba(168, 85, 247, 0.16);
-    --ds-ambient-4: rgba(236, 72, 153, 0.12);
-    --ds-ambient-base: linear-gradient(180deg, rgba(30, 34, 66, 0.72), rgba(12, 14, 30, 0.4));
-
     /* Luminous glass edge: the same bright hairline the light theme paints,
        dialled down to a faint glow so frosted panes read against the aurora
        wash without turning into hard outlines. */
@@ -149,5 +139,38 @@
     /* A faint light rim, not a white one: at full strength it reads as a
        glowing edge on dark. */
     --ds-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.10);
+
+    /* Panels on dark are a dark pane, not a porthole and not a slab.
+
+       `.ds-panel` used to be a 34% surface over the aurora with
+       saturate(190%). On a light canvas that reads as frosted glass, because
+       the wash behind it is air. On near-black the same recipe AMPLIFIED the
+       wash instead of diffusing it, so every KPI card came out as a slab of
+       electric blue whose fill shifted with whichever orb sat behind it.
+
+       The fix is the material the rest of the app already uses on dark
+       (`.ds-glass-card`): a NEUTRAL white tint, so the pane keeps the glow of
+       whatever is behind it without taking its hue, and saturation pulled back
+       to near-neutral so the wash reads as light rather than as colour. Filling
+       the pane with its own surface instead (58%) killed the blue but flattened
+       every card to black, which is why the tint is white, not surface. Rim,
+       border and shadow are untouched — they carry the glass edge. */
+    /* No fill at all.
+
+       A 5.5% white tint sounds like nothing, but over a photograph the wall's
+       own brightness varies across the pane, so the tint mostly lifted the
+       panel's EDGES into a visible rectangle — the "hardcoded square" a heavy
+       tint always leaves on a photographed background. With the fill gone the
+       pane is defined by what it does rather than by what it is: the rim, the
+       blur, and the shadow. Hover is the one place a fill returns, because a
+       pointer landing on glass is a real state. */
+    .ds-panel {
+      background: transparent;
+      -webkit-backdrop-filter: blur(26px) saturate(155%);
+      backdrop-filter: blur(26px) saturate(155%);
+    }
+    .ds-panel:hover {
+      background: rgba(255, 255, 255, 0.035);
+    }
   }
 }

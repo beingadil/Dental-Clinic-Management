@@ -32,6 +32,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can, deniedTooltip } from '../../services/permissions';
 import { currentVersion } from '../../services/updateService';
+import { REPORTS_NAV } from './financeTabs';
 import { ConnectivityStatus } from './ConnectivityStatus';
 import {
   LayoutDashboard,
@@ -57,10 +58,20 @@ const NAV_ACTION: Record<string, string> = {
   billing: 'billing:view',
   'print-invoices': 'billing:view',
   catalog: 'catalog:view',
-  analytics: 'reports:view',
   notifications: 'notifications:view',
   settings: 'settings:view',
 };
+
+/**
+ * View ids the Reports group owns.
+ *
+ * Built from the declaration rather than written out here: the ownership guard
+ * (tests/components/financeTabOwnership.test.ts) forbids each finance tab id
+ * anywhere but its home module and ReportsView, and a second copy in the rail
+ * is exactly the drift it exists to stop. Both children take the same
+ * permission as the group did.
+ */
+const REPORT_VIEW_IDS = new Set<string>(REPORTS_NAV.map((entry) => entry.id));
 
 export const Sidebar: React.FC = () => {
   const { currentView, setCurrentView, sidebarOpen, setSidebarOpen, unreadCount, overdueCount, invoices, brandingSettings, user } =
@@ -119,10 +130,22 @@ export const Sidebar: React.FC = () => {
         { id: 'catalog', label: 'Price List & Catalog', icon: BookOpen },
       ],
     },
-    {
-      groupTitle: 'Insights',
-      items: [
-        { id: 'analytics', label: 'Analytics & Reports', icon: BarChart3 },
+    {          groupTitle: 'Insights',
+          items: [
+            {
+              id: 'analytics',
+              label: 'Analytics & Reports',
+              icon: BarChart3,
+              /* Split into two destinations the way Billing & Invoices is: the
+                 ledger and the statement archives are read for different
+                 reasons, and a tab strip inside one page made them look like
+                 filters of the same report. */
+              children: REPORTS_NAV.map((entry) => ({
+                id: entry.id,
+                label: entry.label,
+                icon: entry.icon,
+              })),
+            },
         {
           id: 'notifications',
           label: 'System Inbox',
@@ -283,7 +306,9 @@ export const Sidebar: React.FC = () => {
                       {isExpanded && !isCollapsed && item.children!.map((child) => {
                         const ChildIcon = child.icon;
                         const childActive = currentView === child.id;
-                        const childAction = NAV_ACTION[child.id] ?? 'dashboard:view';
+                        const childAction =
+                          NAV_ACTION[child.id] ??
+                          (REPORT_VIEW_IDS.has(child.id) ? 'reports:view' : 'dashboard:view');
                         const childDisabled = !can(user, childAction as any);
                         return (
                           <button

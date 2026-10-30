@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice } from '../../types';
-import { PageHeader, TabsNav } from '../common/ui';
+import { PageHeader } from '../common/ui';
 import { REPORTS_TABS, labelOf, type ReportsTab } from '../common/financeTabs';
 import { GeneralLedgerView } from '../billing/GeneralLedgerView';
 import { BillingReportsView } from '../billing/BillingReportsView';
@@ -9,18 +9,30 @@ import { JournalEntryModal } from '../billing/JournalEntryModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
 
+export interface ReportsViewProps {
+  /**
+   * Which surface to show. Supplied by the shell from `currentView`, because
+   * Analytics & Reports is a nav GROUP (General Ledger | Reports & Statements)
+   * rather than one page holding a tab strip — the same shape Billing &
+   * Invoices has with Invoice Rec and Print Invoices.
+   *
+   * It is named `activeTab` (and NOT destructured into some other local) on
+   * purpose: tests/components/financeTabOwnership.test.ts sweeps this file for
+   * equality branches on it, to prove every declared tab has a body and no body
+   * exists for a tab that is not declared.
+   */
+  activeTab: ReportsTab;
+}
+
 /**
  * Read-only side of the money: business intelligence, clinic balances, the
  * double-entry ledger, the immutable audit trail and the monthly statement
  * archives. Billing keeps the operational tabs (invoices, payments) — money in.
  * This view is money out, looked back on.
  */
-export const ReportsView: React.FC = () => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ activeTab }) => {
   const { cases } = useApp();
 
-  // General Ledger leads, not Overview: it is the first tab that still exists,
-  // and defaulting to a deleted tab left the view blank.
-  const [activeTab, setActiveTab] = useState<ReportsTab>('general_ledger');
   const [journalRefId, setJournalRefId] = useState<string | null>(null);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [viewSlipCase, setViewSlipCase] = useState<any>(null);
@@ -31,14 +43,6 @@ export const ReportsView: React.FC = () => {
         title="Analytics & Reports"
         subtitle="Business intelligence, clinic balances, double-entry ledger, audit trail & monthly statement archives"
         breadcrumbs={[{ label: 'Financial Hub' }, { label: labelOf(REPORTS_TABS, activeTab) }]}
-      />
-
-      <TabsNav
-        activeTab={activeTab}
-        onChange={setActiveTab}
-        fit="fill"
-        variant="pills"
-        tabs={[...REPORTS_TABS]}
       />
 
       {activeTab === 'general_ledger' && (
