@@ -1,0 +1,602 @@
+/*
+ * Insight — the reference-led lavender glass room.
+ *
+ * The module is allowed its own atmosphere because the insight board is the one
+ * reporting surface where the operator looks at shape before records; the rest
+ * of the app keeps the room's wallpaper. Everything here is decorative: no copy
+ * is painted by a CSS colour, only token utilities in the components. That keeps
+ * every readable pairing inside the contrast audit.
+ *
+ * Light is the reference's pale lavender room. Dark is the same room at night:
+ * indigo bloom, luminous rims, dark glass. Geometry never changes.
+ */
+.insight-canvas {
+  position: relative;
+  isolation: isolate;
+  --insight-accent: #818cf8;
+  --insight-bloom-a: rgba(139, 92, 246, 0.24);
+  --insight-bloom-b: rgba(96, 165, 250, 0.22);
+  --insight-bloom-c: rgba(45, 212, 191, 0.17);
+  --insight-orb: radial-gradient(
+    circle at 30% 24%,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(224, 231, 255, 0.7) 13%,
+    rgba(196, 181, 253, 0.3) 38%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  --insight-tray: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.72),
+    rgba(255, 255, 255, 0.28) 42%,
+    rgba(224, 231, 255, 0.3) 72%,
+    rgba(255, 255, 255, 0.5)
+  );
+  --insight-tray-line: rgba(255, 255, 255, 0.78);
+  --insight-core: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(255, 255, 255, 0.74) 58%,
+    rgba(245, 243, 255, 0.72)
+  );
+  --insight-core-line: rgba(255, 255, 255, 0.76);
+  --insight-rail-track: rgba(71, 85, 105, 0.14);
+  --insight-ring-track: rgba(71, 85, 105, 0.14);
+  --insight-axis: #475569;
+  --insight-grid: rgba(71, 85, 105, 0.18);
+}
+
+.dark .insight-canvas {
+  --insight-bloom-a: rgba(99, 102, 241, 0.32);
+  --insight-bloom-b: rgba(34, 211, 238, 0.18);
+  --insight-bloom-c: rgba(52, 211, 153, 0.12);
+  --insight-orb: radial-gradient(
+    circle at 30% 24%,
+    rgba(255, 255, 255, 0.26) 0%,
+    rgba(129, 140, 248, 0.18) 34%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  --insight-tray: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0.04) 45%,
+    rgba(129, 140, 248, 0.1)
+  );
+  --insight-tray-line: rgba(255, 255, 255, 0.2);
+  --insight-core: linear-gradient(
+    168deg,
+    rgba(20, 29, 48, 0.94),
+    rgba(14, 23, 38, 0.9)
+  );
+  --insight-core-line: rgba(255, 255, 255, 0.14);
+  --insight-rail-track: rgba(255, 255, 255, 0.1);
+  --insight-ring-track: rgba(255, 255, 255, 0.12);
+  --insight-axis: #cbd5e1;
+  --insight-grid: rgba(255, 255, 255, 0.14);
+}
+
+/* The room light. Two wide, pre-faded washes instead of a filter: a static
+   radial-gradient is painted once, and there is nothing to animate. */
+.insight-canvas::before,
+.insight-canvas::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 9999px;
+}
+
+.insight-canvas::before {
+  inset: -70px -40px auto;
+  height: 620px;
+  background:
+    radial-gradient(46% 62% at 12% 6%, var(--insight-bloom-a) 0%, transparent 72%),
+    radial-gradient(38% 56% at 72% 0%, var(--insight-bloom-b) 0%, transparent 72%),
+    radial-gradient(34% 48% at 98% 38%, var(--insight-bloom-c) 0%, transparent 74%);
+}
+
+.insight-canvas::after {
+  inset: auto -40px -120px;
+  height: 560px;
+  background:
+    radial-gradient(40% 60% at 24% 100%, var(--insight-bloom-c) 0%, transparent 74%),
+    radial-gradient(44% 58% at 84% 80%, var(--insight-bloom-a) 0%, transparent 76%);
+  opacity: 0.7;
+}
+
+/* Floating glass bubbles. Gradient-only, so they cost no backdrop pass and
+   never become a second blur behind a card. */
+.insight-orb {
+  position: absolute;
+  z-index: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: var(--insight-orb);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    0 30px 60px -40px rgba(67, 56, 202, 0.38);
+  animation: insight-float 22s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+}
+
+.insight-orb--a {
+  top: -46px;
+  left: 36%;
+  width: 188px;
+  height: 188px;
+  opacity: 0.55;
+}
+
+.insight-orb--b {
+  top: 108px;
+  right: 2.5%;
+  width: 96px;
+  height: 96px;
+  opacity: 0.38;
+  animation-delay: -7s;
+}
+
+.insight-orb--c {
+  bottom: 3%;
+  left: -62px;
+  width: 214px;
+  height: 214px;
+  opacity: 0.24;
+  animation-delay: -13s;
+}
+
+/* ── Card tray ──────────────────────────────────────────────────────────
+ * The double bezel: a machined outer tray carries the rim and the shadow, the
+ * inner pane carries the glass. The tray never blurs; the pane blurs once.
+ * Nothing inside a pane may blur again (the nested-backdrop lesson).
+ */
+.insight-tray {
+  position: relative;
+  height: 100%;
+  padding: 6px;
+  border-radius: 30px;
+  background: var(--insight-tray);
+  border: 1px solid var(--insight-tray-line);
+  box-shadow:
+    0 26px 56px -36px rgba(49, 46, 129, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition:
+    transform 520ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 520ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 520ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.dark .insight-tray {
+  box-shadow:
+    0 28px 64px -38px rgba(0, 0, 0, 0.82),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.insight-rise:hover .insight-tray {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 34px 72px -38px rgba(67, 56, 202, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.dark .insight-rise:hover .insight-tray {
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 36px 76px -38px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(129, 140, 248, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.insight-core {
+  background: var(--insight-core);
+  border: 1px solid var(--insight-core-line);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 1px 0 rgba(15, 23, 42, 0.03);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  backdrop-filter: blur(22px) saturate(165%);
+}
+
+.dark .insight-core {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Spotlight feature card.
+ *
+ * Light mode is a tinted periwinkle pane, not a black slab dropped into a white
+ * room: the operator rejected exactly that reading of the reference. Dark mode
+ * keeps the reference's deep navy. Geometry and ink roles are identical in both
+ * themes; only the material changes. */
+.insight-core--spotlight {
+  background: linear-gradient(
+    155deg,
+    rgba(238, 242, 255, 0.94) 0%,
+    rgba(245, 243, 255, 0.88) 48%,
+    rgba(224, 242, 254, 0.82) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 30px 64px -38px rgba(67, 56, 202, 0.4);
+}
+
+.dark .insight-core--spotlight {
+  background: linear-gradient(162deg, #182238 0%, #0c1424 58%, #101c33 100%);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 30px 64px -38px rgba(2, 6, 23, 0.86);
+}
+
+.insight-core--spotlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 70% at 100% 0%, rgba(129, 140, 248, 0.22) 0%, transparent 68%),
+    radial-gradient(46% 62% at 0% 100%, rgba(34, 211, 238, 0.14) 0%, transparent 72%);
+}
+
+.dark .insight-core--spotlight::before {
+  background:
+    radial-gradient(60% 70% at 100% 0%, rgba(129, 140, 248, 0.2) 0%, transparent 68%),
+    radial-gradient(46% 62% at 0% 100%, rgba(34, 211, 238, 0.1) 0%, transparent 72%);
+}
+
+.insight-core--spotlight .insight-card-glow {
+  opacity: 0.2;
+}
+
+.dark .insight-core--spotlight .insight-card-glow {
+  opacity: 0.26;
+}
+
+/* Decorative accent bloom. The colour arrives as a custom property from the
+   card, never as an inline paint, so dark mode still owns the surface. */
+.insight-card-glow {
+  position: absolute;
+  top: -74px;
+  right: -58px;
+  width: 210px;
+  height: 210px;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--insight-accent) 0%, transparent 68%);
+  opacity: 0.16;
+}
+
+
+/* ── Hero chart light ─────────────────────────────────────────────────── */
+.insight-hero-bloom {
+  border-radius: 26px;
+  pointer-events: none;
+  background:
+    radial-gradient(46% 64% at 44% 48%, rgba(99, 102, 241, 0.34) 0%, transparent 72%),
+    radial-gradient(38% 58% at 66% 38%, rgba(34, 211, 238, 0.28) 0%, transparent 74%),
+    radial-gradient(32% 54% at 34% 66%, rgba(52, 211, 153, 0.16) 0%, transparent 76%);
+}
+
+.dark .insight-hero-bloom {
+  background:
+    radial-gradient(46% 64% at 44% 48%, rgba(99, 102, 241, 0.4) 0%, transparent 72%),
+    radial-gradient(38% 58% at 66% 38%, rgba(34, 211, 238, 0.24) 0%, transparent 74%),
+    radial-gradient(32% 54% at 34% 66%, rgba(52, 211, 153, 0.14) 0%, transparent 76%);
+}
+
+.insight-donut-bloom {
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 48%,
+    rgba(129, 140, 248, 0.3) 0%,
+    rgba(34, 211, 238, 0.14) 42%,
+    transparent 70%
+  );
+}
+
+.dark .insight-donut-bloom {
+  background: radial-gradient(
+    circle at 50% 48%,
+    rgba(129, 140, 248, 0.26) 0%,
+    rgba(34, 211, 238, 0.1) 44%,
+    transparent 72%
+  );
+}
+
+/* ── Meters, rails, bars ──────────────────────────────────────────────── */
+.insight-rail-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--insight-rail-track);
+}
+
+.insight-rail-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 760ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.insight-rail-fill--a {
+  background: linear-gradient(90deg, #818cf8 0%, #22d3ee 100%);
+}
+
+.insight-rail-fill--b {
+  background: linear-gradient(90deg, #c4b5fd 0%, #818cf8 100%);
+}
+
+.insight-rail-fill--c {
+  background: linear-gradient(90deg, #34d399 0%, #67e8f9 100%);
+}
+
+.insight-rail-fill--doctor {
+  background: linear-gradient(90deg, #a5b4fc 0%, #67e8f9 100%);
+}
+
+.insight-mini-bar {
+  display: block;
+  width: 8px;
+  min-height: 4px;
+  border-radius: 9999px 9999px 3px 3px;
+  background: linear-gradient(
+    180deg,
+    var(--bar, #a5b4fc) 0%,
+    color-mix(in srgb, var(--bar, #a5b4fc) 28%, transparent) 100%
+  );
+  transition: height 680ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.insight-day-bar {
+  width: 14px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    180deg,
+    rgba(129, 140, 248, 0.92) 0%,
+    rgba(34, 211, 238, 0.2) 100%
+  );
+  transition:
+    height 680ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 300ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.insight-day-bar--peak {
+  background: linear-gradient(180deg, #c4b5fd 0%, #22d3ee 100%);
+  box-shadow: 0 10px 24px -10px rgba(99, 102, 241, 0.65);
+}
+
+.insight-day-bar:hover {
+  transform: scaleX(1.18);
+}
+
+.insight-share {
+  height: 3px;
+  border-radius: 9999px;
+  background: #818cf8;
+  opacity: 0.9;
+}
+
+.insight-share--invoiced {
+  background: linear-gradient(90deg, #818cf8, #6366f1);
+}
+
+.insight-share--collected {
+  background: linear-gradient(90deg, #34d399, #67e8f9);
+}
+
+.insight-share--outstanding {
+  background: linear-gradient(90deg, #c4b5fd, #a78bfa);
+}
+
+.insight-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 13px;
+  background: linear-gradient(135deg, var(--mono-a, #4338ca), var(--mono-b, #0e7490));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 8px 18px -10px rgba(15, 23, 42, 0.55);
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────── */
+.insight-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.insight-seg {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.34));
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.76),
+    0 12px 28px -20px rgba(30, 27, 75, 0.45);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+}
+
+.dark .insight-seg {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 12px 28px -20px rgba(0, 0, 0, 0.7);
+}
+
+.insight-tool {
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  transition:
+    transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.insight-tool:active {
+  transform: scale(0.98);
+}
+
+.insight-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.34), rgba(34, 211, 238, 0.24));
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.dark .insight-tool-icon {
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.22), rgba(34, 211, 238, 0.14));
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.insight-drill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.36);
+  transition:
+    transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.insight-drill svg {
+  transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.insight-drill:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.insight-drill:hover svg {
+  transform: translate(1px, -1px);
+}
+
+.dark .insight-drill {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.dark .insight-drill:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+
+/* A quiet scrollbar inside the standings list. The card still owns the blur;
+   the scroller itself carries no background (the rasterization lesson). */
+.insight-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+.insight-rise {
+  animation: insight-rise 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--insight-i, 0) * 55ms);
+}
+
+@keyframes insight-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.994);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes insight-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+/* Chart tooltip internals. The surface, ink, border and radius are the
+   existing `.chart-tooltip` token rule in index.css, so both themes are
+   already solved; only the row rhythm lives here. */
+.chart-tooltip-title {
+  margin-bottom: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+
+.chart-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.6;
+}
+
+.chart-tip-key {
+  opacity: 0.8;
+}
+
+.chart-tip-value {
+  margin-left: auto;
+  padding-left: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 767px) {
+  .insight-orb {
+    display: none;
+  }
+
+  .insight-canvas::before {
+    inset: -40px -20px auto;
+    height: 420px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .insight-rise {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .insight-orb {
+    animation: none !important;
+  }
+
+  .insight-tray,
+  .insight-drill,
+  .insight-drill svg,
+  .insight-tool,
+  .insight-rail-fill,
+  .insight-mini-bar,
+  .insight-day-bar {
+    transition: none !important;
+  }
+
+  .insight-rise:hover .insight-tray {
+    transform: none;
+  }
+}

@@ -95,7 +95,7 @@ export const BILLING_TABS = [
 export const REPORTS_TABS = [
   { id: 'general_ledger', label: 'General Ledger', icon: BookOpen },
   { id: 'statements', label: 'Reports & Statements', icon: FileSpreadsheet },
-  { id: 'insights', label: 'Insights', icon: BarChart3 },
+  { id: 'insights', label: 'Insight', icon: BarChart3 },
 ] as const satisfies readonly TabItem<ReportsTab>[];
 
 /**

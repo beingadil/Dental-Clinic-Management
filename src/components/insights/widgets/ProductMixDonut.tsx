@@ -1,53 +1,110 @@
 import React, { useState } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { CHART_COLORS, GlassTooltip } from '../chartTheme';
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
+import { CHART_COLORS, CHART_PALETTE, GlassTooltip, pkr, pkrCompact } from '../chartTheme';
 import type { ProductMix } from '../../../services/insightsDomain';
 
-interface Props { mix: ProductMix; }
+interface Props {
+  mix: ProductMix;
+}
 
 export const ProductMixDonut: React.FC<Props> = ({ mix }) => {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const visible = mix.items.filter((d) => !hidden.has(d.name));
-  const data = visible.length ? visible : [{ name: 'No data', value: 1, color: CHART_COLORS.muted }];
-  const total = visible.reduce((s, d) => s + d.value, 0) || mix.total;
+
+  const items = mix.items.map((item, index) => ({
+    ...item,
+    displayColor: CHART_PALETTE[index % CHART_PALETTE.length],
+  }));
+
+  const visible = items.filter((item) => !hidden.has(item.name));
+  const visibleTotal = visible.reduce((total, item) => total + item.value, 0);
+  const data = visible.length
+    ? visible
+    : [{ name: 'No data', value: 1, displayColor: CHART_COLORS.muted }];
+
+  const toggle = (name: string) =>
+    setHidden((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+  if (mix.items.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 py-4">
+        <div className="relative flex h-[158px] w-[158px] items-center justify-center">
+          <div aria-hidden className="insight-donut-bloom absolute inset-0 rounded-full opacity-70" />
+          <div className="relative flex h-[124px] w-[124px] items-center justify-center rounded-full border-[18px] border-[var(--insight-ring-track)]">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-muted">No mix</span>
+          </div>
+        </div>
+        <p className="text-[10.5px] font-semibold text-ink-muted">No revenue mix in this period.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col md:flex-row items-center gap-5">
-      <div className="relative h-44 w-44 shrink-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={2} stroke="none">
-              {data.map((d, i) => <Cell key={i} fill={d.color} className="transition-all duration-300 cursor-pointer" />)}
-            </Pie>
-            <GlassTooltip formatter={(v: any) => `PKR ${new Intl.NumberFormat('en-PK').format(Math.round(Number(v)))}`} />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Total</span>
-          <span className="text-base font-extrabold text-ds-ink tracking-tight">PKR {new Intl.NumberFormat('en-PK').format(Math.round(total))}</span>
+    <div className="flex h-full flex-col">
+      <div className="relative mx-auto h-[158px] w-[158px] shrink-0">
+        <div aria-hidden className="insight-donut-bloom absolute inset-0 rounded-full" />
+        <div className="relative h-full w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={54}
+                outerRadius={78}
+                paddingAngle={3}
+                cornerRadius={6}
+                stroke="none"
+                animationDuration={850}
+              >
+                {data.map((entry) => (
+                  <Cell key={entry.name} fill={entry.displayColor} />
+                ))}
+              </Pie>
+              <GlassTooltip formatter={(value: number) => pkr(Number(value))} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-[8px] font-bold uppercase tracking-[0.16em] text-ink-muted">Total</span>
+            <span className="ds-figure mt-0.5 text-[15px] leading-none text-ds-ink">{pkrCompact(visibleTotal)}</span>
+            <span className="mt-1 text-[8px] font-semibold text-ink-muted">PKR</span>
+          </div>
         </div>
       </div>
-      <div className="flex-1 min-w-0 space-y-1.5 w-full">
-        {mix.items.map((d) => {
-          const isHidden = hidden.has(d.name);
+
+      <div className="insight-scroll mt-2 max-h-[124px] space-y-1 overflow-y-auto pr-0.5">
+        {items.map((item) => {
+          const off = hidden.has(item.name);
           return (
             <button
-              key={d.name}
+              key={item.name}
               type="button"
-              onClick={() => setHidden((s) => {
-                const n = new Set(s);
-                if (n.has(d.name)) n.delete(d.name); else n.add(d.name);
-                return n;
-              })}
-              className={`w-full flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 transition-all ${isHidden ? 'opacity-40' : 'hover:bg-ds-surface/60'}`}
+              onClick={() => toggle(item.name)}
+              aria-pressed={!off}
+              title={`${item.name}: ${pkr(item.value)}`}
+              className={`flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors ${
+                off ? 'opacity-40' : 'hover:bg-ds-surface/60'
+              }`}
             >
-              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-              <span className="truncate font-semibold text-ds-ink">{d.name}</span>
-              <span className="ml-auto font-mono font-bold text-ink-muted">{mix.total > 0 ? Math.round((d.value / mix.total) * 100) : 0}%</span>
-              <span className="font-mono text-[10px] text-ink-muted w-16 text-right">{new Intl.NumberFormat('en-PK').format(Math.round(d.value))}</span>
+              <span
+                aria-hidden
+                className="chart-swatch h-2 w-2 shrink-0 rounded-full"
+                style={{ '--swatch': item.displayColor } as React.CSSProperties}
+              />
+              <span className="truncate text-[10px] font-semibold text-ds-ink">{item.name}</span>
+              <span className="ml-auto shrink-0 font-mono text-[9px] font-bold text-ink-muted">
+                {mix.total > 0 ? Math.round((item.value / mix.total) * 100) : 0}%
+              </span>
+              <span className="w-10 shrink-0 text-right font-mono text-[9px] text-ink-muted">
+                {pkrCompact(item.value)}
+              </span>
             </button>
           );
         })}
-        {mix.items.length === 0 && <p className="text-xs font-semibold text-ink-muted">No invoices in this period.</p>}
       </div>
     </div>
   );

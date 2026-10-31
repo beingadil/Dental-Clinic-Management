@@ -1,53 +1,95 @@
 import React from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 
 interface Props {
   title: string;
   subtitle?: string;
+  tone?: 'glass' | 'spotlight';
   accent?: string;
   className?: string;
+  contentClassName?: string;
   children: React.ReactNode;
   action?: React.ReactNode;
-  span?: string;
   onDrill?: () => void;
   drillLabel?: string;
+  /** Stagger index for the entrance choreography. */
+  index?: number;
+  /** Paint the coloured bloom behind this card's content. */
+  glow?: boolean;
 }
 
-export const InsightsCard: React.FC<Props> = ({ title, subtitle, accent = '#6366f1', className = '', children, action, span = '', onDrill, drillLabel = 'Drill in' }) => (
-  <div className={`group relative ${span} ${className}`}>
-    {/* Outer shell — machined tray */}
-    <div
-      className="relative h-full overflow-hidden rounded-[1.75rem] p-1.5 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5"
-      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))' }}
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full opacity-40 blur-3xl transition-opacity duration-500 group-hover:opacity-60"
-        style={{ background: accent }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[1.75rem] ring-1 ring-white/10 dark:ring-white/5"
-      />
-      {/* Inner core */}
-      <section className="relative h-full overflow-hidden rounded-[calc(1.75rem-0.375rem)] border border-ds-line/40 bg-ds-surface/80 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.12),0_8px_32px_-12px_rgba(15,23,42,0.12)] transition-shadow duration-500 group-hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.18),0_16px_48px_-12px_rgba(99,102,241,0.22)] flex flex-col">
-        <header className="relative flex items-start justify-between gap-3 px-5 pt-4 pb-2">
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-ds-ink tracking-tight">{title}</h3>
-            {subtitle && <p className="text-[11px] font-semibold text-ink-muted mt-0.5">{subtitle}</p>}
+/**
+ * The Insight card.
+ *
+ * A machined outer tray, a single pane of glass inside it, and an editorial
+ * header. The tray owns the rim and the lift; the pane owns the one blur. No
+ * child may add a second backdrop-filter — that is the nested-blur rule this
+ * app learned the expensive way.
+ *
+ * The spotlight tone is theme-adaptive: tinted periwinkle glass in light (the
+ * operator rejected a black card sitting in a white room), deep navy in dark.
+ * Both readings use token ink, so the contrast gates grade the real pairing.
+ */
+export const InsightsCard: React.FC<Props> = ({
+  title,
+  subtitle,
+  tone = 'glass',
+  accent = '#818cf8',
+  className = '',
+  contentClassName = '',
+  children,
+  action,
+  onDrill,
+  drillLabel = 'records',
+  index = 0,
+  glow = false,
+}) => {
+  const spotlight = tone === 'spotlight';
+
+  const style = {
+    '--insight-accent': accent,
+    '--insight-i': index,
+  } as React.CSSProperties;
+
+  return (
+    <div className={`insight-rise group relative h-full ${className}`} style={style} data-tone={tone}>
+      <div className="insight-tray">
+        <section
+          className={`insight-core relative flex h-full flex-col overflow-hidden rounded-[25px] bg-ds-surface/80 ${
+            spotlight ? 'insight-core--spotlight' : ''
+          }`}
+        >
+          {glow && <div aria-hidden className="insight-card-glow" />}
+
+          <header className="relative z-[1] flex items-start justify-between gap-3 px-5 pb-2 pt-4">
+            <div className="min-w-0">
+              <h3 className="text-[13px] font-bold leading-tight tracking-[-0.01em] text-ds-ink">
+                {title}
+              </h3>
+              {subtitle && (
+                <p className="mt-0.5 text-[10.5px] font-semibold text-ink-muted">{subtitle}</p>
+              )}
+            </div>
+
+            {action ??
+              (onDrill ? (
+                <button
+                  type="button"
+                  onClick={onDrill}
+                  aria-label={`View ${drillLabel} behind ${title}`}
+                  title={`View ${drillLabel}`}
+                  className="insight-drill text-ds-accent"
+                >
+                  <ArrowUpRight className="h-[15px] w-[15px]" strokeWidth={1.7} aria-hidden />
+                </button>
+              ) : null)}
+          </header>
+
+          <div className={`relative z-[1] flex min-h-0 flex-1 flex-col px-5 pb-5 pt-1 ${contentClassName}`}>
+            {children}
           </div>
-          {action ?? (onDrill ? (
-            <button type="button" onClick={onDrill} className="text-[10px] font-bold uppercase tracking-wider text-ds-accent hover:underline transition-colors">
-              {drillLabel} ↗
-            </button>
-          ) : (
-            <button type="button" className="text-ink-muted hover:text-ds-ink transition-colors" aria-label="Card options">
-              <MoreHorizontal className="w-4 h-4" />
-            </button>
-          ))}
-        </header>
-        <div className="relative px-5 pb-5 flex-1 flex flex-col justify-center">{children}</div>
-      </section>
+        </section>
+      </div>
     </div>
-  </div>
-);
+  );
+};

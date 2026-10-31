@@ -40,11 +40,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ activeTab }) => {
 
   return (
     <div className="space-y-6 billing-module no-scrollbar">
-      <PageHeader
-        title="Analytics & Reports"
-        subtitle="Business intelligence, clinic balances, double-entry ledger, audit trail & monthly statement archives"
-        breadcrumbs={[{ label: 'Financial Hub' }, { label: labelOf(REPORTS_TABS, activeTab) }]}
-      />
+      {/* Insight carries its own header band — period, controls and board — so
+          the module title above it would print a second page title and strand
+          the board under two competing headings. The other tabs keep it. */}
+      {activeTab !== 'insights' && (
+        <PageHeader
+          title="Analytics & Reports"
+          subtitle="Business intelligence, clinic balances, double-entry ledger, audit trail & monthly statement archives"
+          breadcrumbs={[{ label: 'Financial Hub' }, { label: labelOf(REPORTS_TABS, activeTab) }]}
+        />
+      )}
 
       {activeTab === 'general_ledger' && (
         <GeneralLedgerView />
