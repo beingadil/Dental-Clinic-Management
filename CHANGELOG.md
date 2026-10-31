@@ -1,3 +1,33 @@
+## [2.31.5] - 2026-10-31
+
+The glass pass reaches the clinic files and the case form, long dropdowns are
+typed into instead of scrolled, and status inks hold their contrast in both
+themes.
+
+### Added
+- Glass select filters long option lists: a search field appears from six
+  options up, matches label text as you type, and keeps arrow/Enter navigation
+  on the filtered rows. A space is a character while typing, so a multi-word
+  search cannot pick a row on its first word.
+- The case form's Laboratory and Procedure selects opt into the filter
+  explicitly, so a long price list is typed into rather than scrolled.
+
+### Changed
+- Clinic detail, contacts, pricing and the case detail modal are glass panes
+  now, painted with ds tokens instead of white cards and slate literals, so
+  light and dark share one material.
+- Status chips and icon tiles use their `*-ink` step (dispatch, risk) instead
+  of a 500 fill on a 50 tint, and the last translucent panel fills are gone
+  (panel menu, empty-state tile, revenue period pill).
+- Refreshed the dark-mode wallpaper asset: still pre-blurred at build time,
+  never filtered at runtime.
+
+### Fixed
+- The contrast audit grades `ds-*` utilities again. It resolves the
+  `--color-ds-*` -> `--ds-*` -> `--p-*` chain and reports the dashboard's own
+  surfaces, which the old `[a-z]-<step>` pattern skipped while the report still
+  read green.
+
 ## [2.31.4] - 2026-10-30
 
 Analytics & Reports becomes a nav group of two destinations, printed statements
