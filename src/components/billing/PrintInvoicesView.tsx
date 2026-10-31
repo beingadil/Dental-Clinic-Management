@@ -11,11 +11,13 @@ import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
 import { compareInvoiceNumbers } from '../../services/invoiceOrder';
 import { paginateStatementInvoices } from '../../services/statementPagination';
-import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
+import { PrintDocument, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
-import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
+import { loadPrintSettings, saveDocumentSections, loadStatementSectionsAdoptingBank, setStatementBankExcluded, isStatementBankExcluded } from '../../services/printSettings';
 import '../print/printStyles.css';
-import { ChevronDown, FileSpreadsheet, Printer, Search } from 'lucide-react';
+import { PrintSectionPicker } from '../common/PrintSectionPicker';
+import { useTransientFlag } from '../common/useTransient';
+import { Check, ChevronDown, FileSpreadsheet, Landmark, Printer, Search, SlidersHorizontal } from 'lucide-react';
 import { ClinicPicker } from '../common/ui/ClinicPicker';
 import { PageHeader } from '../common/ui';
 import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
@@ -62,7 +64,9 @@ const dateOf = (inv: Invoice) => String(inv.issue_date || inv.created_at || '').
  * A module page, not a dialog: it lives in the main content area with the same
  * `PageHeader` every other view uses, and the sidebar stays put. The screen has
  * exactly two jobs, so it is built as exactly two cards — the invoices you are
- * choosing (screen only) and the paper they will become.
+ * choosing (screen only) and the paper they will become. That paper is not
+ * read-only here: the statement's sections and its bank block are editable in
+ * place, writing straight through to the stored lists Settings → Print owns.
  */
 export const PrintInvoicesView: React.FC = () => {
   const {
@@ -75,6 +79,7 @@ export const PrintInvoicesView: React.FC = () => {
     advancePayments,
     accountAdjustments,
     setCurrentView,
+    updateBrandingSettings,
   } = useApp();
 
   const [labId, setLabId] = useState<string>(labs[0]?.id || '');
@@ -96,9 +101,69 @@ export const PrintInvoicesView: React.FC = () => {
   const [zoomMode, setZoomMode] = useState<ZoomMode>('fit');
 
   const [printSettings] = useState(() => loadPrintSettings());
-  const [statementSections] = useState<string[]>(() =>
-    loadDocumentSections('statement', DEFAULT_ENABLED.statement)
+  /* Live state, not a mount snapshot: the layout band further down edits the
+     same stored list Settings → Print owns (saveDocumentSections), so the
+     preview, the printed sheet and the settings tab cannot drift apart.
+     Lists saved before the statement had a bank option adopt it here the
+     moment a bank name exists, unless it was excluded on purpose. */
+  const [statementSections, setStatementSections] = useState<string[]>(() =>
+    loadStatementSectionsAdoptingBank(DEFAULT_ENABLED.statement, Boolean(brandingSettings?.bankName))
   );
+  const applySections = (next: string[]) => {
+    // The marker records deliberate intent, and only a TRANSITION may write
+    // it: a list that predates the bank option lacks the id too, so stamping
+    // `off` on every bank-less save would have every legacy list exile the
+    // block by accident. Excluding counts as deliberate only when the list
+    // already carried `bank` (and had it removed); including always is.
+    if (statementSections.includes('bank') && !next.includes('bank')) {
+      setStatementBankExcluded(true);
+    } else if (next.includes('bank')) {
+      setStatementBankExcluded(false);
+    }
+    setStatementSections(next);
+    saveDocumentSections('statement', next);
+  };
+
+  /* The paper's chrome, edited where the paper is about to be made: the bank
+     transfer block reads its lines from the branding record, so removing the
+     bank name is how the block disappears from every future sheet. */
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
+  const [bankDraft, setBankDraft] = useState(() => ({
+    bankName: brandingSettings?.bankName || '',
+    bankAccountTitle: brandingSettings?.bankAccountTitle || '',
+    bankAccountNumber: brandingSettings?.bankAccountNumber || '',
+    bankIban: brandingSettings?.bankIban || '',
+  }));
+  const [bankSaved, flashBankSaved] = useTransientFlag(2400);
+  /* Re-read the stored branding each time the editor opens, so it always
+     starts from what is actually on file rather than a stale draft. */
+  useEffect(() => {
+    if (bankOpen) {
+      setBankDraft({
+        bankName: brandingSettings?.bankName || '',
+        bankAccountTitle: brandingSettings?.bankAccountTitle || '',
+        bankAccountNumber: brandingSettings?.bankAccountNumber || '',
+        bankIban: brandingSettings?.bankIban || '',
+      });
+      flashBankSaved();
+    }
+  }, [bankOpen, brandingSettings]);
+
+  const handleBankSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateBrandingSettings({ ...bankDraft });
+    // Saving bank details makes the block a default on the statement: if the
+    // section is not on yet and was never unticked on purpose, adopt it so
+    // the next sheet the operator prints already carries the details.
+    const hasBankData = Boolean((bankDraft.bankName || '').trim());
+    if (hasBankData && !statementSections.includes('bank') && !isStatementBankExcluded()) {
+      const adopted = [...statementSections, 'bank'];
+      setStatementSections(adopted);
+      saveDocumentSections('statement', adopted);
+    }
+    flashBankSaved();
+  };
 
   /* Clinics load with the database, so the first one is not there on mount in a
      real session. Adopt it as soon as it arrives rather than leaving the page
@@ -173,8 +238,12 @@ export const PrintInvoicesView: React.FC = () => {
      sheet carries is sized from it — an advance deposit or a credit note is a
      line of that block, and the sheet has to reserve exactly what prints. */
   const pages = useMemo(
-    () => paginateStatementInvoices(selected, cases, printSettings, statementAccountPosition),
-    [selected, cases, printSettings, statementAccountPosition]
+    () =>
+      paginateStatementInvoices(
+        selected, cases, printSettings, statementAccountPosition,
+        statementSections.includes('bank') && Boolean(brandingSettings?.bankName)
+      ),
+    [selected, cases, printSettings, statementAccountPosition, statementSections, brandingSettings?.bankName]
   );
   const pageCount = pages.length;
 
@@ -505,6 +574,15 @@ export const PrintInvoicesView: React.FC = () => {
           </p>
           <button
             type="button"
+            onClick={() => setLayoutOpen((o) => !o)}
+            aria-expanded={layoutOpen}
+            className="ds-glass-pill ds-glass-pill-sm"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Sections · {statementSections.length}
+          </button>
+          <button
+            type="button"
             onClick={() => setPreviewOpen((o) => !o)}
             aria-expanded={previewOpen}
             aria-controls="batch-print-preview"
@@ -514,6 +592,113 @@ export const PrintInvoicesView: React.FC = () => {
             {previewOpen ? 'Hide statement' : 'Preview statement'}
           </button>
         </div>
+
+        {/* Statement chrome, edited where the paper is about to be made: an
+            operator sending five statements must not have to leave for
+            Settings to turn the bank block or the contact footer on. Sections
+            write through to the same stored list Settings → Print owns; the
+            bank lines write to the branding record the renderer reads. */}
+        {layoutOpen && (
+          <div className="no-print space-y-3 border-t border-ds-line bg-ds-sunken/40 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-ds-muted">
+                What appears on the printed statement
+              </span>
+              <span className="text-[11px] font-semibold text-ds-body" aria-live="polite">
+                {statementSections.length} of {PRINT_SECTIONS.statement.length} sections · saved automatically
+              </span>
+            </div>
+            <PrintSectionPicker kind="statement" value={statementSections} onChange={applySections} />
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ds-line pt-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBankOpen((o) => !o)}
+                  aria-expanded={bankOpen}
+                  className="ds-glass-pill ds-glass-pill-sm"
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${bankOpen ? 'rotate-180' : ''}`} />
+                  <Landmark className="h-3.5 w-3.5" />
+                  Bank details on the paper
+                </button>
+                {bankSaved && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-bold text-emerald-700">
+                    Saved
+                  </span>
+                )}
+              </div>
+              <p className="max-w-[26rem] text-[10px] leading-snug text-ds-muted">
+                Letterhead and footer come from the branding record (Settings → Branding); paper, margins and type size are in Settings → Print &amp; Documents.
+              </p>
+            </div>
+
+            {bankOpen && (
+              <form onSubmit={handleBankSave} className="grid gap-2.5 rounded-xl border border-ds-line p-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-ds-muted">
+                    Bank name
+                  </span>
+                  <input
+                    type="text"
+                    value={bankDraft.bankName}
+                    onChange={(e) => setBankDraft((p) => ({ ...p, bankName: e.target.value }))}
+                    placeholder="e.g. Meezan Bank"
+                    className="w-full rounded-lg border border-ds-line bg-ds-sunken px-2.5 py-1.5 text-xs text-ds-ink placeholder:text-ds-muted focus:border-ds-accent focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-ds-muted">
+                    Account title
+                  </span>
+                  <input
+                    type="text"
+                    value={bankDraft.bankAccountTitle}
+                    onChange={(e) => setBankDraft((p) => ({ ...p, bankAccountTitle: e.target.value }))}
+                    placeholder="Account holder"
+                    className="w-full rounded-lg border border-ds-line bg-ds-sunken px-2.5 py-1.5 text-xs text-ds-ink placeholder:text-ds-muted focus:border-ds-accent focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-ds-muted">
+                    Account number
+                  </span>
+                  <input
+                    type="text"
+                    value={bankDraft.bankAccountNumber}
+                    onChange={(e) => setBankDraft((p) => ({ ...p, bankAccountNumber: e.target.value }))}
+                    placeholder="A/C number"
+                    className="w-full rounded-lg border border-ds-line bg-ds-sunken px-2.5 py-1.5 text-xs text-ds-ink placeholder:text-ds-muted focus:border-ds-accent focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-ds-muted">
+                    IBAN
+                  </span>
+                  <input
+                    type="text"
+                    value={bankDraft.bankIban}
+                    onChange={(e) => setBankDraft((p) => ({ ...p, bankIban: e.target.value }))}
+                    placeholder="IBAN"
+                    className="w-full rounded-lg border border-ds-line bg-ds-sunken px-2.5 py-1.5 text-xs text-ds-ink placeholder:text-ds-muted focus:border-ds-accent focus:outline-none"
+                  />
+                </label>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ds-line pt-2.5 sm:col-span-2">
+                  <span className="text-[10px] leading-snug text-ds-muted">
+                    The block only prints when a bank name is set — clearing it removes the block from the paper.
+                  </span>
+                  <button
+                    type="submit"
+                    className="flex items-center gap-1.5 px-3 py-1.5 ds-glass-pill font-bold text-xs"
+                  >
+                    <Check className="h-3.5 w-3.5 text-indigo-600" />
+                    Save bank details
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── What prints on paper ──────────────────────────────────────────── */}

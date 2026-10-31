@@ -91,3 +91,40 @@ export function loadDocumentSections(kind: string, fallback: string[]): string[]
 export function saveDocumentSections(kind: string, sections: string[]): void {
   settingsRepo.set('print', `sections_${kind}`, sections);
 }
+
+/**
+ * The statement's `bank` section was added after `sections_statement` rows
+ * were being written, so a stored list without the id cannot distinguish
+ * "saved before the option existed" from "saved with the block deliberately
+ * excluded". A reload must not resurrect a block the operator unticked, so a
+ * deliberate exclusion is recorded as its own marker row:
+ *
+ * - marker `off`      → the operator excluded it; never re-adopted.
+ * - marker `on`/none  → adopt `bank` the moment the data that feeds the block
+ *   (a saved bank name) exists, and persist the adoption so Settings and the
+ *   print surfaces all read the same list.
+ */
+const BANK_MARKER_KEY = 'sections_statement_bank';
+
+export function setStatementBankExcluded(excluded: boolean): void {
+  settingsRepo.set('print', BANK_MARKER_KEY, excluded ? 'off' : 'on');
+}
+
+export function isStatementBankExcluded(): boolean {
+  try {
+    return String(settingsRepo.get('print', BANK_MARKER_KEY) ?? '') === 'off';
+  } catch { return false; }
+}
+
+/**
+ * Stored statement sections with the bank option adopted onto lists that
+ * predate it (`hasBankData` = a bank name is saved on the branding record).
+ * No-op when already present, deliberately excluded, or nothing to show.
+ */
+export function loadStatementSectionsAdoptingBank(fallback: string[], hasBankData: boolean): string[] {
+  const stored = loadDocumentSections('statement', fallback);
+  if (stored.includes('bank') || isStatementBankExcluded() || !hasBankData) return stored;
+  const adopted = [...stored, 'bank'];
+  saveDocumentSections('statement', adopted);
+  return adopted;
+}

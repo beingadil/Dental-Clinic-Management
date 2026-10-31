@@ -1,4 +1,5 @@
-import { formatPKR } from '../../services/financeDomain';
+import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import { compareInvoiceNumbers } from '../../services/invoiceOrder';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { canPost, deniedTooltip } from '../../services/permissions';
@@ -45,7 +46,7 @@ interface LabDetailModalProps {
 }
 
 export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, initialTab = 'cases' }) => {
-  const { cases, updateLab, deleteLab, labDeletionImpact, getLabFinancialSummary, user } = useApp();
+  const { cases, invoices, updateLab, deleteLab, labDeletionImpact, getLabFinancialSummary, user } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cases' | 'ledger' | 'info' | 'contacts' | 'pricing'>(initialTab);
   const [isFullScreen, setIsFullScreen] = useState(true);
@@ -230,6 +231,57 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
      exactly what the General Ledger's closing balance shows. */
   const totalBilled = labFinancials.total_invoiced;
   const totalUnpaid = labFinancials.outstanding_balance;
+
+  /* Revenue by the month a bill was ISSUED (issue date first, creation as
+     fallback — the same clock the printed statements read). The emerald card
+     in this tab shows only the CURRENT month, so when a new month starts the
+     figure resets to that month alone and every previous month stays one
+     click away beneath the metrics row. Sums reconcile with `total_invoiced`
+     by construction: the same invoices, the same final_amount, bucketed. */
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonthLabel = new Date(`${currentMonthKey}-01T00:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  /* Current-month headcount for the Cases card, from the same grouping TAB 2
+     reads: what was entered in this month alone, so a new month starts at 0
+     with the older months one click away. */
+  const currentMonthCases = casesByMonth.find((g) => g.key === currentMonthKey)?.cases.length ?? 0;
+  const revenueByMonth = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; total: number; count: number; latest: number; isCurrent: boolean; invoices: Invoice[] }>();
+    for (const inv of invoices) {
+      if (inv.lab_id !== lab.id) continue;
+      /* Local-midnight parse like casesByMonth above: a bare "YYYY-MM-DD"
+         read as UTC would file a month-end bill into the following month in
+         +05:00. */
+      const d = new Date(`${String(inv.issue_date || inv.created_at || '').slice(0, 10)}T00:00:00`);
+      const ts = isNaN(d.getTime()) ? 0 : d.getTime();
+      const key = ts === 0 ? 'undated' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = ts === 0 ? 'Undated' : d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      if (!groups.has(key)) groups.set(key, { key, label, total: 0, count: 0, latest: ts, isCurrent: key === currentMonthKey, invoices: [] });
+      const g = groups.get(key)!;
+      g.total += inv.final_amount || 0;
+      g.count += 1;
+      g.latest = Math.max(g.latest, ts);
+      g.invoices.push(inv);
+    }
+    const rows = Array.from(groups.values());
+    for (const g of rows) {
+      g.invoices.sort(
+        (a, b) =>
+          String(a.issue_date || a.created_at || '').localeCompare(String(b.issue_date || b.created_at || '')) ||
+          compareInvoiceNumbers(a.invoice_number, b.invoice_number)
+      );
+    }
+    return rows.sort((a, b) => b.latest - a.latest);
+  }, [invoices, lab.id, currentMonthKey]);
+
+  const currentMonthRevenue = revenueByMonth.find((g) => g.isCurrent)?.total ?? 0;
+  /* The month-history expansions on the revenue and cases cards. One month
+     open at a time per card — the list reads as a row of ledger pages, and
+     stacking two open sheets doubles the scroll for no gain. */
+  const [revenueMonthsOpen, setRevenueMonthsOpen] = useState(false);
+  const [openRevenueMonth, setOpenRevenueMonth] = useState<string | null>(null);
+  const [casesMonthsOpen, setCasesMonthsOpen] = useState(false);
+  const [openCasesMonth, setOpenCasesMonth] = useState<string | null>(null);
 
   /* Same contract as the create form: only clinic name + doctor name are
      required, the rest are optional and format-checked only when filled. */
@@ -548,19 +600,204 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             <div className="space-y-6">
               {/* Financial Metrics */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 bg-ds-surface/40 ring-1 ring-ds-line rounded-xl">
-                  <div className="text-xs text-ink-muted font-semibold">Total Cases Handled</div>
-                  <div className="text-xl font-bold text-ds-ink mt-1">{labCases.length}</div>
-                </div>
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                  <div className="text-xs text-emerald-700 font-semibold">Total Invoiced Revenue</div>
-                  <div className="text-xl font-bold text-emerald-700 mt-1">{formatPKR(totalBilled)}</div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setCasesMonthsOpen((o) => !o)}
+                  aria-expanded={casesMonthsOpen}
+                  title={casesMonthsOpen ? 'Hide the month-by-month history' : 'Show the month-by-month case history'}
+                  className="w-full p-4 bg-ds-surface/40 ring-1 ring-ds-line rounded-xl text-left cursor-pointer transition-colors hover:ring-ds-accent"
+                >
+                  <div className="text-xs text-ink-muted font-semibold flex items-center justify-between gap-2">
+                    <span>Total Cases Handled</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-ink-muted shrink-0">
+                      {casesMonthsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      Months
+                    </span>
+                  </div>
+                  <div className="text-xl font-bold text-ds-ink mt-1">{currentMonthCases}</div>
+                  <div className="text-[10px] text-ink-muted font-semibold mt-0.5">
+                    {currentMonthLabel} · lifetime {labCases.length}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRevenueMonthsOpen((o) => !o)}
+                  aria-expanded={revenueMonthsOpen}
+                  title={revenueMonthsOpen ? 'Hide the month-by-month history' : 'Show the month-by-month billed history'}
+                  className="w-full p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-left cursor-pointer transition-colors hover:border-emerald-400"
+                >
+                  <div className="text-xs text-emerald-700 font-semibold flex items-center justify-between gap-2">
+                    <span>Total Invoiced Revenue</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 shrink-0">
+                      {revenueMonthsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      Months
+                    </span>
+                  </div>
+                  <div className="text-xl font-bold text-emerald-700 mt-1">{formatPKR(currentMonthRevenue)}</div>
+                  <div className="text-[10px] text-emerald-700 font-semibold mt-0.5">
+                    {currentMonthLabel} · lifetime {formatPKR(totalBilled)}
+                  </div>
+                </button>
                 <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
                   <div className="text-xs text-indigo-700 font-semibold">Outstanding Balance</div>
                   <div className="text-xl font-bold text-indigo-700 mt-1">{formatPKR(totalUnpaid)}</div>
                 </div>
               </div>
+
+              {/* The cases card's drill-in: the same months TAB 2 groups, read
+                  as an index here. A month row opens its cases; a case opens
+                  the same detail modal that tab uses. */}
+              {casesMonthsOpen && (
+                <div role="region" aria-label="Month-by-month case history" className="rounded-xl ring-1 ring-ds-line bg-ds-surface/40 overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-ds-line">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Case history</span>
+                    <span className="text-[10px] font-semibold text-ink-muted">
+                      {currentMonthLabel} started at 0 — prior months stay one click away.
+                    </span>
+                  </div>
+                  {casesByMonth.length === 0 ? (
+                    <p className="px-4 py-6 text-center text-xs font-semibold text-ds-ink">
+                      No case has been booked for this clinic yet.
+                    </p>
+                  ) : (
+                    <ul>
+                      {casesByMonth.map((g) => {
+                        const open = openCasesMonth === g.key;
+                        const isCurrent = g.key === currentMonthKey;
+                        return (
+                          <li key={g.key} className="border-b border-ds-line last:border-b-0">
+                            <button
+                              type="button"
+                              onClick={() => setOpenCasesMonth(open ? null : g.key)}
+                              aria-expanded={open}
+                              className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left cursor-pointer transition-colors ${open ? 'bg-ds-surface/70' : 'hover:bg-ds-surface/60'}`}
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                {open ? <ChevronDown className="w-3.5 h-3.5 text-ink-muted shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-ink-muted shrink-0" />}
+                                <span className="font-semibold text-ds-ink">{g.label}</span>
+                                {isCurrent && (
+                                  <span className="px-1.5 py-px rounded-full border border-ds-line bg-ds-surface text-[10px] font-bold text-ds-ink shrink-0">
+                                    This month
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-right shrink-0">
+                                <span className="block font-mono font-bold text-ds-ink">{g.cases.length}</span>
+                                <span className="block text-[10px] font-semibold text-ink-muted">
+                                  case{g.cases.length === 1 ? '' : 's'}
+                                </span>
+                              </span>
+                            </button>
+                            {open && (
+                              <ul className="bg-ds-sunken/40 px-4 pt-1 pb-2.5 space-y-1">
+                                {g.cases.map((c) => (
+                                  <li key={c.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedCaseForDetail(c)}
+                                      title="Open the case detail"
+                                      className="w-full flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-left cursor-pointer hover:bg-ds-surface/70"
+                                    >
+                                      <span className="font-mono font-bold text-ds-ink text-xs">{c.case_number}</span>
+                                      <span className="text-[11px] text-ink-body truncate">{c.patient_name || 'No patient name'}</span>
+                                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border capitalize ${getStatusBadge(c.status)}`}>
+                                        {c.status.replace('_', ' ')}
+                                      </span>
+                                      <span className="font-mono font-bold text-ds-ink text-xs">{formatPKR(c.final_price || 0)}</span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
+                      <li className="flex items-center justify-between gap-2 px-4 py-2 border-t-2 border-ds-line text-[11px] font-bold text-ds-ink">
+                        <span>Lifetime</span>
+                        <span className="font-mono">{labCases.length}</span>
+                      </li>
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* The revenue card's drill-in: every month this clinic was
+                  billed, newest first. A month row opens its bills; a bill
+                  opens the same statement modal the ledger uses. */}
+              {revenueMonthsOpen && (
+                <div role="region" aria-label="Month-by-month billed history" className="rounded-xl border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-emerald-200">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Billed history</span>
+                    <span className="text-[10px] font-semibold text-emerald-700">
+                      A new month starts at PKR 0 — prior months stay one click away.
+                    </span>
+                  </div>
+                  {revenueByMonth.length === 0 ? (
+                    <p className="px-4 py-6 text-center text-xs font-semibold text-emerald-700">
+                      No invoice has been billed to this clinic yet.
+                    </p>
+                  ) : (
+                    <ul>
+                      {revenueByMonth.map((g) => {
+                        const open = openRevenueMonth === g.key;
+                        return (
+                          <li key={g.key} className="border-b border-emerald-100 last:border-b-0">
+                            <button
+                              type="button"
+                              onClick={() => setOpenRevenueMonth(open ? null : g.key)}
+                              aria-expanded={open}
+                              className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left cursor-pointer transition-colors ${open ? 'bg-emerald-50' : 'hover:bg-emerald-50/70'}`}
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                {open ? <ChevronDown className="w-3.5 h-3.5 text-emerald-700 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-emerald-700 shrink-0" />}
+                                <span className="font-semibold text-emerald-700">{g.label}</span>
+                                {g.isCurrent && (
+                                  <span className="px-1.5 py-px rounded-full border border-emerald-200 bg-white text-[10px] font-bold text-emerald-700 shrink-0">
+                                    This month
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-right shrink-0">
+                                <span className="block font-mono font-bold text-emerald-700">{formatPKR(g.total)}</span>
+                                <span className="block text-[10px] font-semibold text-emerald-700">
+                                  {g.count} invoice{g.count === 1 ? '' : 's'}
+                                </span>
+                              </span>
+                            </button>
+                            {open && (
+                              <ul className="bg-white/60 px-4 pt-1 pb-2.5 space-y-1">
+                                {g.invoices.map((inv) => {
+                                  const due = invoiceBalanceDue(inv);
+                                  const state = due <= 0 ? 'Full' : (inv.amount_paid || 0) > 0 ? 'Partial' : 'Unpaid';
+                                  return (
+                                    <li key={inv.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedInvoiceModal(inv)}
+                                        title="Open the invoice statement"
+                                        className="w-full flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-left cursor-pointer hover:bg-emerald-50"
+                                      >
+                                        <span className="font-mono font-bold text-ds-ink text-xs">{inv.invoice_number}</span>
+                                        <span className="text-[11px] text-ink-body truncate">{inv.case_number || '\u2014'}</span>
+                                        <span className="text-[11px] font-semibold text-ink-body">{state}</span>
+                                        <span className="font-mono font-bold text-ds-ink text-xs">{formatPKR(inv.final_amount)}</span>
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
+                      <li className="flex items-center justify-between gap-2 px-4 py-2 border-t-2 border-emerald-200 text-[11px] font-bold text-emerald-700">
+                        <span>Lifetime</span>
+                        <span className="font-mono">{formatPKR(totalBilled)}</span>
+                      </li>
+                    </ul>
+                  )}
+                </div>
+              )}
 
               {/* Clinic Info Form / View */}
               {isEditing ? (

@@ -70,6 +70,21 @@ const BALANCE_ROW_PX = 25;
 const BALANCE_NOTE_PX = 20;
 
 /**
+ * The bank transfer block on the closing sheet: heading + the up-to-three
+ * bank lines + box padding + bottom margin + border, exactly as the invoice
+ * block prints. Its lines come from the same branding record the invoice
+ * prints; the block is charged only when it prints (closing sheet, section
+ * enabled, bank name saved) — an unpriced block pushes closing rows onto a
+ * fresh sheet the way the unpriced totals block once did.
+ *
+ * MEASURED on the rendered sheet at 100% zoom: 90px box with all four lines
+ * (border, padding, 10px heading, name·title, A/C, IBAN) + its 16px bottom
+ * margin = 106px. The charger counts the worst common shape; a statement
+ * with fewer bank fields prints a shorter block and keeps the headroom.
+ */
+export const BANK_BLOCK_PX = 106;
+
+/**
  * The totals block at its worst: every optional line present.
  *
  * Exported because the sheet budget has to have a default for callers that do
@@ -183,6 +198,8 @@ export const sheetBudgetPx = (
     withBalance?: boolean;
     /** Exact height of the totals block, from `balanceBlockPx`. */
     balancePx?: number;
+    /** The bank transfer block prints on this sheet too (closing page only). */
+    withBank?: boolean;
   },
 ): number => {
   const paper = printSettings?.paper || 'a4';
@@ -190,6 +207,7 @@ export const sheetBudgetPx = (
   let budget = height - PAGE_PADDING_PX - SHEET_CHROME_PX;
   if (opts?.continued) budget -= CONTINUED_LINE_PX;
   if (opts?.withBalance) budget -= opts.balancePx ?? BALANCE_BLOCK_PX;
+  if (opts?.withBank) budget -= BANK_BLOCK_PX;
   return Math.floor(budget / fontScale(printSettings?.fontSize));
 };
 
@@ -298,6 +316,12 @@ export const paginateStatementInvoices = (
    * costs a statement with neither two rows of table on its last sheet.
    */
   accountPosition?: InvoiceAccountPosition | null,
+  /**
+   * The bank transfer block prints on the closing sheet (section on and bank
+   * details saved). Charged only on that sheet, exactly like the totals
+   * block, so the budget never pays for a block that does not print.
+   */
+  withBank = false,
 ): StatementPage<Invoice>[] => {
   if (invoices.length === 0) return [];
   const weightOf = (inv: Invoice) => rowHeightPx(inv, cases);
@@ -309,6 +333,7 @@ export const paginateStatementInvoices = (
         continued: p > 0,
         withBalance: p === pageCount - 1,
         balancePx,
+        withBank: withBank && p === pageCount - 1,
       })
     );
     const pages = fillSheets(invoices, weightOf, budgets);

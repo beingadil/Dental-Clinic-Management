@@ -7,6 +7,7 @@ import {
   ROW_PX_BARE,
   DETAIL_LINE_PX,
   BALANCE_BLOCK_PX,
+  BANK_BLOCK_PX,
   balanceBlockPx,
 } from '../../src/services/statementPagination';
 import type { Invoice, DentalCase } from '../../src/types';
@@ -133,6 +134,21 @@ describe('sheetBudgetPx', () => {
     expect(sheetBudgetPx(undefined, {})).toBe(sheetBudgetPx({ paper: 'a4', fontSize: 'normal' }, {}));
     expect(fontScale(undefined)).toBe(1);
   });
+
+  it('charges the bank block only on a sheet that prints it', () => {
+    // Same shape as the totals-block charge: mid-run sheets never pay for the
+    // closing page's bank block.
+    const continued = sheetBudgetPx({ paper: 'a4' }, { continued: true });
+    const withBank = sheetBudgetPx({ paper: 'a4' }, { continued: true, withBank: true });
+    expect(continued - withBank).toBe(BANK_BLOCK_PX);
+    // And it stacks with the totals block on the closing sheet.
+    const finalNoBank = sheetBudgetPx({ paper: 'a4' }, { withBalance: true, balancePx: balanceBlockPx(null) });
+    const finalWithBank = sheetBudgetPx(
+      { paper: 'a4' },
+      { withBalance: true, withBank: true, balancePx: balanceBlockPx(null) },
+    );
+    expect(finalNoBank - finalWithBank).toBe(BANK_BLOCK_PX);
+  });
 });
 
 describe('paginateStatementInvoices', () => {
@@ -256,6 +272,38 @@ describe('paginateStatementInvoices', () => {
     expect(
       paginateStatementInvoices([...invoices, invoice('extra')], [], settings),
     ).toHaveLength(2);
+  });
+
+  it('moves rows (not the bank block) when the bank prints on the closing sheet', () => {
+    // The same boundary run as the totals test: exact single-sheet fill when
+    // the bank block does not print. Turn the bank block on and the closing
+    // sheet owns BANK_BLOCK_PX less, so the run spills — rows move, the block
+    // never pushes past the bottom of the paper.
+    const settings = { paper: 'a4' as const, fontSize: 'normal' as const };
+    const balancePx = balanceBlockPx(null);
+    const rowsOnTotalsSheet = Math.floor(
+      sheetBudgetPx(settings, { withBalance: true, balancePx }) / ROW_PX_BARE,
+    );
+    const invoices = Array.from({ length: rowsOnTotalsSheet }, (_, i) => invoice(String(i)));
+    expect(
+      paginateStatementInvoices(invoices, [], settings, null, true).length,
+    ).toBeGreaterThan(
+      paginateStatementInvoices(invoices, [], settings, null, false).length,
+    );
+    // Every row is still on the run, and every sheet still fits its own budget.
+    const pages = paginateStatementInvoices(invoices, [], settings, null, true);
+    expect(pages.flatMap((p) => p.rows).map((i) => i.id)).toEqual(invoices.map((i) => i.id));
+    expect(
+      pages.every((page, i) => {
+        const budget = sheetBudgetPx(settings, {
+          continued: i > 0,
+          withBalance: i === pages.length - 1,
+          balancePx,
+          withBank: i === pages.length - 1,
+        });
+        return page.rows.reduce((s, inv) => s + rowHeightPx(inv, []), 0) <= budget;
+      }),
+    ).toBe(true);
   });
 
   it('gives an oversized row its own page instead of dropping it', () => {

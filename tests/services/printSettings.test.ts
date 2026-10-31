@@ -7,6 +7,9 @@ import {
   savePrintSettings,
   loadDocumentSections,
   saveDocumentSections,
+  setStatementBankExcluded,
+  isStatementBankExcluded,
+  loadStatementSectionsAdoptingBank,
   DEFAULT_PRINT_SETTINGS,
   type PrintSettings,
 } from '../../src/services/printSettings';
@@ -75,5 +78,83 @@ describe('printSettings persistence (B1/F1)', () => {
       JSON.stringify(JSON.stringify(['items'])),
     ]);
     expect(loadDocumentSections('invoice', ['header', 'items'])).toEqual(['items']);
+  });
+});
+
+/**
+ * The statement's `bank` section was added after operators were already saving
+ * section lists, so a stored list without it is ambiguous: saved-before-it-
+ * existed (adopt) or deliberately unticked (never resurrect). The marker row
+ * is the tiebreaker; these tests pin both directions of the reload story.
+ *
+ * Fixtures mirror the one real caller (PrintInvoicesView): the fallback is
+ * DEFAULT_ENABLED.statement — the full section catalog, bank included — and a
+ * legacy stored list is the same catalog with `bank` missing, because
+ * `loadDocumentSections` filters stored ids through the fallback it is given.
+ */
+describe('statement bank option (adopt / deliberate exclusion)', () => {
+  /* The catalog as it recurs on Settings → Print and the print screens. */
+  const FALLBACK = ['brand', 'docTitle', 'statementFor', 'period', 'invoiceTable', 'balanceSummary', 'bank', 'footer'];
+  /* What lists saved before the bank option existed look like: same catalog, no bank. */
+  const LEGACY = FALLBACK.filter((s) => s !== 'bank');
+
+  const readMarker = (): string | null => {
+    const row = getDatabase().get<{ value: string }>(
+      'SELECT value FROM settings WHERE namespace = ? AND key = ?',
+      ['print', 'sections_statement_bank'],
+    );
+    if (!row) return null;
+    try { return String(JSON.parse(row.value)); } catch { return String(row.value); }
+  };
+
+  it('adopts the bank section onto stored lists that predate it, persisting the adoption', () => {
+    saveDocumentSections('statement', [...LEGACY]);
+    const adopted = loadStatementSectionsAdoptingBank(FALLBACK, true);
+    // `bank` joins the list (appended; the stored order is normalized to the
+    // catalog order on every read, checked below), once and only once.
+    expect(adopted).toHaveLength(FALLBACK.length);
+    expect([...adopted].sort()).toEqual([...FALLBACK].sort());
+    expect(adopted.filter((s) => s === 'bank')).toHaveLength(1);
+    // Persisted: a plain load sees it too, in catalog order (Settings and the
+    // preview agree).
+    expect(loadDocumentSections('statement', FALLBACK)).toEqual(FALLBACK);
+    // The loader stamps the list itself; the deliberate-exclusion marker is
+    // only written at UI transitions (bank added over a bank-less list), not
+    // on every adopt.
+    expect(readMarker()).toBeNull();
+  });
+
+  it('does not adopt when the branding record has no bank data to print', () => {
+    saveDocumentSections('statement', [...LEGACY]);
+    expect(loadStatementSectionsAdoptingBank(FALLBACK, false)).toEqual(LEGACY);
+    expect(loadDocumentSections('statement', FALLBACK)).toEqual(LEGACY);
+    expect(readMarker()).toBeNull();
+  });
+
+  it('never re-adopts a bank the operator excluded deliberately', () => {
+    saveDocumentSections('statement', [...LEGACY]);
+    setStatementBankExcluded(true);
+    expect(isStatementBankExcluded()).toBe(true);
+    expect(readMarker()).toBe('off');
+    expect(loadStatementSectionsAdoptingBank(FALLBACK, true)).toEqual(LEGACY);
+    // And nothing was written back behind the operator's back.
+    expect(loadDocumentSections('statement', FALLBACK)).toEqual(LEGACY);
+  });
+
+  it('clears the exclusion when the bank is added back', () => {
+    setStatementBankExcluded(true);
+    setStatementBankExcluded(false);
+    expect(isStatementBankExcluded()).toBe(false);
+    expect(readMarker()).toBe('on');
+    saveDocumentSections('statement', [...LEGACY]);
+    const adopted = loadStatementSectionsAdoptingBank(FALLBACK, true);
+    expect(adopted).toHaveLength(FALLBACK.length);
+    expect([...adopted].sort()).toEqual([...FALLBACK].sort());
+  });
+
+  it('leaves a list that already carries bank exactly as stored', () => {
+    saveDocumentSections('statement', [...FALLBACK]);
+    expect(loadStatementSectionsAdoptingBank(FALLBACK, true)).toEqual(FALLBACK);
+    expect(readMarker()).toBeNull();
   });
 });

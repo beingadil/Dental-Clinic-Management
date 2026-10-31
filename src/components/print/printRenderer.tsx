@@ -67,6 +67,7 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'period', label: 'Statement period', hint: 'Date range' },
     { id: 'invoiceTable', label: 'Invoice ledger table', hint: 'Invoices + the case each bills' },
     { id: 'balanceSummary', label: 'Balance summary', hint: 'Totals & outstanding' },
+    { id: 'bank', label: 'Bank payment details', hint: 'Closing page · edited on the print screen' },
     { id: 'footer', label: 'Page footer', hint: 'Contact line' },
   ],
 };
@@ -903,6 +904,22 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                   </tr>
                 </tbody>
               </table>
+            </div>
+          )}
+          {/* Bank block on the closing sheet, under the balance the block is
+              there to settle: `showBalance` is true only on the final page of
+              a batch run, so mid-run sheets never carry it. Its lines come
+              from the same branding record the invoice prints, and it costs
+              its measured height in statementPagination (BANK_BLOCK_PX) — an
+              unpriced block pushes closing rows onto a fresh sheet. */}
+          {on(sections, 'bank') && lab.bankName && showBalance && (
+            <div className="flex justify-end mb-4">
+              <div className="border border-slate-400 rounded p-3 text-[10px] text-slate-700 w-72">
+                <div className="font-bold uppercase tracking-wider text-slate-500 mb-1">Bank Transfer Details</div>
+                <div>{lab.bankName}{lab.bankAccountTitle ? ` · ${lab.bankAccountTitle}` : ''}</div>
+                {lab.bankAccountNumber && <div>A/C: {lab.bankAccountNumber}</div>}
+                {lab.bankIban && <div>IBAN: {lab.bankIban}</div>}
+              </div>
             </div>
           )}
         </>
