@@ -1,3 +1,26 @@
+## [2.31.6] - 2026-10-31
+
+The invoice print screen edits its own paper chrome in place, and the clinic
+tab's revenue and workload figures become month stories one click deep.
+
+### Added
+- Print Invoices gains a "Sections" band with the section picker and a bank
+  details editor, so the statement's header, footer and bank block are toggled
+  and saved on the print screen itself — the same stored lists Settings →
+  Print writes, one source of truth on both surfaces.
+- Once a bank name is saved the block is included by default; removing it
+  later records a deliberate exclusion that survives reloads instead of being
+  re-adopted.
+- Clinic General Info: the Total Invoiced Revenue and Total Cases Handled
+  cards are clickable. Each headline shows the current month alone (a new
+  month starts at zero) and expands into a month-by-month history — bills
+  open the invoice statement, cases open the case detail.
+
+### Fixed
+- The statement paginator charges the bank block it is about to print, so a
+  closing sheet can never push rows past the bottom of the paper (measured at
+  106px at 100% zoom).
+
 ## [2.31.5] - 2026-10-31
 
 The glass pass reaches the clinic files and the case form, long dropdowns are
