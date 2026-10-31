@@ -4,6 +4,7 @@ import { Invoice } from '../../types';
 import { PageHeader } from '../common/ui';
 import { REPORTS_TABS, labelOf, type ReportsTab } from '../common/financeTabs';
 import { GeneralLedgerView } from '../billing/GeneralLedgerView';
+import { InsightsView } from '../insights/InsightsView';
 import { BillingReportsView } from '../billing/BillingReportsView';
 import { JournalEntryModal } from '../billing/JournalEntryModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
@@ -48,6 +49,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ activeTab }) => {
       {activeTab === 'general_ledger' && (
         <GeneralLedgerView />
       )}
+
+      {activeTab === 'insights' && <InsightsView />}
 
       {activeTab === 'statements' && (
         <BillingReportsView

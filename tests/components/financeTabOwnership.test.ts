@@ -145,7 +145,7 @@ describe('finance tab ownership', () => {
   it('pins the finance surface to the tabs each view is supposed to own', () => {
     const expected: Record<string, string[]> = {
       BillingView: ['invoices'],
-      ReportsView: ['general_ledger', 'statements'],
+      ReportsView: ['general_ledger', 'insights', 'statements'],
     };
 
     const findings: string[] = [];
