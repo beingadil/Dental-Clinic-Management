@@ -69,6 +69,7 @@
   --p-cyan-100: #cffafe;
   --p-cyan-500: #06b6d4;
   --p-cyan-600: #0891b2;
+  --p-cyan-700: #0e7490;
 
   --p-white: #ffffff;
 }
@@ -110,6 +111,10 @@
 
   --ds-dispatch: var(--p-cyan-500);
   --ds-dispatch-soft: var(--p-cyan-50);
+  /* Ink, like every other status hue. A 500-step cyan on its own 50-step tint
+     measured 2.33:1 — readable as a dot, not as text — so fills and chips pull
+     the 700 step, exactly as qc/pos/warn/risk already do. */
+  --ds-dispatch-ink: var(--p-cyan-700);
 
   /* Inverse surface for the closing brand bar */
   --ds-inverse: var(--p-slate-950);
@@ -209,6 +214,7 @@
   --color-ds-qc-ink: var(--ds-qc-ink);
   --color-ds-dispatch: var(--ds-dispatch);
   --color-ds-dispatch-soft: var(--ds-dispatch-soft);
+  --color-ds-dispatch-ink: var(--ds-dispatch-ink);
   --color-ds-inverse: var(--ds-inverse);
   --color-ds-inverse-soft: var(--ds-inverse-soft);
 

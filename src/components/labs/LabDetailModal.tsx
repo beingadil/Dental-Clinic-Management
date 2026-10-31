@@ -1,5 +1,5 @@
 import { formatPKR } from '../../services/financeDomain';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { canPost, deniedTooltip } from '../../services/permissions';
 import { getDaysOffsetStr } from '../../utils/dateUtils';
@@ -106,13 +106,26 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
     ];
   }, [deletionImpact]);
 
-  // All cases for this lab, ALWAYS sorted MOST RECENT FIRST
+  /* The date a case was ENTERED at the clinic, as YYYY-MM-DD.
+
+     This is `received_date` — the day the work actually arrived — not
+     `created_at`. Every case in an imported or seeded set shares one
+     `created_at` (the moment the rows were written), so sorting and grouping by
+     it put the entire history in a single "today" month, in whatever order the
+     rows happened to be read. `received_date` is the date the operator typed on
+     the case, which is the date they think in. */
+  const entryDate = (c: DentalCase): string =>
+    (c.received_date || c.created_at || '').slice(0, 10);
+
+  // All cases for this lab, most recently ENTERED first.
   const allLabCases = cases
     .filter((c) => c.lab_id === lab.id)
     .sort((a, b) => {
-      const timeA = new Date(a.created_at || a.delivery_date).getTime();
-      const timeB = new Date(b.created_at || b.delivery_date).getTime();
-      return timeB - timeA; // Descending: Most recent first
+      const byEntry = entryDate(b).localeCompare(entryDate(a));
+      if (byEntry !== 0) return byEntry;
+      /* Same day: the higher case number is the later one, because numbers are
+         minted in order. Without this a day's cases came back in read order. */
+      return (b.case_number || '').localeCompare(a.case_number || '', undefined, { numeric: true });
     });
 
   /* Search across everything an operator might actually type.
@@ -139,6 +152,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
         c.status,
         c.priority,
         c.delivery_date,
+        entryDate(c),
         (c.selected_teeth || []).map((t) => `#${t}`).join(' '),
       ]
         .filter(Boolean)
@@ -165,31 +179,29 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
     });
   }, [allLabCases, caseHaystack, caseQuery]);
 
-  // Cases-tab month boxes: clicking a month reveals that month's entries.
-  // Expanded state persists per clinic in localStorage so the operator does
-  // not have to re-expand boxes on every visit.
-  const [expandedMonthKeys, setExpandedMonthKeys] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(`dental-cases-expanded:${lab.id}`);
-      if (raw) return JSON.parse(raw) as string[];
-    } catch { /* best-effort */ }
-    return [];
-  });
+  /* Cases-tab month boxes: clicking a month reveals that month's entries.
+
+     They always start CLOSED. Auto-opening the newest month meant every clinic
+     visit dumped its full case list into the panel before the operator had read
+     a thing — on a busy clinic that is sixty rows of scroll between them and the
+     ledger. The month boxes ARE the summary; opening one is a deliberate act. */
+  const [expandedMonthKeys, setExpandedMonthKeys] = useState<string[]>([]);
 
   const toggleMonth = (key: string) => {
-    setExpandedMonthKeys((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-      try { localStorage.setItem(`dental-cases-expanded:${lab.id}`, JSON.stringify(next)); } catch { /* best-effort */ }
-      return next;
-    });
+    setExpandedMonthKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
   };
 
-  /* All cases for this lab, grouped by month (newest month first). Each month
-     is a box the operator clicks to reveal that month's case entries. */
+  /* All cases for this lab, grouped by the month they were ENTERED (newest
+     month first). Each month is a box the operator clicks to reveal that
+     month's case entries. */
   const casesByMonth = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; cases: typeof labCases; latest: number }>();
     for (const c of labCases) {
-      const d = new Date(c.created_at || c.delivery_date);
+      /* Parsed at local midnight: parsing a bare "YYYY-MM-DD" as UTC would
+         push a 1st-of-the-month case into the previous month in +05:00. */
+      const d = new Date(`${entryDate(c)}T00:00:00`);
       const ts = isNaN(d.getTime()) ? 0 : d.getTime();
       const key = ts === 0 ? 'undated' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = ts === 0 ? 'Undated' : d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
@@ -201,12 +213,11 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
     return Array.from(groups.values()).sort((a, b) => b.latest - a.latest);
   }, [labCases]);
 
-  // Open newest month by default only when state is empty and months exist.
-  useEffect(() => {
-    if (expandedMonthKeys.length === 0 && casesByMonth.length > 0) {
-      setExpandedMonthKeys([casesByMonth[0].key]);
-    }
-  }, [casesByMonth]);
+  /* Month boxes start CLOSED. An earlier version auto-opened the newest month,
+     which meant every clinic visit immediately dumped sixty case rows into the
+     panel and the operator had to collapse it before they could read anything.
+     The boxes are the summary; what the operator expands is what they wanted to
+     see. Only what they expanded is remembered (localStorage above). */
 
   /* These must agree with the General Ledger, which is derived from
      buildLabFinancialSummary (invoices + payments + advances + adjustments +
@@ -296,41 +307,41 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       case 'hold':
         return 'bg-rose-50 text-rose-700 border-rose-200';
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+        return 'bg-ds-sunken text-ds-body border-ds-line';
     }
   };
 
   return (
     <div className={`fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center ${isFullScreen ? 'p-0' : 'p-2 sm:p-4 md:p-6'} overflow-y-auto`}>
-      <div className={`bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all duration-150 ${
+      <div className={`ds-glass-pane overflow-hidden flex flex-col transition-all duration-150 ${
         isFullScreen 
           ? 'w-full h-full max-w-none max-h-screen rounded-none' 
           : 'w-full max-w-[98vw] xl:max-w-[1600px] 2xl:max-w-[1800px] max-h-[96vh] rounded-2xl my-auto'
       }`}>
         {/* Header */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+        <div className="bg-transparent text-ds-ink px-6 py-4 flex items-center justify-between shrink-0 border-b border-ds-line">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-              <Building2 className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-ds-sunken border border-ds-line flex items-center justify-center text-ds-ink font-bold text-lg">
+              <Building2 className="w-5 h-5 text-ds-ink" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-bold text-base md:text-lg text-white">{lab.name}</h2>
+                <h2 className="font-bold text-base md:text-lg text-ds-ink">{lab.name}</h2>
               </div>
-              <p className="text-xs text-slate-300">Doctor: {lab.contact_person || '—'} • Phone: {lab.phone || '—'}</p>
+              <p className="text-xs text-ink-muted">Doctor: {lab.contact_person || '—'} • Phone: {lab.phone || '—'}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsFullScreen(!isFullScreen)}className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              onClick={() => setIsFullScreen(!isFullScreen)}className="ds-glass-button p-2 text-ink-muted hover:text-ds-ink cursor-pointer"
                 title={isFullScreen ? "Restore Window Size" : "Full Screen Mode"}
             >
               {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </button>
             <button
-              onClick={onClose}className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              onClick={onClose}className="ds-glass-button p-2 text-ink-muted hover:text-ds-ink cursor-pointer"
                 title="Close"
             >
               <X className="w-5 h-5" />
@@ -339,7 +350,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
         </div>
 
         {/* Tab Navigation - Single Solid Color Architecture */}
-        <div className="bg-slate-50 border-b border-slate-200 px-6 flex items-center gap-1 overflow-x-auto shrink-0 pt-1">
+        <div className="bg-transparent border-b border-ds-line px-6 flex items-center gap-1 overflow-x-auto shrink-0 pt-1">
           {[
             { id: 'cases', label: `Clinic Cases (${caseQuery ? labCases.length : allLabCases.length})`, icon: FolderOpen },
             /* The SAME General Ledger the Analytics & Reports tab renders, not a
@@ -360,8 +371,8 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
                   isActive
-                    ? 'border-slate-900 text-slate-900 bg-white shadow-2xs'
-                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                    ? 'border-brand-600 text-ds-ink bg-ds-surface/60'
+                    : 'border-transparent text-ink-muted hover:text-ds-ink hover:bg-ds-surface/60'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -378,12 +389,12 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
           {activeTab === 'cases' && (
             <div className="space-y-4">
               {/* Header & Quick Add */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-ds-surface/40 p-4 rounded-xl ring-1 ring-ds-line">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">
+                  <h3 className="text-sm font-bold text-ds-ink">
                     All Cases for {lab.name}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-ink-muted mt-0.5">
                     Sorted with the most recent case first. Search by patient, case number, doctor,
                     material, shade or delivery date.
                   </p>
@@ -391,7 +402,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <button
                   type="button"
                   onClick={() => setIsCreatingNewCase(true)}
-                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer transition-all"
+                  className="ds-glass-pill font-semibold text-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
                 >
                   <PlusCircle className="w-4 h-4" />
                   <span>New Case for this Lab</span>
@@ -411,21 +422,21 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                       onChange={(e) => setCaseSearch(e.target.value)}
                       placeholder="Search cases — patient, case number, doctor, material, shade…"
                       aria-label="Search cases for this clinic"
-                      className="w-full pl-9 pr-9 py-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:border-slate-500 focus:ring-2 focus:ring-slate-200 outline-none"
+                      className="w-full pl-9 pr-9 py-2.5 text-xs bg-ds-surface/70 border border-ds-line rounded-xl focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 outline-none"
                     />
                     {caseSearch && (
                       <button
                         type="button"
                         onClick={() => setCaseSearch('')}
                         aria-label="Clear search"
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded text-ink-muted hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded text-ink-muted hover:text-ds-ink hover:bg-ds-sunken cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
                   {caseQuery && (
-                    <span className="text-xs font-semibold text-slate-600 whitespace-nowrap tabular-nums">
+                    <span className="text-xs font-semibold text-ink-body whitespace-nowrap tabular-nums">
                       {labCases.length} of {allLabCases.length}
                     </span>
                   )}
@@ -435,12 +446,12 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               {/* Case Cards List */}
               {labCases.length === 0 ? (
                 allLabCases.length === 0 ? (
-                  <div className="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
-                    <p className="text-xs text-slate-500 font-medium">No dental cases currently recorded for this lab.</p>
+                  <div className="p-10 text-center bg-ds-surface/40 rounded-xl border border-dashed border-ds-line space-y-3">
+                    <p className="text-xs text-ink-muted font-medium">No dental cases currently recorded for this lab.</p>
                     <button
                       type="button"
                       onClick={() => setIsCreatingNewCase(true)}
-                      className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800 cursor-pointer inline-flex items-center gap-1.5"
+                      className="ds-glass-pill text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5"
                     >
                       <PlusCircle className="w-4 h-4" /> Create First Case
                     </button>
@@ -449,14 +460,14 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   /* Empty because the search matched nothing — a different state
                      from "this clinic has no cases", and offering "Create First
                      Case" here would be wrong. */
-                  <div className="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
-                    <p className="text-xs text-slate-600 font-medium">
-                      No case matches <span className="font-mono font-bold text-slate-900">"{caseSearch.trim()}"</span>.
+                  <div className="p-10 text-center bg-ds-surface/40 rounded-xl border border-dashed border-ds-line space-y-3">
+                    <p className="text-xs text-ink-body font-medium">
+                      No case matches <span className="font-mono font-bold text-ds-ink">"{caseSearch.trim()}"</span>.
                     </p>
                     <button
                       type="button"
                       onClick={() => setCaseSearch('')}
-                      className="px-4 py-2 bg-white text-slate-700 border border-slate-300 text-xs font-semibold rounded-xl hover:bg-slate-50 cursor-pointer"
+                      className="ds-glass-pill ds-glass-pill-sm font-semibold cursor-pointer"
                     >
                       Clear search
                     </button>
@@ -471,16 +482,16 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                         <button
                           type="button"
                           onClick={() => toggleMonth(group.key)}
-                          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200 text-left cursor-pointer transition-colors hover:bg-slate-100"
+                          className="w-full flex items-center justify-between px-4 py-3 bg-ds-surface/40 border-b border-ds-line text-left cursor-pointer transition-colors hover:bg-ds-surface/60"
                         >
                           <div className="flex items-center gap-2">
                             {expanded ? (
-                              <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
+                              <ChevronDown className="w-4 h-4 text-ink-body shrink-0" />
                             ) : (
-                              <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                              <ChevronRight className="w-4 h-4 text-ink-body shrink-0" />
                             )}
-                            <span className="font-semibold text-slate-900">{group.label}</span>
-                            <span className="text-xs text-slate-500">{group.cases.length} {group.cases.length === 1 ? 'case' : 'cases'}</span>
+                            <span className="font-semibold text-ds-ink">{group.label}</span>
+                            <span className="text-xs text-ink-muted">{group.cases.length} {group.cases.length === 1 ? 'case' : 'cases'}</span>
                           </div>
                         </button>
                         {expanded && (
@@ -488,33 +499,34 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                             {group.cases.map((c) => {
                               const teethStr = c.selected_teeth?.length > 0 ? c.selected_teeth.map(t => `#${t}`).join(', ') : 'Full Arch';
                               return (
-                                <div key={c.id} className="p-4 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors">
+                                <div key={c.id} className="p-4 rounded-xl border border-ds-line hover:border-ds-line/60 bg-ds-surface/40 transition-colors">
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div className="space-y-1">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-mono font-bold text-sm text-slate-900">{c.case_number}</span>
-                                        <span className="text-sm font-semibold text-slate-800">{c.patient_name || <span className="text-slate-400 font-normal">No patient name</span>}</span>
+                                        <span className="font-mono font-bold text-sm text-ds-ink">{c.case_number}</span>
+                                        <span className="text-sm font-semibold text-ds-ink">{c.patient_name || <span className="text-ink-muted font-normal">No patient name</span>}</span>
                                         <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border capitalize ${getStatusBadge(c.status)}`}>{c.status.replace('_', ' ')}</span>
                                         {c.priority === 'urgent' && (
                                           <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold rounded-md uppercase">Urgent</span>
                                         )}
                                       </div>
-                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 pt-0.5">
+                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-body pt-0.5">
                                         <span><strong>Material:</strong> {c.case_type_name}</span>
                                         <span><strong>Doctor:</strong> {formatDoctorName(c.doctor_name)}</span>
                                         <span><strong>Teeth:</strong> <span className="font-mono">{teethStr}</span></span>
-                                        {c.shade && <span><strong>Shade:</strong> <span className="font-mono font-semibold text-slate-900">{c.shade}</span></span>}
-                                        <span className="flex items-center gap-1 text-slate-500"><Calendar className="w-3.5 h-3.5 text-slate-400" />Delivery: {c.delivery_date}</span>
+                                        {c.shade && <span><strong>Shade:</strong> <span className="font-mono font-semibold text-ds-ink">{c.shade}</span></span>}
+                                        <span className="flex items-center gap-1 text-ink-muted"><Calendar className="w-3.5 h-3.5 text-ink-muted" />Entered: {entryDate(c) || '—'}</span>
+                                        <span className="flex items-center gap-1 text-ink-muted"><Calendar className="w-3.5 h-3.5 text-ink-muted" />Delivery: {c.delivery_date}</span>
                                       </div>
                                     </div>
-                                    <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                                    <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-ds-line">
                                       <div className="text-left sm:text-right">
-                                        <div className="text-[10px] text-slate-500 font-bold uppercase">Case Fee</div>
-                                        <div className="text-sm font-bold text-slate-900 font-mono">{formatPKR(c.final_price || 0)}</div>
+                                        <div className="text-[10px] text-ink-muted font-bold uppercase">Case Fee</div>
+                                        <div className="text-sm font-bold text-ds-ink font-mono">{formatPKR(c.final_price || 0)}</div>
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        <button type="button" onClick={() => setSelectedCaseForSlip(c)} className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer" title="Print Job Card Slip"><Printer className="w-4 h-4" /></button>
-                                        <button type="button" onClick={() => setSelectedCaseForDetail(c)} className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1"><span>Details</span><ChevronRight className="w-3.5 h-3.5" /></button>
+                                        <button type="button" onClick={() => setSelectedCaseForSlip(c)} className="ds-glass-button p-2 text-ink-body hover:text-ds-ink cursor-pointer" title="Print Job Card Slip"><Printer className="w-4 h-4" /></button>
+                                        <button type="button" onClick={() => setSelectedCaseForDetail(c)} className="ds-glass-pill ds-glass-pill-sm font-semibold cursor-pointer flex items-center gap-1"><span>Details</span><ChevronRight className="w-3.5 h-3.5" /></button>
                                       </div>
                                     </div>
                                   </div>
@@ -536,9 +548,9 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             <div className="space-y-6">
               {/* Financial Metrics */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                  <div className="text-xs text-slate-500 font-semibold">Total Cases Handled</div>
-                  <div className="text-xl font-bold text-slate-900 mt-1">{labCases.length}</div>
+                <div className="p-4 bg-ds-surface/40 ring-1 ring-ds-line rounded-xl">
+                  <div className="text-xs text-ink-muted font-semibold">Total Cases Handled</div>
+                  <div className="text-xl font-bold text-ds-ink mt-1">{labCases.length}</div>
                 </div>
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <div className="text-xs text-emerald-700 font-semibold">Total Invoiced Revenue</div>
@@ -552,77 +564,77 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
 
               {/* Clinic Info Form / View */}
               {isEditing ? (
-                <form onSubmit={handleSaveInfo} className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase">Edit Dental Clinic Details</h4>
+                <form onSubmit={handleSaveInfo} className="space-y-4 bg-ds-surface/40 p-4 rounded-xl ring-1 ring-ds-line">
+                  <h4 className="text-xs font-bold text-ds-ink uppercase">Edit Dental Clinic Details</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Clinic Name *</label>
+                      <label className="block text-xs font-semibold text-ds-body mb-1">Clinic Name *</label>
                       <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                        className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                       />
                       {errors.name && <p className="text-[10px] text-rose-500 mt-0.5">{errors.name}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Doctor Name *</label>
+                      <label className="block text-xs font-semibold text-ds-body mb-1">Doctor Name *</label>
                       <input
                         type="text"
                         value={contactPerson}
                         onChange={(e) => setContactPerson(e.target.value)}
-                        className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                        className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                       />
                       {errors.contactPerson && <p className="text-[10px] text-rose-500 mt-0.5">{errors.contactPerson}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Phone <span className="font-normal text-ink-muted">(optional)</span></label>
+                      <label className="block text-xs font-semibold text-ds-body mb-1">Phone <span className="font-normal text-ink-muted">(optional)</span></label>
                       <input
                         type="text"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                        className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                       />
                       {errors.phone && <p className="text-[10px] text-rose-500 mt-0.5">{errors.phone}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email <span className="font-normal text-ink-muted">(optional)</span></label>
+                      <label className="block text-xs font-semibold text-ds-body mb-1">Email <span className="font-normal text-ink-muted">(optional)</span></label>
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                        className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                       />
                       {errors.email && <p className="text-[10px] text-rose-500 mt-0.5">{errors.email}</p>}
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Address <span className="font-normal text-ink-muted">(optional)</span></label>
+                    <label className="block text-xs font-semibold text-ds-body mb-1">Address <span className="font-normal text-ink-muted">(optional)</span></label>
                     <textarea
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       rows={2}
-                      className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                      className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                     />
                     {errors.address && <p className="text-[10px] text-rose-500 mt-0.5">{errors.address}</p>}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Special Clinic Notes</label>
+                    <label className="block text-xs font-semibold text-ds-body mb-1">Special Clinic Notes</label>
                     <textarea
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       rows={2}
-                      className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                      className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className="block text-xs font-semibold text-ds-body mb-1">
                       Opening Balance (PKR) <span className="font-normal text-ink-muted">— money owed before the system</span>
                     </label>
                     <div className="flex gap-2">
@@ -632,16 +644,16 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                         step="1"
                         value={openingBalance}
                         onChange={(e) => setOpeningBalance(e.target.value)}
-                        className="flex-1 p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                        className="flex-1 p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                       />
-                      <div className="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
+                      <div className="flex rounded-lg border border-ds-line overflow-hidden shrink-0">
                         <button
                           type="button"
                           onClick={() => setOpeningBalanceType('debit')}
                           className={`px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
                             openingBalanceType === 'debit'
                               ? 'bg-rose-50 text-rose-700'
-                              : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                              : 'bg-ds-sunken text-ink-muted hover:bg-ds-surface/70'
                           }`}
                         >
                           Debit
@@ -652,14 +664,14 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                           className={`px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
                             openingBalanceType === 'credit'
                               ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                              : 'bg-ds-sunken text-ink-muted hover:bg-ds-surface/70'
                           }`}
                         >
                           Credit
                         </button>
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-0.5">
+                    <p className="text-[10px] text-ink-muted mt-0.5">
                       {openingBalanceType === 'debit'
                         ? 'The clinic owed you this amount. Posts as a debit on the ledger.'
                         : 'You owed the clinic this amount. Posts as a credit on the ledger.'}
@@ -671,13 +683,13 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     <button
                       type="button"
                       onClick={() => setIsEditing(false)}
-                      className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
+                      className="px-3 py-1.5 bg-ds-line text-ds-body text-xs font-semibold rounded-lg cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors"
+                      className="ds-glass-pill ds-glass-pill-sm font-semibold cursor-pointer"
                     >
                       Save Info
                     </button>
@@ -686,49 +698,49 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               ) : (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Facility Information</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">Facility Information</h3>
                     <button
                       onClick={() => setIsEditing(true)}
-                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1 cursor-pointer"
+                      className="px-3 py-1 bg-ds-sunken hover:bg-ds-line text-ds-body text-xs font-semibold rounded-lg flex items-center gap-1 cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" /> Edit Information
                     </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
-                      <div className="flex items-center gap-2 text-slate-600 font-semibold">
+                    <div className="p-4 bg-ds-surface/40 ring-1 ring-ds-line rounded-xl space-y-2">
+                      <div className="flex items-center gap-2 text-ink-body font-semibold">
                         <Phone className="w-4 h-4 text-indigo-600" /> Phone: {lab.phone}
                       </div>
-                      <div className="flex items-center gap-2 text-slate-600 font-semibold">
+                      <div className="flex items-center gap-2 text-ink-body font-semibold">
                         <Mail className="w-4 h-4 text-indigo-600" /> Email: {lab.email}
                       </div>
                     </div>
 
-                    <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1">
-                      <div className="flex items-center gap-2 text-slate-600 font-semibold">
+                    <div className="p-4 bg-ds-surface/40 ring-1 ring-ds-line rounded-xl space-y-1">
+                      <div className="flex items-center gap-2 text-ink-body font-semibold">
                         <MapPin className="w-4 h-4 text-ink-success" /> Facility Address:
                       </div>
-                      <p className="text-slate-700 pl-6">{lab.address}</p>
+                      <p className="text-ds-body pl-6">{lab.address}</p>
                     </div>
                   </div>
 
                   {lab.notes && (
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                      <div className="font-semibold text-slate-800">Special Notes:</div>
-                      <p className="text-slate-600">{lab.notes}</p>
+                    <div className="p-4 bg-ds-surface/40 ring-1 ring-ds-line rounded-xl text-xs space-y-1">
+                      <div className="font-semibold text-ds-ink">Special Notes:</div>
+                      <p className="text-ink-body">{lab.notes}</p>
                     </div>
                   )}
 
                   <div className={`p-4 border rounded-xl text-xs space-y-1 ${
                     (lab.opening_balance || 0) > 0
                       ? (lab.opening_balance_type === 'credit' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200')
-                      : 'bg-slate-50 border-slate-200'
+                      : 'bg-ds-surface/60 border-ds-line'
                   }`}>
                     <div className={`font-semibold text-xs ${
                       (lab.opening_balance || 0) > 0
                         ? (lab.opening_balance_type === 'credit' ? 'text-emerald-800' : 'text-amber-800')
-                        : 'text-slate-500'
+                        : 'text-ink-muted'
                     }`}>
                       Opening Balance (PKR) — {(lab.opening_balance || 0) > 0
                         ? (lab.opening_balance_type === 'credit' ? 'Credit' : 'Debit')
@@ -737,14 +749,14 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                     <div className={`font-mono font-bold text-sm ${
                       (lab.opening_balance || 0) > 0
                         ? (lab.opening_balance_type === 'credit' ? 'text-emerald-900' : 'text-amber-900')
-                        : 'text-slate-400'
+                        : 'text-ink-muted'
                     }`}>
                       {formatPKR(lab.opening_balance || 0)}
                     </div>
                     <p className={`text-[11px] ${
                       (lab.opening_balance || 0) > 0
                         ? (lab.opening_balance_type === 'credit' ? 'text-emerald-700' : 'text-amber-700')
-                        : 'text-slate-500'
+                        : 'text-ink-muted'
                     }`}>
                       {(lab.opening_balance || 0) > 0
                         ? (lab.opening_balance_type === 'credit'
@@ -757,7 +769,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
               )}
 
               {/* Delete Zone */}
-              <div className="border-t border-slate-200 pt-4 flex justify-between items-center">
+              <div className="border-t border-ds-line pt-4 flex justify-between items-center">
                 <span className="text-xs text-ink-danger font-semibold">Danger Zone</span>
                 <button
                   onClick={() => { setDeleteModalOpen(true); setConfirmInput(""); }}
@@ -792,7 +804,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                   onClick={() => setShowAdjustmentModal(true)}
                   disabled={!(canPost(user, 'credit:issue') || canPost(user, 'refund:issue') || canPost(user, 'debit:issue'))}
                   title={!(canPost(user, 'credit:issue') || canPost(user, 'refund:issue') || canPost(user, 'debit:issue')) ? deniedTooltip : undefined}
-                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                  className="ds-glass-pill ds-glass-pill-sm disabled:opacity-50 font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
                   <PlusCircle className="w-3.5 h-3.5" />
                   Record Adjustment
@@ -904,14 +916,14 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       {/* Typed Confirmation DELETE Modal */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4">
+          <div className="ds-glass-pane rounded-2xl max-w-md w-full p-5 space-y-4">
             <div className="flex items-center gap-3 text-ink-danger">
               <ShieldAlert className="w-6 h-6 shrink-0" />
-              <h3 className="font-bold text-base text-slate-900">
+              <h3 className="font-bold text-base text-ds-ink">
                 Delete {lab.name} and everything under it?
               </h3>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-ink-body leading-relaxed">
               This permanently erases the clinic. Its case jobs, invoices and any recorded payments go
               with it. Nothing is kept in an archive and there is no undo.
             </p>
@@ -928,15 +940,15 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 <dl className="divide-y divide-rose-100">
                   {impactRows.filter((r) => r.count > 0).map((row) => (
                     <div key={row.label} className="px-3 py-1.5 flex items-center justify-between gap-3">
-                      <dt className="text-xs text-slate-700">{row.label}</dt>
-                      <dd className="text-xs font-mono font-bold text-slate-900 tabular-nums">
+                      <dt className="text-xs text-ds-body">{row.label}</dt>
+                      <dd className="text-xs font-mono font-bold text-ds-ink tabular-nums">
                         {row.count}
                         {row.money ? ` · ${formatPKR(row.money)}` : ''}
                       </dd>
                     </div>
                   ))}
                   {impactRows.every((r) => r.count === 0) && (
-                    <div className="px-3 py-2 text-xs text-slate-600">
+                    <div className="px-3 py-2 text-xs text-ink-body">
                       Nothing else is linked to this clinic.
                     </div>
                   )}
@@ -951,7 +963,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
             )}
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-bold text-ds-body mb-1">
                 Type <span className="text-ink-danger font-mono">DELETE</span> below:
               </label>
               <input
@@ -959,14 +971,14 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                 value={confirmInput}
                 onChange={(e) => setConfirmInput(e.target.value)}
                 placeholder="DELETE"
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg font-mono text-center font-bold"
+                className="w-full p-2.5 text-xs bg-ds-surface/60 border border-ds-line rounded-lg font-mono text-center font-bold"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => { setDeleteModalOpen(false); setConfirmInput(''); }}
-                className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
+                className="ds-glass-pill ds-glass-pill-sm text-ds-body font-semibold cursor-pointer"
               >
                 Cancel
               </button>

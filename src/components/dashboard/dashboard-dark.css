@@ -50,6 +50,7 @@
 
     --ds-dispatch: #22d3ee;
     --ds-dispatch-soft: #08222a;
+    --ds-dispatch-ink: #67e8f9;
 
     /* The brand bar inverts the other way on a dark theme: it stays the
        deepest surface so it still reads as a footer band. */

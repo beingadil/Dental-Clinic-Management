@@ -118,7 +118,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
       {/* Contacts Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ds-ink flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-ink-info" /> Key Lab Contacts ({contacts.length})
           </h3>
           <button
@@ -134,54 +134,54 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
             <h4 className="text-xs font-bold text-blue-900 uppercase">New Lab Contact Person</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Name *</label>
+                <label className="block text-xs font-semibold text-ds-body mb-1">Name *</label>
                 <input
                   type="text"
                   value={cName}
                   onChange={(e) => setCName(e.target.value)}
                   placeholder="e.g. Dr. Ayesha Malik"
-                  className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                  className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                 />
                 {contactErrs.name && <p className="text-[10px] text-rose-500 mt-0.5">{contactErrs.name}</p>}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Role / Designation</label>
+                <label className="block text-xs font-semibold text-ds-body mb-1">Role / Designation</label>
                 <input
                   type="text"
                   value={cRole}
                   onChange={(e) => setCRole(e.target.value)}
                   placeholder="e.g. Chief Prosthodontist"
-                  className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                  className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number *</label>
+                <label className="block text-xs font-semibold text-ds-body mb-1">Phone Number *</label>
                 <input
                   type="text"
                   value={cPhone}
                   onChange={(e) => setCPhone(e.target.value)}
                   placeholder="+92 300 5551234"
-                  className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                  className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                 />
                 {contactErrs.phone && <p className="text-[10px] text-rose-500 mt-0.5">{contactErrs.phone}</p>}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address *</label>
+                <label className="block text-xs font-semibold text-ds-body mb-1">Email Address *</label>
                 <input
                   type="email"
                   value={cEmail}
                   onChange={(e) => setCEmail(e.target.value)}
                   placeholder="name@lab.pk"
-                  className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                  className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                 />
                 {contactErrs.email && <p className="text-[10px] text-rose-500 mt-0.5">{contactErrs.email}</p>}
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs font-semibold text-ds-body cursor-pointer">
               <input
                 type="checkbox"
                 checked={cPrimary}
@@ -204,18 +204,18 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {contacts.map((c) => (
-            <div key={c.id} className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+            <div key={c.id} className="p-3 bg-ds-surface/60 rounded-xl border border-ds-line shadow-xs flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs text-slate-900">{c.name}</span>
+                  <span className="font-bold text-xs text-ds-ink">{c.name}</span>
                   {c.is_primary && (
                     <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[9px] font-extrabold rounded uppercase">
                       Primary
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">{c.role || 'Staff'}</div>
-                <div className="text-[11px] text-slate-600 mt-1 font-medium">{c.phone} • {c.email}</div>
+                <div className="text-[11px] text-ink-muted mt-0.5">{c.role || 'Staff'}</div>
+                <div className="text-[11px] text-ink-body mt-1 font-medium">{c.phone} • {c.email}</div>
               </div>
               <button
                 onClick={() => deleteLabContact(c.id)}
@@ -232,7 +232,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
       {/* Addresses Section */}
       <div className="space-y-3 pt-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ds-ink flex items-center gap-2">
             <MapPin className="w-4 h-4 text-ink-success" /> Lab Location Addresses ({addresses.length})
           </h3>
           <button
@@ -248,7 +248,7 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
             <h4 className="text-xs font-bold text-emerald-900 uppercase">New Address Details</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Address Type</label>
+                <label className="block text-xs font-semibold text-ds-body mb-1">Address Type</label>
                 <GlassSelect
                   value={aType}
                   onChange={(v) => setAType(v as any)}
@@ -263,13 +263,13 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Street Address *</label>
+                <label className="block text-xs font-semibold text-ds-body mb-1">Street Address *</label>
                 <input
                   type="text"
                   value={aStreet}
                   onChange={(e) => setAStreet(e.target.value)}
                   placeholder="Suite 402, Blue Area..."
-                  className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                  className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
                 />
                 {addressErrs.street && <p className="text-[10px] text-rose-500 mt-0.5">{addressErrs.street}</p>}
               </div>
@@ -284,21 +284,21 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
                 value={aCity}
                 onChange={(e) => setACity(e.target.value)}
                 placeholder="City"
-                className="p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
               />
               <input
                 type="text"
                 value={aState}
                 onChange={(e) => setAState(e.target.value)}
                 placeholder="State/Province"
-                className="p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
               />
               <input
                 type="text"
                 value={aPostal}
                 onChange={(e) => setAPostal(e.target.value)}
                 placeholder="Postal Code"
-                className="p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
               />
               <input
                 type="text"
@@ -306,14 +306,14 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
                 onChange={(e) => setACountry(e.target.value)}
                 placeholder="Country"
                 aria-label="Country"
-                className="p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
               />
             </div>
             {addressErrs.country && (
               <p className="text-[10px] text-rose-500 mt-0.5">{addressErrs.country}</p>
             )}
 
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs font-semibold text-ds-body cursor-pointer">
               <input
                 type="checkbox"
                 checked={aDefault}
@@ -336,17 +336,17 @@ export const LabContactsManager: React.FC<LabContactsManagerProps> = ({ labId })
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {addresses.map((a) => (
-            <div key={a.id} className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+            <div key={a.id} className="p-3 bg-ds-surface/60 rounded-xl border border-ds-line shadow-xs flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs uppercase text-slate-800">{a.type}</span>
+                  <span className="font-bold text-xs uppercase text-ds-ink">{a.type}</span>
                   {a.is_default && (
                     <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-extrabold rounded uppercase">
                       Default
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-slate-600 mt-1">
+                <div className="text-xs text-ink-body mt-1">
                   {a.street}, {a.city}, {a.state} {a.postal_code}
                 </div>
               </div>

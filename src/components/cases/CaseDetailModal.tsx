@@ -68,7 +68,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean; html
   required,
   htmlFor,
 }) => {
-  const className = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600';
+  const className = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-body';
   const content = (
     <>
       {children}
@@ -82,12 +82,12 @@ const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean; html
   );
 };
 
-const inputCls = `w-full rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 ring-1 ring-slate-200
-  placeholder:text-ink-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${EASE}
-  hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-600/40`;
+const inputCls = `w-full rounded-xl bg-ds-surface/60 px-3.5 py-2.5 text-sm text-ds-ink ring-1 ring-ds-line
+  placeholder:text-ink-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-all duration-500 ${EASE}
+  hover:ring-ds-line/80 focus:outline-none focus:ring-2 focus:ring-brand-600/40`;
 
-const bezelCard = `rounded-[1.5rem] bg-slate-900/[0.035] p-1.5 ring-1 ring-slate-900/10 shadow-[0_1px_2px_rgba(15,23,42,0.06)]`;
-const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-white p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)]`;
+const bezelCard = `rounded-[1.5rem] bg-ds-surface/40 p-1.5 ring-1 ring-ds-line shadow-[0_1px_2px_rgba(15,23,42,0.06)]`;
+const bezelCardInner = `rounded-[calc(1.5rem-0.375rem)] bg-ds-surface/60 p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6)]`;
 
 /**
  * A nested overlay (attachment preview, preset template) opened from inside the
@@ -778,6 +778,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   if (errors.labId) setErrors((prev) => ({ ...prev, labId: '' }));
                 }}
                 ariaLabel="Laboratory"
+                searchable
                 className="w-full px-3.5 py-2.5 text-sm"
                 options={labs.map((l) => ({
                   value: l.id,
@@ -810,6 +811,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 value={caseTypeId}
                 onChange={setCaseTypeId}
                 ariaLabel="Case procedure / type"
+                searchable
                 className="w-full px-3.5 py-2.5 text-sm"
                 options={caseTypes.map((ct) => ({ value: ct.id, label: `${ct.name} (${formatPKR(ct.base_price)})` }))}
               />
@@ -1235,20 +1237,20 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="case-detail-title"
-        className={`flex flex-col overflow-hidden bg-white ring-1 ring-slate-200 shadow-[0_48px_96px_-24px_rgba(15,23,42,0.45)] transition-all duration-500 ${EASE} my-auto ${shellSize}`}
+        className={`ds-glass-pane flex flex-col overflow-hidden transition-all duration-500 ${EASE} my-auto ${shellSize}`}
         style={{ borderRadius: isFullScreen ? 0 : '2rem' }}
       >
         {/* ---------------------------- Header ---------------------------- */}
-        <div className="relative shrink-0 bg-slate-900 px-6 py-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="relative shrink-0 px-6 py-4 border-b border-ds-line bg-transparent">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <Eyebrow className="text-slate-300">
+              <Eyebrow className="text-ink-muted">
                 {isEdit ? 'Case file' : 'New lab case'}
               </Eyebrow>
-              <h2 id="case-detail-title" className="mt-1 truncate text-lg font-bold tracking-tight text-white">
+              <h2 id="case-detail-title" className="mt-1 truncate text-lg font-bold tracking-tight text-ds-ink">
                 {isEdit ? `Case ${initialCase?.case_number}` : 'Create Dental Case'}
               </h2>
-              <p className="mt-0.5 truncate text-xs text-slate-300">
+              <p className="mt-0.5 truncate text-xs text-ink-muted">
                 {isEdit
                   ? 'Workflow, charting, attachments & history'
                   : 'Three focused steps — procedure, charting, schedule'}
@@ -1272,7 +1274,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowJobSlipModal(true)}
-                  className={`inline-flex items-center gap-1.5 rounded-full ds-glass-dark-chip px-4 py-2 text-xs font-bold text-white transition-all duration-500 active:scale-[0.97] ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full bg-ds-sunken ring-1 ring-ds-line px-4 py-2 text-xs font-bold text-ds-ink transition-all duration-500 hover:bg-ds-surface/80 active:scale-[0.97] ${EASE}`}
                   title="Print Job Slip / Workstation Routing Ticket"
                 >
                   <Printer className="h-4 w-4" />
@@ -1283,7 +1285,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setTemplateModalOpen(true)}
-                  className={`hidden items-center gap-1.5 rounded-full ds-glass-dark-chip px-4 py-2 text-xs font-bold text-white transition-all duration-500 active:scale-[0.97] md:inline-flex ${EASE}`}
+                  className={`hidden items-center gap-1.5 rounded-full bg-ds-sunken ring-1 ring-ds-line px-4 py-2 text-xs font-bold text-ds-ink transition-all duration-500 hover:bg-ds-surface/80 active:scale-[0.97] md:inline-flex ${EASE}`}
                   title="Save the current teeth, shade and instructions as a reusable preset"
                 >
                   <Bookmark className="h-4 w-4" />
@@ -1293,7 +1295,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsFullScreen(!isFullScreen)}
-                className="rounded-full p-2 text-slate-300 transition-colors ds-glass-dark-chip hover:text-white"
+                className="rounded-full p-2 text-ink-muted bg-ds-sunken ring-1 ring-ds-line transition-colors hover:text-ds-ink hover:bg-ds-surface/80"
                 title={isFullScreen ? 'Restore window size' : 'Expand to full page'}
                 aria-label={isFullScreen ? 'Restore window size' : 'Expand to full page'}
               >
@@ -1302,7 +1304,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-full p-2 text-slate-300 transition-colors ds-glass-dark-chip hover:text-white"
+                className="rounded-full p-2 text-ink-muted bg-ds-sunken ring-1 ring-ds-line transition-colors hover:text-ds-ink hover:bg-ds-surface/80"
                 aria-label="Close case details"
               >
                 <X className="h-5 w-5" />
@@ -1313,7 +1315,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
         {/* ------------------ Wizard stepper — identical in create & edit ------------------ */}
         {(
-          <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
+          <div className="shrink-0 border-b border-ds-line bg-transparent px-6 py-4">
             <div className="flex items-center justify-between">
               {/* Desktop rail */}
               <div className="hidden flex-1 items-center gap-1 md:flex">
@@ -1324,29 +1326,29 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   return (
                     <React.Fragment key={s.key}>
                       {i > 0 && (
-                        <div className={`mx-1 h-px flex-1 transition-all duration-700 ${EASE} ${i <= step ? 'bg-brand-600/50' : 'bg-slate-200'}`} />
+                        <div className={`mx-1 h-px flex-1 transition-all duration-700 ${EASE} ${i <= step ? 'bg-brand-600/50' : 'bg-ds-line'}`} />
                       )}
                       <button
                         type="button"
                         disabled={locked}
                         onClick={() => goToStep(i)}
                         className={`group flex items-center gap-2.5 rounded-full py-1.5 pl-1.5 pr-3.5 transition-all duration-500 ${EASE} ${
-                          locked ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-slate-100'
+                          locked ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-ds-surface/70'
                         }`}
                       >
                         <span
                           className={`flex h-9 w-9 items-center justify-center rounded-full font-mono text-[11px] font-bold transition-all duration-500 ${EASE} ${
                             active
-                              ? 'bg-slate-900 text-white shadow-[0_8px_20px_-6px_rgba(15,23,42,0.55)]'
+                              ? 'bg-brand-600 text-white shadow-[0_8px_20px_-8px_rgba(79,70,229,0.65)]'
                               : done
-                              ? 'bg-brand-600/10 text-brand-700 ring-1 ring-brand-600/30'
-                              : 'bg-white text-ink-muted ring-1 ring-slate-200'
+                              ? 'bg-brand-600/15 text-ink-brand-strong ring-1 ring-brand-600/30'
+                              : 'bg-ds-sunken text-ink-muted ring-1 ring-ds-line'
                           }`}
                         >
                           {done ? <Check className="h-4 w-4" /> : s.numeral}
                         </span>
                         <span className="text-left">
-                          <span className={`block text-xs font-bold leading-tight ${active ? 'text-slate-900' : done ? 'text-brand-700' : 'text-ink-muted'}`}>
+                          <span className={`block text-xs font-bold leading-tight ${active ? 'text-ds-ink' : done ? 'text-ink-brand-strong' : 'text-ink-muted'}`}>
                             {s.label}
                           </span>
                           <span className="hidden text-[10px] leading-tight text-ink-muted lg:block">{s.caption}</span>
@@ -1636,7 +1638,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             </div>
 
             {/* ---------------------------- Footer ---------------------------- */}
-            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-ds-line bg-transparent px-6 py-4">
               {isEdit && initialCase ? (
                 <button
                   type="button"
@@ -1646,7 +1648,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                       onClose();
                     }
                   }}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-rose-700 ring-1 ring-rose-600/25 transition-all duration-500 hover:bg-rose-50 active:scale-[0.97] ${EASE}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-rose-700 ring-1 ring-rose-600/25 transition-all duration-500 hover:bg-rose-50/50 active:scale-[0.97] ${EASE}`}
                 >
                   <Trash2 className="h-4 w-4" />
                   Delete Case
@@ -1661,7 +1663,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className={`rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 ${EASE}`}
+                  className={`rounded-full px-4 py-2.5 text-xs font-bold text-ds-ink transition-colors hover:bg-ds-surface/70 ${EASE}`}
                 >
                   Cancel
                 </button>
@@ -1670,7 +1672,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={goBack}
-                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-all duration-500 hover:ring-slate-300 active:scale-[0.97] ${EASE}`}
+                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold text-ds-ink ring-1 ring-ds-line transition-all duration-500 hover:ring-ds-line/80 hover:bg-ds-surface/70 active:scale-[0.97] ${EASE}`}
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Back

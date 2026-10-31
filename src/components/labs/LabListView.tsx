@@ -229,14 +229,14 @@ export const LabListView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dental Clinics & Practices</h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-ds-ink tracking-tight">Dental Clinics & Practices</h1>
+          <p className="text-xs text-ink-muted mt-1">
             Directory of referring dental clinics & practices. Click any clinic to view assigned cases, financial ledger, and credit balance.
           </p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2.5 ds-glass-pill font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer self-start sm:self-auto"
+          className="ds-glass-pill font-semibold text-xs flex items-center gap-2 cursor-pointer self-start sm:self-auto"
         >
           <PlusCircle className="w-4 h-4" />
           <span>Register New Clinic</span>
@@ -252,20 +252,20 @@ export const LabListView: React.FC = () => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search clinic name, contact person, email, address..."
-            className="w-full pl-10 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white transition-all font-medium text-slate-900"
+            className="w-full pl-10 pr-3 py-2 text-xs bg-ds-surface/55 border border-ds-line rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-ds-surface transition-all font-medium text-ds-ink"
           />
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* View Toggle */}
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+          <div className="bg-ds-sunken p-1 rounded-xl flex items-center gap-1 border border-ds-line">
             <button
               type="button"
               onClick={() => handleViewModeChange('grid')}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 viewMode === 'grid'
-                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-ds-surface text-ds-ink shadow-xs border border-ds-line/80'
+                  : 'text-ink-body hover:text-ds-ink'
               }`}
               title="Card grid — one card per clinic with its latest case"
             >
@@ -277,8 +277,8 @@ export const LabListView: React.FC = () => {
               onClick={() => handleViewModeChange('list')}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 viewMode === 'list'
-                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-ds-surface text-ds-ink shadow-xs border border-ds-line/80'
+                  : 'text-ink-body hover:text-ds-ink'
               }`}
               title="Table view — every clinic on one row with contacts and case counts"
             >
@@ -298,7 +298,7 @@ export const LabListView: React.FC = () => {
           />
           <button
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 transition-colors cursor-pointer"
+            className="ds-glass-button p-2 text-ds-body cursor-pointer"
             title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
           >
             <ArrowUpDown className="w-4 h-4" />
@@ -324,26 +324,26 @@ export const LabListView: React.FC = () => {
               <div
                 key={lab.id}
                 onClick={() => setSelectedLab(lab)}
-                className="p-5 bg-ds-surface/55 rounded-2xl border border-ds-line hover:border-indigo-300 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between gap-4 group"
+                className="p-5 ds-glass-card rounded-2xl hover:-translate-y-0.5 hover:shadow-ds-lift cursor-pointer transition-all duration-200 flex flex-col justify-between gap-4 group"
               >
                 <div>
                   {/* Top Row: Icon, Name & Case Activity */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm shrink-0 border border-slate-200 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                      <div className="ds-icon-tile shrink-0 group-hover:scale-105 transition-transform">
                         <Building2 className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
+                        <h3 className="font-bold text-sm text-ds-ink group-hover:text-indigo-600 transition-colors">
                           {lab.name}
                         </h3>
-                        <p className="text-xs text-slate-500 font-medium">Doctor: {lab.contact_person || '—'}</p>
+                        <p className="text-xs text-ink-muted font-medium">Doctor: {lab.contact_person || '—'}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Contact Info List */}
-                  <div className="mt-3.5 text-xs space-y-1.5 text-slate-600 border-t border-slate-100 pt-3">
+                  <div className="mt-3.5 text-xs space-y-1.5 text-ink-body border-t border-ds-line pt-3">
                     <div className="flex items-center gap-2">
                       <Phone className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                       <span>{lab.phone || '—'}</span>
@@ -354,7 +354,7 @@ export const LabListView: React.FC = () => {
                     </div>
                     <div className="flex items-start gap-2 pt-0.5">
                       <MapPin className="w-3.5 h-3.5 text-ink-muted shrink-0 mt-0.5" />
-                      <span className="text-slate-500 line-clamp-1">{lab.address || 'No address on file'}</span>
+                      <span className="text-ink-muted line-clamp-1">{lab.address || 'No address on file'}</span>
                     </div>
                     {/* Outstanding Balance */}
                     <div className={`flex items-center gap-2 pt-0.5 ${balanceTone(outstandingByLab.get(lab.id) || 0)}`}>
@@ -364,7 +364,7 @@ export const LabListView: React.FC = () => {
                       </span>
                     </div>
                     {/* Last Activity */}
-                    <div className="flex items-center gap-2 pt-0.5 text-slate-500">
+                    <div className="flex items-center gap-2 pt-0.5 text-ink-muted">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       <span className="font-mono text-[10px]">
                         {lastActivityByLab.get(lab.id) || 'No activity'}
@@ -374,34 +374,34 @@ export const LabListView: React.FC = () => {
 
                   {/* Most Recent Case Highlight (if any) */}
                   {recentCase ? (
-                    <div className="mt-3 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1 text-xs">
+                    <div className="mt-3 p-2.5 bg-ds-surface/55 border border-ds-line/80 rounded-xl space-y-1 text-xs">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-slate-500 uppercase tracking-wider">Latest Case:</span>
+                        <span className="font-bold text-ink-muted uppercase tracking-wider">Latest Case:</span>
                         <span className="font-mono font-bold text-indigo-700">{recentCase.case_number}</span>
                       </div>
-                      <div className="text-slate-700 font-medium truncate">
+                      <div className="text-ds-body font-medium truncate">
                         {recentCase.case_type_name} • {formatDoctorName(recentCase.doctor_name)}
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-ink-muted pt-0.5">
-                        <span className="capitalize font-semibold text-slate-600">Status: {recentCase.status.replace('_', ' ')}</span>
+                        <span className="capitalize font-semibold text-ink-body">Status: {recentCase.status.replace('_', ' ')}</span>
                         <span>Delivery: {recentCase.delivery_date}</span>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-3 p-2.5 bg-slate-50/50 border border-dashed border-slate-200 rounded-xl text-[11px] text-ink-muted italic text-center">
+                    <div className="mt-3 p-2.5 bg-ds-sunken/50 border border-dashed border-ds-line rounded-xl text-[11px] text-ink-muted italic text-center">
                       No active cases logged
                     </div>
                   )}
                 </div>
 
                 {/* Footer: Cases Count & Action */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                <div className="flex items-center justify-between pt-3 border-t border-ds-line text-xs">
+                  <span className="text-ink-body flex items-center gap-1.5 font-medium">
                     <FolderOpen className="w-4 h-4 text-indigo-600" />
                     <strong>{labCases.length}</strong> {labCases.length === 1 ? 'case' : 'cases'}
                   </span>
 
-                  <span className="text-slate-900 font-semibold group-hover:text-indigo-600 flex items-center gap-0.5">
+                  <span className="text-ds-ink font-semibold group-hover:text-indigo-600 flex items-center gap-0.5">
                     View Cases <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </span>
                 </div>
@@ -439,7 +439,7 @@ export const LabListView: React.FC = () => {
               columns={[
                 {
                   header: 'Dental Clinic',
-                  className: 'py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap',
+                  className: 'py-2.5 px-4 font-bold text-ds-ink whitespace-nowrap',
                   render: (lab: DentalLab) => (
                     <span className="flex items-center gap-1.5">
                       <Building2 className="w-3.5 h-3.5 text-ink-muted shrink-0" />
@@ -449,24 +449,24 @@ export const LabListView: React.FC = () => {
                 },
                 {
                   header: 'Doctor',
-                  className: 'py-2.5 px-4 text-slate-700 whitespace-nowrap',
+                  className: 'py-2.5 px-4 text-ds-body whitespace-nowrap',
                   render: (lab: DentalLab) => lab.contact_person || '—',
                 },
                 {
                   header: 'Phone',
-                  className: 'py-2.5 px-4 text-slate-600 whitespace-nowrap font-mono text-[11px]',
+                  className: 'py-2.5 px-4 text-ink-body whitespace-nowrap font-mono text-[11px]',
                   render: (lab: DentalLab) => lab.phone || '—',
                 },
                 {
                   header: 'Email',
-                  className: 'py-2.5 px-4 text-slate-600 truncate max-w-[220px]',
+                  className: 'py-2.5 px-4 text-ink-body truncate max-w-[220px]',
                   render: (lab: DentalLab) => (
                     <span title={lab.email || ''}>{lab.email || '—'}</span>
                   ),
                 },
                 {
                   header: 'Address',
-                  className: 'py-2.5 px-4 text-slate-500 truncate max-w-[280px]',
+                  className: 'py-2.5 px-4 text-ink-muted truncate max-w-[280px]',
                   render: (lab: DentalLab) => (
                     <span title={lab.address || ''}>{lab.address || '—'}</span>
                   ),
@@ -485,7 +485,7 @@ export const LabListView: React.FC = () => {
                     return recentCase ? (
                       <span className="font-mono font-bold text-indigo-700">{recentCase.case_number}</span>
                     ) : (
-                      <span className="text-slate-300 italic font-normal">No cases</span>
+                      <span className="text-ink-muted italic font-normal">No cases</span>
                     );
                   },
                 },
@@ -504,7 +504,7 @@ export const LabListView: React.FC = () => {
                 },
                 {
                   header: 'Last Activity',
-                  className: 'py-2.5 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap',
+                  className: 'py-2.5 px-4 text-ink-muted font-mono text-[11px] whitespace-nowrap',
                   render: (lab: DentalLab) => lastActivityByLab.get(lab.id) || '—',
                 },
                 {
@@ -512,7 +512,7 @@ export const LabListView: React.FC = () => {
                   align: 'right',
                   className: 'py-2.5 px-4 whitespace-nowrap',
                   render: () => (
-                    <span className="text-slate-900 font-semibold inline-flex items-center gap-0.5">
+                    <span className="text-ds-ink font-semibold inline-flex items-center gap-0.5">
                       View <ChevronRight className="w-3.5 h-3.5" />
                     </span>
                   ),
@@ -538,20 +538,20 @@ export const LabListView: React.FC = () => {
         maxWidth="max-w-lg"
         headerClassName="px-6 py-3"
         header={
-          <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+          <h3 className="font-bold text-base text-ds-ink flex items-center gap-2">
             <Building2 className="w-5 h-5 text-indigo-600" /> Register New Dental Clinic
           </h3>
         }
       >
           <div className="space-y-4 p-6 pt-4">
 
-            <p className="text-[11px] text-slate-500 -mt-1">
+            <p className="text-[11px] text-ink-muted -mt-1">
               Clinic name and doctor name are required — everything else can be filled in later.
             </p>
 
             <form onSubmit={handleCreateSubmit} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ds-body mb-1">
                   Dental Clinic / Practice Name <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -559,14 +559,14 @@ export const LabListView: React.FC = () => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Malik Dental Care & Clinic"
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
+                  className="w-full p-2.5 text-xs bg-ds-surface/55 border border-ds-line rounded-xl focus:outline-none focus:bg-ds-surface focus:border-indigo-600"
                 />
                 {errors.name && <p className="text-[11px] text-rose-500 mt-0.5">{errors.name}</p>}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-semibold text-ds-body mb-1">
                   Doctor Name <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -574,13 +574,13 @@ export const LabListView: React.FC = () => {
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
                   placeholder="Dr. Faisal Mahmood"
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
+                    className="w-full p-2.5 text-xs bg-ds-surface/55 border border-ds-line rounded-xl focus:outline-none focus:bg-ds-surface focus:border-indigo-600"
                   />
                   {errors.contactPerson && <p className="text-[11px] text-rose-500 mt-0.5">{errors.contactPerson}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-semibold text-ds-body mb-1">
                   Phone Number <span className="text-ink-muted">(optional)</span>
                 </label>
                   <input
@@ -588,14 +588,14 @@ export const LabListView: React.FC = () => {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+92 300 5551234"
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
+                    className="w-full p-2.5 text-xs bg-ds-surface/55 border border-ds-line rounded-xl focus:outline-none focus:bg-ds-surface focus:border-indigo-600"
                   />
                   {errors.phone && <p className="text-[11px] text-rose-500 mt-0.5">{errors.phone}</p>}
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ds-body mb-1">
                   Email Address <span className="text-ink-muted">(optional)</span>
                 </label>
                 <input
@@ -603,13 +603,13 @@ export const LabListView: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="contact@malikdental.pk"
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
+                  className="w-full p-2.5 text-xs bg-ds-surface/55 border border-ds-line rounded-xl focus:outline-none focus:bg-ds-surface focus:border-indigo-600"
                 />
                 {errors.email && <p className="text-[11px] text-rose-500 mt-0.5">{errors.email}</p>}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ds-body mb-1">
                   Facility Address <span className="text-ink-muted">(optional)</span>
                 </label>
                 <textarea
@@ -617,13 +617,13 @@ export const LabListView: React.FC = () => {
                   onChange={(e) => setAddress(e.target.value)}
                   rows={2}
                   placeholder="Suite 402, Medical Enclave, Blue Area, Islamabad"
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:bg-white focus:border-indigo-600"
+                  className="w-full p-2.5 text-xs bg-ds-surface/55 border border-ds-line rounded-xl resize-none focus:outline-none focus:bg-ds-surface focus:border-indigo-600"
                 />
                 {errors.address && <p className="text-[11px] text-rose-500 mt-0.5">{errors.address}</p>}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ds-body mb-1">
                   Opening Balance (PKR) <span className="text-ink-muted">(optional)</span>
                 </label>
                 <div className="flex gap-2">
@@ -634,16 +634,16 @@ export const LabListView: React.FC = () => {
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                     placeholder="0 — leave blank if the clinic starts at zero"
-                    className="flex-1 p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
+                    className="flex-1 p-2.5 text-xs bg-ds-surface/55 border border-ds-line rounded-xl focus:outline-none focus:bg-ds-surface focus:border-indigo-600"
                   />
-                  <div className="flex rounded-xl border border-slate-200 overflow-hidden shrink-0">
+                  <div className="flex rounded-xl border border-ds-line overflow-hidden shrink-0">
                     <button
                       type="button"
                       onClick={() => setOpeningBalanceType('debit')}
                       className={`px-3 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
                         openingBalanceType === 'debit'
-                          ? 'bg-rose-50 text-rose-700 border-r border-slate-200'
-                          : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                          ? 'bg-rose-50 text-rose-700 border-r border-ds-line'
+                          : 'bg-ds-sunken text-ink-muted hover:bg-ds-surface/70'
                       }`}
                       title="The clinic owed you this amount before the system (debit)"
                     >
@@ -655,7 +655,7 @@ export const LabListView: React.FC = () => {
                       className={`px-3 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
                         openingBalanceType === 'credit'
                           ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                          : 'bg-ds-sunken text-ink-muted hover:bg-ds-surface/70'
                       }`}
                       title="You owed the clinic this amount before the system (credit)"
                     >
@@ -663,7 +663,7 @@ export const LabListView: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-ink-muted mt-0.5">
                   {openingBalanceType === 'debit'
                     ? 'Money the clinic already owed you. Posts as a debit on the ledger.'
                     : 'Money you already owed the clinic. Posts as a credit on the ledger.'}
@@ -675,13 +675,13 @@ export const LabListView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl cursor-pointer"
+                  className="px-4 py-2 bg-ds-sunken text-ds-body font-semibold text-xs rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs cursor-pointer"
+                  className="px-5 py-2 bg-ds-ink hover:bg-ds-ink/90 text-ds-surface font-semibold text-xs rounded-xl shadow-xs cursor-pointer"
                 >
                   Register Clinic
                 </button>

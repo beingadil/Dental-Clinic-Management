@@ -70,7 +70,7 @@ const TONE_CHIP: Record<Tone, string> = {
   accent: 'bg-ds-accent-soft text-ds-accent-strong border-ds-accent-ring',
   qc: 'bg-ds-qc-soft text-ds-qc-ink border-transparent',
   pos: 'bg-ds-pos-soft text-ds-pos-ink border-transparent',
-  dispatch: 'bg-ds-dispatch-soft text-ds-dispatch border-transparent',
+  dispatch: 'bg-ds-dispatch-soft text-ds-dispatch-ink border-transparent',
   warn: 'bg-ds-warn-soft text-ds-warn-ink border-transparent',
   risk: 'bg-ds-risk-soft text-ds-risk-ink border-transparent',
 };
@@ -80,9 +80,9 @@ const TONE_ICON_BG: Record<Tone, string> = {
   accent: 'bg-ds-accent-soft text-ds-accent',
   qc: 'bg-ds-qc-soft text-ds-qc',
   pos: 'bg-ds-pos-soft text-ds-pos',
-  dispatch: 'bg-ds-dispatch-soft text-ds-dispatch',
+  dispatch: 'bg-ds-dispatch-soft text-ds-dispatch-ink',
   warn: 'bg-ds-warn-soft text-ds-warn-ink',
-  risk: 'bg-ds-risk-soft text-ds-risk',
+  risk: 'bg-ds-risk-soft text-ds-risk-ink',
 };
 
 const TONE_BAR: Record<WorkloadRow['tone'], string> = {
@@ -857,7 +857,7 @@ export const RevenueCollections: React.FC<{
 
       <div className="flex items-center justify-between gap-2 mt-3">
         <p className="text-[11px] text-ds-body truncate">{periodLabel}</p>
-        <span className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-ds-line bg-white text-[11px] font-semibold text-ds-ink-soft">
+        <span className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-ds-line bg-ds-surface text-[11px] font-semibold text-ds-ink-soft">
           This Month
           <ChevronDown className="w-3 h-3 text-ds-muted" />
         </span>
@@ -1194,7 +1194,7 @@ export const UpcomingDeliveries: React.FC<{
               onClick={() => onOpenCase(row.id)}
               className="w-full flex items-center gap-2.5 text-left cursor-pointer group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent rounded"
             >
-              <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-ds-dispatch-soft text-ds-dispatch">
+              <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-ds-dispatch-soft text-ds-dispatch-ink">
                 <Clock className="w-3.5 h-3.5" strokeWidth={2.2} />
               </span>
               <span className="min-w-0 flex-1">

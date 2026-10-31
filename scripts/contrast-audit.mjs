@@ -181,6 +181,50 @@ const darkCss = readFileSync(join(SRC, 'theme', 'dark.css'), 'utf8')
 const darkTokens = tokensFrom(darkCss, (s) => /(^|\s)\.dark\s*$/.test(s))
 
 /*
+ * Dashboard ("ds") tokens.
+ *
+ * The glass rollout paints chrome with `bg-ds-*` / `text-ds-*` rather than a
+ * palette step, and this audit only understood `[a-z]+-<step>` utilities — so
+ * every converted surface silently stopped being graded while the report still
+ * read "all graded pairings clear". That is the same silent-gap failure the
+ * ink/fill split was fixed for, just newer: the count visibly dropped.
+ *
+ * The dashboard palette is a three-layer chain in its own file —
+ * `--color-ds-surface` → `--ds-surface` → `--p-white` — and `tokensFrom`
+ * follows exactly ONE hop, so the chain is resolved here instead. Light values
+ * come from dashboard-tokens.css `:root`, dark ones from the `.dark` block in
+ * dashboard-dark.css (a semantically different set of colours, not a remap of
+ * the light ones).
+ */
+const dsLightVars = tokensFrom(
+  readFileSync(join(SRC, 'components', 'dashboard', 'dashboard-tokens.css'), 'utf8'),
+  () => true,
+)
+const dsDarkVars = tokensFrom(
+  readFileSync(join(SRC, 'components', 'dashboard', 'dashboard-dark.css'), 'utf8'),
+  (s) => /(^|\s)\.dark\s*$/.test(s),
+)
+
+/** Follow `var()` indirections to a real colour, or null if it never lands. */
+function resolveVarChain(map, key) {
+  let value = map[key]
+  for (let hops = 0; hops < 8; hops += 1) {
+    if (typeof value !== 'string') return null
+    if (!value.startsWith('ref:')) return value
+    value = map[value.slice(4)]
+  }
+  return null
+}
+
+for (const key of Object.keys(dsLightVars)) {
+  if (!key.startsWith('--color-ds-')) continue
+  const light = resolveVarChain(dsLightVars, key)
+  if (light) lightTokens[key] = light
+  const dark = resolveVarChain({ ...dsLightVars, ...dsDarkVars }, key)
+  if (dark) darkTokens[key] = dark
+}
+
+/*
  * The brand accent. `@theme inline` inlines the var at the utility, so Tailwind
  * never emits `--color-brand-600` on `:root` and every `bg-brand-*` pairing
  * fell through as an unresolvable gap — five call sites silently ungraded,
@@ -379,7 +423,7 @@ const STATE = '(?:(hover|focus|focus-visible|active|visited|disabled|group-hover
  * ink is the easiest to ship and the hardest to notice.
  */
 const COLOUR_UTIL = new RegExp(
-  `^${STATE}(bg|text|placeholder)-(?:(white|black|transparent)|(?:(?:([a-z]+)-))?(\\d{2,3}))(?:\\/(\\d{1,3}))?$`,
+  `^${STATE}(bg|text|placeholder)-(?:((?:white|black|transparent|ds-[a-z-]+))|(?:(?:([a-z]+)-))?(\\d{2,3}))(?:\\/(\\d{1,3}))?$`,
 )
 
 /**

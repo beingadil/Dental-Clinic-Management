@@ -193,7 +193,7 @@ export const CaseQueueModal: React.FC<CaseQueueModalProps> = ({
       <div className="relative w-full max-w-2xl my-8 bg-white rounded-3xl border border-ds-line shadow-ds-lift overflow-hidden">
         <header className="flex items-center justify-between gap-3 px-5 py-4 border-b border-ds-line">
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="ds-icon-tile bg-ds-risk-soft text-ds-risk">
+            <span className="ds-icon-tile bg-ds-risk-soft text-ds-risk-ink">
               <ShieldAlert className="w-[18px] h-[18px]" strokeWidth={2} />
             </span>
             <div className="min-w-0">

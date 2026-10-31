@@ -15,7 +15,7 @@ import { Pin, PinOff, Maximize2, Minimize2, EyeOff, ChevronDown } from 'lucide-r
 import type { PanelRank } from './panelRegistry';
 
 const MENU_W =
-  'ds-glass absolute right-3 top-3 z-20 w-44 rounded-xl border border-ds-line bg-ds-surface/90 p-1 shadow-ds-lift';
+  'ds-glass absolute right-3 top-3 z-20 w-44 rounded-xl border border-ds-line bg-ds-surface p-1 shadow-ds-lift';
 
 export const PanelControls: React.FC<{
   label: string;
@@ -66,7 +66,7 @@ export const PanelControls: React.FC<{
         onClick={() => setOpen((v) => !v)}
         aria-label={`${label} panel options`}
         aria-expanded={open}
-        className="ds-tap ds-hit flex items-center gap-1 rounded-lg border border-ds-line bg-ds-surface/90 px-1.5 py-1 text-ds-muted opacity-0 transition-opacity hover:text-ds-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent cursor-pointer group-hover:opacity-100 focus:opacity-100"
+        className="ds-tap ds-hit flex items-center gap-1 rounded-lg border border-ds-line bg-ds-surface px-1.5 py-1 text-ds-muted opacity-0 transition-opacity hover:text-ds-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-accent cursor-pointer group-hover:opacity-100 focus:opacity-100"
       >
         {pinned ? <Pin className="w-3.5 h-3.5 text-ds-accent" /> : null}
         <span className="text-[10px] font-bold tracking-wide">•••</span>

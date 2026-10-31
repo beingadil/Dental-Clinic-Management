@@ -60,10 +60,10 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ds-ink flex items-center gap-2">
             <Tag className="w-4 h-4 text-purple-600" /> Lab-Specific Custom Pricing & Discount Overrides
           </h3>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             Override default case material prices and apply contract discounts for this lab
           </p>
         </div>
@@ -80,7 +80,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
           <h4 className="text-xs font-bold text-purple-900 uppercase">New Custom Contract Price</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Case Material Type</label>
+              <label className="block text-xs font-semibold text-ds-body mb-1">Case Material Type</label>
               <GlassSelect
                 value={caseTypeId}
                 onChange={(v) => {
@@ -95,35 +95,35 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Custom Price for this Lab (PKR) *</label>
+              <label className="block text-xs font-semibold text-ds-body mb-1">Custom Price for this Lab (PKR) *</label>
               <input
                 type="number"
                 value={customPrice}
                 onChange={(e) => setCustomPrice(Number(e.target.value))}
-                className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg font-bold"
+                className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg font-bold"
               />
               {errors.customPrice && <p className="text-[10px] text-rose-500 mt-0.5">{errors.customPrice}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Auto-Discount Percentage (%)</label>
+              <label className="block text-xs font-semibold text-ds-body mb-1">Auto-Discount Percentage (%)</label>
               <input
                 type="number"
                 value={discountPercent}
                 onChange={(e) => setDiscountPercent(Number(e.target.value))}
                 placeholder="10"
-                className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
               />
               {errors.discountPercent && <p className="text-[10px] text-rose-500 mt-0.5">{errors.discountPercent}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Effective Date *</label>
+              <label className="block text-xs font-semibold text-ds-body mb-1">Effective Date *</label>
               <input
                 type="date"
                 value={effectiveDate}
                 onChange={(e) => setEffectiveDate(e.target.value)}
-                className="w-full p-2 text-xs bg-white border border-slate-200 rounded-lg"
+                className="w-full p-2 text-xs bg-ds-sunken border border-ds-line rounded-lg"
               />
               {errors.effectiveDate && <p className="text-[10px] text-rose-500 mt-0.5">{errors.effectiveDate}</p>}
             </div>
@@ -143,7 +143,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
       {/* DataTable renders a BARE table — it owns the thead/ds-th row, the
           divide-y tbody, the hover row state and the horizontal-scroll wrapper.
           The card above stays here, where it always was. */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+      <div className="bg-ds-surface/60 rounded-xl border border-ds-line overflow-hidden shadow-xs">
         <DataTable
           data={labOverrides}
           rowKey={(po) => po.id}
@@ -155,12 +155,12 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
           columns={[
             {
               header: 'Case Type',
-              className: 'py-2.5 font-bold text-slate-900',
+              className: 'py-2.5 font-bold text-ds-ink',
               render: (po) => po.case_type_name,
             },
             {
               header: 'Standard Base Price',
-              className: 'py-2.5 text-slate-500 line-through',
+              className: 'py-2.5 text-ink-muted line-through',
               render: (po) => formatPKR(po.standard_price),
             },
             {
@@ -175,7 +175,7 @@ export const LabPricingManager: React.FC<LabPricingManagerProps> = ({ labId }) =
             },
             {
               header: 'Effective Date',
-              className: 'py-2.5 text-slate-500',
+              className: 'py-2.5 text-ink-muted',
               render: (po) => po.effective_date,
             },
             {
