@@ -111,22 +111,22 @@ export const InsightsView: React.FC = () => {
             <KpiTiles metrics={metrics.kpi} />
           </InsightsCard>
         </div>
-        <div className="xl:col-span-2 md:col-span-2 min-h-[300px]">
+        <div className="xl:col-span-2 md:col-span-2 min-h-[370px]">
           <InsightsCard title="Money flow" subtitle="Invoiced vs collected" accent="#6366f1" onDrill={() => setDrillInvoices(inScopeInvoices)} drillLabel="Invoices">
             <MoneyFlowChart series={metrics.flow} />
           </InsightsCard>
         </div>
-        <div className="xl:col-span-2 md:col-span-2 min-h-[300px]">
+        <div className="xl:col-span-2 md:col-span-2 min-h-[370px]">
           <InsightsCard title="Revenue mix" subtitle="By product type" accent="#10b981" onDrill={() => setDrillInvoices(inScopeInvoices)} drillLabel="Invoices">
             <ProductMixDonut mix={metrics.productMix} />
           </InsightsCard>
         </div>
-        <div className="xl:col-span-1 md:col-span-1">
+        <div className="xl:col-span-2 md:col-span-2 min-h-[250px]">
           <InsightsCard title="Performance" subtitle="Rates" accent="#f59e0b" onDrill={() => setDrillCases(inScopeCases)} drillLabel="Cases">
             <PerformanceRings metrics={metrics.rings} />
           </InsightsCard>
         </div>
-        <div className="xl:col-span-2 md:col-span-2 min-h-[300px]">
+        <div className="xl:col-span-2 md:col-span-2 min-h-[250px]">
           <InsightsCard title="Clinic standings" subtitle="Revenue & balance" accent="#8b5cf6" onDrill={() => setDrillInvoices(inScopeInvoices)} drillLabel="Invoices">
             <ClinicStandings data={metrics.clinicStandings} />
           </InsightsCard>
@@ -136,7 +136,7 @@ export const InsightsView: React.FC = () => {
             <ThroughputBars series={metrics.throughput} />
           </InsightsCard>
         </div>
-        <div className="xl:col-span-2 md:col-span-2 min-h-[300px]">
+        <div className="xl:col-span-2 md:col-span-2 min-h-[230px]">
           <InsightsCard title="Intake by day" subtitle="Day of week" accent="#ec4899" onDrill={() => setDrillCases(inScopeCases)} drillLabel="Cases">
             <DayHeatStrip heat={metrics.dayHeat} />
           </InsightsCard>

@@ -30,7 +30,7 @@ export const InsightsCard: React.FC<Props> = ({ title, subtitle, accent = '#6366
         className="pointer-events-none absolute inset-0 rounded-[1.75rem] ring-1 ring-white/10 dark:ring-white/5"
       />
       {/* Inner core */}
-      <section className="relative h-full overflow-hidden rounded-[calc(1.75rem-0.375rem)] border border-ds-line/40 bg-ds-surface/80 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.12),0_8px_32px_-12px_rgba(15,23,42,0.12)] transition-shadow duration-500 group-hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.18),0_16px_48px_-12px_rgba(99,102,241,0.22)]">
+      <section className="relative h-full overflow-hidden rounded-[calc(1.75rem-0.375rem)] border border-ds-line/40 bg-ds-surface/80 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.12),0_8px_32px_-12px_rgba(15,23,42,0.12)] transition-shadow duration-500 group-hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.18),0_16px_48px_-12px_rgba(99,102,241,0.22)] flex flex-col">
         <header className="relative flex items-start justify-between gap-3 px-5 pt-4 pb-2">
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-ds-ink tracking-tight">{title}</h3>
@@ -46,7 +46,7 @@ export const InsightsCard: React.FC<Props> = ({ title, subtitle, accent = '#6366
             </button>
           ))}
         </header>
-        <div className="relative px-5 pb-5">{children}</div>
+        <div className="relative px-5 pb-5 flex-1 flex flex-col justify-center">{children}</div>
       </section>
     </div>
   </div>
