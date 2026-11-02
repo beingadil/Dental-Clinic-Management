@@ -1949,7 +1949,7 @@ const deleteLab = (id: string) => {
     if (user && !canPost(user, action as any)) throw new Error(deniedTooltip);
     const lab = labs.find((l) => l.id === labId);
     const labName = lab ? lab.name : 'Dental Clinic';
-    const adjNum = generateAdjustmentNumber(type);
+    const adjNum = generateAdjustmentNumber(type) || `${type === 'credit_note' ? 'CR' : type === 'debit_adjustment' ? 'DR' : 'REF'}-${Date.now()}`;
     const nowStr = getNowStamp();
     const newId = `adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
