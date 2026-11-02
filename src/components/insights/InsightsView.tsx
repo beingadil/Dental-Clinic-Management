@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { buildInsightsSnapshot, type PeriodKind, type InsightsFilters } from '../../services/insightsDomain';
+import { buildInsightsSnapshot, type InsightsFilters } from '../../services/insightsDomain';
 import { pkr } from './chartTheme';
 import { InsightsCard } from './InsightsCard';
 import { InvoicedMetric, CollectedMetric, OutstandingMetric } from './widgets/KpiCards';
@@ -14,15 +14,10 @@ import { DoctorWorkload } from './widgets/DoctorWorkload';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { Filter, GitCompare, X } from 'lucide-react';
+import { DatePickerRange } from '../common/DatePickerRange';
 import type { Invoice, DentalCase } from '../../types';
 import './insight.css';
 
-const PERIODS: { id: PeriodKind; label: string }[] = [
-  { id: 'thisMonth', label: 'This month' },
-  { id: 'lastMonth', label: 'Last month' },
-  { id: 'thisYear', label: 'This year' },
-  { id: 'allTime', label: 'All time' },
-];
 
 /**
  * Insight — the reporting board.
@@ -35,7 +30,15 @@ const PERIODS: { id: PeriodKind; label: string }[] = [
  */
 export const InsightsView: React.FC = () => {
   const { cases, invoices, labs, caseTypes } = useApp();
-  const [period, setPeriod] = useState<PeriodKind>('thisMonth');
+  const [fromDate, setFromDate] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [toDate, setToDate] = useState<string>(() => {
+    const d = new Date();
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+  });
   const [compare, setCompare] = useState(true);
   const [filters, setFilters] = useState<InsightsFilters>({ clinicIds: [], doctorNames: [], caseTypeIds: [] });
   const [showFilters, setShowFilters] = useState(false);
@@ -45,8 +48,8 @@ export const InsightsView: React.FC = () => {
   const [selectedCase, setSelectedCase] = useState<DentalCase | null>(null);
 
   const metrics = useMemo(
-    () => buildInsightsSnapshot({ cases, invoices, labs, caseTypes }, { kind: period }, filters),
-    [cases, invoices, labs, caseTypes, period, filters],
+    () => buildInsightsSnapshot({ cases, invoices, labs, caseTypes }, { from: fromDate, to: toDate }, filters),
+    [cases, invoices, labs, caseTypes, fromDate, toDate, filters],
   );
 
   const inScopeInvoices = useMemo(
@@ -107,30 +110,12 @@ export const InsightsView: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div
-                className="insight-seg no-scrollbar inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full p-1"
-                role="group"
-                aria-label="Reporting period"
-              >
-                {PERIODS.map((option) => {
-                  const active = period === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setPeriod(option.id)}
-                      aria-pressed={active}
-                      className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[10.5px] font-bold transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-                        active
-                          ? 'bg-brand-600 text-white shadow-[0_10px_22px_-12px_rgba(67,56,202,0.9)]'
-                          : 'text-ink-muted hover:bg-ds-surface/55 hover:text-ds-ink'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <DatePickerRange
+                from={fromDate}
+                to={toDate}
+                onChange={(f, t) => { setFromDate(f || fromDate); setToDate(t || toDate); }}
+                className="w-[220px]"
+              />
 
               <button
                 type="button"

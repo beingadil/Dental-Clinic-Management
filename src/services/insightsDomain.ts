@@ -9,7 +9,9 @@ import { formatPKR } from './financeDomain';
 export type PeriodKind = 'thisMonth' | 'lastMonth' | 'thisYear' | 'allTime';
 
 export interface PeriodSpec {
-  kind: PeriodKind;
+  kind?: PeriodKind;
+  from?: string;
+  to?: string;
   /** Reference "now" — injectable for deterministic tests. */
   now?: Date;
 }
@@ -142,7 +144,23 @@ export function periodRange(spec: PeriodSpec): DateRange {
   let start: Date;
   let end: Date;
   let label: string;
-  switch (spec.kind) {
+  if (spec.from || spec.to) {
+    const fromStr = spec.from || '1970-01-01';
+    const toStr = spec.to || `${y + 1}-12-31`;
+    start = new Date(`${fromStr}T00:00:00`);
+    end = new Date(`${toStr}T00:00:00`);
+    end.setDate(end.getDate() + 1);
+    if (isNaN(start.getTime())) start = new Date(1970, 0, 1);
+    if (isNaN(end.getTime())) end = new Date(y + 1, 11, 31, 23, 59, 59, 999);
+    label = spec.from && spec.to && spec.from === spec.to
+      ? new Date(`${spec.from}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : (spec.from || spec.to)
+        ? `${new Date(`${(spec.from || toStr)}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(`${(spec.to || fromStr)}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+        : 'All time';
+    if (!spec.from && !spec.to) label = 'All time';
+    return { start: start.getTime(), end: end.getTime(), label };
+  }
+  switch (spec.kind || 'thisMonth') {
     case 'lastMonth': {
       start = new Date(y, m - 1, 1);
       end = new Date(y, m, 1);

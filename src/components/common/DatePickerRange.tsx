@@ -331,7 +331,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
         <div
           role="dialog"
           aria-label="Choose date range"
-          className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5"
+          className="absolute left-0 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5"
         >
           {/* Quick ranges — same list in every module. */}
           <div className="flex flex-wrap gap-1">
