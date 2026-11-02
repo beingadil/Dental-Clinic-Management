@@ -806,11 +806,23 @@ function renderTableSections(
 
     /* Pack the rows into pages by MEASURED height. A row is never split
        across a page break, and a page never runs into the footer. */
+    const maxRowNeed = Math.max(
+      ROW_H + ROW_GAP,
+      ...section.rows.map((r) => (r.height ?? ROW_H) + ROW_GAP),
+    );
+    const capacity = Math.max(1, Math.floor((section.top - section.bottom) / maxRowNeed));
+    const pagesNeeded = Math.max(1, Math.ceil(section.rows.length / capacity));
+    const target = Math.max(1, Math.ceil(section.rows.length / pagesNeeded));
     const chunks: TableRow[][] = [];
     let current: TableRow[] = [];
     let y = section.top;
     for (const row of section.rows) {
       const need = (row.height ?? ROW_H) + ROW_GAP;
+      if (current.length >= target && current.length) {
+        chunks.push(current);
+        current = [];
+        y = section.top;
+      }
       if (y - need < section.bottom && current.length) {
         chunks.push(current);
         current = [];
