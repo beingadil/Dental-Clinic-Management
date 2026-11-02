@@ -4,6 +4,7 @@ import {
   sheetBudgetPx,
   rowHeightPx,
   fontScale,
+  pageMarginPx,
   ROW_PX_BARE,
   DETAIL_LINE_PX,
   BALANCE_BLOCK_PX,
@@ -96,7 +97,8 @@ describe('rowHeightPx', () => {
   it('charges an extra line for a detail long enough to wrap', () => {
     // A full-arch tooth list does not fit the Case cell on one line, and the
     // old model had no allowance for the second — which is how a sheet that
-    // "fits" ended up printing past the bottom of the paper.
+    // "fits" ended up printing past the bottom of the paper. At the fixed
+    // 37% Case column this one wraps to three lines (the paginator's ceiling).
     const fullArch = {
       id: 'c1',
       case_number: 'C-1',
@@ -107,12 +109,21 @@ describe('rowHeightPx', () => {
     const oneLine = rowHeightPx(invoice('a', { case_id: 'c1' }), [detailedCase('c1')]);
     const wrapped = rowHeightPx(invoice('a', { case_id: 'c1' }), [fullArch]);
     expect(wrapped).toBeGreaterThan(oneLine);
-    expect(wrapped).toBe(ROW_PX_BARE + DETAIL_LINE_PX * 2);
+    expect(wrapped).toBe(ROW_PX_BARE + DETAIL_LINE_PX * 3);
   });
 
   });
 
 describe('sheetBudgetPx', () => {
+  it('exposes the page margin in CSS pixels for the preview box', () => {
+    // 12mm at 96dpi. The preview reserves this around its sheet so its
+    // content width (671px on A4) matches what @page leaves the printer.
+    expect(pageMarginPx('normal')).toBe(45);
+    expect(pageMarginPx('narrow')).toBe(30);
+    expect(pageMarginPx('wide')).toBe(68);
+    expect(pageMarginPx(undefined)).toBe(pageMarginPx('normal'));
+  });
+
   it('gives letter less room than a4', () => {
     expect(sheetBudgetPx({ paper: 'letter' })).toBeLessThan(sheetBudgetPx({ paper: 'a4' }));
   });
@@ -120,6 +131,19 @@ describe('sheetBudgetPx', () => {
   it('lets compact text fit more and large text less', () => {
     expect(sheetBudgetPx({ fontSize: 'compact' })).toBeGreaterThan(sheetBudgetPx({ fontSize: 'normal' }));
     expect(sheetBudgetPx({ fontSize: 'large' })).toBeLessThan(sheetBudgetPx({ fontSize: 'normal' }));
+  });
+
+  it('uses the chosen paper margin, not a fixed 12mm assumption', () => {
+    // PrintDocument injects @page margin from Settings → Print. Wide is 18mm
+    // per edge and removes 60px of usable height from A4; budgeting against
+    // the normal margin there printed the last rows off the paper.
+    const narrow = sheetBudgetPx({ paper: 'a4', margin: 'narrow' });
+    const normal = sheetBudgetPx({ paper: 'a4', margin: 'normal' });
+    const wide = sheetBudgetPx({ paper: 'a4', margin: 'wide' });
+    expect(narrow).toBeGreaterThan(normal);
+    expect(wide).toBeLessThan(normal);
+    // 6mm extra per edge = 12mm = ~45px of A4 the wide margin loses.
+    expect(normal - wide).toBeGreaterThan(40);
   });
 
   it('charges the continued line and the balance block on the final sheet', () => {

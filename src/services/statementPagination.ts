@@ -25,10 +25,37 @@ import {
  * the totals block costs ~84px on whichever sheet carries it.
  */
 
-/** Usable sheet height per paper at 96dpi, after the 12mm print margin. */
-const PAGE_HEIGHT_PX: Record<string, number> = {
-  a4: 1032, // (297mm − 24mm) at 96dpi
-  letter: 965, // (279.4mm − 24mm) at 96dpi
+/** Usable sheet height per paper at 96dpi, after the page margins. */
+const PAGE_MM: Record<string, number> = {
+  a4: 297,
+  letter: 279.4,
+};
+
+/** Page margins offered in Settings → Print & Documents. */
+export const PRINT_MARGIN_MM: Record<string, number> = {
+  narrow: 8,
+  normal: 12,
+  wide: 18,
+};
+
+const MM_TO_PX = 96 / 25.4;
+
+/**
+ * The chosen paper margin in CSS pixels.
+ *
+ * Exported because the preview has to reserve the SAME box the printer will
+ * use. The preview used to render the table 51px wider than paper at the
+ * normal margin, so rows wrapped less there than on paper and the row budget
+ * below was measured against a document that never printed.
+ */
+export const pageMarginPx = (margin?: string): number =>
+  Math.round((PRINT_MARGIN_MM[margin || 'normal'] ?? PRINT_MARGIN_MM.normal) * MM_TO_PX);
+
+/** Height of the paper's printable area for the chosen paper + margin. */
+const pageHeightPx = (paper?: string, margin?: string): number => {
+  const height = PAGE_MM[paper || 'a4'] ?? PAGE_MM.a4;
+  const edge = PRINT_MARGIN_MM[margin || 'normal'] ?? PRINT_MARGIN_MM.normal;
+  return Math.round((height - edge * 2) * MM_TO_PX);
 };
 
 /** `.print-preview-page` padding as print.css overrides it (0.75rem/1rem). */
@@ -39,14 +66,14 @@ const PAGE_PADDING_PX = 24;
  * statement-for grid, the period line, the table head, the table's bottom
  * margin, the footer — the padding above is counted separately.
  *
- * MEASURED, not estimated. The previous 370 was carried over from the tall
- * header the sheet used to have; the rendered statement's chrome is 291px at
- * the current type sizes (brand block 58, title block 44, statement-for 30,
- * period 15, table head 21, table margin 16, footer 52), so every sheet was
- * charged ~80px it did not spend. That is roughly two rows per sheet, which is
- * the "only a handful of invoices per page" the operator reported.
+ * MEASURED at the real PRINT geometry (671px content width at A4/12mm):
+ * a full first sheet renders 1014px with 24px of padding and 689px of rows,
+ * so its chrome is 301px. This constant carried 297 after adding the footer,
+ * which left only 4px of slack on a continued sheet — enough for one wrapped
+ * date to push the footer onto its own page. 310 keeps ~9px of headroom
+ * without costing a row (see the sheet-count assertions in the tests).
  */
-const SHEET_CHROME_PX = 267;
+const SHEET_CHROME_PX = 310;
 
 /** The extra "Period (continued)" line that sheets after the first carry. */
 const CONTINUED_LINE_PX = 27;
@@ -116,11 +143,11 @@ export const balanceBlockPx = (
 /**
  * A row with no detail line and a single-line date: one text line + padding.
  *
- * Measured at 21px with the statement table's `py-0.5` cells (8px text box +
- * 2+2px padding + 1px borders each side). It was 34, which priced every bare
- * row a third taller than it prints.
+ * MEASURED at the print content width with the statement's `py-0.5` cells:
+ * 25.5px, rounded up. It was 21, which underpriced every bare row on a
+ * statement whose Date column had to wrap.
  */
-export const ROW_PX_BARE = 21;
+export const ROW_PX_BARE = 26;
 
 /**
  * The detail line under the case number, per printed line of it.
@@ -134,14 +161,15 @@ export const DETAIL_LINE_PX = 12;
 /**
  * Characters that fit on one line of the Case cell.
  *
- * Measured against the rendered table: the auto layout gives the Case column
- * ~426px of a 762px table, and 9px Georgia sets at ~3.96px per character, so
- * ~108 characters fit. 96 is used, i.e. a ~10% margin for wider glyphs and a
- * narrower column when the other columns' content is long. A detail that fits
- * in 96 characters is priced one line — over-estimating here costs rows on
- * every sheet, so the measured number is kept close rather than padded.
+ * The statement table is now `table-layout: fixed` with the Case column at
+ * 35% of the printable width: 236px at A4/12mm, less 18px of cell padding,
+ * with the 9px detail type setting at ~3.96px per character — ~55 characters.
+ * 54 is used so a line that wraps at the wide margin (626px table, ~50
+ * characters) is still charged its second line. The old 96 was measured on a
+ * 762px table that no printer ever produced, so long details printed a line
+ * taller than the paginator had paid for.
  */
-const DETAIL_CHARS_PER_LINE = 96;
+const DETAIL_CHARS_PER_LINE = 54;
 
 /**
  * Ceiling on the detail allowance.
@@ -192,8 +220,13 @@ export const fontScale = (fontSize?: string): number => FONT_SCALE[fontSize || '
  * block. A continued sheet that also carries the totals pays both.
  */
 export const sheetBudgetPx = (
-  printSettings?: { paper?: 'a4' | 'letter'; fontSize?: 'compact' | 'normal' | 'large' },
+  printSettings?: {
+    paper?: 'a4' | 'letter';
+    margin?: 'narrow' | 'normal' | 'wide';
+    fontSize?: 'compact' | 'normal' | 'large';
+  },
   opts?: {
+    /** Sheets after the first restate the period: one extra line. */
     continued?: boolean;
     withBalance?: boolean;
     /** Exact height of the totals block, from `balanceBlockPx`. */
@@ -202,8 +235,7 @@ export const sheetBudgetPx = (
     withBank?: boolean;
   },
 ): number => {
-  const paper = printSettings?.paper || 'a4';
-  const height = PAGE_HEIGHT_PX[paper] ?? PAGE_HEIGHT_PX.a4;
+  const height = pageHeightPx(printSettings?.paper, printSettings?.margin);
   let budget = height - PAGE_PADDING_PX - SHEET_CHROME_PX;
   if (opts?.continued) budget -= CONTINUED_LINE_PX;
   if (opts?.withBalance) budget -= opts.balancePx ?? BALANCE_BLOCK_PX;
@@ -308,7 +340,11 @@ const fillSheets = <T>(
 export const paginateStatementInvoices = (
   invoices: Invoice[],
   cases: DentalCase[],
-  printSettings?: { paper?: 'a4' | 'letter'; fontSize?: 'compact' | 'normal' | 'large' },
+  printSettings?: {
+    paper?: 'a4' | 'letter';
+    margin?: 'narrow' | 'normal' | 'wide';
+    fontSize?: 'compact' | 'normal' | 'large';
+  },
   /**
    * The clinic's account position, when the caller has one. It only exists to
    * size the totals block exactly: the block grows a line for an advance

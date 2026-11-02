@@ -15,6 +15,7 @@ import {
   STATEMENT_DETAIL_OMIT,
 } from '../../services/ledgerCaseDetail';
 import type { InvoiceAccountPosition } from '../../services/invoiceAccount';
+import { PRINT_MARGIN_MM } from '../../services/statementPagination';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
 
@@ -389,8 +390,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
   const closingNet = balanceDue - (advanceBalance || 0);
 
   // Dynamic page setup — the chosen paper size + margin become the actual
-  // @page rule for printing (overrides the 12mm stylesheet default).
-  const pageMarginMm = margin === 'narrow' ? 8 : margin === 'wide' ? 18 : 12;
+  // @page rule for printing (overrides the 12mm stylesheet default). The
+  // margin map is shared with statementPagination so the preview reserves
+  // exactly the box the printer gets.
+  const pageMarginMm = PRINT_MARGIN_MM[margin] ?? PRINT_MARGIN_MM.normal;
   const pageSetupCss = `@page { size: ${paper === 'letter' ? 'letter' : 'A4'}; margin: ${pageMarginMm}mm; }`;
 
   return (
@@ -779,7 +782,24 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
             </div>
           )}
           {on(sections, 'invoiceTable') && (
-            <table className="w-full border-collapse text-[11px] mb-4">
+            /* Fixed column widths, not auto layout. Auto layout sizes the
+               columns from the rows: a run with large amounts widened the
+               money columns and squeezed Date until "Oct 13, 2026" wrapped,
+               so rows grew 5px taller only on the sheets whose invoices
+               happened to be bigger — height the paginator could not see.
+               These percentages are the printable width split so every
+               column's widest value stays on one line at 626–701px; Case
+               takes the remainder and drives the detail-line count. */
+            <table className="w-full table-fixed border-collapse text-[11px] mb-4">
+              <colgroup>
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '35%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '9%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   {/* `Received` is the day the lab took the job in, which is

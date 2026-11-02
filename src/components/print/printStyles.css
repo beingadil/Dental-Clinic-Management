@@ -109,6 +109,44 @@
     border-radius: 0 !important;
   }
 
+  /* The application shell is a viewport-height flex column: the outer
+     `.app-atmos` is h-screen + overflow:hidden, the main column repeats that
+     cap, and <main> is the scroller (overflow-y:auto). `visibility` cannot
+     release those boxes, so a page-level print document was laid out inside
+     an 856px viewport and everything past the first sheet was clipped —
+     "Print 62 invoices" produced one page while the preview showed four.
+
+     On paper the shell must not constrain the document at all: every
+     ancestor on the print path becomes normal block flow at its natural
+     height. Scoped to the no-modal path so a focused dialog keeps owning the
+     sheet. */
+  body:not(:has(.print-area)) .app-atmos,
+  body:not(:has(.print-area)) .app-atmos > div,
+  body:not(:has(.print-area)) #main-content,
+  body:not(:has(.print-area)) #main-content > div {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body:not(:has(.print-area)) .app-atmos {
+    background: #ffffff !important;
+    background-image: none !important;
+  }
+
+  body:not(:has(.print-area)) #main-content {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body:not(:has(.print-area)) #main-content > div {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   /* Full-page views (Ledger, General Ledger, Catalog) print in normal
      document flow: every direct child of .print-page except the marked
      .print-flow content is dropped (chrome above, modals below). Only
@@ -217,6 +255,12 @@
 .print-invoices-stack {
   --sheet-w: 794px;
   --sheet-h: 1123px;
+  /* Paper margin for the chosen setting, written inline by the view. It is
+     part of the preview sheet's padding so the preview's CONTENT box is the
+     same 671×1008px box the printer uses at A4/12mm. Without it the preview
+     laid the table out 51px wider than paper, rows wrapped less, and the
+     paginator's row budget undercounted the printed height. */
+  --page-margin: 45.35px;
   display: block;
   width: var(--sheet-w);
   margin: 0 auto;
@@ -233,13 +277,25 @@
   max-width: none;
   height: var(--sheet-h);
   min-height: 0;
+  /* The printer's @page margin + its own 12/16px sheet inset. Kept in step
+     with the print rule below and with `pageMarginPx` in statementPagination. */
+  padding: calc(var(--page-margin) + 12px) calc(var(--page-margin) + 16px);
 }
 
-/* One gap between sheets instead of the dashed "two printouts" divider. */
-.print-invoices-stack .print-doc-page + .print-doc-page {
-  margin-top: 2rem;
-  padding-top: 2.5rem;
-  border-top: 0;
+/* One gap between sheets instead of the dashed "two printouts" divider.
+   SCREEN ONLY: on paper this margin/padding used to survive the @media screen
+   guard that the base rule had, adding 72px to the top of every sheet after
+   the first. A sheet that measured 1010px then consumed 1042px of a 1032px
+   page, and the footer was pushed onto a page of its own. */
+@media screen {
+  .print-invoices-stack .print-doc-page + .print-doc-page {
+    margin-top: 2rem;
+    /* The base screen rule gives every stacked sheet 2.5rem of top padding;
+       that would shrink the second sheet's content box and break the
+       preview/print geometry. Restate the paper-margin padding instead. */
+    padding-top: calc(var(--page-margin) + 12px);
+    border-top: 0;
+  }
 }
 
 @media print {
@@ -261,12 +317,27 @@
     max-width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
+    /* The @page margin already reserves the paper edge on paper; only the
+       12/16px sheet inset remains. This must equal the preview's content box,
+       hence the calc in the base rule. */
+    padding: 0.75rem 1rem !important;
   }
 }
 
 @media print {
+  /* Each statement sheet is already row-budgeted to one page and the next
+     sheet forces a break. Marking the sheet `break-inside: avoid` as well
+     makes Chromium emit a BLANK page between every pair of sheets: a
+     monolithic box that fills (or just exceeds) the page cannot be moved
+     whole, so it consumes an extra page before the forced break. A 4-sheet
+     statement printed as 7 pages — the operator's "only one page prints"
+     with three empty sheets after it. The row budget is what prevents
+     mid-row splits; the fragmenter must be allowed to do its job.
+     `break-inside: auto` is explicit so a future global rule cannot bring
+     the blank pages back. */
   .print-doc-page {
-    break-inside: avoid;
+    break-inside: auto;
+    page-break-inside: auto;
   }
   .print-doc-page + .print-doc-page {
     break-before: page;

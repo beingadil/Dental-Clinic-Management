@@ -10,7 +10,7 @@ import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
 import { compareInvoiceNumbers } from '../../services/invoiceOrder';
-import { paginateStatementInvoices } from '../../services/statementPagination';
+import { paginateStatementInvoices, pageMarginPx } from '../../services/statementPagination';
 import { PrintDocument, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, saveDocumentSections, loadStatementSectionsAdoptingBank, setStatementBankExcluded, isStatementBankExcluded } from '../../services/printSettings';
@@ -753,7 +753,12 @@ export const PrintInvoicesView: React.FC = () => {
               className={`print-invoices-stack${
                 printSettings.paper === 'letter' ? ' print-invoices-stack--letter' : ''
               }`}
-              style={{ ['--sheet-zoom' as string]: zoomScale } as React.CSSProperties}
+              style={
+                {
+                  ['--sheet-zoom' as string]: zoomScale,
+                  ['--page-margin' as string]: `${pageMarginPx(printSettings.margin)}px`,
+                } as React.CSSProperties
+              }
             >
               {selected.length === 0 ? (
                 <div className="print-preview-page">

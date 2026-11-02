@@ -132,6 +132,64 @@ describe('print CSS contract — generic pipeline (lab cards, invoices, batch)',
     expect(genericCss).toMatch(/\.batch-scroll-area\s*\{[^}]*overflow: visible/);
   });
 
+  it('releases the viewport-height app shell so pages 2+ can paginate', () => {
+    /* The shell is h-screen + overflow:hidden and <main> is the scroller.
+       Without this reset the print document is fragmented inside the first
+       viewport: the preview shows four sheets and the printer receives one.
+       Pin the whole ancestor chain, not just the first selector. */
+    const rule = genericCss.match(
+      /body:not\(:has\(\.print-area\)\) \.app-atmos,[\s\S]*?\{[^}]*\}/
+    )?.[0];
+    expect(rule).toBeTruthy();
+    expect(rule).toContain('body:not(:has(.print-area)) #main-content');
+    expect(rule).toMatch(/height:\s*auto !important/);
+    expect(rule).toMatch(/overflow:\s*visible !important/);
+    // The flex column must become block flow, otherwise the main column's
+    // flex sizing recreates a viewport box even with `height: auto`.
+    expect(rule).toMatch(/display:\s*block !important/);
+  });
+
+  it('allows a statement sheet to fragment instead of inserting blank pages', () => {
+    /* `break-inside: avoid` on a sheet that fills the page, combined with the
+       forced break on the next sheet, made Chromium put an empty page between
+       every pair: 4 sheets printed as 7 pages. The sheet is already row-
+       budgeted; the fragmenter needs to be allowed through. */
+    expect(genericCss).toMatch(/\.print-doc-page\s*\{[^}]*break-inside:\s*auto/);
+    expect(genericCss).not.toMatch(/\.print-doc-page\s*\{[^}]*break-inside:\s*avoid/);
+  });
+
+  it('keeps the preview-only sheet gap off paper', () => {
+    /* The stack's inter-sheet margin/padding sat outside an @media screen
+       guard: on paper it added 72px to the top of every sheet after the first,
+       which is how a 1010px sheet overflowed a 1032px page and printed its
+       footer alone. The only printed separation must be `break-before`. */
+    const gap = genericCss.match(
+      /@media screen\s*\{[\s\S]*?\.print-invoices-stack \.print-doc-page \+ \.print-doc-page[\s\S]*?\}/
+    );
+    expect(gap).toBeTruthy();
+    expect(gap![0]).toContain('margin-top');
+    expect(gap![0]).toContain('calc(var(--page-margin) + 12px)');
+    // The unscoped copy that caused the overflow must be gone.
+    expect(genericCss).not.toMatch(
+      /(^|\n)\.print-invoices-stack \.print-doc-page \+ \.print-doc-page \{/
+    );
+  });
+
+  it('reserves the paper margin in the preview content box', () => {
+    /* Preview and print must lay the table out at the same width, or the
+       paginator prices rows the preview never renders. The stack padding is
+       the paper margin plus the printer's 12/16px inset; the print rule keeps
+       only that inset because @page already owns the margin. */
+    const base = genericCss.match(
+      /\.print-invoices-stack \.print-preview-page\s*\{([^}]*)\}/
+    )?.[1];
+    expect(base).toBeTruthy();
+    expect(base).toContain('var(--page-margin)');
+    expect(base).toMatch(/padding:\s*calc\(var\(--page-margin\) \+ 12px\)/);
+    const printBlock = genericCss.slice(genericCss.indexOf('@media print', genericCss.indexOf('.print-invoices-stack .print-preview-page')));
+    expect(printBlock).toMatch(/padding:\s*0\.75rem 1rem !important/);
+  });
+
   it('resets global UI zoom so paper keeps true sizes', () => {
     expect(indexCss).toMatch(/html\s*\{[^}]*zoom: 1 !important/);
   });
