@@ -26,7 +26,6 @@ import { EditAdjustmentModal } from './EditAdjustmentModal';
 import { ClinicStatementModal } from './ClinicStatementModal';
 import { PageHeader, EmptyState, DataTable, FilterBar, usePagination } from '../common/ui';
 import { BILLING_TABS, labelOf } from '../common/financeTabs';
-import { todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
@@ -78,8 +77,8 @@ export const BillingView: React.FC = () => {
   // Invoice history window: defaults to TODAY, like every other billing tab —
   // yesterday's and older invoices are reached by rewinding the date picker
   // (clearing it = All Time). Dates compare on the billing day.
-  const [invFromDate, setInvFromDate] = useState<string>(() => todayISO());
-  const [invToDate, setInvToDate] = useState<string>(() => todayISO());
+  const [invFromDate, setInvFromDate] = useState<string>('');
+  const [invToDate, setInvToDate] = useState<string>('');
 
   // Finance 2.0 Unified & Inspection Modals
   const [selectedDrawerInvoice, setSelectedDrawerInvoice] = useState<Invoice | null>(null);
