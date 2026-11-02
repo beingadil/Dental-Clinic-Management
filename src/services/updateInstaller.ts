@@ -194,6 +194,14 @@ let inflight: Promise<AutoUpdatePhase> | null = null;
 
 export function runAutoUpdate(): Promise<AutoUpdatePhase> {
   if (inflight) return inflight;
+  // Never let a routine check clobber a staged update that is waiting for the
+  // user's explicit "Restart & Apply Updates" click. The install is already
+  // on disk and verified; re-checking would only reset the phase to
+  // "up_to_date" and strand the installer.
+  const currentPhase = getAutoUpdatePhase();
+  if (currentPhase.state === 'ready_to_apply' || currentPhase.state === 'applying') {
+    return Promise.resolve(currentPhase);
+  }
   inflight = (async (): Promise<AutoUpdatePhase> => {
     setPhase({ state: 'checking' });
     const status: UpdateStatus = await checkForUpdates();
