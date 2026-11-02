@@ -252,7 +252,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
       /* Local-midnight parse like casesByMonth above: a bare "YYYY-MM-DD"
          read as UTC would file a month-end bill into the following month in
          +05:00. */
-      const d = new Date(`${String(inv.issue_date || inv.created_at || '').slice(0, 10)}T00:00:00`);
+      const d = new Date(`${String(inv.created_at || inv.issue_date || '').slice(0, 10)}T00:00:00`);
       const ts = isNaN(d.getTime()) ? 0 : d.getTime();
       const key = ts === 0 ? 'undated' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = ts === 0 ? 'Undated' : d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
@@ -267,7 +267,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
     for (const g of rows) {
       g.invoices.sort(
         (a, b) =>
-          String(a.issue_date || a.created_at || '').localeCompare(String(b.issue_date || b.created_at || '')) ||
+          String(a.created_at || a.issue_date || '').localeCompare(String(b.created_at || b.issue_date || '')) ||
           compareInvoiceNumbers(a.invoice_number, b.invoice_number)
       );
     }

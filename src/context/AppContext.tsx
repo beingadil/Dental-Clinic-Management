@@ -1193,7 +1193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payment_status: newStatus,
             lab_id: updates.lab_id ?? inv.lab_id,
             lab_name: updates.lab_name ?? inv.lab_name,
-            issue_date: updates.delivery_date ?? inv.issue_date,
+            issue_date: inv.issue_date,
             due_date: updates.delivery_date ?? inv.due_date
           };
           const priorJournal = journalEntries.find((j) => j.reference_type === 'invoice' && j.reference_id === inv.id);
