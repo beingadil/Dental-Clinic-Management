@@ -115,15 +115,7 @@ export const DailyReportView: React.FC = () => {
         daysLate: r.isOverdue ? Math.abs(r.daysRemaining) : 0,
         fee: r.price,
       })),
-      report.clinics.map((c) => ({
-        clinicName: c.labName,
-        doctor: c.doctor,
-        casesReceived: c.casesReceived,
-        casesDue: c.casesDue,
-        invoicedValue: c.invoicedValue,
-        paidValue: c.paidValue,
-        outstanding: c.outstanding,
-      })),
+      [],
       {
         labName,
         periodLabel,
