@@ -1,9 +1,9 @@
 {
-  "payload_checksum": "sha256:cbd7b701131223fbafd93ab21a6964cfc799efc73edf65f7a8ae1e405a6c55f7",
-  "released_at": "2026-11-02T16:41:30Z",
-  "version": "2.31.12",
+  "payload_checksum": "sha256:27b6a104596023d4dd569e74beec8765e07f4ba87ab443248d2a2094950ad4eb",
+  "released_at": "2026-11-02T17:00:47Z",
+  "channel": "stable",
   "magic": "DENTALUPDATE",
-  "download_url": "https://github.com/beingadil/Dental-Clinic-Management/releases/download/v2.31.12/Dental.Solutions_2.31.12_x64-setup.exe",
-  "notes": "Dental Solutions v2.31.12 installer",
-  "channel": "stable"
+  "download_url": "https://github.com/beingadil/Dental-Clinic-Management/releases/download/v2.31.15/Dental.Solutions_2.31.15_x64-setup.exe",
+  "notes": "Dental Solutions v2.31.15 installer",
+  "version": "2.31.15"
 }
