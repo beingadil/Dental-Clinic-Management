@@ -1496,6 +1496,33 @@ function adjustmentToDomain(row: AdjustmentRow, db: Db): any {
 export const adjustmentsRepo = {
   all(): any[] {
     const db = requireEngine();
+    // Backfill serials for legacy adjustments that were stored without an
+    // adjustment_number (older builds / migrated rows). Without this they render
+    // blank and cannot be traced or deleted from the register.
+    try {
+      const missing = db.all<{ id: string; type: string }>(
+        "SELECT id, type FROM account_adjustments WHERE adjustment_number IS NULL OR TRIM(adjustment_number) = ''"
+      );
+      if (missing.length) {
+        const existing = db.all<{ adjustment_number: string; type: string }>(
+          "SELECT adjustment_number, type FROM account_adjustments"
+        );
+        const byType: Record<string, number> = {};
+        for (const r of existing) {
+          const m = String(r.adjustment_number || '').match(/^(CR|DR|REF)-(\d+)$/);
+          if (m) byType[r.type] = Math.max(byType[r.type] || 0, Number(m[2]));
+        }
+        for (const r of missing) {
+          const prefix = r.type === 'credit_note' ? 'CR' : r.type === 'debit_adjustment' ? 'DR' : 'REF';
+          const next = (byType[r.type] || 0) + 1;
+          byType[r.type] = next;
+          const num = `${prefix}-${String(next).padStart(4, '0')}`;
+          db.run('UPDATE account_adjustments SET adjustment_number = ? WHERE id = ?', [num, r.id]);
+        }
+      }
+    } catch {
+      /* repair is best-effort; never block the read */
+    }
     return db.all<AdjustmentRow>('SELECT * FROM account_adjustments ORDER BY date DESC, created_at DESC').map((r) => adjustmentToDomain(r, db));
   },
   byId(id: string): any | undefined {
