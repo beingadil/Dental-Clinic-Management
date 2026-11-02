@@ -785,7 +785,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                   render: (row) => {
                     if (row.kind === 'opening') return <span className="text-ink-muted">—</span>;
                     const entry = row.entry;
-                    return entry.case_number ? (
+                    if (!entry.case_number) return (<span className="font-mono text-[11px] font-bold text-amber-800 whitespace-nowrap">{entry.reference_number || '—'}</span>); return (
                       <button
                         type="button"
                         onClick={() => {
@@ -799,8 +799,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                       >
                         {entry.case_number}
                       </button>
-                    ) : (
-                      <span className="text-slate-300 text-xs">—</span>
                     );
                   },
                 },
