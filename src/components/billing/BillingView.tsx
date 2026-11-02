@@ -223,6 +223,15 @@ export const BillingView: React.FC = () => {
    * the moment either changed: filtering to one clinic left the register listing
    * every other clinic's receipts. One band, one query, one export.
    */
+  const filteredAdjustments = useMemo(() => {
+    return (accountAdjustments || []).filter((adj) => {
+      const day = (adj.date || '').slice(0, 10);
+      if (invFromDate && day < invFromDate) return false;
+      if (invToDate && day > invToDate) return false;
+      if (clinicFilter !== 'all' && adj.lab_id !== clinicFilter) return false;
+      return true;
+    });
+  }, [accountAdjustments, invFromDate, invToDate, clinicFilter]);
   const registerTransactions = useMemo<UnifiedTransaction[]>(() => {
     return filterUnifiedTransactions(
       buildUnifiedTransactions({ allPayments, advancePayments, accountAdjustments, invoices }),
@@ -818,6 +827,45 @@ export const BillingView: React.FC = () => {
               },
             ]}
           />
+          </div>
+
+          {/* Adjustments register — clinic-level credit notes, surcharges and
+              refunds. Listed on their own so they stay editable/deletable even
+              when no invoice row is in scope (or the clinic has none). */}
+          <div className="ds-glass-card rounded-2xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-ds-line/40 flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                Adjustments
+              </span>
+              <span className="text-[10px] font-semibold text-ink-muted">
+                {filteredAdjustments.length} entr{filteredAdjustments.length === 1 ? 'y' : 'ies'}
+              </span>
+            </div>
+            {filteredAdjustments.length === 0 ? (
+              <p className="px-4 py-6 text-center text-xs font-semibold text-ink-muted">
+                No adjustments recorded yet.
+              </p>
+            ) : (
+              <ul className="divide-y divide-ds-line/40">
+                {filteredAdjustments.map((adj) => (
+                  <li key={adj.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-mono font-bold text-amber-800 text-xs">{adj.adjustment_number}</span>
+                      <span className="ml-2 text-[11px] text-slate-600">{adj.lab_name}</span>
+                      <span className="ml-2 text-[11px] text-slate-500">{adj.date}</span>
+                      <span className="ml-2 text-[11px] text-slate-500">{adj.reason}</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900 text-xs">{formatPKR(adj.amount)}</span>
+                    <button type="button" onClick={() => setAdjustmentToEdit(adj)} className="p-1 text-slate-400 hover:text-indigo-600 rounded cursor-pointer" aria-label="Edit adjustment">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button type="button" onClick={() => setAdjustmentToDelete(adj)} className="p-1 text-slate-400 hover:text-ink-danger rounded cursor-pointer" aria-label="Delete adjustment">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
         </div>
