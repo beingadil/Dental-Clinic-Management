@@ -93,7 +93,7 @@ export const InsightsView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span
                   aria-hidden
-                  className="h-1 w-8 rounded-full bg-gradient-to-r from-indigo-400 via-violet-400 to-cyan-300"
+                  className="h-1 w-8 rounded-full bg-indigo-500"
                 />
                 <p className="insight-eyebrow text-ink-muted">Insight · {metrics.period.label}</p>
               </div>
