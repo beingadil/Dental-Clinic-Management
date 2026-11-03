@@ -387,8 +387,10 @@ export function buildLedgerPdf(
         { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.25 : 0 },
         { text: e.typeLabel },
         { text: '', lines: narrLines },
-        { text: e.debit ? num(e.debit) : '' },
-        { text: e.credit ? num(e.credit) : '' },
+        /* A money column with nothing in it says so with a dash, the way a
+           ledger has always been ruled: an empty cell reads as a missing value. */
+        { text: e.debit ? num(e.debit) : '\u2013' },
+        { text: e.credit ? num(e.credit) : '\u2013' },
         /* The running balance is the column a reader follows down the page:
            one step heavier than the money beside it. */
         { text: num(e.closing), bold: true, size: 7 },
@@ -396,104 +398,110 @@ export function buildLedgerPdf(
     };
   });
 
-  /* The statement's own figures, above the table: what the account stood at,
-     what moved, and where it ended. They used to be computed into the meta
-     and then printed nowhere, so a reader had to add 95 rows to know whether
-     the balance went up or down. */
-  const summary: SummaryFigure[] = [
-    {
-      label: 'Opening balance',
-      value: pk(meta.openingBalance),
-      note: meta.openingBalance > 0 ? 'Brought forward' : 'No balance carried in',
-    },
-    {
-      label: 'Total debits',
-      value: pk(meta.totalDebits),
-      note: meta.transactionCount === 1 ? '1 entry' : `${num(meta.transactionCount)} entries`,
-    },
-    { label: 'Total credits', value: pk(meta.totalCredits), note: 'Payments and adjustments' },
-    {
-      label: 'Closing balance',
-      value: pk(meta.closingBalance),
-      note: meta.closingBalance > 0 ? 'Due from clinic' : 'Nothing outstanding',
-    },
-  ];
+  const right = g.W - g.MARGIN;
 
-  const ruleY = docRuleY(g, 2);
-  const summaryTop = ruleY - 30;
-  const firstTableY = summaryTop - CARD_H - 22;
-  /* Continuation pages carry no summary strip, so their table may start higher.
-     The packing still reserves the first page's space on every page, which is
-     why a sheet can end a row early — never a row too late. */
-  const continuationTop = g.H - 104;
+  /* ── letterhead ──
+     Company, document title, and the statement's own facts in a BOXED table
+     on the right, rather than four floating label/value pairs: the box is what
+     makes the block read as a statement cover and not as a subtitle. */
+  const infoRows: DocMetaLine[] = [
+    { label: 'Statement for', value: meta.clinicLabel },
+    { label: 'Account', value: meta.accountName || 'Customer Ledger' },
+    { label: 'Report period', value: meta.periodLabel },
+    { label: 'Currency', value: 'PKR' },
+  ];
+  const infoTop = g.H - 34;
+  const infoBottom = infoTop - infoRows.length * INFO_ROW_H;
+  const ruleY = Math.min(g.H - 104, infoBottom - 12);
+  /* The table starts under a section heading and the column headings, so a
+     page break never lands between a heading and the rows it introduces. */
+  const sectionLabelY = ruleY - 20;
+  const tableHeadY = ruleY - 38;
+  const firstRowY = tableHeadY - 18;
+
+  const drawHeader = (ops: PdfOp[]) => {
+    ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 22, w: g.CONTENT_W, h: 2.5, grey: 0.12 });
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 38, size: 10.5, bold: true, grey: 0.15,
+      text: fitShrink(meta.labName, g.CONTENT_W * 0.55, 10.5).text,
+    });
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 58, size: 19, bold: true, grey: 0.08,
+      text: 'GENERAL LEDGER',
+    });
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 69, size: 7, grey: 0.4,
+      text: meta.caseFilterLabel
+        ? `Filtered to cases matching “${meta.caseFilterLabel}”`
+        : 'Account statement and transaction details',
+    });
+    drawStatementInfoBox(ops, g, infoRows, infoTop);
+    ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.35, width: 0.9 });
+  };
 
   const section: TableSection = {
     cols: planned.cols,
     rows: rows.map((r) => ({ cells: r.cells, height: r.h })),
-    top: firstTableY,
-    bottom: g.CONTENT_BOTTOM,
-    heading: (ops, geo, y, continued) => {
-      if (continued) {
-        ops.push({
-          kind: 'text', x: geo.MARGIN, y: geo.H - 92, size: 6.5, bold: true, grey: 0.45,
-          text: 'GENERAL LEDGER (CONTINUED)',
-        });
-        return continuationTop;
-      }
-      drawSummaryCards(ops, geo, summary, summaryTop);
-      return y;
+    top: firstRowY,
+    /* Room for the totals row, the account summary, the closing line and the
+       note on the last page — they are part of the document, so the table has
+       to leave them their paper instead of running into the footer. */
+    bottom: g.CONTENT_BOTTOM + 150,
+    heading: (ops, geo, _y, continued) => {
+      ops.push({
+        kind: 'text', x: geo.MARGIN, y: sectionLabelY, size: 7.5, bold: true, grey: 0.2,
+        text: continued ? 'TRANSACTION DETAILS (CONTINUED)' : 'TRANSACTION DETAILS',
+      });
+      return tableHeadY;
     },
-    totals: (ops, geo, X, cols, rowEndY) => {
-      const y = rowEndY - 6;
-      const right = geo.MARGIN + geo.CONTENT_W;
-      /* The totals are part of the table, not a note under it: same box, same
-         column rules, a heavy lid over them. */
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 19, grey: 0.92 });
-      drawGridLines(ops, geo, cols, X, y - 8, y + 11);
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 10, x2: right, y2: y + 10, grey: 0.3, width: 1 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: right, y2: y - 8, grey: 0.3, width: 1 });
-      const cell = (key: string, text: string, size: number) => {
+    totals: (ops, geo, X, cols, rowEndY, rowCount) => {
+      const y = rowEndY - 8;
+      const end = geo.MARGIN + geo.CONTENT_W;
+      /* TOTALS is a single cell across the first four columns, as a ledger's
+         closing line has always been set. */
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 20, grey: 0.945 });
+      drawGridLines(ops, geo, cols, X, y - 8, y + 12);
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 11, x2: end, y2: y + 11, grey: 0.25, width: 1.2 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 9.4, x2: end, y2: y + 9.4, grey: 0.7, width: 0.4 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: end, y2: y - 8, grey: 0.25, width: 1 });
+
+      const label = `TOTALS (${num(rowCount || meta.transactionCount)} TRANSACTION${(rowCount || meta.transactionCount) === 1 ? '' : 'S'})`;
+      ops.push({ kind: 'text', x: geo.MARGIN + 6, y: y + 1, size: 6.5, bold: true, grey: 0.1, text: label });
+      const figure = (key: string, text: string, size: number) => {
         const col = cols.find((c) => c.key === key);
         if (!col) return;
         ops.push({
-          kind: 'text',
-          x: col.align === 'right' ? X[key] + col.w - textW(text, size) - 2 : X[key] + 2,
-          y, size, bold: true, grey: 0.1, text,
+          kind: 'text', x: X[key] + col.w - textW(text, size) - 2, y: y + 1,
+          size, bold: true, grey: 0.1, text,
         });
       };
-      cell('date', 'TOTALS', 6.5);
-      cell('debit', num(meta.totalDebits), 6.5);
-      cell('credit', num(meta.totalCredits), 6.5);
-      /* The figure the document exists to state, at the table's own weight —
-         the closing balance is the one number a reader runs a finger to. */
-      cell('close', num(meta.closingBalance), 8);
+      figure('debit', num(meta.totalDebits), 6.5);
+      figure('credit', num(meta.totalCredits), 6.5);
+      figure('close', num(meta.closingBalance), 8);
+
+      drawAccountSummary(ops, geo, meta, y - 34);
     },
   };
 
   const pages = renderTableSections(
     g,
     [section],
-    (ops) => {
-      drawDocHeader(ops, g, {
-        labName: meta.labName,
-        title: 'GENERAL LEDGER',
-        meta: [
-          { label: 'Statement for', value: meta.clinicLabel },
-          { label: 'Period', value: meta.periodLabel },
-        ],
-        subtitle: meta.caseFilterLabel
-          ? [`Filtered to cases matching “${meta.caseFilterLabel}”`]
-          : undefined,
-      });
-    },
+    (ops) => drawHeader(ops),
     (ops, i, total) => {
-      drawDocFooter(
-        ops,
-        g,
-        { labName: meta.labName, title: 'General Ledger', periodLabel: `${meta.clinicLabel} — ${meta.periodLabel}` },
-        i + 1,
-        total,
-      );
+      ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 13, x2: right, y2: g.FOOTER_Y + 13, grey: 0.7, width: 0.4 });
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
+        text: fitShrink(`${meta.labName} · General Ledger`, g.CONTENT_W - 200, 6.5).text,
+      });
+      /* Page number and generation date are separate runs: a reader (and the
+         test suite) looks for "Page 1 of 4" as its own phrase. */
+      const pg = `Page ${i + 1} of ${total}`;
+      ops.push({ kind: 'text', x: right - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg });
+      const gen = `Generated ${meta.generatedOn}`;
+      ops.push({
+        kind: 'text', x: right - textW(pg, 6.5) - textW(gen, 6.5) - 14, y: g.FOOTER_Y,
+        size: 6.5, grey: 0.45, text: gen,
+      });
     },
   );
 
@@ -729,6 +737,105 @@ function drawDocHeader(ops: PdfOp[], g: Geo, h: DocHeader): number {
   return ruleY;
 }
 
+/* ---------- ledger letterhead blocks ---------- */
+
+/** Height of one statement-info row. */
+const INFO_ROW_H = 15;
+
+/**
+ * The statement's facts, as a boxed two-column table.
+ *
+ * A ledger cover states who the statement is for, on which account, over what
+ * period and in which currency — four labelled facts. Floating right-aligned
+ * pairs read as a caption; a ruled box reads as the cover of a statement.
+ * Returns the y of the box's bottom edge.
+ */
+function drawStatementInfoBox(
+  ops: PdfOp[],
+  g: Geo,
+  rows: DocMetaLine[],
+  top: number,
+  width = 212,
+): number {
+  const right = g.W - g.MARGIN;
+  const left = right - width;
+  const bottom = top - rows.length * INFO_ROW_H;
+  const split = left + width * 0.46;
+  ops.push({ kind: 'rectStroke', x: left, y: bottom, w: width, h: rows.length * INFO_ROW_H, grey: 0.5, width: 0.6 });
+  ops.push({ kind: 'line', x1: split, y1: bottom, x2: split, y2: top, grey: 0.78, width: 0.4 });
+  rows.forEach((row, i) => {
+    const rowTop = top - i * INFO_ROW_H;
+    const base = rowTop - 10.5;
+    if (i > 0) ops.push({ kind: 'line', x1: left, y1: rowTop, x2: right, y2: rowTop, grey: 0.78, width: 0.4 });
+    ops.push({
+      kind: 'text', x: left + 6, y: base, size: 6, bold: true, grey: 0.25,
+      text: fitShrink(row.label.toUpperCase(), split - left - 10, 6).text,
+    });
+    const v = fitShrink(row.value, right - split - 10, 7);
+    ops.push({ kind: 'text', x: right - 6 - textW(v.text, v.size), y: base, size: v.size, bold: true, grey: 0.1, text: v.text });
+  });
+  return bottom;
+}
+
+/**
+ * The account summary under a ledger's totals: four figures, a closing line,
+ * and the note that says what the document is.
+ *
+ * This is the page's conclusion, not a headline: the reader arrives at it
+ * after the transactions, which is the order an accountant checks them in.
+ */
+function drawAccountSummary(ops: PdfOp[], g: Geo, meta: LedgerPdfMeta, y: number): void {
+  const right = g.W - g.MARGIN;
+  const labels = ['Opening balance', 'Total debits', 'Total credits', 'Closing balance'];
+  const values = [
+    pk(meta.openingBalance),
+    pk(meta.totalDebits),
+    pk(meta.totalCredits),
+    pk(meta.closingBalance),
+  ];
+  const colW = g.CONTENT_W / labels.length;
+  const rowH = 17;
+
+  ops.push({ kind: 'text', x: g.MARGIN, y, size: 7.5, bold: true, grey: 0.2, text: 'ACCOUNT SUMMARY' });
+  const headTop = y - 8;
+  const tableBottom = headTop - rowH * 2;
+  ops.push({ kind: 'rect', x: g.MARGIN, y: headTop - rowH, w: g.CONTENT_W, h: rowH, grey: 0.945 });
+  ops.push({ kind: 'rectStroke', x: g.MARGIN, y: tableBottom, w: g.CONTENT_W, h: rowH * 2, grey: 0.4, width: 0.6 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop, x2: right, y2: headTop, grey: 0.25, width: 1 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop - rowH, x2: right, y2: headTop - rowH, grey: 0.25, width: 1 });
+  for (let i = 1; i < labels.length; i++) {
+    ops.push({ kind: 'line', x1: g.MARGIN + i * colW, y1: tableBottom, x2: g.MARGIN + i * colW, y2: headTop, grey: 0.65, width: 0.4 });
+  }
+  labels.forEach((label, i) => {
+    ops.push({
+      kind: 'text', x: g.MARGIN + i * colW + 6, y: headTop - 11, size: 6, bold: true, grey: 0.25,
+      text: fitShrink(label.toUpperCase(), colW - 12, 6).text,
+    });
+    const v = fitShrink(values[i], colW - 12, 8);
+    ops.push({
+      kind: 'text', x: g.MARGIN + i * colW + 6, y: headTop - rowH - 11.5, size: v.size, bold: true, grey: 0.1, text: v.text,
+    });
+  });
+
+  /* The closing line, stated in words: the one sentence a clinic reads first. */
+  const closeTop = tableBottom - 12;
+  ops.push({ kind: 'rectStroke', x: g.MARGIN, y: closeTop - 18, w: g.CONTENT_W, h: 18, grey: 0.4, width: 0.6 });
+  const line = `Closing balance due from ${meta.clinicLabel}: ${pk(meta.closingBalance)}`;
+  const fit = fitShrink(line, g.CONTENT_W - 24, 7.5);
+  ops.push({
+    kind: 'text', x: right - 12 - textW(fit.text, fit.size), y: closeTop - 12, size: fit.size, bold: true, grey: 0.1, text: fit.text,
+  });
+
+  ops.push({
+    kind: 'text', x: g.MARGIN, y: closeTop - 30, size: 6.5, grey: 0.45,
+    text: fitShrink(
+      'Note: This is a computer-generated account statement. Please verify the entries against the clinic\u2019s records.',
+      g.CONTENT_W,
+      6.5,
+    ).text,
+  });
+}
+
 /** Draws a document's footer: who it is, which document, and where we are. */
 function drawDocFooter(
   ops: PdfOp[],
@@ -809,8 +916,21 @@ export interface TableSection {
    * brought-forward balance, for instance.
    */
   preRows?: TableRow[];
-  /** Drawn after the section's last row. */
-  totals?: (ops: PdfOp[], g: Geo, X: Record<string, number>, cols: TableCol[], y: number) => void;
+  /**
+   * Drawn after the section's last row on its last page.
+   *
+   * `rowCount` is the number of rows in the whole section, not the page — a
+   * totals line that says "(32 transactions)" is describing the statement,
+   * not the sheet it happens to sit on.
+   */
+  totals?: (
+    ops: PdfOp[],
+    g: Geo,
+    X: Record<string, number>,
+    cols: TableCol[],
+    y: number,
+    rowCount: number,
+  ) => void;
   /** Where the first row starts. */
   top: number;
   /** The y the rows may not cross — the totals and the footer need room. */
@@ -1036,7 +1156,7 @@ function renderTableSections(
       });
 
       if (pageInSection === chunks.length - 1 && section.totals) {
-        section.totals(ops, g, X, cols, rowY);
+        section.totals(ops, g, X, cols, rowY, section.rows.length);
       }
 
       pages.push({ ops, geo: g });

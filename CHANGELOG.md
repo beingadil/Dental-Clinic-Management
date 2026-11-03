@@ -5,17 +5,19 @@ over a list of rows, and All Time on the statement prints one table instead of
 a page per month the history touched.
 
 ### Changed
-- General Ledger PDF: a letterhead (accent rule, issuer, title, and a labelled
-  statement-for / period block), a summary strip carrying opening balance,
-  total debits, total credits and closing balance, a ruled table with column
-  dividers and banded rows, a TOTALS row that closes the table, and the
-  running balance set a step heavier than the money beside it.
+- General Ledger PDF: a statement cover — issuer, title, subtitle and a boxed
+  Statement For / Account / Report Period / Currency table — over a
+  "Transaction Details" section, a fully ruled table with a TOTALS row that
+  spans the text columns, then an Account Summary (opening, debits, credits,
+  closing), a boxed closing-balance line and the computer-generated note.
+  Empty money cells print a dash, not a blank, and the running balance is set
+  a step heavier than the columns beside it.
 - Monthly Statement PDF: the same letterhead and summary strip, then one band
   per month — the month at title weight with its billed, collected and
   closing figures on the right — over the same ruled table. The closing
   figure in the totals row prints at display weight.
-- Both documents share one title-block geometry, so the table starts at the
-  same place on every page of every statement.
+- Both documents share one title-block geometry and one table engine, so the
+  table starts at the same place on every page of every statement.
 
 ### Fixed
 - An invoice now belongs to the day its case was **received**, not the day the
