@@ -90,6 +90,27 @@ export const receivedDateFor = (c: { received_date?: string | null; created_at?:
   return (c.created_at || '').slice(0, 10);
 };
 
+/**
+ * The business day a posting belongs to.
+ *
+ * A case carries two days: the day the lab RECEIVED the job (an operator-entered
+ * fact, and the day the work entered the books) and the day the row happened to
+ * be keyed. Billing used the second one, so work received on 2 October and
+ * entered a month later posted to November — in the invoice, the ledger and
+ * the monthly statement at once.
+ *
+ * The received date wins whenever it is a real `YYYY-MM-DD`; anything else
+ * falls back to the keying day, which is what a pre-019 case (no received date)
+ * has always meant.
+ */
+export const businessDayFor = (
+  receivedDate: string | null | undefined,
+  fallback: string = getTodayStr(),
+): string => {
+  const day = String(receivedDate ?? '').trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : fallback;
+};
+
 export const daysDiff = (targetDateStr: string, baseDateStr = getTodayStr()): number => {
   try {
     const t = new Date(targetDateStr.split('T')[0]).getTime();

@@ -1643,6 +1643,45 @@ export const MIGRATION_028_CUSTOM_ROLES: Migration = {
   ],
 };
 
+// ---------------------------------------------------------------- 029 - invoice business day
+/**
+ * Re-date existing invoices to the day the job was received.
+ *
+ * Invoices were stamped with the day the row was KEYED, so a case received on
+ * 2 October and entered a month later sat in November in the invoice list, the
+ * General Ledger and the monthly statement. New invoices are dated from the
+ * case's `received_date` now; this rewrite is what makes existing databases
+ * agree with them instead of showing two rules.
+ *
+ * The guard matters as much as the UPDATE:
+ *  - only invoices with a linked case can be re-dated at all;
+ *  - only a real `YYYY-MM-DD` is accepted (a NULL received date, an empty
+ *    string or free text all leave the invoice exactly as it was — no
+ *    migration guesses a business day);
+ *  - `created_at` is NOT NULL, so it can only take the same validated value.
+ *
+ * Both invoice dates carry the day: `issue_date` is what prints, `created_at`
+ * is what the reports read as the booking day, and leaving them apart is how
+ * the two would drift into different months again.
+ */
+export const MIGRATION_029_INVOICE_BUSINESS_DAY: Migration = {
+  version: 29,
+  name: 'invoice_business_day',
+  statements: [
+    `UPDATE invoices
+        SET issue_date = (SELECT c.received_date FROM cases c WHERE c.id = invoices.case_id),
+            created_at = (SELECT c.received_date FROM cases c WHERE c.id = invoices.case_id)
+      WHERE case_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM cases c
+           WHERE c.id = invoices.case_id
+             AND c.received_date IS NOT NULL
+             AND c.received_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+        )`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '29')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1672,6 +1711,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_026_RBAC_ROLES,
   MIGRATION_027_USER_PERMISSIONS,
   MIGRATION_028_CUSTOM_ROLES,
+  MIGRATION_029_INVOICE_BUSINESS_DAY,
 ];
 
 /**

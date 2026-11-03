@@ -18,6 +18,15 @@ a page per month the history touched.
   same place on every page of every statement.
 
 ### Fixed
+- An invoice now belongs to the day its case was **received**, not the day the
+  row was keyed. Work that arrived on 2 October and was entered in November
+  used to post to November in the invoice list, the General Ledger and the
+  monthly statement alike; a case with no received date keeps the keying day.
+- Correcting a case's received date moves its invoice with it, so the printed
+  invoice and the ledger can no longer disagree about the month.
+- Migration 029 re-dates the invoices already on disk to the same rule, so an
+  upgraded database shows one rule rather than two. An invoice whose case has
+  no real `YYYY-MM-DD` received date is left exactly where it was.
 - A row whose description wraps to a second line is no longer drawn through
   its own bottom rule: the row's height, its rule and its banding are now
   measured from the number of lines it actually carries.

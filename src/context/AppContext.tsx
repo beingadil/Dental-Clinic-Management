@@ -49,7 +49,7 @@ import {
   qcReasonLabel,
   statusAfterQc,
 } from '../services/qcDomain';
-import { getTodayStr, getNowStamp } from '../utils/dateUtils';
+import { businessDayFor, getTodayStr, getNowStamp } from '../utils/dateUtils';
 import { stripDoctorHonorific } from '../utils/doctorName';
 import { useSettingsDomain } from './hooks/useSettingsDomain';
 import { useCasesDomain } from './hooks/useCasesDomain';
@@ -1072,6 +1072,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // and the sync aborted on the UNIQUE constraint. The floor is the live
     // state's max-scan output — byte-identical to the legacy generator —
     // raised monotonically so two mints can never collide.
+    /* The posting day is the day the lab RECEIVED the job, not the day the row
+       is keyed. Work received on 2 October and entered in November used to
+       post to November everywhere — invoice, ledger, statement — because both
+       invoice dates were stamped from the clock. A case with no received date
+       (pre-migration-019 data) keeps the keying day. */
+    const businessDay = businessDayFor(caseData.received_date, nowStr.split(' ')[0]);
+
     const newInvoice: Invoice = {
       id: genId('inv'),
       invoice_number: nextReservedInvoiceNumber(() => generateInvoiceNumber()),
@@ -1087,15 +1094,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       final_amount: caseData.final_price,
       amount_paid: 0,
       payment_status: 'unpaid',
-      // The invoice is booked on the day the case is REGISTERED — that is the
-      // day the work entered the books, and it is the day the billing tabs
-      // default their window to. Booking it on the delivery date instead
-      // pushed every new invoice days into the future, so a case created
-      // today was invisible in the default Today filter until its delivery
-      // date arrived. The delivery date remains the due date.
-      issue_date: nowStr.split(' ')[0],
+      // Booked on the received day (above). Never the delivery date: that is a
+      // FUTURE promise and pushed every new invoice days forward, so a case
+      // created today was invisible in the default Today filter. The delivery
+      // date remains the due date.
+      issue_date: businessDay,
       due_date: caseData.delivery_date,
-      created_at: nowStr.split(' ')[0],
+      // `created_at` is the invoice's BOOKING day for the reports that read it
+      // directly (daily report, invoice order, print) — so it carries the same
+      // day as `issue_date`, and the two can never disagree about the month.
+      created_at: businessDay,
       payments: []
     };
 
@@ -1161,11 +1169,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    // Sync invoice if price or the owning clinic changed: an invoice left on a
-    // stale lab_id trips the labs FK and aborts the whole sync once that clinic
-    // is deleted.
+    // Sync invoice if price, the owning clinic or the received day changed: an
+    // invoice left on a stale lab_id trips the labs FK and aborts the whole
+    // sync once that clinic is deleted, and an invoice left on the old received
+    // day keeps posting to the wrong month after the date is corrected.
     if (updates.price !== undefined || updates.discount !== undefined || updates.final_price !== undefined
-      || updates.lab_id !== undefined || updates.lab_name !== undefined || updates.delivery_date !== undefined) {
+      || updates.lab_id !== undefined || updates.lab_name !== undefined || updates.delivery_date !== undefined
+      || updates.received_date !== undefined) {
       // Repricing re-posts the books (audit F11): the old issuance journal is
       // REPLACED by a fresh one for the new amounts, so the ledger never drifts
       // from the invoice. It used to leave a compensating "reversal" journal
@@ -1185,6 +1195,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // failed the whole SQLite sync.
           const newFinal = Math.max(0, updates.final_price ?? (newAmount - newDiscount));
           const newStatus = inv.amount_paid >= newFinal ? 'paid' : (inv.amount_paid > 0 ? 'partial' : 'unpaid');
+          /* Correcting a case's received date moves its posting with it, or the
+             invoice would stay in the month the row was originally keyed into
+             while the case says otherwise. Clearing the received date leaves
+             the invoice where it is: there is no other business day to use. */
+          const reissuedDay = updates.received_date !== undefined
+            ? businessDayFor(updates.received_date, '')
+            : '';
           const reissued: Invoice = {
             ...inv,
             amount: newAmount,
@@ -1193,7 +1210,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payment_status: newStatus,
             lab_id: updates.lab_id ?? inv.lab_id,
             lab_name: updates.lab_name ?? inv.lab_name,
-            issue_date: inv.issue_date,
+            issue_date: reissuedDay || inv.issue_date,
+            created_at: reissuedDay || inv.created_at,
             due_date: updates.delivery_date ?? inv.due_date
           };
           const priorJournal = journalEntries.find((j) => j.reference_type === 'invoice' && j.reference_id === inv.id);
