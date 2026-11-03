@@ -178,14 +178,19 @@ import { BillingReportsView } from '../../src/components/billing/BillingReportsV
 
 /** Newest month first, so tables[0] is March and tables[1] is February. */
 const tables = () => screen.getAllByRole('table');
-const selectMonth = async (label: string) => {
-  const triggers = screen.getAllByRole('button').filter((b) => /2026/.test(b.textContent || ''));
-  const trigger = triggers[0];
-  if (!trigger) return;
+/**
+ * Drive the shared date-range picker the way an operator does: open it, type
+ * the two days, let the statement re-render. The window decides which WHOLE
+ * months are printed.
+ */
+const selectWindow = async (from: string, to: string) => {
+  const trigger = screen
+    .getAllByRole('button')
+    .find((b) => b.getAttribute('aria-haspopup') === 'dialog');
+  if (!trigger) throw new Error('date range trigger missing');
   fireEvent.click(trigger);
-  await waitFor(() => expect(screen.getAllByRole('option').some((o) => (o.textContent || '').includes(label))).toBe(true));
-  const option = screen.getAllByRole('option').find((o) => (o.textContent || '').includes(label));
-  if (option) fireEvent.click(option);
+  fireEvent.change(screen.getByLabelText('From date'), { target: { value: from } });
+  fireEvent.change(screen.getByLabelText('To date'), { target: { value: to } });
   await waitFor(() => expect(screen.getAllByRole('table').length).toBeGreaterThan(0));
 };
 const clinicRow = (table: HTMLElement) =>
@@ -259,7 +264,23 @@ describe('BillingReportsView monthly statement', () => {
     const footer = footerRow(march);
     expect(figure(march, footer, 'Cases Billed')).toBe('1');
     expect(figure(march, footer, 'Billed (Dr)')).toBe('PKR 25,000');
-    expect(figure(march, footer, 'Closing Balance')).toBe('PKR 37,000 Dr');
+    // The footer is the clinics' position at month end: Al-Noor's 37,000 plus
+    // Beta's 12,000 carried from February, even though Beta raised nothing
+    // in March. A statement that totalled only the month's movers would
+    // understate the receivable by every quiet clinic.
+    expect(figure(march, footer, 'Closing Balance')).toBe('PKR 49,000 Dr');
+  });
+
+  it('lists every clinic in the month, carrying the quiet ones balance forward', () => {
+    /* The window is March, and Beta Dental only ever traded in February. The
+       March statement still has to show Beta: its money columns are zero and
+       its closing balance is the February figure, because that is what the
+       clinic owes at the end of March. */
+    const [march] = tables();
+    const beta = within(march).getByText('Beta Dental').closest('tr') as HTMLElement;
+    expect(figure(march, beta, 'Billed (Dr)')).toBe('PKR 0');
+    expect(figure(march, beta, 'Collected (Cr)')).toBe('PKR 0');
+    expect(figure(march, beta, 'Closing Balance')).toBe('PKR 12,000 Dr');
   });
 
   it('exports the same closing balance to Excel', async () => {
@@ -332,7 +353,7 @@ describe('choosing which clinics are in the statement', () => {
   };
 
   it('takes a clinic out of every month at once', async () => {
-    await selectMonth('February 2026');
+    await selectWindow('2026-02-01', '2026-02-28');
     expect(within(tables()[0]).getByText('Al-Noor Clinic')).toBeTruthy();
     expect(within(tables()[0]).getByText('Beta Dental')).toBeTruthy();
 
@@ -347,7 +368,7 @@ describe('choosing which clinics are in the statement', () => {
   it('recomputes the month total from the clinics that are left', async () => {
     /* The February month total covers both clinics: 40,000 + 12,000. Take
        one away and the total has to follow, or the footer is a lie. */
-    await selectMonth('February 2026');
+    await selectWindow('2026-02-01', '2026-02-28');
     const februaryTotal = () => figure(tables()[0], footerRow(tables()[0]), 'Billed (Dr)');
     expect(februaryTotal()).toBe('PKR 52,000');
 
@@ -386,10 +407,30 @@ describe('exporting the statement as a PDF', () => {
     // A real PDF, not a picture of one.
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
     expect(pdf).toContain('MONTHLY STATEMENT');
-    // The months in the document, in the order a statement reads.
+    // The document is the one on screen: the picker opens on the newest
+    // month, so March only — February is a click away in the picker, not a
+    // page the reader did not ask for.
     expect(pdf).toContain('MARCH 2026');
-    expect(pdf).toContain('FEBRUARY 2026');
+    expect(pdf).not.toContain('FEBRUARY 2026');
     expect(pdf).toContain('Al-Noor Clinic');
+    // One month on screen is one sheet in the file — the document does not
+    // silently add the archive behind the page the reader was looking at.
+    expect(pdf).toContain('/Count 1 >>');
+  });
+
+  it('follows the date window into the document', async () => {
+    await selectWindow('2026-02-01', '2026-03-31');
+    fireEvent.click(screen.getByLabelText('Download the monthly statement as a PDF'));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    const [, pdf] = downloadPdf.mock.calls[0] as unknown as [string, string];
+    // Both months are inside the window, so both are in the file — newest
+    // month first, the order a statement reads.
+    expect(pdf.indexOf('MARCH 2026')).toBeGreaterThan(-1);
+    expect(pdf.indexOf('MARCH 2026')).toBeLessThan(pdf.indexOf('FEBRUARY 2026'));
+    // And the quiet clinic is on the March page with its balance, not missing.
+    expect(pdf).toContain('Beta Dental');
+    // Two months in the window, two sheets in the file.
+    expect(pdf).toContain('/Count 2 >>');
   });
 
   it('exports only the clinics that are in scope', async () => {

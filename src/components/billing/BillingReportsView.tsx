@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can } from '../../services/permissions';
 import { Invoice, SavedVoucher, DentalLab } from '../../types';
@@ -6,7 +6,6 @@ import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { EmptyState, DataTable } from '../common/ui';
-import { GlassSelect } from '../common/ui/GlassSelect';
 import { ClinicFilter } from '../common/ui/ClinicFilter';
 import { formatPKR } from '../../services/financeDomain';
 import { saveFile } from '../../lib/saveFile';
@@ -14,6 +13,7 @@ import { buildMonthlyStatementPdf, downloadPdf } from '../../lib/pdf';
 import {
   buildMonthlyStatements,
   filterMonthlyStatements,
+  windowMonthlyStatements,
   formatMonthLabel,
   monthlyStatementWorkbook,
   statementColumns,
@@ -43,6 +43,24 @@ interface BillingReportsViewProps {
   onOpenJournalModal?: (refId: string) => void;
 }
 
+/** Last calendar day of a `YYYY-MM` month key, as `YYYY-MM-DD`. */
+const monthEndOf = (month: string) => {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const days = new Date(year, monthNumber, 0).getDate();
+  return `${month}-${String(days).padStart(2, '0')}`;
+};
+
+/** The period a set of statement months covers, for the document cover. A
+    single month reads as itself rather than "March 2026 — March 2026". */
+const statementPeriodLabel = (blocks: { month: string }[]) => {
+  if (blocks.length === 0) return 'No activity';
+  const oldest = blocks[blocks.length - 1].month;
+  const newest = blocks[0].month;
+  return oldest === newest
+    ? formatMonthLabel(newest)
+    : `${formatMonthLabel(oldest)} — ${formatMonthLabel(newest)}`;
+};
+
 export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
   onPrintInvoice,
   onViewCaseSlip,
@@ -63,10 +81,11 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
   const [voucherSearch, setVoucherSearch] = useState<string>('');
-  // Monthly statement: view one month at a time. The previous month's closing
-  // balance carries forward as this month's opening balance (computed by the
-  // service over the full history), so showing a single month is honest — the
-  // running total is not lost, it is just not repeated on screen.
+  // Monthly statement: the date window chooses which whole months are on
+  // screen. The previous month's closing balance carries forward as this
+  // month's opening balance (computed by the service over the full history),
+  // so a single month is honest — the running total is not lost, it is just
+  // not repeated on screen.
   // Saved-voucher list defaults to TODAY like the other billing tabs; rewind the
   // picker (or clear it for All Time) to audit earlier vouchers.
   const [vFromDate, setVFromDate] = useState<string>(() => todayISO());
@@ -99,37 +118,22 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     [monthlyBlocks, excludedLabIds]
   );
 
-  // Month selector: view one month at a time. Defaults to the latest month so
-  // the screen is not a wall of identical clinics repeated across months; the
-  // previous month's closing balance still carries into this month's opening
-  // balance because buildMonthlyStatements computes the running total over the
-  // full history before we filter for display.
-  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  // Which months of the statement are on screen. The window is expressed as
+  // dates because that is the control every other module uses; the statement
+  // itself prints whole months, so a window shows every month it touches.
+  // It opens on the newest month with activity, and once the operator has
+  // chosen a window (including clearing it back to All Time) it is never
+  // snapped back — the window behaves like a filter, not like a carousel.
+  const [reportFrom, setReportFrom] = useState<string>('');
+  const [reportTo, setReportTo] = useState<string>('');
+  const rangeInitialized = useRef(false);
   useEffect(() => {
-    if (!selectedMonth && visibleBlocks.length > 0) {
-      setSelectedMonth(visibleBlocks[0].month);
-    }
-  }, [visibleBlocks, selectedMonth]);
-  const displayedBlocks = useMemo(
-    () => (selectedMonth ? visibleBlocks.filter((b) => b.month === selectedMonth) : visibleBlocks),
-    [visibleBlocks, selectedMonth]
-  );
-
-  /** The whole statement in one line, for the scope on screen. The Closing
-      Balance figure is NOT summed across months — a closing balance repeats
-      every month, so it is the NEWEST month's closing, i.e. exactly what the
-      general ledger carries for the clinics in scope right now. */
-  const statementTotals = useMemo(() => {
-    const sum = (pick: (b: (typeof displayedBlocks)[number]) => number) =>
-      displayedBlocks.reduce((acc, b) => acc + pick(b), 0);
-    return {
-      months: displayedBlocks.length,
-      clinics: displayedBlocks.length ? displayedBlocks[0].totals.clinics : 0,
-      billed: sum((b) => b.totals.billed),
-      collected: sum((b) => b.totals.collected),
-      closingBalance: displayedBlocks[0]?.totals.closing_balance ?? 0,
-    };
-  }, [displayedBlocks]);
+    if (rangeInitialized.current || visibleBlocks.length === 0) return;
+    rangeInitialized.current = true;
+    const latest = visibleBlocks[0].month;
+    setReportFrom(`${latest}-01`);
+    setReportTo(monthEndOf(latest));
+  }, [visibleBlocks]);
 
   /* Every clinic that appears in the statement, whether or not it is still in
      the clinic list — a deleted clinic can still have months of history, and
@@ -160,6 +164,41 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     (labs || []).forEach((l) => byId.set(l.id, l));
     return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [labs, monthlyBlocks]);
+
+  const inScopeClinics = useMemo(
+    () => statementClinics.filter((c) => !excludedLabIds.includes(c.id)),
+    [statementClinics, excludedLabIds]
+  );
+
+  /* The months on screen, with EVERY clinic in scope listed in each of them:
+     a month is a position, so a clinic that raised or paid nothing in the
+     window still shows the balance it carries into it. The window decides the
+     months only — it never rewrites a running balance. */
+  const displayedBlocks = useMemo(
+    () =>
+      windowMonthlyStatements(visibleBlocks, {
+        from: reportFrom,
+        to: reportTo,
+        clinics: inScopeClinics,
+      }),
+    [visibleBlocks, reportFrom, reportTo, inScopeClinics]
+  );
+
+  /** The whole statement in one line, for the scope on screen. The Closing
+      Balance figure is NOT summed across months — a closing balance repeats
+      every month, so it is the NEWEST month's closing, i.e. exactly what the
+      general ledger carries for the clinics in scope right now. */
+  const statementTotals = useMemo(() => {
+    const sum = (pick: (b: (typeof displayedBlocks)[number]) => number) =>
+      displayedBlocks.reduce((acc, b) => acc + pick(b), 0);
+    return {
+      months: displayedBlocks.length,
+      clinics: displayedBlocks.length ? displayedBlocks[0].totals.clinics : 0,
+      billed: sum((b) => b.totals.billed),
+      collected: sum((b) => b.totals.collected),
+      closingBalance: displayedBlocks[0]?.totals.closing_balance ?? 0,
+    };
+  }, [displayedBlocks]);
 
   const selectedLabIds = useMemo(
     () => statementClinics.map((c) => c.id).filter((id) => !excludedLabIds.includes(id)),
@@ -278,7 +317,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
    * screen can never print different numbers.
    */
   const buildPrintableMonths = () =>
-    visibleBlocks.map((b) => {
+    displayedBlocks.map((b) => {
       const totals = b.totals as unknown as MonthlyClinicRow;
       return {
         month: b.month,
@@ -309,11 +348,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     const scopeLabel = excludedLabIds.length
       ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
       : `All ${statementClinics.length} clinics`;
-    const periodLabel = visibleBlocks.length
-      ? `${formatMonthLabel(visibleBlocks[visibleBlocks.length - 1].month)} — ${formatMonthLabel(
-          visibleBlocks[0].month,
-        )}`
-      : 'No activity';
+    const periodLabel = statementPeriodLabel(displayedBlocks);
     const result = buildMonthlyStatementPdf(
       buildPrintableMonths(),
       {
@@ -330,7 +365,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         strong: c.strong,
       })),
     );
-    const fileName = `Monthly_Statement_${visibleBlocks.length ? visibleBlocks[0].month : 'none'}.pdf`;
+    const fileName = `Monthly_Statement_${displayedBlocks.length ? displayedBlocks[0].month : 'none'}.pdf`;
     return { fileName, pdf: result.pdf };
   };
 
@@ -362,13 +397,9 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       const scopeLabel = excludedLabIds.length
         ? `${selectedLabIds.length} of ${statementClinics.length} clinics`
         : `All ${statementClinics.length} clinics`;
-      const periodLabel = visibleBlocks.length
-        ? `${formatMonthLabel(visibleBlocks[visibleBlocks.length - 1].month)} — ${formatMonthLabel(
-            visibleBlocks[0].month,
-          )}`
-        : 'No activity';
+      const periodLabel = statementPeriodLabel(displayedBlocks);
       const bytes = monthlyStatementWorkbook(
-        visibleBlocks,
+        displayedBlocks,
         { labName, periodLabel, scopeLabel, generatedOn: getTodayStr() },
         true,
       );
@@ -477,6 +508,17 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
         {activeSubTab === 'monthly' && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            {/* The window sits next to the export buttons because it decides
+                what they produce: a range of days selects the whole months the
+                statement shows, and the documents follow the same window. */}
+            <DatePickerRange
+              from={reportFrom}
+              to={reportTo}
+              onChange={(from, to) => {
+                setReportFrom(from);
+                setReportTo(to);
+              }}
+            />
             {/* How many columns the statement shows.
                 Twelve is more than a laptop screen shows at once, so the
                 default is the seven a reader needs; FULL is for auditing a
@@ -541,23 +583,6 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
       {/* Sub-Tab 1: Monthly Breakdown */}
       {activeSubTab === 'monthly' && (
         <div className="space-y-4">
-          {/* Month selector — view one month at a time. The previous month's
-              closing balance carries forward as this month's opening balance
-              (computed over the full history), so a single month is honest:
-              the running total is not lost, it is just not repeated on screen. */}
-          {visibleBlocks.length > 1 && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-700">Month:</label>
-              <GlassSelect
-                value={selectedMonth}
-                onChange={setSelectedMonth}
-                ariaLabel="Month"
-                className="w-auto p-2 text-xs font-bold"
-                options={visibleBlocks.map((b) => ({ value: b.month, label: formatMonthLabel(b.month) }))}
-              />
-            </div>
-          )}
-
           {/* The whole statement in one line, so the scope is visible before
               any month is read. */}
           {displayedBlocks.length > 0 && (
@@ -607,7 +632,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                     {formatMonthLabel(block.month)}
                   </h3>
                   <span className="text-xs text-slate-500">
-                    {t.clinics} active {t.clinics === 1 ? 'clinic' : 'clinics'}
+                    {t.clinics} {t.clinics === 1 ? 'clinic' : 'clinics'}
                   </span>
                 </div>
 

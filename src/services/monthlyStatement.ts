@@ -373,6 +373,130 @@ export const filterMonthlyStatements = (
     .filter((block) => block.rows.length > 0);
 };
 
+/** Add one month to a 'YYYY-MM' key. */
+const nextMonthKey = (month: string): string => {
+  const [year, monthNumber] = month.split('-').map(Number);
+  if (!year || !monthNumber) return month;
+  return monthNumber === 12
+    ? `${year + 1}-01`
+    : `${year}-${String(monthNumber + 1).padStart(2, '0')}`;
+};
+
+/** Every 'YYYY-MM' month a `YYYY-MM-DD` window touches, inclusive, oldest first. */
+export const monthsInWindow = (from: string, to: string): string[] => {
+  const startDay = (from || to).slice(0, 10);
+  const endDay = (to || from).slice(0, 10);
+  const start = startDay.slice(0, 7);
+  const end = endDay.slice(0, 7);
+  if (!MONTH_RE.test(start) || !MONTH_RE.test(end)) return [];
+  const months: string[] = [];
+  for (let month = start; month <= end; month = nextMonthKey(month)) {
+    months.push(month);
+    if (months.length > 600) break; // a guard, not a feature: 50 years of months
+  }
+  return months;
+};
+
+/**
+ * Restate the statement over a day window, listing EVERY clinic in scope.
+ *
+ * A monthly statement is a statement of position, not a list of transactions:
+ * a clinic that raised nothing in March still owes what it owed in February,
+ * and the reader of the March statement has to see that balance beside the
+ * others. So each printed month carries the whole roster — every clinic gets a
+ * row, and a clinic with no movement in the window simply shows zeroes with
+ * its balance carried forward, not a missing row.
+ *
+ * The day window only chooses WHICH months are printed (whole months, because
+ * the statement prints months); it never rewrites a balance. The carrying
+ * chain is walked over the FULL history before the window, so the opening and
+ * closing balances of the first month in the window are the same figures the
+ * unfiltered statement shows for it.
+ *
+ * `from`/`to` empty means All Time: every month the history has.
+ */
+export const windowMonthlyStatements = (
+  blocks: MonthlyStatementBlock[],
+  input: {
+    /** 'YYYY-MM-DD'; '' = unbounded. */
+    from: string;
+    to: string;
+    /** Every clinic that belongs in the statement, traded or not. */
+    clinics: Pick<DentalLab, 'id' | 'name'>[];
+  },
+): MonthlyStatementBlock[] => {
+  const { from, to, clinics } = input;
+  const windowed = Boolean(from || to);
+
+  /* Names: the live clinic record wins, because a rename must show through;
+     a clinic that only survives in history keeps the name its rows carry. */
+  const names = new Map<string, string>();
+  blocks.forEach((block) =>
+    block.rows.forEach((row) => {
+      if (!names.has(row.lab_id)) names.set(row.lab_id, row.lab_name || 'Dental Clinic');
+    }),
+  );
+  clinics.forEach((clinic) => {
+    if (!clinic?.id) return;
+    names.set(clinic.id, clinic.name || names.get(clinic.id) || 'Dental Clinic');
+  });
+
+  const existing = new Map(blocks.map((block) => [block.month, block] as const));
+  const printed = new Set(windowed ? monthsInWindow(from, to) : existing.keys());
+
+  /* Walk EVERY month the history has (oldest first) so the carried balances are
+     right even when the window opens years after the first posting, and print
+     only the months the window asks for. */
+  const walk = Array.from(new Set([...existing.keys(), ...printed])).sort();
+  const carried = new Map<string, { closing: number; advance_credit: number }>();
+  const out: MonthlyStatementBlock[] = [];
+
+  walk.forEach((month) => {
+    const base = existing.get(month);
+    const byId = new Map<string, MonthlyClinicRow>();
+    base?.rows.forEach((row) => {
+      byId.set(row.lab_id, row);
+      carried.set(row.lab_id, {
+        closing: row.closing_balance,
+        advance_credit: row.advance_credit,
+      });
+    });
+    if (!printed.has(month)) return;
+
+    /* The roster is the union of the live clinic list and every clinic the
+       statement has ever known, so filtering never hides a clinic that only
+       exists in history and adding a clinic never drops it from the report. */
+    const ids = new Set<string>(names.keys());
+    byId.forEach((_row, id) => ids.add(id));
+
+    const rows: MonthlyClinicRow[] = Array.from(ids).map((labId) => {
+      const row = byId.get(labId);
+      if (row) return row;
+      const prior = carried.get(labId) || { closing: 0, advance_credit: 0 };
+      return {
+        lab_id: labId,
+        lab_name: names.get(labId) || 'Dental Clinic',
+        cases_billed: 0,
+        billed: 0,
+        collected: 0,
+        advance_received: 0,
+        advance_applied: 0,
+        credit_notes: 0,
+        debit_adjustments: 0,
+        opening_balance: prior.closing,
+        closing_balance: prior.closing,
+        advance_credit: prior.advance_credit,
+      };
+    });
+
+    if (rows.length === 0) return;
+    rows.sort((a, b) => b.billed - a.billed || a.lab_name.localeCompare(b.lab_name));
+    out.push({ month, rows, totals: totalsOf(rows) });
+  });
+
+  return out.reverse(); // newest first, like every other report tab
+};
+
 /** The statement's columns, declared once. */
 export interface StatementColumn {
   key: StatementColumnKey;
