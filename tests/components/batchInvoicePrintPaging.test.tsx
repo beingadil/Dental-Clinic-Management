@@ -15,8 +15,9 @@ import type { DentalCase, Invoice } from '../../src/types';
 
 const { LAB, COUNT, TODAY } = vi.hoisted(() => {
   const now = new Date();
-  // The modal opens on the Today period and filters the batch by issue_date, so
-  // the fixture invoices have to be dated today. Hard-coding a date here made
+  // The modal opens on the Today period and filters the batch by the booking
+  // day (`created_at`), so the fixture invoices have to be dated today.
+  // Hard-coding a date here made
   // this file pass for exactly one day and go red the next, with every sheet
   // empty because the period excluded all 40 rows.
   const TODAY = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
@@ -196,7 +197,7 @@ describe('BatchInvoicePrintModal sheet splitting', () => {
   it('keeps the balance block on the final sheet only', () => {
     const { container } = renderModal();
     const pages = sheets(container);
-    const withTotals = pages.filter((p) => within(p as HTMLElement).queryByText('Cases Amount'));
+    const withTotals = pages.filter((p) => within(p as HTMLElement).queryByText('Invoices this period'));
 
     expect(withTotals).toHaveLength(1);
     expect(withTotals[0]).toBe(pages[pages.length - 1]);

@@ -15,6 +15,7 @@ import {
   STATEMENT_DETAIL_OMIT,
 } from '../../services/ledgerCaseDetail';
 import type { InvoiceAccountPosition } from '../../services/invoiceAccount';
+import { invoiceEntryDate } from '../../services/invoiceOrder';
 import { PRINT_MARGIN_MM } from '../../services/statementPagination';
 
 export type DocumentKind = 'job_slip' | 'invoice' | 'receipt' | 'statement';
@@ -105,7 +106,9 @@ const AccountBalanceBlock: React.FC<{
   amountLabel: string;
   paidLabel: string;
   appliedNote?: string;
-}> = ({ position, amountLabel, paidLabel, appliedNote }) => (
+  /** What the unallocated advance is not applied to: 'these invoices' or 'this invoice'. */
+  heldNote?: string;
+}> = ({ position, amountLabel, paidLabel, appliedNote, heldNote }) => (
   <div className="mb-4 flex justify-end">
     {/* 320px, not 288px: at 288 the closing row could not hold "CLOSING BALANCE
         (DR)" and its figure at once, so the label wrapped to two lines and the
@@ -125,7 +128,9 @@ const AccountBalanceBlock: React.FC<{
           </tr>
           {position.advanceDeposit > 0 && (
             <tr className="border border-slate-300 border-t-0">
-              <td className="py-1 pl-6 pr-3 text-slate-500">Advance Deposit (we owe)</td>
+              <td className="py-1 pl-6 pr-3 text-slate-500">
+                Advance held b/f — included above
+              </td>
               <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
                 {money(position.advanceDeposit)}
               </td>
@@ -141,11 +146,27 @@ const AccountBalanceBlock: React.FC<{
               {money(position.cashPaid)}
             </td>
           </tr>
+          {(position.advanceReceived || 0) > 0 && (
+            <tr className="border border-slate-300 border-t-0">
+              <td className="px-3 py-1 text-slate-600">Advance received this period</td>
+              <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
+                {money(position.advanceReceived)}
+              </td>
+            </tr>
+          )}
           {position.creditNotes > 0 && (
             <tr className="border border-slate-300 border-t-0">
               <td className="px-3 py-1 text-slate-600">Credit Notes</td>
               <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
                 -{money(position.creditNotes)}
+              </td>
+            </tr>
+          )}
+          {(position.debitNotes || 0) > 0 && (
+            <tr className="border border-slate-300 border-t-0">
+              <td className="px-3 py-1 text-slate-600">Debit Notes</td>
+              <td className="whitespace-nowrap px-3 py-1 text-right">
+                {money(position.debitNotes)}
               </td>
             </tr>
           )}
@@ -166,6 +187,13 @@ const AccountBalanceBlock: React.FC<{
       {position.advanceApplied > 0 && (
         <div className="mt-1 text-right text-[9px] text-slate-500">
           {money(position.advanceApplied)} {appliedNote || 'of this invoice was settled from the advance deposit.'}
+        </div>
+      )}
+      {(position.unallocatedAdvance || 0) > 0 && (
+        <div className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] leading-snug text-amber-900">
+          <span className="font-bold">Note: </span>
+          {money(position.unallocatedAdvance)} is held on account and is not applied to{' '}
+          {heldNote || 'these invoices'}.
         </div>
       )}
     </div>
@@ -534,7 +562,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
             <div className="mt-3 mb-4 grid grid-cols-4 gap-3 text-[11px]">
               <Field label="Invoice #" value={invoice.invoice_number} />
               <Field label="Case #" value={invoice.case_number || '—'} />
-              <Field label="Issue Date" value={invoice.issue_date || invoice.created_at?.slice(0, 10) || '—'} />
+              {/* Booking day, not the stored issue_date: the old case-edit
+                  path copied the delivery date into issue_date, so a sheet
+                  could claim an October invoice was issued in November. */}
+              <Field label="Issue Date" value={invoiceEntryDate(invoice) || '—'} />
               <Field label="Due Date" value={invoice.due_date || '—'} />
             </div>
           )}
@@ -675,6 +706,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               position={accountPosition}
               amountLabel="This Invoice"
               paidLabel="Paid (cash / bank)"
+              heldNote="this invoice"
             />
           )}
           {on(sections, 'paymentHistory') && (invoice.payments || []).length > 0 && (
@@ -771,14 +803,30 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           )}
           {on(sections, 'period') && period && (
             <div className="mb-3 text-[11px]">
-              <span className="font-bold">Period: </span>{period.from} → {period.to}
+              <span className="font-bold">Period: </span>
+              {period.from && period.to
+                ? `${period.from} → ${period.to}`
+                : period.from
+                ? `From ${period.from}`
+                : period.to
+                ? `Up to ${period.to}`
+                : 'All Time'}
             </div>
           )}
           {/* Continued sheets restate which slice of the run this is. Without
               it, page 2 is indistinguishable from a separate statement. */}
           {page && page.pageCount > 1 && page.page > 1 && (
             <div className="mb-3 text-[11px]">
-              <span className="font-bold">Period (continued): </span>{period ? `${period.from} → ${period.to}` : '—'}
+              <span className="font-bold">Period (continued): </span>
+              {period
+                ? period.from && period.to
+                  ? `${period.from} → ${period.to}`
+                  : period.from
+                  ? `From ${period.from}`
+                  : period.to
+                  ? `Up to ${period.to}`
+                  : 'All Time'
+                : '—'}
             </div>
           )}
           {on(sections, 'invoiceTable') && (
@@ -859,7 +907,12 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                         maps, and swapping one alone would silently misalign
                         every column under it. */}
                     <td className="border border-slate-400 px-2 py-0.5 align-top">
-                      {received || inv.issue_date || inv.created_at?.slice(0, 10) || '—'}
+                      {/* The day the work came in. When there is no case to
+                          read it from, fall back to the day the invoice was
+                          BOOKED (`created_at`) — never `issue_date`, which a
+                          case edit can overwrite with the delivery date and
+                          so print a future date inside a past period. */}
+                      {received || invoiceEntryDate(inv) || '—'}
                     </td>
                     <td className="border border-slate-400 px-2 py-0.5 align-top font-bold">{inv.invoice_number}</td>
                     {/* The job the invoice is against. The received date is NOT
@@ -902,8 +955,8 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
           {on(sections, 'balanceSummary') && showBalance && accountPosition && (
             <AccountBalanceBlock
               position={accountPosition}
-              amountLabel={balanceRows.length === 1 ? 'This Invoice' : 'Cases Amount'}
-              paidLabel="Paid"
+              amountLabel={balanceRows.length === 1 ? 'This Invoice' : 'Invoices this period'}
+              paidLabel="Receipts this period"
               appliedNote="of the selected invoices was settled from advance deposits."
             />
           )}

@@ -1,5 +1,4 @@
 import { buildStatementAccountPosition } from '../../services/invoiceAccount';
-import { buildLabFinancialSummary } from '../../services/ledgerDomain';
 import { printCurrentDocument } from '../../utils/printDocument';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -9,7 +8,7 @@ import { DatePickerRange, describeQuickRange, todayISO } from '../common/DatePic
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
-import { compareInvoiceNumbers } from '../../services/invoiceOrder';
+import { compareInvoiceNumbers, invoiceEntryDate } from '../../services/invoiceOrder';
 import { paginateStatementInvoices, pageMarginPx } from '../../services/statementPagination';
 import { PrintDocument, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
@@ -56,7 +55,14 @@ const invoiceStatus = (inv: Invoice): InvoiceStatus => {
   return (inv.amount_paid || 0) > 0 ? 'partial' : 'unpaid';
 };
 
-const dateOf = (inv: Invoice) => String(inv.issue_date || inv.created_at || '').slice(0, 10);
+/* The day the invoice was BOOKED, not the day its case is due.
+   `issue_date` is rewritten from the delivery date whenever a case is edited
+   (see `invoiceEntryDate`), so a statement filtered by it pulls an invoice
+   entered on the 31st into the following month and then prints a delivery
+   date beside it. The account block already posts invoices at `created_at`;
+   the picker, the sort and the printed row all use that same day now, so the
+   period, the rows and the balance cannot disagree. */
+const dateOf = (inv: Invoice) => invoiceEntryDate(inv);
 
 /**
  * Print Invoices — batch statement printing for one clinic and one period.
@@ -75,7 +81,6 @@ export const PrintInvoicesView: React.FC = () => {
     cases,
     brandingSettings,
     saveVoucherToSystem,
-    getLabFinancialSummary,
     advancePayments,
     accountAdjustments,
     setCurrentView,
@@ -211,28 +216,22 @@ export const PrintInvoicesView: React.FC = () => {
 
   const selectedClinic = labs.find((l) => l.id === labId);
 
-  const clinicSummary = useMemo(() => {
-    if (!selectedClinic) return null;
-    if (typeof getLabFinancialSummary === 'function') {
-      return getLabFinancialSummary(selectedClinic.id);
-    }
-    return buildLabFinancialSummary({
+  /* The account block is the clinic's period position, not a re-derivation of
+     today's balance: opening is every posting before `from`, closing is the
+     ledger at `to`. A deposit banked in the period is a receipt on its own
+     line — the old version removed the selected invoices from today's net
+     balance and printed the remainder as a credit opening. */
+  const statementAccountPosition = useMemo(() => {
+    if (!selectedClinic || selected.length === 0) return null;
+    return buildStatementAccountPosition({
       labId: selectedClinic.id,
       invoices,
       advancePayments: advancePayments || [],
       accountAdjustments: accountAdjustments || [],
       labs,
+      period: { from, to },
     });
-  }, [selectedClinic, getLabFinancialSummary, invoices, labs, advancePayments, accountAdjustments]);
-
-  const statementAccountPosition = useMemo(() => {
-    if (!clinicSummary || selected.length === 0) return null;
-    return buildStatementAccountPosition({
-      invoices: selected,
-      netBalance: clinicSummary.net_balance,
-      advanceBalance: clinicSummary.advance_balance,
-    });
-  }, [clinicSummary, selected]);
+  }, [selectedClinic, selected.length, invoices, labs, advancePayments, accountAdjustments, from, to]);
 
   /* Paginated AFTER the account position, because the totals block the final
      sheet carries is sized from it — an advance deposit or a credit note is a
@@ -398,6 +397,17 @@ export const PrintInvoicesView: React.FC = () => {
             />
           </div>
         </div>
+
+        {/* The statement prints this same sentence beside the balance block.
+            On screen it goes above the rows, where the operator chooses what
+            to print — otherwise the invoices look unpaid for no stated reason
+            even though the clinic's money is sitting in the advance wallet. */}
+        {statementAccountPosition && statementAccountPosition.unallocatedAdvance > 0 && (
+          <p className="border-b border-ds-line bg-amber-50 px-4 py-2 text-[11px] font-semibold text-amber-800">
+            {formatPKR(statementAccountPosition.unallocatedAdvance)} is held on account and is not
+            applied to these invoices.
+          </p>
+        )}
 
         {/* Narrow the rows, not the selection: search and status are reading
             aids for a long month, so they live in one quiet band. */}
@@ -789,7 +799,7 @@ export const PrintInvoicesView: React.FC = () => {
                       page={{ page: page.pageNumber, pageCount }}
                       balanceInvoices={selected}
                       showBalance={page.pageNumber === pageCount}
-                      advanceBalance={clinicSummary?.advance_balance ?? 0}
+                      advanceBalance={statementAccountPosition?.unallocatedAdvance ?? 0}
                       accountPosition={statementAccountPosition}
                     />
                   </div>

@@ -199,4 +199,26 @@ describe('batch print picker', () => {
     expect(preview.classList.contains('hidden')).toBe(false);
     expect(screen.getByRole('button', { name: /hide preview/i })).toBeTruthy();
   });
+
+  it('files an invoice by its booking day, not a delivery date copied into issue_date', () => {
+    /* `updateCase` used to overwrite issue_date with the case's delivery date.
+       An invoice entered on the last day of last month therefore carried this
+       month's "issue date" and the modal pulled it into today's batch — while
+       the balance block, which posts at created_at, counted it in the prior
+       month. The period must follow the booking day. */
+    const entered = (() => {
+      const now = new Date();
+      const d = new Date(now.getFullYear(), now.getMonth(), 0);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate(),
+      ).padStart(2, '0')}`;
+    })();
+
+    const { container } = renderBatch([
+      { ...mkInvoice(9, 0), created_at: entered, issue_date: TODAY },
+    ]);
+
+    expect(container.textContent).not.toContain('INV-2009');
+    expect(container.textContent).toContain('No invoices in this period');
+  });
 });

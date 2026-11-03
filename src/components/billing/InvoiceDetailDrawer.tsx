@@ -7,6 +7,7 @@ import { formatDoctorName } from '../../utils/doctorName';
 import { caseDetailLines } from '../../services/ledgerCaseDetail';
 import { availableAdvanceCredit } from '../../services/transactionDomain';
 import type { AttributedAdjustment } from '../../services/adjustmentAttribution';
+import { invoiceEntryDate } from '../../services/invoiceOrder';
 import { 
   X, 
   FileText, 
@@ -274,7 +275,9 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
           <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3.5 rounded-lg border border-slate-200">
             <div>
               <span className="text-slate-500 block mb-0.5">Invoice Date</span>
-              <span className="font-semibold text-slate-800">{invoice.issue_date || invoice.created_at?.slice(0, 10)}</span>
+              {/* The day it was booked. issue_date can carry the delivery
+                  date from the old case-edit path. */}
+              <span className="font-semibold text-slate-800">{invoiceEntryDate(invoice) || '—'}</span>
             </div>
             <div>
               <span className="text-slate-500 block mb-0.5">Due Date</span>

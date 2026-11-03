@@ -1,6 +1,5 @@
 import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { buildStatementAccountPosition } from '../../services/invoiceAccount';
-import { buildLabFinancialSummary } from '../../services/ledgerDomain';
 import { printCurrentDocument } from '../../utils/printDocument';
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -14,7 +13,7 @@ import {
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
-import { compareInvoiceNumbers } from '../../services/invoiceOrder';
+import { compareInvoiceNumbers, invoiceEntryDate } from '../../services/invoiceOrder';
 import { paginateStatementInvoices } from '../../services/statementPagination';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
@@ -55,7 +54,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   onClose,
   fullScreen = false,
 }) => {
-  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem, getLabFinancialSummary, advancePayments, accountAdjustments } = useApp();
+  const { labs, invoices, cases, brandingSettings, saveVoucherToSystem, advancePayments, accountAdjustments } = useApp();
 
   const [labId, setLabId] = useState<string>(initialLabId || labs[0]?.id || '');
   // Default the period to today, matching every other billing tab; the quick
@@ -84,7 +83,12 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
      General Ledger needed the same thing and had grown its own copy; one
      component now serves both, so they cannot drift apart again. */
 
-  const dateOf = (inv: Invoice) => String(inv.issue_date || inv.created_at || '').slice(0, 10);
+  /* Booking day — `created_at` — never `issue_date`: editing a case rewrites
+     issue_date to the delivery date, which pulls an October invoice into a
+     November statement and prints a date the clinic never billed on. The
+     account block posts at the same day, so the period, the rows and the
+     totals agree. */
+  const dateOf = (inv: Invoice) => invoiceEntryDate(inv);
 
   /* Every invoice for the chosen clinic inside the chosen period — NOT only the
      unpaid ones.
@@ -161,30 +165,22 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
 
   /* The printed statement has to reconcile with the clinic's account, not just
      the selected invoices: an advance deposit already held (or earlier unpaid
-     invoices) belongs in the opening balance. Built from the same summary the
-     ledger uses so the two cannot drift. */
-  const clinicSummary = useMemo(() => {
-    if (!selectedClinic) return null;
-    if (typeof getLabFinancialSummary === 'function') {
-      return getLabFinancialSummary(selectedClinic.id);
-    }
-    return buildLabFinancialSummary({
+     invoices) belongs in the opening balance. The position is walked from the
+     period boundaries — opening is everything dated before `from`, closing is
+     the ledger at `to` — so a receipt banked in the period is printed as a
+     receipt and never folded into the opening. The rows are only the detail
+     the operator chose to print; the movement lines cover the whole period. */
+  const statementAccountPosition = useMemo(() => {
+    if (!selectedClinic || selected.length === 0) return null;
+    return buildStatementAccountPosition({
       labId: selectedClinic.id,
       invoices,
       advancePayments: advancePayments || [],
       accountAdjustments: accountAdjustments || [],
       labs,
+      period: { from, to },
     });
-  }, [selectedClinic, getLabFinancialSummary, invoices, labs, advancePayments, accountAdjustments]);
-
-  const statementAccountPosition = useMemo(() => {
-    if (!clinicSummary || selected.length === 0) return null;
-    return buildStatementAccountPosition({
-      invoices: selected,
-      netBalance: clinicSummary.net_balance,
-      advanceBalance: clinicSummary.advance_balance,
-    });
-  }, [clinicSummary, selected]);
+  }, [selectedClinic, selected.length, invoices, labs, advancePayments, accountAdjustments, from, to]);
 
   /* A selection longer than one sheet is split into sheets that each fit the
      paper, so nothing is sliced mid-row. The sheet count follows the live
@@ -248,6 +244,12 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                   {selectedClinic.name} · {describeQuickRange(from, to)} ·{' '}
                   {selected.length} invoice{selected.length === 1 ? '' : 's'} ·{' '}
                   {formatPKR(selectedTotal)}
+                </p>
+              )}
+              {statementAccountPosition && statementAccountPosition.unallocatedAdvance > 0 && (
+                <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                  {formatPKR(statementAccountPosition.unallocatedAdvance)} is held on account and is
+                  not applied to these invoices.
                 </p>
               )}
             </div>
@@ -477,7 +479,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                         />
                       </td>
                       <td className="py-2.5 px-3 align-top text-slate-500">
-                        {String(inv.issue_date || inv.created_at || '').slice(0, 10) || '—'}
+                        {dateOf(inv) || '—'}
                       </td>
                       <td className="py-2.5 px-3 align-top font-mono font-bold text-slate-900">{inv.invoice_number}</td>
                       {/* The job behind the invoice, so the operator can see
@@ -589,7 +591,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                        only, so adding up the printed pages never double-counts. */
                     balanceInvoices={selected}
                     showBalance={page.pageNumber === pageCount}
-                    advanceBalance={selectedClinic ? (getLabFinancialSummary?.(selectedClinic.id)?.advance_balance ?? 0) : 0}
+                    advanceBalance={statementAccountPosition?.unallocatedAdvance ?? 0}
                     accountPosition={statementAccountPosition}
                   />
                 </div>

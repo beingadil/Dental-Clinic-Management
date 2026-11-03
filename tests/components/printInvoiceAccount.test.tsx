@@ -42,8 +42,11 @@ const position = (over: Partial<InvoiceAccountPosition> = {}): InvoiceAccountPos
   advanceApplied: 0,
   invoiceAmount: 10000,
   cashPaid: 0,
+  advanceReceived: 0,
   creditNotes: 0,
+  debitNotes: 0,
   closingBalance: 5000,
+  unallocatedAdvance: 0,
   ...over,
 });
 
@@ -67,11 +70,45 @@ describe('printed invoice account balance', () => {
 
     expect(text).toContain('Account Balance');
     expect(text).toContain('Opening Balance');
-    expect(text).toContain('Advance Deposit (we owe)');
+    // Named as a memo that is ALREADY inside the opening, so the reader does
+    // not subtract it a second time.
+    expect(text).toContain('Advance held b/f — included above');
     expect(text).toContain('PKR 5,000 Cr');
     expect(text).toContain('This Invoice');
     expect(text).toContain('Closing Balance (Dr)');
     expect(text).toContain('PKR 5,000');
+  });
+
+  it('prints a period receipt on its own line, never inside the opening', () => {
+    const { container } = renderInvoice(
+      position({
+        openingBalance: 0,
+        advanceDeposit: 0,
+        advanceReceived: 5000,
+      }),
+    );
+    const text = textOf(container);
+
+    // The deposit is a credit of this period: opening stays at nil and the
+    // money appears once, as an advance received.
+    expect(text).toContain('Opening Balance');
+    expect(text).toContain('Advance received this period');
+    expect(text).toContain('PKR 5,000');
+    expect(text).not.toContain('Advance held b/f');
+  });
+
+  it('warns when an unallocated advance is held but not applied', () => {
+    const { container } = renderInvoice(
+      position({
+        openingBalance: 0,
+        advanceDeposit: 0,
+        advanceReceived: 5000,
+        unallocatedAdvance: 5000,
+      }),
+    );
+    const text = textOf(container);
+
+    expect(text).toContain('is held on account and is not applied to this invoice');
   });
 
   it('closes on the credit side when the advance exceeds the invoice', () => {
@@ -100,7 +137,7 @@ describe('printed invoice account balance', () => {
 
     expect(text).toContain('settled from the advance deposit');
     expect(text).toContain('PKR 5,000');
-    expect(text).not.toContain('Advance Deposit (we owe)');
+    expect(text).not.toContain('Advance held b/f');
   });
 
   it('omits the block when no account position is supplied', () => {

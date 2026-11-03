@@ -90,11 +90,14 @@ const CONTINUED_LINE_PX = 27;
  */
 const BALANCE_BASE_PX = 173;
 
-/** One optional line of the block (Advance Deposit, Credit Notes). */
+/** One optional line of the block (advance b/f, advance received, notes). */
 const BALANCE_ROW_PX = 25;
 
-/** The "settled from the advance deposit" note under the block. */
+/** One note under the block (advance applied, unallocated-advance warning). */
 const BALANCE_NOTE_PX = 20;
+
+/** The unallocated-advance warning wraps to two lines at the block's width. */
+const BALANCE_WARNING_PX = BALANCE_NOTE_PX * 2;
 
 /**
  * The bank transfer block on the closing sheet: heading + the up-to-three
@@ -119,7 +122,7 @@ export const BANK_BLOCK_PX = 106;
  * range.
  */
 export const BALANCE_BLOCK_PX =
-  BALANCE_BASE_PX + BALANCE_ROW_PX * 2 + BALANCE_NOTE_PX;
+  BALANCE_BASE_PX + BALANCE_ROW_PX * 4 + BALANCE_NOTE_PX + BALANCE_WARNING_PX;
 
 /**
  * Rendered height of the totals block for a clinic's position.
@@ -135,8 +138,11 @@ export const balanceBlockPx = (
   if (!position) return BALANCE_BASE_PX;
   let height = BALANCE_BASE_PX;
   if (position.advanceDeposit > 0) height += BALANCE_ROW_PX;
+  if ((position.advanceReceived || 0) > 0) height += BALANCE_ROW_PX;
   if (position.creditNotes > 0) height += BALANCE_ROW_PX;
+  if ((position.debitNotes || 0) > 0) height += BALANCE_ROW_PX;
   if (position.advanceApplied > 0) height += BALANCE_NOTE_PX;
+  if ((position.unallocatedAdvance || 0) > 0) height += BALANCE_WARNING_PX;
   return height;
 };
 
