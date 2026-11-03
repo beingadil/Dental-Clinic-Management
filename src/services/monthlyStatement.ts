@@ -96,9 +96,19 @@ export interface MonthlyClinicRow {
   advance_credit: number;
 }
 
+/**
+ * The single consolidated block All Time prints.
+ *
+ * A calendar month key is 'YYYY-MM'; this sentinel is not one, because All
+ * Time is a position across the whole history rather than a month at the end
+ * of a range. Kept as a block so the screen, the PDF and the workbook keep
+ * reading one shape.
+ */
+export const ALL_TIME_MONTH = 'all-time';
+
 /** One billing month: every clinic active that month, plus month totals. */
 export interface MonthlyStatementBlock {
-  /** 'YYYY-MM' */
+  /** 'YYYY-MM', or ALL_TIME_MONTH for the consolidated statement. */
   month: string;
   rows: MonthlyClinicRow[];
   totals: Omit<MonthlyClinicRow, 'lab_id' | 'lab_name'> & {
@@ -130,6 +140,7 @@ export const isAdvanceAppliedPayment = (p: PaymentRecord): boolean =>
 
 /** Human month label, e.g. '2026-03' â†’ 'March 2026'. */
 export const formatMonthLabel = (month: string): string => {
+  if (month === ALL_TIME_MONTH) return 'All Time';
   const [y, m] = month.split('-').map(Number);
   if (!y || !m) return month;
   return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -413,7 +424,8 @@ export const monthsInWindow = (from: string, to: string): string[] => {
  * closing balances of the first month in the window are the same figures the
  * unfiltered statement shows for it.
  *
- * `from`/`to` empty means All Time: every month the history has.
+ * `from`/`to` empty means All Time: ONE consolidated block for the whole
+ * history (flows summed, opening from the first month, closing from the last).
  */
 export const windowMonthlyStatements = (
   blocks: MonthlyStatementBlock[],
@@ -442,7 +454,69 @@ export const windowMonthlyStatements = (
   });
 
   const existing = new Map(blocks.map((block) => [block.month, block] as const));
-  const printed = new Set(windowed ? monthsInWindow(from, to) : existing.keys());
+
+  /* ALL TIME IS ONE STATEMENT, NOT AN ARCHIVE OF EVERY MONTH.
+     Clearing the window used to print a card per month the history touched —
+     September held opening balances only, November was mostly zeroes — so the
+     month with the actual trade was buried between two pages of nothing. A
+     reader who asks for All Time wants the position across the whole history:
+     the flows (billed, collected, advances, notes) add up, while the opening
+     is the first month's opening and the closing is the last month's closing,
+     because a balance is a position and cannot be summed across months. */
+  if (!windowed) {
+    if (blocks.length === 0) return [];
+    const byId = new Map<string, MonthlyClinicRow>();
+    [...blocks]
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .forEach((block) => {
+        block.rows.forEach((row) => {
+          const total = byId.get(row.lab_id);
+          if (!total) {
+            // The oldest row supplies the true opening; later rows only
+            // advance the closing and the advance wallet.
+            byId.set(row.lab_id, { ...row, lab_name: names.get(row.lab_id) || row.lab_name });
+            return;
+          }
+          total.lab_name = names.get(row.lab_id) || total.lab_name;
+          total.cases_billed += row.cases_billed;
+          total.billed = roundMoney(total.billed + row.billed);
+          total.collected = roundMoney(total.collected + row.collected);
+          total.advance_received = roundMoney(total.advance_received + row.advance_received);
+          total.advance_applied = roundMoney(total.advance_applied + row.advance_applied);
+          total.credit_notes = roundMoney(total.credit_notes + row.credit_notes);
+          total.debit_adjustments = roundMoney(total.debit_adjustments + row.debit_adjustments);
+          total.closing_balance = row.closing_balance;
+          total.advance_credit = row.advance_credit;
+        });
+      });
+
+    /* The roster still lists every clinic in scope — a clinic that never
+       traded is a zero row, not a missing clinic. */
+    names.forEach((name, id) => {
+      if (byId.has(id)) return;
+      byId.set(id, {
+        lab_id: id,
+        lab_name: name,
+        cases_billed: 0,
+        billed: 0,
+        collected: 0,
+        advance_received: 0,
+        advance_applied: 0,
+        credit_notes: 0,
+        debit_adjustments: 0,
+        opening_balance: 0,
+        closing_balance: 0,
+        advance_credit: 0,
+      });
+    });
+
+    const rows = Array.from(byId.values());
+    if (rows.length === 0) return [];
+    rows.sort((a, b) => b.billed - a.billed || a.lab_name.localeCompare(b.lab_name));
+    return [{ month: ALL_TIME_MONTH, rows, totals: totalsOf(rows) }];
+  }
+
+  const printed = new Set(monthsInWindow(from, to));
 
   /* Walk EVERY month the history has (oldest first) so the carried balances are
      right even when the window opens years after the first posting, and print
@@ -677,7 +751,11 @@ export const monthlyStatementWorkbook = (
 
   const summaryRows: XlsxCell[][] = [
     [
-      { value: 'Month', style: XL.header },
+      {
+        value:
+          blocks.length === 1 && blocks[0].month === ALL_TIME_MONTH ? 'Period' : 'Month',
+        style: XL.header,
+      },
       { value: 'Clinics', style: XL.header },
       ...summaryColumns.map((c) => ({ value: c.label, style: XL.header })),
     ],
@@ -739,7 +817,10 @@ export const monthlyStatementWorkbook = (
             .map((c) => ({ value: c.value(r), style: moneyStyle(c.key) })),
         ]),
         [
-          { value: 'MONTH TOTAL', style: XL.totalLabel },
+          {
+            value: block.month === ALL_TIME_MONTH ? 'STATEMENT TOTAL' : 'MONTH TOTAL',
+            style: XL.totalLabel,
+          },
           ...columns.slice(1).map((c) => ({
             value: c.value(block.totals as unknown as MonthlyClinicRow),
             style: c.key === 'cases' ? XL.totalCount : XL.totalMoney,

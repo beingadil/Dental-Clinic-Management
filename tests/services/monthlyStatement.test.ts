@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ALL_TIME_MONTH,
   buildMonthlyStatements,
   formatMonthLabel,
+  windowMonthlyStatements,
 } from '../../src/services/monthlyStatement';
 import { buildLabFinancialSummary, buildLedgerEntries } from '../../src/services/ledgerDomain';
 import { roundMoney } from '../../src/services/financeDomain';
@@ -321,9 +323,66 @@ describe('buildMonthlyStatements', () => {
   });
 });
 
+describe('windowMonthlyStatements', () => {
+  const clinics = [
+    { id: 'lab-1', name: 'Al-Noor Clinic' },
+    { id: 'lab-2', name: 'Beta Dental' },
+  ];
+
+  it('collapses All Time into ONE statement instead of a card per month', () => {
+    /* The report used to print every month the history touched when the
+       window was cleared: September held opening balances only, November was
+       mostly zeroes, and the month with the actual trade was buried between
+       them. All Time is a position, so it is one table. */
+    const allTime = windowMonthlyStatements(blocks, { from: '', to: '', clinics });
+
+    expect(allTime).toHaveLength(1);
+    const [all] = allTime;
+    expect(all.month).toBe(ALL_TIME_MONTH);
+    expect(formatMonthLabel(all.month)).toBe('All Time');
+
+    const alNoor = row(all);
+    // Flows add up across the archive …
+    expect(alNoor.cases_billed).toBe(2);
+    expect(alNoor.billed).toBe(65000);
+    expect(alNoor.collected).toBe(28000); // Feb 10,000 advance + Mar 18,000
+    expect(alNoor.advance_received).toBe(10000);
+    expect(alNoor.advance_applied).toBe(5000);
+    expect(alNoor.credit_notes).toBe(3000);
+    // … while the balances stay positions: first opening, last closing.
+    expect(alNoor.opening_balance).toBe(0);
+    expect(alNoor.closing_balance).toBe(row(march).closing_balance);
+    expect(alNoor.advance_credit).toBe(row(march).advance_credit);
+  });
+
+  it('keeps every clinic in scope, even one with no movement at all', () => {
+    const [all] = windowMonthlyStatements(blocks, {
+      from: '',
+      to: '',
+      clinics: [...clinics, { id: 'lab-3', name: 'Quiet Dental' }],
+    });
+    const quiet = row(all, 'lab-3');
+    expect(quiet.billed).toBe(0);
+    expect(quiet.closing_balance).toBe(0);
+  });
+
+  it('still prints a real window month by month, newest first', () => {
+    const windowed = windowMonthlyStatements(blocks, {
+      from: '2026-02-01',
+      to: '2026-03-31',
+      clinics,
+    });
+    expect(windowed.map((b) => b.month)).toEqual(['2026-03', '2026-02']);
+  });
+});
+
 describe('formatMonthLabel', () => {
   it('renders a human month label', () => {
     expect(formatMonthLabel('2026-03')).toBe('March 2026');
     expect(formatMonthLabel('2026-01')).toBe('January 2026');
+  });
+
+  it('names the consolidated block All Time rather than a month', () => {
+    expect(formatMonthLabel(ALL_TIME_MONTH)).toBe('All Time');
   });
 });

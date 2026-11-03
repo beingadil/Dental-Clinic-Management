@@ -1,3 +1,30 @@
+## [2.31.18] - 2026-11-03
+
+The ledger and the monthly statement are documents now rather than a header
+over a list of rows, and All Time on the statement prints one table instead of
+a page per month the history touched.
+
+### Changed
+- General Ledger PDF: a letterhead (accent rule, issuer, title, and a labelled
+  statement-for / period block), a summary strip carrying opening balance,
+  total debits, total credits and closing balance, a ruled table with column
+  dividers and banded rows, a TOTALS row that closes the table, and the
+  running balance set a step heavier than the money beside it.
+- Monthly Statement PDF: the same letterhead and summary strip, then one band
+  per month — the month at title weight with its billed, collected and
+  closing figures on the right — over the same ruled table. The closing
+  figure in the totals row prints at display weight.
+- Both documents share one title-block geometry, so the table starts at the
+  same place on every page of every statement.
+
+### Fixed
+- A row whose description wraps to a second line is no longer drawn through
+  its own bottom rule: the row's height, its rule and its banding are now
+  measured from the number of lines it actually carries.
+- All Time on the monthly statement consolidates the whole history into one
+  statement — flows summed, opening from the first month, closing from the
+  last — instead of printing every month the history touched.
+
 ## [2.31.6] - 2026-10-31
 
 The invoice print screen edits its own paper chrome in place, and the clinic

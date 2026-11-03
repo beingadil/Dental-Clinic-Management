@@ -193,6 +193,20 @@ const selectWindow = async (from: string, to: string) => {
   fireEvent.change(screen.getByLabelText('To date'), { target: { value: to } });
   await waitFor(() => expect(screen.getAllByRole('table').length).toBeGreaterThan(0));
 };
+/** Clear the window the way an operator does: open the picker, pick All Time. */
+const selectAllTime = async () => {
+  const trigger = screen
+    .getAllByRole('button')
+    .find((b) => b.getAttribute('aria-haspopup') === 'dialog');
+  if (!trigger) throw new Error('date range trigger missing');
+  fireEvent.click(trigger);
+  const preset = screen
+    .getAllByRole('button')
+    .find((b) => (b.textContent || '').trim() === 'All Time');
+  if (!preset) throw new Error('All Time preset missing');
+  fireEvent.click(preset);
+  await waitFor(() => expect(screen.getByText('Statement total')).toBeTruthy());
+};
 const clinicRow = (table: HTMLElement) =>
   within(table).getByText('Al-Noor Clinic').closest('tr') as HTMLElement;
 const footerRow = (table: HTMLElement) =>
@@ -228,6 +242,35 @@ describe('BillingReportsView monthly statement', () => {
   it('shows one month at a time, newest first by default', () => {
     expect(tables()).toHaveLength(1);
     expect(screen.getAllByText('March 2026').length).toBeGreaterThan(0);
+  });
+
+  it('collapses All Time into ONE consolidated statement, not a card per month', async () => {
+    /* Clearing the window used to print every month the history touched —
+       a page of opening balances, a page of trade, a page of zeroes. All Time
+       is a position across the whole history: one table, flows summed,
+       first opening and last closing. */
+    await selectAllTime();
+
+    expect(tables()).toHaveLength(1);
+    const [all] = tables();
+    expect(screen.getByRole('heading', { name: 'All Time' })).toBeTruthy();
+    expect(within(all).getByText('Statement total')).toBeTruthy();
+    expect(screen.queryByText('February 2026')).toBeNull();
+    expect(screen.queryByText('March 2026')).toBeNull();
+
+    const allNoor = clinicRow(all);
+    expect(figure(all, allNoor, 'Billed (Dr)')).toBe('PKR 65,000');
+    // Feb's 10,000 advance + Mar's 15,000 bank + 3,000 credit note — summed.
+    expect(figure(all, allNoor, 'Collected (Cr)')).toBe('PKR 28,000');
+    // A balance is a position, not a sum: the latest closing carries.
+    expect(figure(all, allNoor, 'Closing Balance')).toBe('PKR 37,000 Dr');
+
+    const total = within(all).getByText('Statement total').closest('tr') as HTMLElement;
+    expect(figure(all, total, 'Billed (Dr)')).toBe('PKR 77,000');
+    expect(figure(all, total, 'Closing Balance')).toBe('PKR 49,000 Dr');
+
+    // The Months stat reports the history the single table spans, not 1.
+    expect(screen.getByText('Months').parentElement?.textContent).toContain('2');
   });
 
   it('carries closing balance, advance credit and remaining as their own columns', () => {

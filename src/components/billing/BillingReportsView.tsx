@@ -11,6 +11,7 @@ import { formatPKR } from '../../services/financeDomain';
 import { saveFile } from '../../lib/saveFile';
 import { buildMonthlyStatementPdf, downloadPdf } from '../../lib/pdf';
 import {
+  ALL_TIME_MONTH,
   buildMonthlyStatements,
   filterMonthlyStatements,
   windowMonthlyStatements,
@@ -184,6 +185,8 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     [visibleBlocks, reportFrom, reportTo, inScopeClinics]
   );
 
+  const allTime = !reportFrom && !reportTo;
+
   /** The whole statement in one line, for the scope on screen. The Closing
       Balance figure is NOT summed across months — a closing balance repeats
       every month, so it is the NEWEST month's closing, i.e. exactly what the
@@ -192,13 +195,15 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     const sum = (pick: (b: (typeof displayedBlocks)[number]) => number) =>
       displayedBlocks.reduce((acc, b) => acc + pick(b), 0);
     return {
-      months: displayedBlocks.length,
+      // All Time is ONE consolidated table covering every month of history,
+      // so report the months it spans rather than the number of tables.
+      months: allTime ? visibleBlocks.length : displayedBlocks.length,
       clinics: displayedBlocks.length ? displayedBlocks[0].totals.clinics : 0,
       billed: sum((b) => b.totals.billed),
       collected: sum((b) => b.totals.collected),
       closingBalance: displayedBlocks[0]?.totals.closing_balance ?? 0,
     };
-  }, [displayedBlocks]);
+  }, [displayedBlocks, allTime, visibleBlocks.length]);
 
   const selectedLabIds = useMemo(
     () => statementClinics.map((c) => c.id).filter((id) => !excludedLabIds.includes(id)),
@@ -356,6 +361,30 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         periodLabel,
         generatedOn: getTodayStr(),
         scopeLabel,
+        /* The figures the reader looks for first, at the top of the document.
+           Formatted here, once, from the same totals the screen shows. */
+        summary: [
+          {
+            label: 'Billed',
+            value: formatPKR(statementTotals.billed),
+            note: `${statementTotals.months} month${statementTotals.months === 1 ? '' : 's'} in scope`,
+          },
+          {
+            label: 'Collected',
+            value: formatPKR(statementTotals.collected),
+            note: 'Payments, advances and notes',
+          },
+          {
+            label: 'Closing balance',
+            value: `${formatPKR(statementTotals.closingBalance)}${drCr(statementTotals.closingBalance)}`,
+            note: 'As at the newest month',
+          },
+          {
+            label: 'Clinics',
+            value: String(statementTotals.clinics),
+            note: allTime ? 'Across all history' : 'In the reporting window',
+          },
+        ],
       },
       visibleColumns.map((c) => ({
         key: c.key,
@@ -365,7 +394,12 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         strong: c.strong,
       })),
     );
-    const fileName = `Monthly_Statement_${displayedBlocks.length ? displayedBlocks[0].month : 'none'}.pdf`;
+    const stamp = displayedBlocks.length
+      ? displayedBlocks[0].month === ALL_TIME_MONTH
+        ? 'All_Time'
+        : displayedBlocks[0].month
+      : 'none';
+    const fileName = `Monthly_Statement_${stamp}.pdf`;
     return { fileName, pdf: result.pdf };
   };
 
@@ -660,7 +694,9 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
                     stickyFirstColumn
                     tfoot={
                       <tr className="border-t-2 border-slate-300 bg-white font-bold text-[11px] uppercase tracking-wider text-slate-600">
-                        <td className="ds-sticky-col py-2.5 px-3">Month total</td>
+                        <td className="ds-sticky-col py-2.5 px-3">
+                          {block.month === ALL_TIME_MONTH ? 'Statement total' : 'Month total'}
+                        </td>
                         {visibleColumns.slice(1).map((c) => (
                           <td
                             key={c.key}

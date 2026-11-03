@@ -88,7 +88,18 @@ export interface PdfRectFill {
   /** grey 0–1 */
   grey: number;
 }
-export type PdfOp = PdfText | PdfLine | PdfRectFill;
+/** A rectangle OUTLINE — the ruled edge of a card, the box around a band. */
+export interface PdfRectStroke {
+  kind: 'rectStroke';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** grey 0–1 */
+  grey: number;
+  width?: number;
+}
+export type PdfOp = PdfText | PdfLine | PdfRectFill | PdfRectStroke;
 
 const opContent = (op: PdfOp): string => {
   if (op.kind === 'text') {
@@ -100,6 +111,9 @@ const opContent = (op: PdfOp): string => {
   }
   if (op.kind === 'rect') {
     return `${op.grey} g ${r1(op.x)} ${r1(op.y)} ${r1(op.w)} ${r1(op.h)} re f`;
+  }
+  if (op.kind === 'rectStroke') {
+    return `${op.grey} G ${r1(op.width ?? 0.5)} w ${r1(op.x)} ${r1(op.y)} ${r1(op.w)} ${r1(op.h)} re S`;
   }
   const g = op.grey ?? 0;
   const w = op.width ?? 0.75;
@@ -375,83 +389,111 @@ export function buildLedgerPdf(
         { text: '', lines: narrLines },
         { text: e.debit ? num(e.debit) : '' },
         { text: e.credit ? num(e.credit) : '' },
-        { text: num(e.closing), bold: true },
+        /* The running balance is the column a reader follows down the page:
+           one step heavier than the money beside it. */
+        { text: num(e.closing), bold: true, size: 7 },
       ] as TableCell[],
     };
   });
 
-  const showsOpening = false; // User asked: simple clean portrait, no amount headers.
+  /* The statement's own figures, above the table: what the account stood at,
+     what moved, and where it ended. They used to be computed into the meta
+     and then printed nowhere, so a reader had to add 95 rows to know whether
+     the balance went up or down. */
+  const summary: SummaryFigure[] = [
+    {
+      label: 'Opening balance',
+      value: pk(meta.openingBalance),
+      note: meta.openingBalance > 0 ? 'Brought forward' : 'No balance carried in',
+    },
+    {
+      label: 'Total debits',
+      value: pk(meta.totalDebits),
+      note: meta.transactionCount === 1 ? '1 entry' : `${num(meta.transactionCount)} entries`,
+    },
+    { label: 'Total credits', value: pk(meta.totalCredits), note: 'Payments and adjustments' },
+    {
+      label: 'Closing balance',
+      value: pk(meta.closingBalance),
+      note: meta.closingBalance > 0 ? 'Due from clinic' : 'Nothing outstanding',
+    },
+  ];
+
+  const ruleY = docRuleY(g, 2);
+  const summaryTop = ruleY - 30;
+  const firstTableY = summaryTop - CARD_H - 22;
+  /* Continuation pages carry no summary strip, so their table may start higher.
+     The packing still reserves the first page's space on every page, which is
+     why a sheet can end a row early — never a row too late. */
+  const continuationTop = g.H - 104;
 
   const section: TableSection = {
     cols: planned.cols,
     rows: rows.map((r) => ({ cells: r.cells, height: r.h })),
-    top: g.TABLE_TOP,
+    top: firstTableY,
     bottom: g.CONTENT_BOTTOM,
-    // The opening balance is a statement convention: brought forward, and
-    // shown before the month's entries.
-    preRows: showsOpening
-      ? [
-          {
-            cells: [
-              { text: 'Opening Balance (b/f)', bold: true, grey: 0.35 },
-              { text: '' },
-              { text: '' },
-              { text: '' },
-              { text: '' },
-              { text: '' },
-              { text: '' },
-              { text: num(meta.openingBalance), bold: true, grey: 0.35 },
-            ] as TableCell[],
-          },
-        ]
-      : undefined,
-    totals: () => {}, // User asked: clean simple portrait, no amount headers.
+    heading: (ops, geo, y, continued) => {
+      if (continued) {
+        ops.push({
+          kind: 'text', x: geo.MARGIN, y: geo.H - 92, size: 6.5, bold: true, grey: 0.45,
+          text: 'GENERAL LEDGER (CONTINUED)',
+        });
+        return continuationTop;
+      }
+      drawSummaryCards(ops, geo, summary, summaryTop);
+      return y;
+    },
+    totals: (ops, geo, X, cols, rowEndY) => {
+      const y = rowEndY - 6;
+      const right = geo.MARGIN + geo.CONTENT_W;
+      /* The totals are part of the table, not a note under it: same box, same
+         column rules, a heavy lid over them. */
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 19, grey: 0.92 });
+      drawGridLines(ops, geo, cols, X, y - 8, y + 11);
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 10, x2: right, y2: y + 10, grey: 0.3, width: 1 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: right, y2: y - 8, grey: 0.3, width: 1 });
+      const cell = (key: string, text: string, size: number) => {
+        const col = cols.find((c) => c.key === key);
+        if (!col) return;
+        ops.push({
+          kind: 'text',
+          x: col.align === 'right' ? X[key] + col.w - textW(text, size) - 2 : X[key] + 2,
+          y, size, bold: true, grey: 0.1, text,
+        });
+      };
+      cell('date', 'TOTALS', 6.5);
+      cell('debit', num(meta.totalDebits), 6.5);
+      cell('credit', num(meta.totalCredits), 6.5);
+      /* The figure the document exists to state, at the table's own weight —
+         the closing balance is the one number a reader runs a finger to. */
+      cell('close', num(meta.closingBalance), 8);
+    },
   };
 
   const pages = renderTableSections(
     g,
     [section],
     (ops) => {
-      // The ledger's own header block: the business, the document, and a
-      // right-hand column of what the statement is about.
-      ops.push({
-        kind: 'text', x: g.MARGIN, y: g.H - 42, size: 13, bold: true,
-        text: fitShrink(meta.labName, g.CONTENT_W * 0.5, 13).text,
-      });
-      ops.push({
-        kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15,
-        text: 'GENERAL LEDGER',
-      });
-      // Clean simple header: title + date only. Amount/meta lines removed per user.
-      const right = g.W - g.MARGIN;
-      let my = g.H - 42;
-      ops.push({
-        kind: 'text', x: right - textW(meta.generatedOn, 7.5), y: my, size: 7.5, grey: 0.45,
-        text: meta.generatedOn,
-      });
-      // No amount/meta lines — simple portrait, clean PDF.
-      // The rule under the header sits below the deepest right-meta line.
-      ops.push({
-        kind: 'line', x1: g.MARGIN, y1: my - 6, x2: g.W - g.MARGIN, y2: my - 6, grey: 0.6, width: 0.9,
+      drawDocHeader(ops, g, {
+        labName: meta.labName,
+        title: 'GENERAL LEDGER',
+        meta: [
+          { label: 'Statement for', value: meta.clinicLabel },
+          { label: 'Period', value: meta.periodLabel },
+        ],
+        subtitle: meta.caseFilterLabel
+          ? [`Filtered to cases matching “${meta.caseFilterLabel}”`]
+          : undefined,
       });
     },
     (ops, i, total) => {
-      ops.push({
-        kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 12, x2: g.W - g.MARGIN, y2: g.FOOTER_Y + 12,
-        grey: 0.8, width: 0.5,
-      });
-      ops.push({
-        kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
-        text: fitShrink(
-          `${meta.labName} — General Ledger — ${meta.clinicLabel} — ${meta.periodLabel}`,
-          g.CONTENT_W - 130,
-          6.5,
-        ).text,
-      });
-      const pg = `Page ${i + 1} of ${total}`;
-      ops.push({
-        kind: 'text', x: g.W - g.MARGIN - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg,
-      });
+      drawDocFooter(
+        ops,
+        g,
+        { labName: meta.labName, title: 'General Ledger', periodLabel: `${meta.clinicLabel} — ${meta.periodLabel}` },
+        i + 1,
+        total,
+      );
     },
   );
 
@@ -527,34 +569,79 @@ const CLINIC_COLS: [string, string, number, 'left' | 'right'][] = [
   ['outstanding', 'OUTSTANDING', 0.09, 'right'],
 ];
 
-/** A label + value, drawn right-aligned inside a column. */
-/** The money summary band: three figures across the content width. */
-function drawSummaryBand(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, y: number): number {
-  const items: { label: string; value: string; note?: string }[] = [
-    {
-      label: 'INVOICES RAISED',
-      value: pk(meta.invoicedValue),
-      note: `${meta.invoicesRaised} invoice${meta.invoicesRaised === 1 ? '' : 's'}`,
-    },
-    {
-      label: 'PAYMENTS RECEIVED',
-      value: pk(meta.paidValue),
-      note: `${meta.paymentsReceived} payment${meta.paymentsReceived === 1 ? '' : 's'}`,
-    },
-    { label: 'TOTAL OUTSTANDING', value: pk(meta.totalOutstanding), note: 'Across the whole lab' },
-  ];
-  const gap = 10;
-  const boxW = (g.CONTENT_W - gap * (items.length - 1)) / items.length;
+/** One figure in a summary strip: a label, its value, and a quiet note. */
+export interface SummaryFigure {
+  label: string;
+  value: string;
+  note?: string;
+}
+
+/** Height of one summary card. */
+const CARD_H = 44;
+const CARD_GAP = 10;
+
+/**
+ * A strip of KPI cards across the content width.
+ *
+ * The documents used to open straight into a bare table, so the figures a
+ * reader looks for first — the period's billed, collected and closing — were
+ * only discoverable by reading every row. The strip puts them at the top, in
+ * cards with a ruled edge and a dark cap, and gives the table a clean line to
+ * start under. Returns the y below the strip.
+ */
+function drawSummaryCards(ops: PdfOp[], g: Geo, items: SummaryFigure[], y: number): number {
+  if (!items.length) return y;
+  const boxW = (g.CONTENT_W - CARD_GAP * (items.length - 1)) / items.length;
+  const bottom = y - CARD_H;
   items.forEach((it, i) => {
-    const x = g.MARGIN + i * (boxW + gap);
-    ops.push({ kind: 'rect', x, y: y - 30, w: boxW, h: 34, grey: 0.95 });
-    ops.push({ kind: 'text', x: x + 6, y: y - 4, size: 6, bold: true, grey: 0.4, text: it.label });
-    ops.push({ kind: 'text', x: x + 6, y: y - 16, size: 10, bold: true, text: fitShrink(it.value, boxW - 12, 10).text });
+    const x = g.MARGIN + i * (boxW + CARD_GAP);
+    ops.push({ kind: 'rect', x, y: bottom, w: boxW, h: CARD_H, grey: 0.975 });
+    ops.push({ kind: 'rectStroke', x, y: bottom, w: boxW, h: CARD_H, grey: 0.86, width: 0.4 });
+    /* The cap is the only strong line in the strip: it is what makes the card
+       read as one card rather than four floating numbers. */
+    ops.push({ kind: 'line', x1: x, y1: y, x2: x + boxW, y2: y, grey: 0.2, width: 1.4 });
+    ops.push({
+      kind: 'text', x: x + 8, y: y - 12, size: 6, bold: true, grey: 0.45,
+      text: fitShrink(it.label.toUpperCase(), boxW - 16, 6).text,
+    });
+    const v = fitShrink(it.value, boxW - 16, 12);
+    ops.push({ kind: 'text', x: x + 8, y: y - 28, size: v.size, bold: true, grey: 0.08, text: v.text });
     if (it.note) {
-      ops.push({ kind: 'text', x: x + 6, y: y - 26, size: 6, grey: 0.45, text: fitShrink(it.note, boxW - 12, 6).text });
+      ops.push({
+        kind: 'text', x: x + 8, y: y - 38, size: 6, grey: 0.5,
+        text: fitShrink(it.note, boxW - 16, 6).text,
+      });
     }
   });
-  return y - 30;
+  return bottom;
+}
+
+/** The money summary band the daily report prints: three figures, one strip. */
+function drawSummaryBand(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, y: number): number {
+  return drawSummaryCards(
+    ops,
+    g,
+    [
+      {
+        label: 'Invoices raised',
+        value: pk(meta.invoicedValue),
+        note: `${meta.invoicesRaised} invoice${meta.invoicesRaised === 1 ? '' : 's'}`,
+      },
+      {
+        label: 'Payments received',
+        value: pk(meta.paidValue),
+        note: `${meta.paymentsReceived} payment${meta.paymentsReceived === 1 ? '' : 's'}`,
+      },
+      { label: 'Total outstanding', value: pk(meta.totalOutstanding), note: 'Across the whole lab' },
+    ],
+    y,
+  );
+}
+
+/** A right-hand line of the title block: what it is, and what it says. */
+export interface DocMetaLine {
+  label: string;
+  value: string;
 }
 
 /** A document's title block, repeated on every page. */
@@ -563,8 +650,8 @@ interface DocHeader {
   labName: string;
   /** The document's own title, in caps. */
   title: string;
-  /** Right-hand meta lines, top to bottom. */
-  meta: string[];
+  /** Right-hand meta, top to bottom, as label/value pairs. */
+  meta: DocMetaLine[];
   /**
    * Lines under the rule — a legend, a scope note.
    *
@@ -575,24 +662,67 @@ interface DocHeader {
   subtitle?: string[];
 }
 
-/** Draws a document's title block. Returns the y of the rule under it. */
+/* ---------- title block geometry ----------
+ * One set of numbers, so every document's header lands in the same place and
+ * the table under it starts in the same place on every page. */
+const H_LAB = 42;   // baseline of the issuer's name
+const H_TITLE = 64; // baseline of the document title
+const H_META = 36;  // baseline of the first meta line
+const META_STEP = 15;
+
+/** The y of the rule under a title block carrying `count` meta lines. */
+export function docRuleY(g: Geo, count: number): number {
+  const lastMeta = g.H - H_META - Math.max(0, count - 1) * META_STEP;
+  /* Clears both the title's descender and the deepest meta line, whichever is
+     lower, so a long meta column can never put the rule through its text. */
+  return Math.min(g.H - 84, lastMeta - 14);
+}
+
+/**
+ * Draws a document's title block. Returns the y of the rule under it.
+ *
+ * A hairline accent across the top, the issuer, the document's name at title
+ * size, and the period/scope as labelled pairs on the right — a letterhead,
+ * not a paragraph followed by a table.
+ */
 function drawDocHeader(ops: PdfOp[], g: Geo, h: DocHeader): number {
   const right = g.W - g.MARGIN;
-  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 42, size: 13, bold: true, text: fitShrink(h.labName, g.CONTENT_W * 0.5, 13).text });
-  ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 56, size: 10.5, bold: true, grey: 0.15, text: h.title });
-  let my = g.H - 42;
-  h.meta.forEach((line) => {
-    ops.push({ kind: 'text', x: right - textW(line, 7.5), y: my, size: 7.5, grey: 0.35, text: line });
-    my -= 12;
+  ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 24, w: g.CONTENT_W, h: 2.5, grey: 0.12 });
+  ops.push({
+    kind: 'text', x: g.MARGIN, y: g.H - H_LAB, size: 9, bold: true, grey: 0.3,
+    text: fitShrink(h.labName, g.CONTENT_W * 0.62, 9).text,
   });
-  /* The rule clears the meta block. Two meta lines fit above the rule; a
-     third one has to push the rule down, or the rule is drawn through the
-     text. */
-  const ruleY = g.H - 64 - Math.max(0, h.meta.length - 2) * 12;
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.6, width: 0.9 });
+  ops.push({
+    kind: 'text', x: g.MARGIN, y: g.H - H_TITLE, size: 18, bold: true, grey: 0.08,
+    text: fitShrink(h.title, g.CONTENT_W * 0.62, 18).text,
+  });
+
+  /* The meta column reads as a small table: labels right-aligned in their own
+     column, values right-aligned to the page edge. One line per fact, so a
+     label can never sit a few points under the value above it. */
+  const labelRight = right - 132;
+  let my = g.H - H_META;
+  h.meta.forEach((line) => {
+    const label = line.label.toUpperCase();
+    ops.push({
+      kind: 'text', x: labelRight - textW(label, 6), y: my, size: 6, grey: 0.5, text: label,
+    });
+    const value = fitShrink(line.value, right - labelRight - 10, 7.5);
+    ops.push({
+      kind: 'text', x: right - textW(value.text, value.size), y: my, size: value.size,
+      bold: true, grey: 0.15, text: value.text,
+    });
+    my -= META_STEP;
+  });
+
+  const ruleY = docRuleY(g, h.meta.length);
+  /* A double rule: the heavy line states the document's edge, the hairline
+     under it keeps the block from reading as a table border. */
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.4, width: 1.1 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY - 2.6, x2: right, y2: ruleY - 2.6, grey: 0.78, width: 0.4 });
   (h.subtitle ?? []).forEach((line, i) => {
     ops.push({
-      kind: 'text', x: g.MARGIN, y: ruleY - 10 - i * 9, size: 6.5, grey: 0.4,
+      kind: 'text', x: g.MARGIN, y: ruleY - 13 - i * 9, size: 6.5, grey: 0.4,
       text: fitShrink(line, g.CONTENT_W, 6.5).text,
     });
   });
@@ -607,7 +737,7 @@ function drawDocFooter(
   pageNo: number,
   pageCount: number,
 ): void {
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 12, x2: g.W - g.MARGIN, y2: g.FOOTER_Y + 12, grey: 0.8, width: 0.5 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 13, x2: g.W - g.MARGIN, y2: g.FOOTER_Y + 13, grey: 0.82, width: 0.4 });
   ops.push({
     kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
     text: fitShrink(`${parts.labName} — ${parts.title} — ${parts.periodLabel}`, g.CONTENT_W - 130, 6.5).text,
@@ -716,7 +846,37 @@ function layoutCols(
   return { cols: laid, X };
 }
 
-/** Draw the column headings, shrunk to their column rather than clipped. */
+/**
+ * Vertical rules: the table's outer edges and a hairline between each column.
+ *
+ * These are what make the document read as a ruled table rather than a list
+ * of rows floating on the page — a wide description column next to four
+ * narrow money columns needs an edge to belong to.
+ */
+function drawGridLines(
+  ops: PdfOp[],
+  g: Geo,
+  cols: TableCol[],
+  X: Record<string, number>,
+  bottom: number,
+  top: number,
+): void {
+  const right = g.MARGIN + g.CONTENT_W;
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: bottom, x2: g.MARGIN, y2: top, grey: 0.55, width: 0.5 });
+  ops.push({ kind: 'line', x1: right, y1: bottom, x2: right, y2: top, grey: 0.55, width: 0.5 });
+  for (const c of cols.slice(1)) {
+    const x = X[c.key];
+    ops.push({ kind: 'line', x1: x, y1: bottom, x2: x, y2: top, grey: 0.76, width: 0.4 });
+  }
+}
+
+/**
+ * Draw the column headings, shrunk to their column rather than clipped.
+ *
+ * A heading sits on the SAME right edge as its figures (`- 2`), because a
+ * heading that stops a point or two short of its own column is the commonest
+ * way a numeric table looks misaligned even when every number is correct.
+ */
 function drawColumnHeadings(
   ops: PdfOp[],
   g: Geo,
@@ -724,26 +884,36 @@ function drawColumnHeadings(
   X: Record<string, number>,
   y: number,
 ): void {
-  ops.push({ kind: 'rect', x: g.MARGIN, y: y - 4, w: g.CONTENT_W, h: 15, grey: 0.93 });
+  ops.push({ kind: 'rect', x: g.MARGIN, y: y - 4, w: g.CONTENT_W, h: 16, grey: 0.93 });
+  drawGridLines(ops, g, cols, X, y - 4, y + 12);
   for (const c of cols) {
-    const fit = fitShrink(c.label, c.w - 4, 6.5);
+    const fit = fitShrink(c.label.toUpperCase(), c.w - 4, 6.5);
     ops.push({
       kind: 'text',
       x: c.align === 'right' ? X[c.key] + c.w - textW(fit.text, fit.size) - 2 : X[c.key] + 2,
       y: y + 5,
       size: fit.size,
       bold: true,
+      grey: 0.3,
       text: fit.text,
     });
   }
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4, x2: g.MARGIN + g.CONTENT_W, y2: y - 4, grey: 0.35, width: 1 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 11, x2: g.MARGIN + g.CONTENT_W, y2: y - 11, grey: 0.35, width: 1 });
+  /* Heavy rule under the heading, and a hairline over it: the heading band is
+     the table's lid, not another row. */
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4, x2: g.MARGIN + g.CONTENT_W, y2: y - 4, grey: 0.25, width: 1 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: y + 12, x2: g.MARGIN + g.CONTENT_W, y2: y + 12, grey: 0.55, width: 0.5 });
 }
 
 /** The height of one wrapped line inside a row. */
 const LINE_H = 9.5;
 
-/** Draw one row, and the hairline under it. */
+/**
+ * Draw one row, and the hairline under it.
+ *
+ * `index` drives the banding: every other row carries a whisper of grey, which
+ * is what keeps a 40-row statement readable across a landscape page without
+ * turning it into a grid of rules.
+ */
 function drawRow(
   ops: PdfOp[],
   g: Geo,
@@ -751,7 +921,17 @@ function drawRow(
   X: Record<string, number>,
   row: TableRow,
   y: number,
+  index = 0,
 ): void {
+  /* A row's bottom edge depends on how many lines it carries: a wrapped
+     narration hangs BELOW its first baseline, so a fixed rule would be drawn
+     through the second line and the banding would paint over the row above. */
+  const lineCount = Math.max(1, ...row.cells.map((c) => c.lines?.length ?? 1));
+  const ruleY = y - (lineCount - 1) * LINE_H - 4.5;
+  if (index % 2 === 1) {
+    ops.push({ kind: 'rect', x: g.MARGIN, y: ruleY, w: g.CONTENT_W, h: y + 7 - ruleY, grey: 0.977 });
+  }
+  drawGridLines(ops, g, cols, X, ruleY, y + 7);
   row.cells.forEach((cell, i) => {
     const col = cols[i];
     if (!col) return;
@@ -782,7 +962,7 @@ function drawRow(
       text: fit.text,
     });
   });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4.5, x2: g.MARGIN + g.CONTENT_W, y2: y - 4.5, grey: 0.9, width: 0.4 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: g.MARGIN + g.CONTENT_W, y2: ruleY, grey: 0.9, width: 0.4 });
 }
 
 /**
@@ -850,10 +1030,10 @@ function renderTableSections(
         }
       }
 
-      for (const row of rows) {
-        drawRow(ops, g, cols, X, row, rowY);
+      rows.forEach((row, rowIndex) => {
+        drawRow(ops, g, cols, X, row, rowY, rowIndex);
         rowY -= (row.height ?? ROW_H) + ROW_GAP;
-      }
+      });
 
       if (pageInSection === chunks.length - 1 && section.totals) {
         section.totals(ops, g, X, cols, rowY);
@@ -886,7 +1066,10 @@ export function buildDailyReportPdf(
   const header = (): DocHeader => ({
     labName: meta.labName,
     title: 'DAILY LAB REPORT',
-    meta: [meta.generatedOn, `Period: ${meta.periodLabel}`],
+    meta: [
+      { label: 'Period', value: meta.periodLabel },
+      { label: 'Generated', value: meta.generatedOn },
+    ],
   });
   const footerParts = {
     labName: meta.labName,
@@ -909,7 +1092,7 @@ export function buildDailyReportPdf(
 
   /* The production sheet starts lower than the clinic table, because the
      summary band sits above it on the first page. */
-  const productionTop = g.H - 150;
+  const productionTop = docRuleY(g, 2) - 26 - CARD_H - 22;
   const clinicTop = g.H - 114;
 
   const sections: TableSection[] = [
@@ -939,7 +1122,7 @@ export function buildDailyReportPdf(
       bottom: g.CONTENT_BOTTOM + 26,
       heading: (ops, geo, y, continued) => {
         // The summary band is a headline: it belongs to the first page only.
-        if (!continued) drawSummaryBand(ops, geo, meta, g.H - 76);
+        if (!continued) drawSummaryBand(ops, geo, meta, docRuleY(geo, 2) - 26);
         ops.push({
           kind: 'text', x: geo.MARGIN, y: y + 30, size: 7.5, bold: true, grey: 0.25,
           text: continued ? 'PRODUCTION SHEET (CONT.)' : 'PRODUCTION SHEET',
@@ -1036,6 +1219,13 @@ export interface MonthlyStatementPdfMeta {
   generatedOn: string;
   /** Which clinics are in scope, e.g. 'All 13 clinics' or '3 of 13 clinics'. */
   scopeLabel: string;
+  /**
+   * The statement's own figures, printed as a card strip above the table.
+   *
+   * They arrive as formatted strings because the caller already owns the
+   * money formatting; this module must not re-render a figure it was handed.
+   */
+  summary?: SummaryFigure[];
   paper?: PaperKind;
   orientation?: Orientation;
 }
@@ -1079,7 +1269,11 @@ export function buildMonthlyStatementPdf(
   const header = (): DocHeader => ({
     labName: meta.labName,
     title: 'MONTHLY STATEMENT',
-    meta: [meta.generatedOn, `Period: ${meta.periodLabel}`, `Clinics: ${meta.scopeLabel}`],
+    meta: [
+      { label: 'Period', value: meta.periodLabel },
+      { label: 'Clinics', value: meta.scopeLabel },
+      { label: 'Generated', value: meta.generatedOn },
+    ],
   });
   const footerParts = {
     labName: meta.labName,
@@ -1087,16 +1281,21 @@ export function buildMonthlyStatementPdf(
     periodLabel: meta.periodLabel,
   };
 
-  /* The page's vertical rhythm, measured once. The title block ends in a
-     rule; the month's heading comes next; then the column headings; then the
-     rows. Each band is given its own space, because a statement that prints
-     its heading across its own title is a statement nobody can read. */
-  const ruleY = g.H - 64 - 12; // three meta lines, so the rule sits one lower
-  const headingY = ruleY - 26;
-  const tableHeaderY = headingY - 18;
-  const firstRowY = tableHeaderY - 18;
+  /* The page's vertical rhythm, measured once: title block, rule, the summary
+     strip, the month's band, the column headings, then the rows. Each band is
+     given its own space, because a statement that prints its heading across
+     its own title is a statement nobody can read. */
+  const ruleY = docRuleY(g, 3);
+  const summaryTop = ruleY - 30;
+  const summaryBottom = summaryTop - CARD_H;
+  /* The month band sits between the strip and the headings (56pt of band and
+     air), so the table body starts below all of them. A month whose page has
+     no strip starts directly under the rule instead — the strip opens the
+     document, it does not reserve a hole in every page after it. */
+  const firstRowWithStrip = summaryBottom - 66;
+  const firstRowY = ruleY - 66;
 
-  const sections: TableSection[] = months.map((month) => ({
+  const sections: TableSection[] = months.map((month, monthIndex) => ({
     cols: columns.map((c) => ({ key: c.key, label: c.label, w: c.w, align: c.align })),
     rows: month.rows.map((cells) => ({
       cells: cells.map((text, i) => ({
@@ -1105,44 +1304,68 @@ export function buildMonthlyStatementPdf(
         grey: columns[i]?.strong ? 0.15 : 0,
       })),
     })),
-    top: firstRowY,
+    top: monthIndex === 0 && meta.summary?.length ? firstRowWithStrip : firstRowY,
     bottom: g.CONTENT_BOTTOM + 26,
     heading: (ops, geo, y, continued) => {
+      /* The statement-wide figures open the DOCUMENT, not every month in it:
+         the strip belongs to the first sheet only, or the second month's page
+         leads with totals that are not its own. */
+      if (!continued && monthIndex === 0 && meta.summary?.length) {
+        drawSummaryCards(ops, geo, meta.summary, summaryTop);
+      }
+
+      /* The month's band: a filled strip with a dark tick at its left edge,
+         the month at title weight, and its three figures on the right. The
+         strip separates one month's statement from the next on one sheet. */
+      const bandY = y + 34;
+      const bandH = 24;
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: bandY, w: geo.CONTENT_W, h: bandH, grey: 0.95 });
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: bandY, w: 3, h: bandH, grey: 0.15 });
       ops.push({
-        kind: 'text', x: geo.MARGIN, y: y + 32, size: 9, bold: true, grey: 0.1,
-        text: continued ? `${month.label.toUpperCase()} (CONT.)` : month.label.toUpperCase(),
+        kind: 'text', x: geo.MARGIN + 10, y: bandY + 9, size: 11, bold: true, grey: 0.1,
+        text: fitShrink(
+          continued ? `${month.label.toUpperCase()} (CONT.)` : month.label.toUpperCase(),
+          geo.CONTENT_W * 0.42,
+          11,
+        ).text,
       });
-      // The month's own figures, on the right of the heading.
-      let fx = geo.W - geo.MARGIN;
+      // The month's own figures, on the right of the band.
+      let fx = geo.W - geo.MARGIN - 8;
       for (const f of [...month.headline].reverse()) {
         ops.push({
-          kind: 'text', x: fx - textW(f.value, 7.5), y: y + 32, size: 7.5, bold: true, text: f.value,
+          kind: 'text', x: fx - textW(f.value, 7.5), y: bandY + 9, size: 7.5, bold: true, grey: 0.12,
+          text: f.value,
         });
         ops.push({
-          kind: 'text', x: fx - textW(f.value, 7.5) - textW(`${f.label}  `, 6.5) - 3, y: y + 32,
-          size: 6.5, grey: 0.4, text: `${f.label}  `,
+          kind: 'text', x: fx - textW(f.value, 7.5) - textW(`${f.label}  `, 6.5) - 3, y: bandY + 9,
+          size: 6.5, grey: 0.45, text: `${f.label}  `,
         });
         fx -= textW(f.value, 7.5) + textW(`${f.label}  `, 6.5) + 14;
       }
       ops.push({
-        kind: 'line', x1: geo.MARGIN, y1: y + 26, x2: geo.W - geo.MARGIN, y2: y + 26,
-        grey: 0.75, width: 0.6,
+        kind: 'line', x1: geo.MARGIN, y1: bandY + bandH, x2: geo.W - geo.MARGIN, y2: bandY + bandH,
+        grey: 0.55, width: 0.6,
       });
       return y + 18;
     },
     totals: (ops, geo, X, cols, rowEndY) => {
-      // The month's totals, under a rule, in the columns they belong to.
+      // The month's totals, boxed with the table, in the columns they belong to.
       const y = rowEndY - 4;
-      ops.push({
-        kind: 'rect', x: geo.MARGIN, y: y - 5, w: geo.CONTENT_W, h: 14, grey: 0.92,
-      });
+      const right = geo.MARGIN + geo.CONTENT_W;
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 19, grey: 0.92 });
+      drawGridLines(ops, geo, cols, X, y - 8, y + 11);
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 10, x2: right, y2: y + 10, grey: 0.3, width: 1 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: right, y2: y - 8, grey: 0.3, width: 1 });
       month.totals.forEach((text, i) => {
         const col = cols[i];
         if (!col) return;
+        /* The closing balance is the statement's headline figure, so it is set
+           at the table's display weight rather than in the totals' fine print. */
+        const size = i === month.totals.length - 1 ? 8 : 6.5;
         ops.push({
           kind: 'text',
-          x: col.align === 'right' ? X[col.key] + col.w - textW(text, 6.5) - 2 : X[col.key] + 2,
-          y: y + 4, size: 6.5, bold: true, text,
+          x: col.align === 'right' ? X[col.key] + col.w - textW(text, size) - 2 : X[col.key] + 2,
+          y: y + 1, size, bold: true, grey: 0.1, text,
         });
       });
     },
