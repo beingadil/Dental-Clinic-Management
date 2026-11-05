@@ -1,3 +1,32 @@
+## [2.31.19] - 2026-11-05
+
+Every module can now carry its own password, and the invoice's account summary
+is a print section the operator can switch on or off in one click.
+
+### Added
+- Settings → Module Security: a Super Admin can put an independent password in
+  front of Dashboard, Case Management, Dental Clinics, Billing & Invoices,
+  Price List & Catalog, Analytics & Reports and System Inbox. System Settings
+  is never lockable, so a forgotten password can always be reset from the app.
+- A module door in front of each protected module: every view of the module is
+  covered, so a second tab is not a way around the first. The password is asked
+  again each time the module is opened, and leaving it closes the door.
+- The control also offers Change password, Lock now, Remove and Lock all now,
+  and records set / change / remove / granted / denied in the audit trail.
+- Account summary is now its own printable section with a one-click switch in
+  the invoice dialog, batch invoice print and the Print Invoices preview, and
+  in Settings → Print. The choice is stored, so the next printout matches.
+
+### Changed
+- Module passwords are stored only as PBKDF2 hashes in the settings table, so
+  a backup carries the locks without carrying the passwords.
+- A database written by the earlier single Reports lock keeps protecting
+  Analytics & Reports after the upgrade.
+
+### Fixed
+- An invoice list saved before the account-summary split keeps printing the
+  block exactly as before; switching it off is remembered and never re-adds it.
+
 ## [2.31.18] - 2026-11-03
 
 The ledger and the monthly statement are documents now rather than a header
