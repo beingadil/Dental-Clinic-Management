@@ -106,6 +106,14 @@ const META = {
   paymentsReceived: 0,
   paidValue: 0,
   totalOutstanding: 28000,
+  production: {
+    casesReceived: 1,
+    unitsReceived: 3,
+    casesDue: 1,
+    openCases: 0,
+    overdueCases: 0,
+    clinics: 1,
+  },
 };
 
 const row = (over: Record<string, unknown> = {}) => ({

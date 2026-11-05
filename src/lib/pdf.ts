@@ -59,68 +59,85 @@ const esc = (s: string) => {
 
 /* ---------- PDF object assembly ---------- */
 
-export interface PdfText {
+/**
+ * A document colour, as either a grey level or an RGB triple.
+ *
+ * Grey is enough for rules and table furniture; the report's section
+ * headings need the one spot of navy that makes the page read as a prepared
+ * document rather than a screen dump. `rgb` wins when both are present.
+ */
+export interface PdfColor {
+  /** 0–1 grey fill/stroke; omit for black. */
+  grey?: number;
+  /** 0–1 RGB fill/stroke. */
+  rgb?: [number, number, number];
+}
+export interface PdfText extends PdfColor {
   kind: 'text';
   x: number;
   y: number;
   size: number;
   bold?: boolean;
   text: string;
-  /** 0–1 grey fill; omit for black. */
-  grey?: number;
 }
-export interface PdfLine {
+export interface PdfLine extends PdfColor {
   kind: 'line';
   x1: number;
   y1: number;
   x2: number;
   y2: number;
-  /** grey 0–1; omit for black */
-  grey?: number;
   width?: number;
 }
-export interface PdfRectFill {
+export interface PdfRectFill extends PdfColor {
   kind: 'rect';
   x: number;
   y: number;
   w: number;
   h: number;
-  /** grey 0–1 */
-  grey: number;
 }
-/** A rectangle OUTLINE — the ruled edge of a card, the box around a band. */
-export interface PdfRectStroke {
+/** A rectangle OUTLINE — the ruled edge of a box, the frame around a band. */
+export interface PdfRectStroke extends PdfColor {
   kind: 'rectStroke';
   x: number;
   y: number;
   w: number;
   h: number;
-  /** grey 0–1 */
-  grey: number;
   width?: number;
 }
 export type PdfOp = PdfText | PdfLine | PdfRectFill | PdfRectStroke;
 
+/** `r g b rg` for a fill, `g g` for a grey. */
+const fillColor = (op: PdfColor): string =>
+  op.rgb
+    ? `${r3(op.rgb[0])} ${r3(op.rgb[1])} ${r3(op.rgb[2])} rg`
+    : `${op.grey ?? 0} g`;
+/** `r g b RG` for a stroke, `g G` for a grey. */
+const strokeColor = (op: PdfColor): string =>
+  op.rgb
+    ? `${r3(op.rgb[0])} ${r3(op.rgb[1])} ${r3(op.rgb[2])} RG`
+    : `${op.grey ?? 0} G`;
+
 const opContent = (op: PdfOp): string => {
   if (op.kind === 'text') {
     const font = op.bold ? '/F2' : '/F1';
-    // Fill grey MUST be set on every text op: PDF fill color persists across
-    // operators, so a text op without one inherits the last fill (e.g. the
-    // 0.92 table-header rect) and prints near-invisible on white paper.
-    return `BT ${op.grey ?? 0} g ${font} ${op.size} Tf 1 0 0 1 ${r1(op.x)} ${r1(op.y)} Tm (${esc(op.text)}) Tj ET`;
+    // Fill colour MUST be set on every text op: PDF fill colour persists
+    // across operators, so a text op without one inherits the last fill (e.g.
+    // the table header's grey band) and prints near-invisible on white paper.
+    return `BT ${fillColor(op)} ${font} ${op.size} Tf 1 0 0 1 ${r1(op.x)} ${r1(op.y)} Tm (${esc(op.text)}) Tj ET`;
   }
   if (op.kind === 'rect') {
-    return `${op.grey} g ${r1(op.x)} ${r1(op.y)} ${r1(op.w)} ${r1(op.h)} re f`;
+    return `${fillColor(op)} ${r1(op.x)} ${r1(op.y)} ${r1(op.w)} ${r1(op.h)} re f`;
   }
   if (op.kind === 'rectStroke') {
-    return `${op.grey} G ${r1(op.width ?? 0.5)} w ${r1(op.x)} ${r1(op.y)} ${r1(op.w)} ${r1(op.h)} re S`;
+    return `${strokeColor(op)} ${r1(op.width ?? 0.5)} w ${r1(op.x)} ${r1(op.y)} ${r1(op.w)} ${r1(op.h)} re S`;
   }
-  const g = op.grey ?? 0;
   const w = op.width ?? 0.75;
-  return `${g} G ${r1(w)} w ${r1(op.x1)} ${r1(op.y1)} m ${r1(op.x2)} ${r1(op.y2)} l S`;
+  return `${strokeColor(op)} ${r1(w)} w ${r1(op.x1)} ${r1(op.y1)} m ${r1(op.x2)} ${r1(op.y2)} l S`;
 };
 
 const r1 = (n: number) => (Math.round(n * 10) / 10).toString();
+/** RGB components need finer resolution than a grey level. */
+const r3 = (n: number) => (Math.round(n * 1000) / 1000).toString();
 
 /** One PDF page object from its op list. Returns object body + offsets base. */
 interface PageSpec { ops: PdfOp[]; geo: Geo }
@@ -552,6 +569,20 @@ export interface DailyReportPdfMeta {
   paymentsReceived: number;
   paidValue: number;
   totalOutstanding: number;
+  /**
+   * The window's operational figures, printed as a compact table.
+   *
+   * They are counted by the report builder, not here: this module formats
+   * figures, it does not decide what counts as an open or overdue case.
+   */
+  production: {
+    casesReceived: number;
+    unitsReceived: number;
+    casesDue: number;
+    openCases: number;
+    overdueCases: number;
+    clinics: number;
+  };
   paper?: PaperKind;
   orientation?: Orientation;
 }
@@ -624,25 +655,151 @@ function drawSummaryCards(ops: PdfOp[], g: Geo, items: SummaryFigure[], y: numbe
   return bottom;
 }
 
-/** The money summary band the daily report prints: three figures, one strip. */
-function drawSummaryBand(ops: PdfOp[], g: Geo, meta: DailyReportPdfMeta, y: number): number {
-  return drawSummaryCards(
+/* ---------- document summary tables ---------- */
+
+/** The one spot of colour on the page: the navy of a section heading. */
+const NAVY: [number, number, number] = [0.09, 0.15, 0.27];
+const INK: [number, number, number] = [0.07, 0.08, 0.1];
+
+/** Height of one data row in a summary table. */
+const SUMMARY_ROW_H = 15;
+
+/**
+ * A section's title: navy caps over a hairline, with an optional right-hand
+ * fact. This is the replacement for the card strip the daily report used to
+ * open with — a heading a reader scans, not a dashboard tile.
+ */
+function drawSectionHeading(
+  ops: PdfOp[],
+  x: number,
+  y: number,
+  w: number,
+  title: string,
+  right?: string,
+): void {
+  const fit = fitShrink(title.toUpperCase(), w - (right ? 150 : 0), 8);
+  ops.push({ kind: 'text', x, y, size: fit.size, bold: true, rgb: NAVY, text: fit.text });
+  if (right) {
+    const rf = fitShrink(right, 140, 6.5);
+    ops.push({
+      kind: 'text',
+      x: x + w - textW(rf.text, rf.size),
+      y: y + 0.5,
+      size: rf.size,
+      grey: 0.42,
+      text: rf.text,
+    });
+  }
+  ops.push({ kind: 'line', x1: x, y1: y - 6, x2: x + w, y2: y - 6, grey: 0.7, width: 0.5 });
+}
+
+interface SummaryColumn {
+  label: string;
+  /** Share of the block's width. */
+  w: number;
+  align: 'left' | 'right';
+  /** Set the figures bold: the columns a reader must see. */
+  strong?: boolean;
+}
+
+/**
+ * A ruled summary table: column labels, figures and hairlines between rows.
+ *
+ * This is the document form of a figure block — no fill, no border, no card.
+ * The figures live in their own right-aligned columns, so a table of them
+ * reads straight down the page instead of as three boxes to compare.
+ *
+ * Returns the y of the bottom rule.
+ */
+function drawSummaryTable(
+  ops: PdfOp[],
+  x: number,
+  top: number,
+  width: number,
+  columns: SummaryColumn[],
+  rows: string[][],
+  note?: string,
+): number {
+  const sum = columns.reduce((s, c) => s + c.w, 0) || 1;
+  const widths = columns.map((c) => Math.floor((c.w / sum) * width));
+  const xs: number[] = [];
+  let acc = x;
+  for (const w of widths) {
+    xs.push(acc);
+    acc += w;
+  }
+
+  columns.forEach((c, i) => {
+    const fit = fitShrink(c.label.toUpperCase(), widths[i] - 8, 6);
+    ops.push({
+      kind: 'text',
+      x: c.align === 'right' ? xs[i] + widths[i] - textW(fit.text, fit.size) - 6 : xs[i] + (i === 0 ? 0 : 8),
+      y: top,
+      size: fit.size,
+      bold: true,
+      grey: 0.45,
+      text: fit.text,
+    });
+  });
+  ops.push({ kind: 'line', x1: x, y1: top - 5, x2: x + width, y2: top - 5, grey: 0.5, width: 0.6 });
+
+  let y = top - 20;
+  rows.forEach((row) => {
+    columns.forEach((c, i) => {
+      const value = row[i] ?? '';
+      const fit = fitShrink(value, widths[i] - 8, 7);
+      const px = c.align === 'right'
+        ? xs[i] + widths[i] - textW(fit.text, fit.size) - 6
+        : xs[i] + (i === 0 ? 0 : 8);
+      ops.push({
+        kind: 'text',
+        x: px,
+        y,
+        size: fit.size,
+        bold: !!c.strong,
+        ...(c.strong ? { rgb: INK } : { grey: 0.25 }),
+        text: fit.text,
+      });
+    });
+    ops.push({ kind: 'line', x1: x, y1: y - 5.5, x2: x + width, y2: y - 5.5, grey: 0.86, width: 0.35 });
+    y -= SUMMARY_ROW_H;
+  });
+
+  const bottom = y + SUMMARY_ROW_H - 5.5;
+  if (note) {
+    const fit = fitShrink(note, width, 6);
+    ops.push({ kind: 'text', x, y: bottom - 9, size: fit.size, grey: 0.5, text: fit.text });
+  }
+  return bottom;
+}
+
+/** The window's operational figures, as a compact table across the page. */
+function drawProductionSummary(
+  ops: PdfOp[],
+  meta: DailyReportPdfMeta,
+  x: number,
+  y: number,
+  w: number,
+): number {
+  drawSectionHeading(ops, x, y, w, 'Production summary');
+  const p = meta.production;
+  return drawSummaryTable(
     ops,
-    g,
+    x,
+    y - 20,
+    w,
     [
-      {
-        label: 'Invoices raised',
-        value: pk(meta.invoicedValue),
-        note: `${meta.invoicesRaised} invoice${meta.invoicesRaised === 1 ? '' : 's'}`,
-      },
-      {
-        label: 'Payments received',
-        value: pk(meta.paidValue),
-        note: `${meta.paymentsReceived} payment${meta.paymentsReceived === 1 ? '' : 's'}`,
-      },
-      { label: 'Total outstanding', value: pk(meta.totalOutstanding), note: 'Across the whole lab' },
+      { label: 'Measure', w: 0.2, align: 'left' },
+      { label: 'Count', w: 0.13, align: 'right', strong: true },
+      { label: 'Measure', w: 0.2, align: 'left' },
+      { label: 'Count', w: 0.13, align: 'right', strong: true },
+      { label: 'Measure', w: 0.2, align: 'left' },
+      { label: 'Count', w: 0.14, align: 'right', strong: true },
     ],
-    y,
+    [
+      ['Cases received', num(p.casesReceived), 'Units received', num(p.unitsReceived), 'Clinics', num(p.clinics)],
+      ['Deliveries due', num(p.casesDue), 'Open cases', num(p.openCases), 'Overdue cases', num(p.overdueCases)],
+    ],
   );
 }
 
@@ -933,6 +1090,15 @@ export interface TableSection {
   ) => void;
   /** Where the first row starts. */
   top: number;
+  /**
+   * Where rows start on pages AFTER the first.
+   *
+   * A section whose first page carries a summary block has less room for
+   * rows than its continuation pages do. Without this, every continuation
+   * page would reserve the summary's space again and print a third fewer
+   * rows than it could. Defaults to `top`.
+   */
+  continuationTop?: number;
   /** The y the rows may not cross — the totals and the footer need room. */
   bottom: number;
   /**
@@ -1113,32 +1279,51 @@ function renderTableSections(
     const capacity = Math.max(1, Math.floor((section.top - section.bottom) / maxRowNeed));
     const pagesNeeded = Math.max(1, Math.ceil(section.rows.length / capacity));
     const target = Math.max(1, Math.ceil(section.rows.length / pagesNeeded));
+    const nextTop = section.continuationTop ?? section.top;
     const chunks: TableRow[][] = [];
     let current: TableRow[] = [];
     let y = section.top;
-    for (const row of section.rows) {
-      const need = (row.height ?? ROW_H) + ROW_GAP;
-      if (current.length >= target && current.length) {
-        chunks.push(current);
-        current = [];
-        y = section.top;
+    if (nextTop !== section.top) {
+      /* A section with a summary block on its first page has a different
+         capacity on every page after it, so the rows are packed greedily by
+         the room actually available rather than split evenly. */
+      for (const row of section.rows) {
+        const need = (row.height ?? ROW_H) + ROW_GAP;
+        if (y - need < section.bottom && current.length) {
+          chunks.push(current);
+          current = [];
+          y = nextTop;
+        }
+        current.push(row);
+        y -= need;
       }
-      if (y - need < section.bottom && current.length) {
-        chunks.push(current);
-        current = [];
-        y = section.top;
+      if (current.length) chunks.push(current);
+      if (!chunks.length) chunks.push([]);
+    } else {
+      for (const row of section.rows) {
+        const need = (row.height ?? ROW_H) + ROW_GAP;
+        if (current.length >= target && current.length) {
+          chunks.push(current);
+          current = [];
+          y = section.top;
+        }
+        if (y - need < section.bottom && current.length) {
+          chunks.push(current);
+          current = [];
+          y = section.top;
+        }
+        current.push(row);
+        y -= need;
       }
-      current.push(row);
-      y -= need;
+      if (current.length) chunks.push(current);
+      if (!chunks.length) chunks.push([]);
     }
-    if (current.length) chunks.push(current);
-    if (!chunks.length) chunks.push([]);
 
     chunks.forEach((rows, pageInSection) => {
       const ops: PdfOp[] = [];
       drawPageHeader(ops, sectionIndex, pageInSection);
 
-      let headY = section.top;
+      let headY = pageInSection === 0 ? section.top : nextTop;
       if (section.heading) headY = section.heading(ops, g, headY, pageInSection > 0);
       drawColumnHeadings(ops, g, cols, X, headY);
       let rowY = headY - 18;
@@ -1210,10 +1395,16 @@ export function buildDailyReportPdf(
     align,
   }));
 
-  /* The production sheet starts lower than the clinic table, because the
-     summary band sits above it on the first page. */
-  const productionTop = docRuleY(g, 2) - 26 - CARD_H - 22;
-  const clinicTop = g.H - 114;
+  /* Page one carries the window's operational figures in one compact table
+     under the title block. It is a ruled table, not a card strip — the
+     production sheet underneath is the document's main event. Continuation
+     pages start higher because they have no summary to clear. */
+  const summaryTop = docRuleY(g, 2) - 28;
+  /* Section rule -> table labels -> two rows -> bottom rule. */
+  const summaryBottom = summaryTop - 20 - 20 - (2 - 1) * SUMMARY_ROW_H - 5.5;
+  const productionTop = summaryBottom - 50;
+  const productionContinuationTop = docRuleY(g, 2) - 48;
+  const clinicTop = docRuleY(g, 2) - 56;
 
   const sections: TableSection[] = [
     {
@@ -1239,22 +1430,30 @@ export function buildDailyReportPdf(
         ],
       })),
       top: productionTop,
+      continuationTop: productionContinuationTop,
       bottom: g.CONTENT_BOTTOM + 26,
       heading: (ops, geo, y, continued) => {
-        // The summary band is a headline: it belongs to the first page only.
-        if (!continued) drawSummaryBand(ops, geo, meta, docRuleY(geo, 2) - 26);
-        ops.push({
-          kind: 'text', x: geo.MARGIN, y: y + 30, size: 7.5, bold: true, grey: 0.25,
-          text: continued ? 'PRODUCTION SHEET (CONT.)' : 'PRODUCTION SHEET',
-        });
+        /* The summary is the page's opening argument: first page only. */
+        if (!continued) {
+          drawProductionSummary(ops, meta, geo.MARGIN, docRuleY(geo, 2) - 28, geo.CONTENT_W);
+        }
+        const totalFee = rows.reduce((s, r) => s + (r.fee || 0), 0);
+        drawSectionHeading(
+          ops,
+          geo.MARGIN,
+          y + 22,
+          geo.CONTENT_W,
+          continued ? 'Production sheet (continued)' : 'Production sheet',
+          `${num(rows.length)} case${rows.length === 1 ? '' : 's'} · ${pk(totalFee)}`,
+        );
         // An empty sheet says so, rather than leaving a heading over nothing.
         if (!rows.length) {
           ops.push({
-            kind: 'text', x: geo.MARGIN, y: y - 2, size: 8, grey: 0.45,
+            kind: 'text', x: geo.MARGIN, y: y - 26, size: 8, grey: 0.45,
             text: 'No cases were received in this window.',
           });
         }
-        return y + 18;
+        return y;
       },
     },
     {
@@ -1274,10 +1473,8 @@ export function buildDailyReportPdf(
       bottom: g.CONTENT_BOTTOM + 26,
       skipIfEmpty: true,
       heading: (ops, geo, y) => {
-        ops.push({
-          kind: 'text', x: geo.MARGIN, y: y + 32, size: 7.5, bold: true, grey: 0.25, text: 'BY CLINIC',
-        });
-        return y + 18;
+        drawSectionHeading(ops, geo.MARGIN, y + 22, geo.CONTENT_W, 'By clinic');
+        return y;
       },
       totals: (ops, geo, X, cols, rowEndY) => {
         // Totals for the money columns, so the page can be checked at a glance.

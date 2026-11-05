@@ -125,6 +125,14 @@ export const DailyReportView: React.FC = () => {
         paymentsReceived: report.paymentsReceived,
         paidValue: report.paidValue,
         totalOutstanding: report.totalOutstanding,
+        production: {
+          casesReceived: report.received,
+          unitsReceived: report.production.reduce((s, r) => s + (r.units || 0), 0),
+          casesDue: report.due,
+          openCases: report.open,
+          overdueCases: report.overdue,
+          clinics: report.clinics.length,
+        },
       }
     );
     const fileName = `Daily_Report_${from || 'Beginning'}_${to || 'Present'}`.replace(

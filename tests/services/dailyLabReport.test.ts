@@ -304,6 +304,14 @@ describe('the PDF export', () => {
     paymentsReceived: 0,
     paidValue: 0,
     totalOutstanding: 28000,
+    production: {
+      casesReceived: 1,
+      unitsReceived: 3,
+      casesDue: 1,
+      openCases: 0,
+      overdueCases: 0,
+      clinics: 1,
+    },
   };
 
   it('writes a real PDF, not a picture of one', () => {
@@ -319,10 +327,24 @@ describe('the PDF export', () => {
     const { pdf } = buildDailyReportPdf(pdfRows(), [], meta);
     // The strings live in the content stream as literal text operators.
     expect(pdf).toContain('DAILY LAB REPORT');
+    expect(pdf).toContain('PRODUCTION SUMMARY');
     expect(pdf).toContain('PRODUCTION SHEET');
+    expect(pdf).toContain('Cases received');
     expect(pdf).toContain('DS-0001');
     expect(pdf).toContain('PFM Crown');
     expect(pdf).toContain('PKR 28,000');
+  });
+
+  it('has no financial summary and no card tiles above the sheet', () => {
+    const { pdf } = buildDailyReportPdf(pdfRows(), [], meta);
+    // The daily report is a production document: the money figures belong to
+    // the ledger and statement, not to a block above every daily sheet.
+    expect(pdf).not.toContain('FINANCIAL SUMMARY');
+    expect(pdf).not.toContain('Invoices raised');
+    expect(pdf).not.toContain('Payments received');
+    expect(pdf).not.toContain('Across the whole lab');
+    expect(pdf).not.toContain('1 invoice');
+    expect(pdf).not.toContain('0 payments');
   });
 
   it('gives the clinic breakdown a page of its own', () => {
