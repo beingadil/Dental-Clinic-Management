@@ -1,3 +1,31 @@
+## [2.31.20] - 2026-11-05
+
+Module passwords can now cover the whole module or only the views an operator
+chooses, and a partial lock is visible at a glance.
+
+### Added
+- Settings → Module Security: each module's "Covers these views" list is now
+  selectable. Pick any combination of views, or use Lock complete module to
+  cover all of them. A partial lock is labelled Partial in the module list and
+  the detail header.
+- Unchecking a view on an existing lock saves immediately and re-locks the
+  module, without asking for the shared password again.
+- The password form now says exactly how many views the password will cover.
+- The password gate is mounted per view, and its session unlock is read from
+  the live module unlock set so switching tabs can never carry access from an
+  open view into a protected one.
+
+### Changed
+- Module passwords store their covered view ids alongside the PBKDF2 hash;
+  older locks and the legacy Reports row keep covering every view after the
+  upgrade.
+- The Analytics entry in the rail is treated as the General Ledger surface
+  rather than a fourth lockable view, so coverage matches what is rendered.
+
+### Fixed
+- A reused gate component could inherit an open state when moving from an
+  unprotected tab to a protected tab in the same module.
+
 ## [2.31.19] - 2026-11-05
 
 Every module can now carry its own password, and the invoice's account summary
