@@ -10,6 +10,8 @@ import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { reportsTabForView } from './components/common/financeTabs';
+import { ModuleAccessGate } from './components/common/ModuleAccessGate';
+import { lockAllModules, lockModule, moduleForView } from './services/moduleSecurity';
 
 // View modules are code-split: each mounts only when its tab is opened. The
 // app shell (auth, sidebar, header, toasts) stays in the eager chunk so first
@@ -61,6 +63,27 @@ const MainAppContent: React.FC = () => {
   const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
   const appRef = React.useRef(app);
   appRef.current = app;
+
+  /**
+   * Module locks are opened per visit, not per session. The gate components
+   * remember an unlock in the service's session set; this shell effect closes
+   * the module the operator just left, so coming back asks again. Switching
+   * between views of the SAME module (Invoice Recording ↔ Print Invoices,
+   * Ledger ↔ Statements) does not touch the unlock.
+   */
+  const currentModule = moduleForView(currentView);
+  const previousModuleRef = React.useRef(currentModule);
+  React.useEffect(() => {
+    const previous = previousModuleRef.current;
+    if (previous && previous !== currentModule) lockModule(previous);
+    previousModuleRef.current = currentModule;
+  }, [currentModule]);
+
+  /** A different operator never inherits the previous operator's unlocks. */
+  const userId = user?.id ?? null;
+  React.useEffect(() => {
+    lockAllModules();
+  }, [userId]);
 
   React.useEffect(() => {
     // Dev-only demo fixtures. The guard is written POSITIVELY on purpose:
@@ -161,7 +184,9 @@ const MainAppContent: React.FC = () => {
             <ErrorBoundary>
               <Suspense fallback={null}>
                 {currentView === 'dashboard' && (
-                  <DashboardView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
+                  <ModuleAccessGate module="dashboard">
+                    <DashboardView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
+                  </ModuleAccessGate>
                 )}
 
                 {/* The same shell-level create dialog the dashboard asks for:
@@ -169,25 +194,57 @@ const MainAppContent: React.FC = () => {
                     the window, so it opened inside the content column instead of
                     full screen. */}
                 {currentView === 'cases' && (
-                  <CaseListView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
+                  <ModuleAccessGate module="cases">
+                    <CaseListView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
+                  </ModuleAccessGate>
                 )}
 
-                {currentView === 'labs' && <LabListView />}
+                {currentView === 'labs' && (
+                  <ModuleAccessGate module="labs">
+                    <LabListView />
+                  </ModuleAccessGate>
+                )}
 
-                {currentView === 'billing' && <BillingView />}
+                {currentView === 'billing' && (
+                  <ModuleAccessGate module="billing">
+                    <BillingView />
+                  </ModuleAccessGate>
+                )}
 
-                {currentView === 'print-invoices' && <PrintInvoicesView />}
+                {currentView === 'print-invoices' && (
+                  <ModuleAccessGate module="billing">
+                    <PrintInvoicesView />
+                  </ModuleAccessGate>
+                )}
 
-                {currentView === 'catalog' && <CatalogView />}
+                {currentView === 'catalog' && (
+                  <ModuleAccessGate module="catalog">
+                    <CatalogView />
+                  </ModuleAccessGate>
+                )}
 
                 {/* Analytics & Reports is a GROUP now, the way Billing & Invoices
                     is: each of its tabs is its own view id, so the rail opens
                     the ledger or the statements directly instead of landing on
                     a page that then has to be told which tab to show. Resolved
                     from the declaration so no view id is spelled here. */}
-                {reportsTab && <ReportsView activeTab={reportsTab} />}
+                {/* The module password gate wraps the WHOLE reports group, so
+                    the Ledger and the Statements archive are the same locked
+                    door — opening the second tab is not a way around the
+                    first. `reportsTab` stays truthy while switching between
+                    them, so one unlock covers the visit; navigating out of the
+                    group is what makes the shell close it again. */}
+                {reportsTab && (
+                  <ModuleAccessGate module="reports">
+                    <ReportsView activeTab={reportsTab} />
+                  </ModuleAccessGate>
+                )}
 
-                {currentView === 'notifications' && <NotificationsView />}
+                {currentView === 'notifications' && (
+                  <ModuleAccessGate module="notifications">
+                    <NotificationsView />
+                  </ModuleAccessGate>
+                )}
 
                 {currentView === 'settings' && <SettingsView />}
               </Suspense>

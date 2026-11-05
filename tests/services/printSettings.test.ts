@@ -10,6 +10,9 @@ import {
   setStatementBankExcluded,
   isStatementBankExcluded,
   loadStatementSectionsAdoptingBank,
+  loadInvoiceSectionsAdoptingSummary,
+  setInvoiceSummaryExcluded,
+  isInvoiceSummaryExcluded,
   DEFAULT_PRINT_SETTINGS,
   type PrintSettings,
 } from '../../src/services/printSettings';
@@ -156,5 +159,53 @@ describe('statement bank option (adopt / deliberate exclusion)', () => {
     saveDocumentSections('statement', [...FALLBACK]);
     expect(loadStatementSectionsAdoptingBank(FALLBACK, true)).toEqual(FALLBACK);
     expect(readMarker()).toBeNull();
+  });
+});
+
+/**
+ * The invoice account summary joined the invoice catalog after lists were
+ * already saved. Before that it printed as part of `totals`, so an upgrade
+ * must keep it on exactly the lists that had `totals`, while an operator who
+ * unticked it afterwards must not see it resurrected on the next invoice.
+ */
+describe('invoice account summary adoption', () => {
+  const FALLBACK = [
+    'brand', 'docTitle', 'billTo', 'invoiceMeta', 'lineItems',
+    'totals', 'balanceSummary', 'paymentHistory', 'bank', 'terms', 'signature', 'footer',
+  ];
+  const LEGACY_WITH_TOTALS = FALLBACK.filter((s) => s !== 'balanceSummary');
+
+  it('adds the summary to a saved list that used to print the block', () => {
+    saveDocumentSections('invoice', [...LEGACY_WITH_TOTALS]);
+    const adopted = loadInvoiceSectionsAdoptingSummary(FALLBACK);
+
+    expect(adopted).toContain('balanceSummary');
+    expect([...adopted].sort()).toEqual([...FALLBACK].sort());
+    // Persisted, so Settings → Print and every invoice dialog agree.
+    expect(loadDocumentSections('invoice', FALLBACK)).toEqual(FALLBACK);
+    expect(isInvoiceSummaryExcluded()).toBe(false);
+  });
+
+  it('does not add it to a list that never printed totals', () => {
+    const noTotals = LEGACY_WITH_TOTALS.filter((s) => s !== 'totals');
+    saveDocumentSections('invoice', noTotals);
+    expect(loadInvoiceSectionsAdoptingSummary(FALLBACK)).toEqual(noTotals);
+  });
+
+  it('never resurrects a summary the operator switched off', () => {
+    saveDocumentSections('invoice', [...LEGACY_WITH_TOTALS]);
+    setInvoiceSummaryExcluded(true);
+
+    expect(loadInvoiceSectionsAdoptingSummary(FALLBACK)).toEqual(LEGACY_WITH_TOTALS);
+    expect(isInvoiceSummaryExcluded()).toBe(true);
+  });
+
+  it('adopts again after the operator switches it back on', () => {
+    saveDocumentSections('invoice', [...LEGACY_WITH_TOTALS]);
+    setInvoiceSummaryExcluded(true);
+    setInvoiceSummaryExcluded(false);
+
+    expect(isInvoiceSummaryExcluded()).toBe(false);
+    expect(loadInvoiceSectionsAdoptingSummary(FALLBACK)).toEqual(FALLBACK);
   });
 });

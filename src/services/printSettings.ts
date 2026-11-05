@@ -128,3 +128,43 @@ export function loadStatementSectionsAdoptingBank(fallback: string[], hasBankDat
   saveDocumentSections('statement', adopted);
   return adopted;
 }
+
+/**
+ * The invoice's account summary (opening balance / this invoice / closing)
+ * joined the invoice section catalog later than operators had started saving
+ * lists, exactly like the statement bank block above.
+ *
+ * Old lists lack the id even though the block used to print as part of
+ * `totals` — so a plain reload would silently remove a figure from every
+ * invoice. Adoption is limited to lists that DID print the block (they carry
+ * `totals`), which preserves the previous paper exactly. Once the operator
+ * unticks the summary, the marker stops it being resurrected.
+ */
+const INVOICE_SUMMARY_MARKER_KEY = 'sections_invoice_balanceSummary';
+
+export function setInvoiceSummaryExcluded(excluded: boolean): void {
+  settingsRepo.set('print', INVOICE_SUMMARY_MARKER_KEY, excluded ? 'off' : 'on');
+}
+
+export function isInvoiceSummaryExcluded(): boolean {
+  try {
+    return String(settingsRepo.get('print', INVOICE_SUMMARY_MARKER_KEY) ?? '') === 'off';
+  } catch { return false; }
+}
+
+/**
+ * Stored invoice sections with the account summary adopted onto lists that
+ * predate it. No-op when already present, deliberately excluded, or when the
+ * list never printed the block (no `totals`).
+ */
+export function loadInvoiceSectionsAdoptingSummary(fallback: string[]): string[] {
+  const stored = loadDocumentSections('invoice', fallback);
+  if (stored.includes('balanceSummary') || isInvoiceSummaryExcluded() || !stored.includes('totals')) {
+    return stored;
+  }
+  // Insert in catalog order, not at the end: the print dialog and Settings
+  // must list the section where every other invoice knows it lives.
+  const adopted = fallback.filter((id) => id === 'balanceSummary' || stored.includes(id));
+  saveDocumentSections('invoice', adopted);
+  return adopted;
+}

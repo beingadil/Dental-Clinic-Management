@@ -47,6 +47,7 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'invoiceMeta', label: 'Invoice meta', hint: 'Invoice #, issue & due date' },
     { id: 'lineItems', label: 'Line items', hint: 'Case units & pricing' },
     { id: 'totals', label: 'Totals & balance', hint: 'Amount, paid, balance' },
+    { id: 'balanceSummary', label: 'Account summary', hint: 'Opening & closing balance' },
     { id: 'paymentHistory', label: 'Payment history', hint: 'Recorded payments (hidden when none)' },
     { id: 'bank', label: 'Bank payment details', hint: 'From Settings > Branding' },
     { id: 'terms', label: 'Payment terms note', hint: 'Due-on-receipt note' },
@@ -68,7 +69,7 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'statementFor', label: 'Statement-for block', hint: 'Clinic identity' },
     { id: 'period', label: 'Statement period', hint: 'Date range' },
     { id: 'invoiceTable', label: 'Invoice ledger table', hint: 'Invoices + the case each bills' },
-    { id: 'balanceSummary', label: 'Balance summary', hint: 'Totals & outstanding' },
+    { id: 'balanceSummary', label: 'Account summary', hint: 'Opening, this period & closing balance' },
     { id: 'bank', label: 'Bank payment details', hint: 'Closing page · edited on the print screen' },
     { id: 'footer', label: 'Page footer', hint: 'Contact line' },
   ],
@@ -701,7 +702,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               account stand after it". They are deliberately separate because
               the table must keep showing this invoice's full amount even when
               an advance settles half of it. */}
-          {on(sections, 'totals') && accountPosition && (
+          {on(sections, 'balanceSummary') && accountPosition && (
             <AccountBalanceBlock
               position={accountPosition}
               amountLabel="This Invoice"

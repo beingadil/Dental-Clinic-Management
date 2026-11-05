@@ -50,11 +50,11 @@ const position = (over: Partial<InvoiceAccountPosition> = {}): InvoiceAccountPos
   ...over,
 });
 
-const renderInvoice = (accountPosition?: InvoiceAccountPosition) =>
+const renderInvoice = (accountPosition?: InvoiceAccountPosition, sections = ['totals', 'balanceSummary']) =>
   render(
     <PrintDocument
       kind="invoice"
-      sections={['totals']}
+      sections={sections}
       branding={branding}
       invoice={invoice}
       accountPosition={accountPosition}
@@ -145,6 +145,18 @@ describe('printed invoice account balance', () => {
     const text = textOf(container);
 
     expect(text).not.toContain('Account Balance');
+    expect(text).not.toContain('Closing Balance');
+  });
+
+  it('omits the account summary when its section is switched off', () => {
+    const { container } = renderInvoice(position(), ['lineItems', 'totals']);
+    const text = textOf(container);
+
+    // The invoice itself still prints; only the account-position block
+    // (opening / this invoice / closing) is gone.
+    expect(text).toContain('Description');
+    expect(text).not.toContain('Account Balance');
+    expect(text).not.toContain('Opening Balance');
     expect(text).not.toContain('Closing Balance');
   });
 });

@@ -17,7 +17,8 @@ import { compareInvoiceNumbers, invoiceEntryDate } from '../../services/invoiceO
 import { paginateStatementInvoices } from '../../services/statementPagination';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
-import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
+import { loadPrintSettings, loadDocumentSections, saveDocumentSections } from '../../services/printSettings';
+import { BalanceSummaryToggle } from '../print/BalanceSummaryToggle';
 import '../print/printStyles.css';
 import { Printer, X, FileSpreadsheet, Building2, ChevronDown, Search } from 'lucide-react';
 import { Modal } from '../common/ui';
@@ -72,10 +73,16 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   const presets = useMemo(() => standardQuickRanges(), []);
   const thisMonth = presets.find((p) => p.label === 'This Month');
   const [printSettings] = useState(() => loadPrintSettings());
-  /* Statement section list for the one-sheet batch summary. */
-  const [statementSections] = useState<string[]>(() =>
+  /* Statement section list for the one-sheet batch summary. Live state: the
+     account-summary switch in the preview writes through to the same stored
+     list Settings → Print owns. */
+  const [statementSections, setStatementSections] = useState<string[]>(() =>
     loadDocumentSections('statement', DEFAULT_ENABLED.statement)
   );
+  const applySections = (next: string[]) => {
+    setStatementSections(next);
+    saveDocumentSections('statement', next);
+  };
 
 /* The clinic chooser is the shared <ClinicPicker>: a plain <select> listed every
      clinic as an <option>, which is fine at five clinics and useless at fifty —
@@ -532,21 +539,24 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
             print stylesheet has its sheets, but `hidden print:block` keeps it
             off the screen until asked for — the list and Print fit one screen. */}
         <div className="no-print flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-2">
-          <button
-            type="button"
-            onClick={() => setPreviewOpen((o) => !o)}
-            aria-expanded={previewOpen}
-            aria-controls="batch-print-preview"
-            className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700 transition-colors hover:text-indigo-700"
-          >
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${previewOpen ? 'rotate-180' : ''}`}
-            />
-            {previewOpen ? 'Hide preview' : 'Preview statement'}
-            <span className="font-normal text-slate-500">
-              · {pageCount} sheet{pageCount === 1 ? '' : 's'}
-            </span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPreviewOpen((o) => !o)}
+              aria-expanded={previewOpen}
+              aria-controls="batch-print-preview"
+              className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700 transition-colors hover:text-indigo-700"
+            >
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${previewOpen ? 'rotate-180' : ''}`}
+              />
+              {previewOpen ? 'Hide preview' : 'Preview statement'}
+              <span className="font-normal text-slate-500">
+                · {pageCount} sheet{pageCount === 1 ? '' : 's'}
+              </span>
+            </button>
+            <BalanceSummaryToggle sections={statementSections} onChange={applySections} />
+          </div>
           <span className="text-[11px] text-slate-500">
             Each printed invoice is logged to billing history.
           </span>

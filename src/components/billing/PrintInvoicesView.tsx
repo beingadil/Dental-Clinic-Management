@@ -15,6 +15,7 @@ import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, saveDocumentSections, loadStatementSectionsAdoptingBank, setStatementBankExcluded, isStatementBankExcluded } from '../../services/printSettings';
 import '../print/printStyles.css';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
+import { BalanceSummaryToggle } from '../print/BalanceSummaryToggle';
 import { useTransientFlag } from '../common/useTransient';
 import { Check, ChevronDown, FileSpreadsheet, Landmark, Printer, Search, SlidersHorizontal } from 'lucide-react';
 import { ClinicPicker } from '../common/ui/ClinicPicker';
@@ -591,6 +592,7 @@ export const PrintInvoicesView: React.FC = () => {
             <SlidersHorizontal className="h-3.5 w-3.5" />
             Sections · {statementSections.length}
           </button>
+          <BalanceSummaryToggle sections={statementSections} onChange={applySections} />
           <button
             type="button"
             onClick={() => setPreviewOpen((o) => !o)}

@@ -14,10 +14,12 @@ import {
 } from '../print/printRenderer';
 import {
   loadPrintSettings,
-  loadDocumentSections,
+  loadInvoiceSectionsAdoptingSummary,
   saveDocumentSections,
+  setInvoiceSummaryExcluded,
 } from '../../services/printSettings';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
+import { BalanceSummaryToggle } from '../print/BalanceSummaryToggle';
 import { Modal } from '../common/ui';
 import { SavePdfButton } from '../print/SavePdfButton';
 import '../print/printStyles.css';
@@ -59,7 +61,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   /* The invoice content list is a stored setting, not dialog-local state: the
      same list is used by batch printing and by Settings → Print. */
   const [enabled, setEnabled] = useState<string[]>(() =>
-    loadDocumentSections(KIND, DEFAULT_ENABLED[KIND])
+    loadInvoiceSectionsAdoptingSummary(DEFAULT_ENABLED[KIND])
   );
 
   const remainingBalance = invoiceBalanceDue(invoice);
@@ -82,6 +84,13 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
   );
 
   const applySections = (next: string[]) => {
+    /* The summary's marker records a DELIBERATE exclusion, so the adoption
+       loader cannot resurrect a block the operator just switched off. */
+    if (enabled.includes('balanceSummary') && !next.includes('balanceSummary')) {
+      setInvoiceSummaryExcluded(true);
+    } else if (next.includes('balanceSummary')) {
+      setInvoiceSummaryExcluded(false);
+    }
     setEnabled(next);
     saveDocumentSections(KIND, next);
   };
@@ -158,6 +167,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <BalanceSummaryToggle sections={enabled} onChange={applySections} />
             <button
               type="button"
               onClick={() => setShowSections((v) => !v)}

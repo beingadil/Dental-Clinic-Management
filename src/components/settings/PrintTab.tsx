@@ -4,7 +4,9 @@ import {
   loadPrintSettings,
   savePrintSettings,
   loadDocumentSections,
+  loadInvoiceSectionsAdoptingSummary,
   saveDocumentSections,
+  setInvoiceSummaryExcluded,
   PrintSettings,
 } from '../../services/printSettings';
 import { DocumentKind, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
@@ -32,13 +34,20 @@ export const PrintTab: React.FC = () => {
      read by the invoice dialog and batch printing, so paper always matches. */
   const [sectionKind, setSectionKind] = useState<DocumentKind>('invoice');
   const [docSections, setDocSections] = useState<Record<string, string[]>>(() => ({
-    invoice: loadDocumentSections('invoice', DEFAULT_ENABLED.invoice),
+    invoice: loadInvoiceSectionsAdoptingSummary(DEFAULT_ENABLED.invoice),
     job_slip: loadDocumentSections('job_slip', DEFAULT_ENABLED.job_slip),
     receipt: loadDocumentSections('receipt', DEFAULT_ENABLED.receipt),
     statement: loadDocumentSections('statement', DEFAULT_ENABLED.statement),
   }));
 
   const handleSectionsChange = (next: string[]) => {
+    /* The invoice account summary has an adoption marker: an explicit off here
+       has to be recorded, or the next invoice preview would add it back. */
+    if (sectionKind === 'invoice') {
+      const had = (docSections.invoice || []).includes('balanceSummary');
+      if (had && !next.includes('balanceSummary')) setInvoiceSummaryExcluded(true);
+      else if (next.includes('balanceSummary')) setInvoiceSummaryExcluded(false);
+    }
     setDocSections((prev) => ({ ...prev, [sectionKind]: next }));
     saveDocumentSections(sectionKind, next);
   };
@@ -282,6 +291,7 @@ export const PrintTab: React.FC = () => {
               onClick={() => {
                 saveDocumentSections(sectionKind, DEFAULT_ENABLED[sectionKind]);
                 setDocSections((prev) => ({ ...prev, [sectionKind]: [...DEFAULT_ENABLED[sectionKind]] }));
+                if (sectionKind === 'invoice') setInvoiceSummaryExcluded(false);
               }}
               className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
             >

@@ -23,6 +23,7 @@ import { UsersTab } from './UsersTab';
 import { BackupTab } from './BackupTab';
 import { TestingTab } from './TestingTab';
 import { PreferencesTab } from './PreferencesTab';
+import { ModuleSecurityTab } from './ModuleSecurityTab';
 import { PrintTab } from './PrintTab';
 import { UpdatesTab } from './UpdatesTab';
 
@@ -38,7 +39,7 @@ export const SettingsView: React.FC = () => {
   // it diverged from the tested matrix and out-lived its 4-role era.
   const may = (a: SystemAction) => canManageSystem(user, a);
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'updates'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'security' | 'updates'>('branding');
   /* Shared by BackupTab and TestingTab, so it lives here rather than in either
      tab. `useTransientMessage` owns the timer: the old version set it with a
      bare `setTimeout(() => setBackupMessage(null), N)` inside two async
@@ -89,6 +90,7 @@ export const SettingsView: React.FC = () => {
 
     { id: 'account', label: 'My Account & Security', icon: User, group: 'Account & Access', allowed: true },
     { id: 'preferences', label: 'Application Defaults', icon: Sliders, group: 'Account & Access', allowed: true },
+    { id: 'security', label: 'Module Security', icon: ShieldCheck, group: 'Account & Access', allowed: may('users:manage') },
     { id: 'backup', label: 'Database & Backup', icon: Database, group: 'Data & System', allowed: may('backup:restore') },
     { id: 'testing', label: 'System Reset', icon: Trash2, group: 'Data & System', allowed: may('data:wipe') },
     { id: 'updates', label: 'Updates', icon: ArrowUpCircle, group: 'Data & System', allowed: true },
@@ -206,6 +208,7 @@ export const SettingsView: React.FC = () => {
       )}
       {activeTab === 'testing' && may('data:wipe') && <TestingTab />}
       {activeTab === 'preferences' && <PreferencesTab />}
+      {activeTab === 'security' && may('users:manage') && <ModuleSecurityTab />}
       {activeTab === 'print' && may('print:edit') && <PrintTab />}
       {activeTab === 'updates' && <UpdatesTab />}
       
