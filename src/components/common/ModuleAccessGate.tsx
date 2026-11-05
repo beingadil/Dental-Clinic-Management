@@ -2,44 +2,56 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { auditRepo } from '../../db/repos';
 import {
+  isViewProtected,
   isModuleUnlocked,
-  loadModuleLock,
   moduleDefinition,
   unlockModule,
   verifyModulePassword,
   type LockableModuleId,
 } from '../../services/moduleSecurity';
-import { MODULE_ICONS } from './moduleVisuals';
+import { MODULE_ICONS, VIEW_LABELS } from './moduleVisuals';
 import { ArrowLeft, LockKeyhole, ShieldCheck } from 'lucide-react';
 
 interface ModuleAccessGateProps {
   /** Which module the children belong to. */
   module: LockableModuleId;
+  /** The shell view being rendered; only views the password covers are gated. */
+  view: string;
   children: React.ReactNode;
 }
 
 /**
- * The password door in front of a whole module.
+ * The password door in front of a protected view.
  *
- * The gate wraps every view of the module, so opening a second tab is never a
- * way around the first one. The shell owns the lifetime of the unlock: leaving
- * the module locks it again, while switching between views inside it keeps the
- * session unlock (see `moduleForView` in the shell). For that reason there is
- * no unmount cleanup here — a cleanup would re-lock the module on every tab
- * switch and make Billing → Print Invoices ask twice.
+ * A module password may cover the whole module or only some of its views, so
+ * the gate is mounted per view and asks for the lock on that view. Once the
+ * shared password is accepted, the session unlock is module-wide: switching to
+ * another covered view of the same module (Billing ↔ Print Invoices, Ledger ↔
+ * Statements) does not ask twice. Leaving the module locks it again in the
+ * shell. For that reason there is no unmount cleanup here — a cleanup would
+ * re-lock the module on every tab switch.
  *
- * The password itself is shared by everyone who needs the module: this is a
- * door on the data, not a per-user credential. Only a Super Admin can set,
- * change or remove it in Settings → Module Security, which is deliberately
- * not lockable so recovery is always possible.
+ * The password itself is shared by everyone who needs the covered views: this
+ * is a door on the data, not a per-user credential. Only a Super Admin can set,
+ * change or remove it in Settings → Module Security, which is deliberately not
+ * lockable so recovery is always possible.
  */
-export const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ module, children }) => {
+export const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({
+  module,
+  view,
+  children,
+}) => {
   const { user, brandingSettings, setCurrentView } = useApp();
   const definition = moduleDefinition(module);
+  const viewLabel = VIEW_LABELS[view] ?? definition.label;
   const ModuleIcon = MODULE_ICONS[module];
 
-  const [lock] = useState(() => loadModuleLock(module));
-  const [unlocked, setUnlocked] = useState(() => !lock.enabled || isModuleUnlocked(module));
+  const protectedHere = isViewProtected(module, view);
+  // Read the live session set instead of copying it into component state: the
+  // Reports group reuses this component as its tabs change, and a copied
+  // `true` from an unprotected tab must not open a protected one.
+  const [, forceRender] = useState(0);
+  const unlocked = !protectedHere || isModuleUnlocked(module);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -64,9 +76,9 @@ export const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ module, chil
             action: 'security.module_access.denied',
             entity_type: 'settings',
             entity_id: 'module_locks',
-            entity_ref: definition.label,
+            entity_ref: `${definition.label} · ${viewLabel}`,
             reason: 'invalid_password',
-            notes: `Failed ${definition.label} unlock attempt ${attempts}`,
+            notes: `Failed ${viewLabel} unlock attempt ${attempts}`,
           });
         } catch { /* audit is best-effort */ }
         return;
@@ -76,15 +88,14 @@ export const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ module, chil
           actor: user?.name || 'Unknown',
           action: 'security.module_access.granted',
           entity_type: 'settings',
-          entity_id: 'module_locks',
-          entity_ref: definition.label,
-          notes: `${definition.label} unlocked`,
-        });
+          entity_id: 'module_locks',            entity_ref: `${definition.label} · ${viewLabel}`,
+            notes: `${viewLabel} unlocked`,
+          });
       } catch { /* audit is best-effort */ }
       unlockModule(module);
       setPassword('');
       setError(null);
-      setUnlocked(true);
+      forceRender((tick) => tick + 1);
     } finally {
       setChecking(false);
     }
@@ -105,13 +116,14 @@ export const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ module, chil
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
                 {labName}
               </p>
-              <h1 className="text-base font-bold">{definition.label}</h1>
+              <h1 className="text-base font-bold">{viewLabel}</h1>
+              <p className="text-[10px] font-semibold text-white/50">{definition.label}</p>
             </div>
           </div>
           <p className="mt-4 text-xs leading-relaxed text-white/70">
-            {definition.description} This module is protected by a module password,
-            separate from your sign-in password, and it is asked again each time the
-            module is opened.
+            This view is protected by the shared {definition.label} password. It is
+            separate from your sign-in password and is asked again each time the module
+            is opened.
           </p>
         </div>
 
@@ -155,7 +167,7 @@ export const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ module, chil
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <LockKeyhole className="h-4 w-4" />
-            {checking ? 'Checking…' : `Unlock ${definition.label}`}
+            {checking ? 'Checking…' : 'Unlock this view'}
           </button>
 
           <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3">

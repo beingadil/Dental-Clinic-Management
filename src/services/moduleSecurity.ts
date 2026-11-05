@@ -1,11 +1,14 @@
 /**
- * MODULE-LEVEL PASSWORDS — a second lock in front of a whole module, separate
- * from the password each operator signs in with.
+ * MODULE-LEVEL PASSWORDS — a second lock in front of a module or a chosen
+ * subset of its views, separate from the password each operator signs in with.
  *
  * A lab can protect any of the modules listed in LOCKABLE_MODULES, each with
- * its own password. The password is shared by everyone who needs that module
- * (not created per user): the point is that the books are not readable by
- * whoever happens to be sitting at an unlocked workstation.
+ * its own password. Within a module, the Super Admin chooses whether the door
+ * covers every view (a complete module lock) or only some of them — Billing's
+ * invoice list can stay open while Print Invoices asks for the password. The
+ * password is shared by everyone who needs those views (not created per user):
+ * the point is that the books are not readable by whoever happens to be
+ * sitting at an unlocked workstation.
  *
  * System Settings is deliberately NOT in the list. It is the recovery surface
  * — a Super Admin must always be able to reach Module Security to change or
@@ -94,11 +97,10 @@ export const LOCKABLE_MODULES: readonly LockableModuleDef[] = [
     id: 'reports',
     label: 'Analytics & Reports',
     description: 'General Ledger, Reports & Statements and the Insight board.',
-    /* Resolved from the finance tab declaration rather than re-listed here:
-       those ids already have one owner, and a second copy in the security map
-       is exactly the kind of drift tests/components/financeTabOwnership.test.ts
-       exists to catch. */
-    views: [REPORTS_ENTRY_ID, ...REPORTS_TABS.map((tab) => tab.id)],
+    /* The rail reuses REPORTS_ENTRY_ID for the first tab, so it is an alias of
+       the General Ledger surface rather than a fourth destination. Coverage
+       lists the real tabs only; moduleForView still maps the alias in. */
+    views: REPORTS_TABS.map((tab) => tab.id),
   },
   {
     id: 'notifications',
@@ -113,6 +115,9 @@ const LOCKABLE_IDS = new Set<LockableModuleId>(LOCKABLE_MODULES.map((m) => m.id)
 /** The module a shell view belongs to, or null for surfaces that are not
  *  lockable (Settings, login, dialogs outside the rail). */
 export function moduleForView(view: string): LockableModuleId | null {
+  // `analytics` is the shell's landing id for the first Reports tab, not a
+  // separate surface, so it resolves to the module without becoming a chip.
+  if (view === REPORTS_ENTRY_ID) return 'reports';
   return LOCKABLE_MODULES.find((m) => m.views.includes(view))?.id ?? null;
 }
 
@@ -129,29 +134,54 @@ export interface ModulePasswordLock {
   enabled: boolean;
   /** PBKDF2 hash (`pbkdf2$…`); empty when no password is configured. */
   passwordHash: string;
+  /** Shell view ids this password covers. Older rows have no list and fall
+   *  back to every view, which preserves the original whole-module behaviour. */
+  views: string[];
   updatedAt?: string;
   updatedBy?: string;
 }
 
-const DISABLED: ModulePasswordLock = { enabled: false, passwordHash: '' };
+/** A module's views with no password in front of them. */
+const disabledLock = (id: LockableModuleId): ModulePasswordLock => ({
+  enabled: false,
+  passwordHash: '',
+  views: [...moduleDefinition(id).views],
+});
 
 export type ModuleLockMap = Record<LockableModuleId, ModulePasswordLock>;
 
 const emptyMap = (): ModuleLockMap =>
   Object.fromEntries(
-    LOCKABLE_MODULES.map((m) => [m.id, { ...DISABLED }]),
+    LOCKABLE_MODULES.map((m) => [m.id, disabledLock(m.id)]),
   ) as ModuleLockMap;
 
+/** Keep only the views this module actually owns, de-duplicated and in rail
+ *  order. Unknown ids are dropped rather than widening a lock to a surface the
+ *  module does not own. */
+function pickViews(value: unknown, allowed: readonly string[]): string[] {
+  if (!Array.isArray(value)) return [];
+  const wanted = new Set(value.filter((view): view is string => typeof view === 'string'));
+  return allowed.filter((view) => wanted.has(view));
+}
+
+/** Stored coverage is untrusted: an absent, empty or unknown list means the
+ *  whole module, never "protect nothing". */
+function normaliseViews(value: unknown, allowed: readonly string[]): string[] {
+  const picked = pickViews(value, allowed);
+  return picked.length > 0 ? picked : [...allowed];
+}
+
 /** Coerce one stored record, or a legacy JSON string, into a lock. */
-function normaliseLock(raw: unknown): ModulePasswordLock {
+function normaliseLock(raw: unknown, id: LockableModuleId): ModulePasswordLock {
+  const fallback = disabledLock(id);
   if (typeof raw === 'string') {
     try {
-      return normaliseLock(JSON.parse(raw));
+      return normaliseLock(JSON.parse(raw), id);
     } catch {
-      return { ...DISABLED };
+      return fallback;
     }
   }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DISABLED };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return fallback;
   const row = raw as Record<string, unknown>;
   const hash = typeof row.passwordHash === 'string' ? row.passwordHash : '';
   // `enabled` without a hash cannot be verified; treat it as not protected so
@@ -160,6 +190,7 @@ function normaliseLock(raw: unknown): ModulePasswordLock {
   return {
     enabled,
     passwordHash: enabled ? hash : '',
+    views: normaliseViews(row.views, fallback.views),
     updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : undefined,
     updatedBy: typeof row.updatedBy === 'string' ? row.updatedBy : undefined,
   };
@@ -179,7 +210,7 @@ function normaliseMap(raw: unknown): ModuleLockMap {
   if (!modules || typeof modules !== 'object' || Array.isArray(modules)) return out;
   for (const [id, record] of Object.entries(modules as Record<string, unknown>)) {
     if (LOCKABLE_IDS.has(id as LockableModuleId)) {
-      out[id as LockableModuleId] = normaliseLock(record);
+      out[id as LockableModuleId] = normaliseLock(record, id as LockableModuleId);
     }
   }
   return out;
@@ -200,7 +231,7 @@ export function loadModuleLocks(): ModuleLockMap {
     const legacy = settingsRepo.get(NAMESPACE, LEGACY_REPORTS_KEY);
     if (legacy !== undefined) {
       const map = emptyMap();
-      map.reports = normaliseLock(legacy);
+      map.reports = normaliseLock(legacy, 'reports');
       return map;
     }
   } catch {
@@ -210,11 +241,17 @@ export function loadModuleLocks(): ModuleLockMap {
 }
 
 export function loadModuleLock(id: LockableModuleId): ModulePasswordLock {
-  return loadModuleLocks()[id] ?? { ...DISABLED };
+  return loadModuleLocks()[id] ?? disabledLock(id);
 }
 
 export function isModuleLockEnabled(id: LockableModuleId): boolean {
   return loadModuleLock(id).enabled;
+}
+
+/** True only when this exact view is behind the module password. */
+export function isViewProtected(id: LockableModuleId, view: string): boolean {
+  const lock = loadModuleLock(id);
+  return lock.enabled && lock.views.includes(view);
 }
 
 /* ------------------------------------------------------------------ *
@@ -289,23 +326,75 @@ export async function verifyModulePassword(
   return verifyPassword(password, lock.passwordHash);
 }
 
-/** Set (or replace) one module's password. Throws on a too-short value. */
+/**
+ * Set (or replace) one module's password. Throws on a too-short value or an
+ * empty view selection. Omitting `views` keeps the original behaviour and
+ * protects the whole module.
+ */
 export async function setModulePassword(
   id: LockableModuleId,
   password: string,
   actor = 'System',
+  views?: readonly string[],
 ): Promise<void> {
   if (password.length < MIN_MODULE_PASSWORD_LENGTH) {
     throw new Error(`Password must be at least ${MIN_MODULE_PASSWORD_LENGTH} characters.`);
+  }
+  const allowed = moduleDefinition(id).views;
+  const selected = views === undefined ? [...allowed] : pickViews(views, allowed);
+  if (selected.length === 0) {
+    throw new Error('Choose at least one view to protect.');
   }
   const hash = await hashPassword(password);
   writeLock(id, {
     enabled: true,
     passwordHash: hash,
+    views: selected,
     updatedAt: new Date().toISOString(),
     updatedBy: actor || 'System',
   });
-  audit(actor, 'security.module_password.set', id, `${moduleLabel(id)} password set`);
+  audit(
+    actor,
+    'security.module_password.set',
+    id,
+    `${moduleLabel(id)} password set for ${selected.length} of ${allowed.length} views`,
+  );
+}
+
+/**
+ * Change which views an existing module password covers, without asking for
+ * the credential again. The Super Admin is already authenticated, and making a
+ * coverage edit require the shared password would be a usability trap. The
+ * write still re-locks the module so the new boundary takes effect at once.
+ */
+export function setModuleLockViews(
+  id: LockableModuleId,
+  views: readonly string[],
+  actor = 'System',
+): ModulePasswordLock {
+  const lock = loadModuleLock(id);
+  if (!lock.enabled) {
+    throw new Error('Set a module password before choosing its views.');
+  }
+  const allowed = moduleDefinition(id).views;
+  const selected = pickViews(views, allowed);
+  if (selected.length === 0) {
+    throw new Error('Choose at least one view to protect.');
+  }
+  const next: ModulePasswordLock = {
+    ...lock,
+    views: selected,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actor || 'System',
+  };
+  writeLock(id, next);
+  audit(
+    actor,
+    'security.module_password.views_changed',
+    id,
+    `${moduleLabel(id)} now covers ${selected.length} of ${allowed.length} views`,
+  );
+  return next;
 }
 
 /**
@@ -331,6 +420,7 @@ export async function changeModulePassword(
   }
   const hash = await hashPassword(newPassword);
   writeLock(id, {
+    ...lock,
     enabled: true,
     passwordHash: hash,
     updatedAt: new Date().toISOString(),
@@ -345,6 +435,7 @@ export function clearModulePassword(id: LockableModuleId, actor = 'System'): voi
   writeLock(id, {
     enabled: false,
     passwordHash: '',
+    views: [...moduleDefinition(id).views],
     updatedAt: new Date().toISOString(),
     updatedBy: actor || 'System',
   });

@@ -184,7 +184,7 @@ const MainAppContent: React.FC = () => {
             <ErrorBoundary>
               <Suspense fallback={null}>
                 {currentView === 'dashboard' && (
-                  <ModuleAccessGate module="dashboard">
+                  <ModuleAccessGate module="dashboard" view={currentView}>
                     <DashboardView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
                   </ModuleAccessGate>
                 )}
@@ -194,31 +194,31 @@ const MainAppContent: React.FC = () => {
                     the window, so it opened inside the content column instead of
                     full screen. */}
                 {currentView === 'cases' && (
-                  <ModuleAccessGate module="cases">
+                  <ModuleAccessGate module="cases" view={currentView}>
                     <CaseListView onOpenNewCaseModal={() => setIsNewCaseModalOpen(true)} />
                   </ModuleAccessGate>
                 )}
 
                 {currentView === 'labs' && (
-                  <ModuleAccessGate module="labs">
+                  <ModuleAccessGate module="labs" view={currentView}>
                     <LabListView />
                   </ModuleAccessGate>
                 )}
 
                 {currentView === 'billing' && (
-                  <ModuleAccessGate module="billing">
+                  <ModuleAccessGate module="billing" view={currentView}>
                     <BillingView />
                   </ModuleAccessGate>
                 )}
 
                 {currentView === 'print-invoices' && (
-                  <ModuleAccessGate module="billing">
+                  <ModuleAccessGate module="billing" view={currentView}>
                     <PrintInvoicesView />
                   </ModuleAccessGate>
                 )}
 
                 {currentView === 'catalog' && (
-                  <ModuleAccessGate module="catalog">
+                  <ModuleAccessGate module="catalog" view={currentView}>
                     <CatalogView />
                   </ModuleAccessGate>
                 )}
@@ -228,20 +228,19 @@ const MainAppContent: React.FC = () => {
                     the ledger or the statements directly instead of landing on
                     a page that then has to be told which tab to show. Resolved
                     from the declaration so no view id is spelled here. */}
-                {/* The module password gate wraps the WHOLE reports group, so
-                    the Ledger and the Statements archive are the same locked
-                    door — opening the second tab is not a way around the
-                    first. `reportsTab` stays truthy while switching between
-                    them, so one unlock covers the visit; navigating out of the
-                    group is what makes the shell close it again. */}
+                {/* The gate receives the active tab id, so a Reports password
+                    can cover the whole group or only the views chosen in
+                    Settings. Once one covered tab is unlocked the module-wide
+                    session unlock covers the rest of the group; navigating out
+                    is what makes the shell close it again. */}
                 {reportsTab && (
-                  <ModuleAccessGate module="reports">
+                  <ModuleAccessGate key={currentView} module="reports" view={reportsTab}>
                     <ReportsView activeTab={reportsTab} />
                   </ModuleAccessGate>
                 )}
 
                 {currentView === 'notifications' && (
-                  <ModuleAccessGate module="notifications">
+                  <ModuleAccessGate module="notifications" view={currentView}>
                     <NotificationsView />
                   </ModuleAccessGate>
                 )}

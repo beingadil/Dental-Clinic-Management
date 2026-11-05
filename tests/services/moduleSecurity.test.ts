@@ -12,11 +12,13 @@ import {
   clearModulePassword,
   isModuleLockEnabled,
   isModuleUnlocked,
+  isViewProtected,
   loadModuleLock,
   loadModuleLocks,
   lockAllModules,
   lockModule,
   moduleForView,
+  setModuleLockViews,
   setModulePassword,
   unlockModule,
   verifyModulePassword,
@@ -73,6 +75,8 @@ describe('module lock registry', () => {
     expect(moduleForView('general_ledger')).toBe('reports');
     expect(moduleForView('statements')).toBe('reports');
     expect(moduleForView('insights')).toBe('reports');
+    // The rail's landing id is an alias for General Ledger, not a fourth tab.
+    expect(moduleForView('analytics')).toBe('reports');
     expect(moduleForView('settings')).toBeNull();
   });
 
@@ -115,6 +119,103 @@ describe('setting a module password', () => {
 
     await setModulePassword('reports', 'another-secret', 'Super Admin');
     expect(isModuleUnlocked('reports')).toBe(false);
+  });
+});
+
+describe('view coverage', () => {
+  const billingViews = LOCKABLE_MODULES.find((m) => m.id === 'billing')!.views;
+
+  it('protects the whole module when no selection is given', async () => {
+    await setModulePassword('billing', 'billing-secret', 'Super Admin');
+
+    expect(loadModuleLock('billing').views).toEqual([...billingViews]);
+    for (const view of billingViews) {
+      expect(isViewProtected('billing', view)).toBe(true);
+    }
+  });
+
+  it('stores only the selected views and gates just those', async () => {
+    await setModulePassword('billing', 'billing-secret', 'Super Admin', ['print-invoices']);
+
+    expect(loadModuleLock('billing').views).toEqual(['print-invoices']);
+    expect(isViewProtected('billing', 'print-invoices')).toBe(true);
+    expect(isViewProtected('billing', 'billing')).toBe(false);
+    expect(await verifyModulePassword('billing', 'billing-secret')).toBe(true);
+  });
+
+  it('drops unknown view ids instead of widening the lock', async () => {
+    await setModulePassword('billing', 'billing-secret', 'Super Admin', [
+      'print-invoices',
+      'payroll',
+    ]);
+
+    expect(loadModuleLock('billing').views).toEqual(['print-invoices']);
+  });
+
+  it('rejects a password with no views', async () => {
+    await expect(
+      setModulePassword('billing', 'billing-secret', 'Super Admin', []),
+    ).rejects.toThrow();
+    expect(isModuleLockEnabled('billing')).toBe(false);
+  });
+
+  it('changes coverage without the password and re-locks the module', async () => {
+    await setModulePassword('reports', 'reports-secret', 'Super Admin');
+    unlockModule('reports');
+
+    const next = setModuleLockViews('reports', ['general_ledger'], 'Super Admin');
+
+    expect(next.views).toEqual(['general_ledger']);
+    expect(isModuleUnlocked('reports')).toBe(false);
+    expect(isViewProtected('reports', 'general_ledger')).toBe(true);
+    expect(isViewProtected('reports', 'statements')).toBe(false);
+    expect(isViewProtected('reports', 'analytics')).toBe(false);
+  });
+
+  it('refuses coverage on a module that has no password', () => {
+    expect(() => setModuleLockViews('cases', ['cases'], 'Super Admin')).toThrow();
+    expect(isModuleLockEnabled('cases')).toBe(false);
+  });
+
+  it('refuses to empty an existing lock', async () => {
+    await setModulePassword('billing', 'billing-secret', 'Super Admin');
+
+    expect(() => setModuleLockViews('billing', [], 'Super Admin')).toThrow();
+    expect(loadModuleLock('billing').views).toEqual([...billingViews]);
+  });
+
+  it('keeps a custom selection when the password is changed', async () => {
+    await setModulePassword('billing', 'billing-secret', 'Super Admin', ['print-invoices']);
+
+    const changed = await changeModulePassword(
+      'billing',
+      'billing-secret',
+      'billing-next',
+      'Super Admin',
+    );
+
+    expect(changed.success).toBe(true);
+    expect(loadModuleLock('billing').views).toEqual(['print-invoices']);
+  });
+
+  it('defaults an older lock to every view in its module', () => {
+    settingsRepo.set('security', 'module_locks', {
+      modules: {
+        billing: { enabled: true, passwordHash: 'pbkdf2$1$c2FsdA==$aGFzaA==' },
+      },
+    });
+
+    expect(loadModuleLock('billing').views).toEqual([...billingViews]);
+  });
+
+  it('folds the legacy Reports row in with every Reports view', () => {
+    settingsRepo.set('security', 'reports_access', {
+      enabled: true,
+      passwordHash: 'pbkdf2$1$c2FsdA==$aGFzaA==',
+    });
+
+    const reports = LOCKABLE_MODULES.find((m) => m.id === 'reports')!;
+    expect(loadModuleLock('reports').views).toEqual([...reports.views]);
   });
 });
 
