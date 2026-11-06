@@ -146,7 +146,7 @@ describe('brand colour, dark theme', () => {
       const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
       return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
     }
-    const card = luminance('#0f1826') // --color-white in dark
+    const card = luminance('#121824') // --color-white in dark
     for (const swatch of BRAND_SWATCHES) {
       for (const step of ['50', '100', '200'] as const) {
         // A tint must stay a surface: near-black, and only a step off the card.

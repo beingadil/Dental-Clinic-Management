@@ -39,21 +39,21 @@
    */
   .dark {
     /* Surfaces */
-    --color-slate-50: #0b1220;
-    --color-slate-100: #111a2b;
-    --color-slate-200: #1b2637;
-    --color-slate-300: #26344a;
+    --color-slate-50: #0b0f18;
+    --color-slate-100: #121824;
+    --color-slate-200: #1a2231;
+    --color-slate-300: #242e41;
     /* Lines / hairlines that sit above a surface */
-    --color-slate-400: #35455f;
+    --color-slate-400: #3c4a62;
     /* Ink. Ordered to preserve the light-theme ladder exactly. */
-    --color-slate-500: #7f8ea6;
-    --color-slate-600: #9aa9bf;
-    --color-slate-700: #b6c3d6;
-    --color-slate-800: #d2dbe8;
-    --color-slate-900: #e9eff7;
-    --color-slate-950: #ffffff;
+    --color-slate-500: #7f8ba1;
+    --color-slate-600: #9aa6bb;
+    --color-slate-700: #b8c2d4;
+    --color-slate-800: #d3dbe7;
+    --color-slate-900: #e9eef7;
+    --color-slate-950: #f2f5fa;
     /* white is a SURFACE here, not ink — ink is re-pinned below. */
-    --color-white: #0f1826;
+    --color-white: #121824;
 
     /*
      * Chromatic ramps. Each hue keeps its identity and its 500/600 anchor
@@ -202,8 +202,8 @@
        index.css. A series colour identifies itself against its own legend
        swatch, so flipping it to a dark value would change what the data means
        at a glance. Only the scaffold around the marks is remapped. */
-    --chart-grid: #1e2b40;
-    --chart-axis-ink: #8b9ab0;
+    --chart-grid: #202a3b;
+    --chart-axis-ink: #8a94a8;
     --chart-1: #60a5fa;
     --chart-2: #a78bfa;
     --chart-3: #f472b6;
@@ -212,9 +212,9 @@
     --chart-pos: #34d399;
     --chart-info: #60a5fa;
     --chart-warn: #fbbf24;
-    --chart-tooltip-bg: rgb(15 24 38 / 0.96);
-    --chart-tooltip-ink: #e9eff7;
-    --chart-tooltip-line: #26344a;
+    --chart-tooltip-bg: rgb(18 24 36 / 0.97);
+    --chart-tooltip-ink: #e9eef7;
+    --chart-tooltip-line: #242e41;
   }
 
   /*
@@ -240,43 +240,43 @@
    * #e9eff7, light-on-white at a measured 1.16:1.
    *
    * So these rules own `background-color` and deliberately IGNORE the custom
-   * property in dark. The board surface is slate-100 (#111a2b); a card sits a
+   * property in dark. The board surface is slate-100 (#121824); a card sits a
    * step above it so it reads as a card. The full-warning variant keeps the
    * rose tint's identity as a dark wash rather than dropping the signal — the
    * accent border and ring carry most of the urgency, so the fill only has to
    * whisper it. Selection is indigo-washed for the same reason.
    */
   .dark .kanban-case-card {
-    background-color: #161f2f;
+    background-color: #18202f;
   }
   .dark .kanban-case-card[data-warn='full'] {
-    background-color: #2f1620;
+    background-color: #2b171c;
   }
   .dark .kanban-case-card[data-selected='true'] {
-    background-color: #1b2549;
+    background-color: #1b2338;
   }
 
   /* The branding preview wears the identical contract, for the same reason: it
      is the operator's check that a chosen colour reads correctly, so a preview
      that kept its light hex in dark mode would be actively misleading. */
   .dark .branding-preview-card {
-    background-color: #161f2f;
+    background-color: #18202f;
   }
   .dark .branding-preview-card[data-preview-warn='full'] {
-    background-color: #2f1620;
+    background-color: #2b171c;
   }
 
   /* `bg-white` is a card/popover surface (309 uses) but `text-white` is ink
      on a saturated fill (223 uses). The token flip covers the former; ink has
      to be restored here, or every indigo button loses its label. */
   .dark .text-white {
-    color: #f8fafc;
+    color: #ffffff;
   }
   .dark .text-white\/60 {
-    color: rgb(248 250 252 / 0.6);
+    color: rgb(255 255 255 / 0.6);
   }
   .dark .text-white\/50 {
-    color: rgb(248 250 252 / 0.5);
+    color: rgb(255 255 255 / 0.5);
   }
 
   /* `border-white` and `ring-white` are used as light hairlines over
@@ -298,59 +298,59 @@
   }
   /* White fade-outs at the bottom of scrollable regions stay white-ish. */
   .dark .to-white\/50 {
-    --tw-gradient-to: rgb(248 250 252 / 0.5) var(--tw-gradient-to-position);
+    --tw-gradient-to: rgb(242 245 250 / 0.5) var(--tw-gradient-to-position);
   }
   .dark .to-white\/40 {
-    --tw-gradient-to: rgb(248 250 252 / 0.4) var(--tw-gradient-to-position);
+    --tw-gradient-to: rgb(242 245 250 / 0.4) var(--tw-gradient-to-position);
   }
 
   /* Inverse surfaces. These are deliberately dark in BOTH themes — a sticky
      toolbar or an audit-log code block must not invert to a light slab in a
      dark UI. They read as elevated dark, not as ink. */
   .dark .bg-slate-900 {
-    background-color: #0d1523;
+    background-color: #080b12;
   }
   .dark .bg-slate-950 {
-    background-color: #070d16;
+    background-color: #060810;
   }
   .dark .bg-slate-800 {
-    background-color: #16202f;
+    background-color: #18202f;
   }
   .dark .hover\:bg-slate-800:hover {
-    background-color: #1b2637;
+    background-color: #1a2231;
   }
   .dark .hover\:bg-slate-900:hover {
-    background-color: #26344a;
+    background-color: #242e41;
   }
   .dark .group-hover\:bg-slate-900:hover {
-    background-color: #26344a;
+    background-color: #242e41;
   }
   .dark .bg-slate-900\/95 {
-    background-color: rgb(13 21 35 / 0.95);
+    background-color: rgb(8 11 18 / 0.95);
   }
   .dark .bg-slate-900\/80 {
-    background-color: rgb(13 21 35 / 0.8);
+    background-color: rgb(8 11 18 / 0.8);
   }
   .dark .bg-slate-900\/70 {
-    background-color: rgb(13 21 35 / 0.7);
+    background-color: rgb(8 11 18 / 0.7);
   }
   .dark .bg-slate-900\/60 {
-    background-color: rgb(13 21 35 / 0.6);
+    background-color: rgb(8 11 18 / 0.6);
   }
   .dark .bg-slate-900\/50 {
-    background-color: rgb(13 21 35 / 0.5);
+    background-color: rgb(8 11 18 / 0.5);
   }
   .dark .bg-slate-900\/40 {
-    background-color: rgb(13 21 35 / 0.4);
+    background-color: rgb(8 11 18 / 0.4);
   }
   .dark .bg-slate-950\/95 {
-    background-color: rgb(7 13 22 / 0.95);
+    background-color: rgb(6 8 16 / 0.95);
   }
   .dark .bg-slate-950\/70 {
-    background-color: rgb(7 13 22 / 0.7);
+    background-color: rgb(6 8 16 / 0.7);
   }
   .dark .bg-slate-950\/60 {
-    background-color: rgb(7 13 22 / 0.6);
+    background-color: rgb(6 8 16 / 0.6);
   }
 
   /*
@@ -359,7 +359,7 @@
    * CaseListView bulk actions, NotificationsView tabs). Those are inverses.
    */
   .dark .bg-slate-700 {
-    background-color: #2b3648;
+    background-color: #222c3d;
   }
   .dark .text-slate-200 {
     color: #dbe3ee;
@@ -378,7 +378,7 @@
    * 3:1 for "visual information required to identify user interface components
    * and states". A text input's border is the only thing that identifies it —
    * its fill is a near-black well barely a step off the card — so on the dark
-   * remap `border-slate-200` (#1b2637) sat at 1.17:1 against the card it was
+   * remap `border-slate-200` (#1a2231) sat at 1.17:1 against the card it was
    * drawn on, and every field in Settings looked like an unbounded slab.
    *
    * `--color-slate-200` and `-300` are SURFACES in dark, not lines, so the
@@ -393,9 +393,22 @@
    * invalid or focused field keeps saying what it is saying.
    */
   .dark .border-slate-200 {
-    border-color: #556580;
+    border-color: #44506a;
   }
   .dark .border-slate-300 {
+    border-color: #5f6d88;
+  }
+
+  /* Card edges and CONTROL edges are not the same job.
+
+     The previous rule repainted every `border-slate-200` at the 3:1 control
+     threshold, which is correct for an input but turns every card into a wire
+     frame. Cards now take the quieter #44506a edge; the controls that actually
+     need to be identifiable keep the 3:1 boundary here. */
+  .dark :is(input, select, textarea).border-slate-200 {
+    border-color: #556580;
+  }
+  .dark :is(input, select, textarea).border-slate-300 {
     border-color: #6b7c99;
   }
 
@@ -405,7 +418,7 @@
     border-color: #33415580;
   }
   .dark .border-slate-800 {
-    border-color: #26344a;
+    border-color: #232c3d;
   }
   .dark .ring-slate-900\/20 {
     --tw-ring-color: rgb(233 239 247 / 0.2);
@@ -545,8 +558,8 @@
      plane must darken AND gain opacity, or the content behind it shows
      through as a pale smear. */
   .dark .glass-panel {
-    background: rgb(15 24 38 / 0.78);
-    border-color: rgb(148 163 184 / 0.22);
+    background: rgb(18 24 36 / 0.8);
+    border-color: rgb(148 163 184 / 0.2);
   }
 
   /* The micro-dot canvas grid. Slate-400 at 18% on white is a whisper; the
@@ -567,16 +580,16 @@
      header sit on top of it with a backdrop-filter, and a full-window filter
      that repaints on every scroll is exactly the cost this arrangement avoids. */
   .dark .app-atmos {
-    --room-base-a: #070b14;
-    --room-base-b: #0a1020;
-    --room-base-c: #0a1726;
-    --room-bloom-a: rgba(99, 102, 241, 0.3);
-    --room-bloom-b: rgba(34, 211, 238, 0.1);
-    --room-bloom-c: rgba(129, 140, 248, 0.2);
-    --room-bloom-d: rgba(52, 211, 153, 0.06);
-    --room-orb-a: rgba(129, 140, 248, 0.2);
-    --room-orb-b: rgba(34, 211, 238, 0.1);
-    --room-orb-core: rgba(255, 255, 255, 0.12);
+    --room-base-a: #080a11;
+    --room-base-b: #0d111c;
+    --room-base-c: #101725;
+    --room-bloom-a: rgba(129, 140, 248, 0.2);
+    --room-bloom-b: rgba(34, 211, 238, 0.06);
+    --room-bloom-c: rgba(129, 140, 248, 0.14);
+    --room-bloom-d: rgba(52, 211, 153, 0.04);
+    --room-orb-a: rgba(129, 140, 248, 0.16);
+    --room-orb-b: rgba(34, 211, 238, 0.08);
+    --room-orb-core: rgba(255, 255, 255, 0.09);
   }
 
   .dark .app-atmos::before {
@@ -607,12 +620,12 @@
   .dark .auth-stage {
     --auth-key-light: rgba(122, 162, 255, 0.24);
     --auth-vignette: rgba(2, 6, 16, 0.78);
-    --auth-glass-fill: rgba(20, 30, 46, 0.58);
+    --auth-glass-fill: rgba(18, 24, 36, 0.62);
     --auth-glass-edge: rgba(148, 163, 184, 0.22);
     --auth-glass-sheen: rgba(255, 255, 255, 0.1);
     --auth-glass-shadow: rgba(0, 0, 0, 0.88);
-    --auth-glass-solid: #0d1520;
-    --auth-chip-fill: rgba(20, 30, 46, 0.6);
+    --auth-glass-solid: #0b0f18;
+    --auth-chip-fill: rgba(18, 24, 36, 0.64);
   }
 
   /* The app-wide aurora steps back on the first-run stage, so the glass pane
@@ -671,5 +684,47 @@
   .dark .recharts-rectangle:focus {
     outline: 2px solid #818cf8;
     outline-offset: 2px;
+  }
+
+  /* The clinic picker (and every other glass select) is a FIELD, not a card.
+     The light recipe's 55% white survives the dashboard dark block, so the
+     control read as a white slab on the night canvas. Give it the raised rung
+     of the surface ladder instead — enough fill to look editable, not enough
+     to glow. */
+  .dark .ds-glass-select {
+    background: #18202f;
+    border-color: #44506a;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+      0 2px 8px -4px rgb(0 0 0 / 0.5);
+  }
+  .dark .ds-glass-select:hover {
+    background: #1c2433;
+  }
+
+  /* Theme switch: the selected segment used to rely on `bg-white`, which is
+     re-pointed to a surface token here. The result was dark ink on a
+     transparent button. Paint the selected segment as raised glass and keep
+     the other two quiet until hover. */
+  .dark .ds-theme-toggle {
+    background: rgb(255 255 255 / 0.05);
+    border-color: #2a3446;
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05);
+  }
+  .dark .ds-theme-toggle button {
+    background-color: transparent;
+    color: #8a94a8;
+  }
+  .dark .ds-theme-toggle button:hover {
+    background-color: rgb(255 255 255 / 0.06);
+    color: #f2f5fa;
+  }
+  .dark .ds-theme-toggle button[aria-checked='true'],
+  .dark .ds-theme-toggle button[aria-checked='true']:hover {
+    background-color: #1c2433;
+    color: #c7d2fe;
+    box-shadow:
+      0 0 0 1px #44506a,
+      0 1px 2px rgb(0 0 0 / 0.35);
   }
 }

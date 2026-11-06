@@ -40,7 +40,7 @@ export function ThemeToggle() {
       role="radiogroup"
       aria-label="Interface theme"
       title={`Theme: ${currentLabel}`}
-      className="shrink-0 flex items-center gap-0.5 p-0.5 rounded-full bg-white/30 border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+      className="ds-theme-toggle shrink-0 flex items-center gap-0.5 p-0.5 rounded-full bg-white/30 border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
     >
       {OPTIONS.map(({ mode, label, hint, Icon }) => {
         const active = mode === current;
