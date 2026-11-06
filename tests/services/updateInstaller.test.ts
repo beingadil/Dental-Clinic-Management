@@ -185,6 +185,40 @@ describe('receipt reconciliation', () => {
     expect(isAutoUpdateBusy(getAutoUpdatePhase())).toBe(false);
   });
 
+  it('ignores a receipt from an older build instead of offering a downgrade', async () => {
+    mockTauri(async () => ({
+      running_version: '2.31.21',
+      receipt_status: 'obsolete',
+      staged_installer_present: true,
+      receipt: receipt({ version: '2.31.18' }),
+    }));
+
+    await reconcileInstallReceipt();
+
+    expect(getAutoUpdatePhase().state).not.toBe('ready_to_apply');
+  });
+
+  it('reports an applied-but-unlanded update as failed, not as ready to apply again', async () => {
+    mockTauri(async () => ({
+      running_version: '2.31.20',
+      receipt_status: 'failed',
+      staged_installer_present: true,
+      receipt: receipt({
+        version: '2.31.21',
+        apply_requested_at: '20261106-120000',
+      }),
+    }));
+
+    await reconcileInstallReceipt();
+
+    const phase = getAutoUpdatePhase();
+    expect(phase.state).toBe('failed');
+    if (phase.state === 'failed') {
+      expect(phase.message).toMatch(/did not complete/i);
+      expect(phase.message).toContain('2.31.21');
+    }
+  });
+
   it('reports an interrupted update as failed, not as ready', async () => {
     mockTauri(async () => ({
       running_version: '2.16.0',

@@ -85,6 +85,31 @@ if (tauriConf.version !== version) {
   });
 }
 
+// Cargo's package version is compiled into the executable as
+// CARGO_PKG_VERSION, and the Rust updater reads the running build from it.
+// When it lagged package.json, a freshly installed build still identified as
+// the previous version and its verified installer was offered on every boot.
+// Cargo.lock carries the same package version and must move with it.
+const cargoToml = fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.toml'), 'utf8');
+const cargoTomlVersion = /^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m.exec(cargoToml)?.[1];
+if (cargoTomlVersion !== version) {
+  offenders.push({
+    file: 'src-tauri/Cargo.toml',
+    line: 0,
+    lit: `${cargoTomlVersion ?? 'missing'} (package.json says ${version})`,
+  });
+}
+
+const cargoLock = fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.lock'), 'utf8');
+const cargoLockVersion = /^name = "dental-solutions"\r?\nversion = "([^"]+)"/m.exec(cargoLock)?.[1];
+if (cargoLockVersion !== version) {
+  offenders.push({
+    file: 'src-tauri/Cargo.lock',
+    line: 0,
+    lit: `${cargoLockVersion ?? 'missing'} (package.json says ${version})`,
+  });
+}
+
 if (offenders.length > 0) {
   console.error(`version-guard: FAILED — hardcoded version literals that shadow the live version (${version}):`);
   for (const o of offenders) {

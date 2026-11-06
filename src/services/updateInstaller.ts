@@ -106,7 +106,7 @@ function setLastUpdateCheck(version: string, state: string): void {
 
 export interface UpdateDiagnostics {
   running_version: string;
-  receipt_status: 'none' | 'settled' | 'pending';
+  receipt_status: 'none' | 'settled' | 'pending' | 'failed' | 'obsolete';
   /** True when the staged installer file itself still exists on disk — a pending
       receipt without it can NEVER be applied and must be re-downloaded. */
   staged_installer_present?: boolean;
@@ -162,6 +162,21 @@ export async function reconcileInstallReceipt(): Promise<UpdateDiagnostics | nul
         message: `Staged ${diag.receipt.staged_at} from v${diag.receipt.previous_version || '?'}`,
       });
     }
+    return diag;
+  }
+
+  if (diag.receipt_status === 'obsolete') {
+    // The receipt describes an older build than the one now running. Leave it
+    // alone and let the normal update check proceed; never offer a downgrade.
+    setPhase({ state: 'idle' });
+    return diag;
+  }
+
+  if (diag.receipt_status === 'failed' && diag.receipt) {
+    setPhase({
+      state: 'failed',
+      message: `The v${diag.receipt.version} installer was launched but did not complete — the app is still on v${diag.running_version}. Check for updates to try again.`,
+    });
     return diag;
   }
 

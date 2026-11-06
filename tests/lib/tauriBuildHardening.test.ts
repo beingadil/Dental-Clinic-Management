@@ -216,6 +216,23 @@ describe('build hardening: src-tauri/tauri.conf.json + src-tauri/build.rs', () =
     });
   });
 
+  describe('updater version identity', () => {
+    const libRs = readFileSync(resolve(root, 'src-tauri/src/lib.rs'), 'utf8');
+
+    it('reads the running version from Tauri package info, not Cargo package version', () => {
+      // Cargo.toml lagged package.json/tauri.conf.json at 2.31.18 while the
+      // installer was 2.31.20. The receipt then never matched the running exe
+      // and the same installer was offered on every boot.
+      expect(libRs).toMatch(/let running_version = app\.package_info\(\)\.version\.to_string\(\);/);
+      expect(libRs).not.toMatch(/let running_version = env!\("CARGO_PKG_VERSION"\)\.to_string\(\);/);
+    });
+
+    it('marks a launched installer as attempted so it cannot loop as pending', () => {
+      expect(libRs).toMatch(/apply_requested_at/);
+      expect(libRs).toMatch(/receipt_status\(&receipt, &running_version\)/);
+    });
+  });
+
   /**
    * Bundle identifier — DO NOT "fix" the `.app` suffix.
    *

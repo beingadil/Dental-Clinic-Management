@@ -645,13 +645,14 @@ async fn update_install(
     // the staged installer. A silent write failure here is what produced the
     // false 'Install awaiting completion' banner (verified on this machine:
     // last-update.log exists, the receipt does not). Surface failures.
+    let running_version = app.package_info().version.to_string();
     let receipt = build_stage_receipt(
         &version,
         &format!("sha256:{actual}"),
         received,
         &staged.display().to_string(),
         &relaunch_target.display().to_string(),
-        env!("CARGO_PKG_VERSION"),
+        &running_version,
     );
     let receipt_path = dir.join("stage-receipt.json");
     if let Err(e) = fs::write(&receipt_path, serde_json::to_string_pretty(&receipt).unwrap_or_default()) {
@@ -746,7 +747,7 @@ fn spawn_install_waiter(staged: &std::path::Path, relaunch_target: &std::path::P
             .to_string()
     })?;
     let script = format!(
-        "Wait-Process -Id {} -ErrorAction SilentlyContinue; $p = Start-Process -FilePath '{}' -ArgumentList '/S' -PassThru -WindowStyle Hidden; Wait-Process -Id $p.Id; Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}'",
+        "Wait-Process -Id {} -ErrorAction SilentlyContinue; $p = Start-Process -FilePath '{}' -ArgumentList '/S /UPDATE' -PassThru -WindowStyle Hidden; Wait-Process -Id $p.Id; Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}'",
         std::process::id(),
         ps_quote(staged),
         ps_quote(relaunch_target)
@@ -785,7 +786,7 @@ fn spawn_install_waiter(
 /// immediately before an installer is executed with it.
 #[tauri::command]
 fn update_apply(app: AppHandle) -> Result<bool, String> {
-    let receipt = read_stage_receipt();
+    let mut receipt = read_stage_receipt();
     let staged_path = receipt
         .get("staged_path")
         .and_then(|p| p.as_str())
@@ -815,6 +816,25 @@ fn update_apply(app: AppHandle) -> Result<bool, String> {
         .unwrap_or_else(|| {
             std::env::current_exe().unwrap_or_else(|_| PathBuf::from("dental-solutions.exe"))
         });
+
+    // Record that the installer was launched BEFORE spawning it. If this
+    // process comes back on the old version, diagnostics must report a failed
+    // apply instead of offering the same installer again forever.
+    let receipt_path = std::env::temp_dir()
+        .join("dental-solutions-update")
+        .join("stage-receipt.json");
+    if let Some(obj) = receipt.as_object_mut() {
+        obj.insert(
+            "apply_requested_at".into(),
+            serde_json::Value::String(chrono_like_stamp()),
+        );
+    }
+    fs::write(
+        &receipt_path,
+        serde_json::to_string_pretty(&receipt).unwrap_or_default(),
+    )
+    .map_err(|e| format!("Could not record the update attempt: {e}"))?;
+
     spawn_install_waiter(&staged, &relaunch_target)?;
 
     // Let the invoke response (Ok) reach the webview first, then exit. A hard
@@ -870,6 +890,47 @@ fn build_stage_receipt(
     })
 }
 
+fn version_tuple(raw: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = raw.split('.');
+    Some((
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    ))
+}
+
+/// Classifies a stage receipt against the build that is actually running.
+///
+/// A receipt whose version matches the running build has settled. A receipt
+/// for an older build is obsolete and must never be offered as a downgrade.
+/// A receipt with an `apply_requested_at` marker but a newer version means the
+/// installer was launched and did not land — treating that as `pending`
+/// re-offered the same installer on every boot, which is the update loop.
+fn receipt_status(receipt: &serde_json::Value, running_version: &str) -> &'static str {
+    if receipt.is_null() {
+        return "none";
+    }
+    let receipt_version = receipt.get("version").and_then(|v| v.as_str()).unwrap_or_default();
+    if receipt_version == running_version {
+        return "settled";
+    }
+    if matches!(
+        (version_tuple(receipt_version), version_tuple(running_version)),
+        (Some(receipt), Some(running)) if running > receipt
+    ) {
+        return "obsolete";
+    }
+    if receipt
+        .get("apply_requested_at")
+        .and_then(|v| v.as_str())
+        .is_some()
+    {
+        "failed"
+    } else {
+        "pending"
+    }
+}
+
 /// Boot-time update diagnostics for Settings → Updates.
 ///
 /// Returns the receipt of the last staged install (if any) plus the exe's
@@ -877,21 +938,15 @@ fn build_stage_receipt(
 /// version differs from the running exe, or an exe that predates the last
 /// staged receipt.
 #[tauri::command]
-fn update_diagnostics() -> Result<serde_json::Value, String> {
+fn update_diagnostics(app: AppHandle) -> Result<serde_json::Value, String> {
     let receipt: serde_json::Value = read_stage_receipt();
 
-    let running_version = env!("CARGO_PKG_VERSION").to_string();
+    // The app version stamped into the installer and tauri.conf.json, NOT
+    // Cargo's package version: those two drifted to 2.31.18/2.31.20 and every
+    // installed 2.31.20 build looked like an unfinished install of itself.
+    let running_version = app.package_info().version.to_string();
 
-    // A consumed receipt is one whose version matches the running build —
-    // the install it describes has landed. Keep it for the record but mark
-    // it settled so the UI doesn't re-raise it every boot.
-    let receipt_status = if receipt.is_null() {
-        "none"
-    } else if receipt.get("version").and_then(|v| v.as_str()) == Some(running_version.as_str()) {
-        "settled"
-    } else {
-        "pending" // receipt describes a version the running exe is NOT
-    };
+    let status = receipt_status(&receipt, &running_version);
 
     // A 'pending' receipt is only actionable while the staged installer file
     // still exists — the waiter runs THAT exe on our exit. If it is gone
@@ -907,7 +962,7 @@ fn update_diagnostics() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "running_version": running_version,
         "receipt": receipt,
-        "receipt_status": receipt_status,
+        "receipt_status": status,
         "staged_installer_present": staged_installer_present,
     }))
 }
@@ -1003,5 +1058,36 @@ mod tests {
             parsed.get("magic").and_then(|m| m.as_str()),
             Some(STAGE_RECEIPT_MAGIC)
         );
+    }
+
+    /// A receipt whose install landed must settle against the running build.
+    #[test]
+    fn receipt_for_running_version_is_settled() {
+        let r = build_stage_receipt("2.31.21", "sha256:x", 1, "p", "t", "2.31.20");
+        assert_eq!(receipt_status(&r, "2.31.21"), "settled");
+    }
+
+    /// An installer that was launched but left the old build running must not
+    /// be offered again as "ready" on every boot.
+    #[test]
+    fn applied_but_unlanded_receipt_is_failed_not_pending() {
+        let mut r = build_stage_receipt("2.31.21", "sha256:x", 1, "p", "t", "2.31.20");
+        assert_eq!(receipt_status(&r, "2.31.20"), "pending");
+        r["apply_requested_at"] = serde_json::json!("20261106-120000");
+        assert_eq!(receipt_status(&r, "2.31.20"), "failed");
+        assert_eq!(receipt_status(&r, "2.31.21"), "settled");
+    }
+
+    /// A receipt left over from an older build must not be offered as a
+    /// downgrade once a newer build is installed.
+    #[test]
+    fn older_receipt_is_obsolete() {
+        let r = build_stage_receipt("2.31.18", "sha256:x", 1, "p", "t", "2.31.10");
+        assert_eq!(receipt_status(&r, "2.31.21"), "obsolete");
+    }
+
+    #[test]
+    fn absent_receipt_is_none() {
+        assert_eq!(receipt_status(&serde_json::Value::Null, "2.31.20"), "none");
     }
 }
