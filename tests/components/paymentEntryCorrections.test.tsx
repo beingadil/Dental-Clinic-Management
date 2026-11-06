@@ -73,7 +73,9 @@ const invoice = (payment: PaymentRecord | null, finalAmount = 30000): Invoice =>
   final_amount: finalAmount,
   amount_paid: payment ? payment.amount : 0,
   payment_status: payment ? 'partial' : 'unpaid',
-  due_date: '2026-11-05',
+  // Far enough out that this fixture cannot age into `overdue` and turn a
+  // payment-deletion assertion into a calendar-dependent failure.
+  due_date: '2099-12-31',
   created_at: '2026-10-05 09:00',
   payments: payment ? [payment] : [],
 });
