@@ -134,6 +134,32 @@ describe('General Ledger preview: invoice settlement badge', () => {
     expect(screen.queryByText('Partial')).toBeNull();
   });
 
+  it('tells an operator WHEN a settled invoice was paid', () => {
+    // The badge alone only says settled. The final payment is the one that
+    // cleared the balance, so that is the date the row has to show.
+    renderLedger(
+      [mkInvoice({
+        amount_paid: 30000,
+        payment_status: 'paid',
+        payments: [
+          { id: 'pay-1', payment_date: '2026-10-20', amount: 10000 },
+          { id: 'pay-2', payment_date: '2026-11-05', amount: 20000 },
+        ],
+      })],
+      [mkEntry()],
+    );
+    expect(screen.getByText('Paid on Nov 5, 2026')).toBeTruthy();
+  });
+
+  it('does not invent a paid date for an invoice cleared by a credit note', () => {
+    renderLedger(
+      [mkInvoice({ credit_notes_total: 30000, payments: [] })],
+      [mkEntry()],
+    );
+    expect(screen.getByText('Paid')).toBeTruthy();
+    expect(screen.queryByText(/Paid on/)).toBeNull();
+  });
+
   it('ignores a stored status that disagrees with the money', () => {
     // Paid in full, but the stored status was never updated. The balance wins,
     // or the pane tells the operator an invoice is owed when it is not.

@@ -5,6 +5,7 @@ import { can } from '../../services/permissions';
 import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { formatDoctorName } from '../../utils/doctorName';
+import { formatDate } from '../../utils/dateUtils';
 import { ClinicPicker } from '../common/ui/ClinicPicker';
 import { 
   Eye, 
@@ -265,12 +266,30 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         ? `Settled in full${(inv.credit_notes_total || 0) > 0 ? ' (net of credit notes)' : ''}`
         : `Outstanding ${formatPKR(balance)}`;
 
+    /* The settlement badge says WHETHER the invoice was paid; this says WHEN.
+       The LAST payment is the one that settled the balance, and an invoice
+       cleared entirely by a credit note has no payment date to show. */
+    const paidOn = balance <= 0
+      ? (inv.payments || [])
+          .map((payment) => (payment.payment_date || '').slice(0, 10))
+          .filter(Boolean)
+          .sort()
+          .pop()
+      : undefined;
+
     return (
-      <span
-        className={`inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${tone}`}
-        title={title}
-      >
-        {label}
+      <span className="inline-flex flex-wrap items-center gap-1.5">
+        <span
+          className={`inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${tone}`}
+          title={title}
+        >
+          {label}
+        </span>
+        {paidOn && (
+          <span className="text-[10px] font-semibold text-emerald-700 whitespace-nowrap">
+            Paid on {formatDate(paidOn)}
+          </span>
+        )}
       </span>
     );
   };
