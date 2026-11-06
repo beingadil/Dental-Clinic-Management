@@ -1,3 +1,20 @@
+## [2.31.21] - 2026-11-06
+
+The updater now recognizes a completed install by the same version the
+installer stamps, so an applied update is not offered again on every restart.
+
+### Fixed
+- The updater read the running build from the Rust package version, which had
+  drifted to 2.31.18 while the installer and web bundle were 2.31.20. A
+  successful 2.31.20 install therefore looked unfinished, and the same staged
+  installer was offered on every boot.
+- The installer is now launched with NSIS `/UPDATE` as well as `/S`, so it uses
+  the supported update path rather than the maintenance/reinstall path.
+- If an installer is launched but the app returns on the old version, the
+  update is reported as failed instead of being offered as ready again.
+- The release guard now checks `Cargo.toml` and `Cargo.lock` against
+  `package.json`, so the Rust and installer versions cannot drift apart again.
+
 ## [2.31.20] - 2026-11-05
 
 Module passwords can now cover the whole module or only the views an operator
