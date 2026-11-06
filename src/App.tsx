@@ -116,7 +116,17 @@ const MainAppContent: React.FC = () => {
   }
 
   return (
-    <div className="app-atmos dental-grid-bg h-screen bg-ds-sunken flex font-sans text-ds-ink antialiased selection:bg-ds-accent selection:text-white overflow-hidden">
+    <div className="app-atmos h-screen bg-ds-sunken flex font-sans text-ds-ink antialiased selection:bg-ds-accent selection:text-white overflow-hidden">
+      {/* One room for every module. The orbs are decorative only: they sit
+          behind the shell's glass rail and header, and no reading is ever painted
+          directly on them. Insight used to carry its own copy of this
+          atmosphere; promoting it here is what makes the whole product one
+          place instead of a set of rooms with different wallpaper. */}
+      <div aria-hidden className="app-room">
+        <span className="app-room-orb app-room-orb--a" />
+        <span className="app-room-orb app-room-orb--b" />
+        <span className="app-room-orb app-room-orb--c" />
+      </div>
       <LockScreen />
       {/* Keyboard users land here first. Without it, reaching the dashboard
           means tabbing through the whole rail and then every header control on

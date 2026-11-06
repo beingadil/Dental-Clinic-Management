@@ -84,11 +84,9 @@ export const InsightsView: React.FC = () => {
 
   return (
     <>
+      {/* Insight no longer paints its own atmosphere: the app shell owns the
+          room, and this wrapper only carries the insight token scope. */}
       <div className="insight-canvas">
-        <div aria-hidden className="insight-orb insight-orb--a" />
-        <div aria-hidden className="insight-orb insight-orb--b" />
-        <div aria-hidden className="insight-orb insight-orb--c" />
-
         <div className="relative z-10 space-y-5">
           {/* ── Header + controls ───────────────────────────────────────── */}
           <div className="flex flex-wrap items-start justify-between gap-4">

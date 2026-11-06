@@ -1,29 +1,16 @@
 /*
  * Insight — the reference-led lavender glass room.
  *
- * The module is allowed its own atmosphere because the insight board is the one
- * reporting surface where the operator looks at shape before records; the rest
- * of the app keeps the room's wallpaper. Everything here is decorative: no copy
- * is painted by a CSS colour, only token utilities in the components. That keeps
- * every readable pairing inside the contrast audit.
+ * The room itself now belongs to the app shell (`index.css`), so this file owns
+ * only the board's component materials: the tray, the pane, the meters and the
+ * controls. That is deliberately one atmosphere for the whole product rather
+ * than a special room behind this one tab.
  *
  * Light is the reference's pale lavender room. Dark is the same room at night:
  * indigo bloom, luminous rims, dark glass. Geometry never changes.
  */
 .insight-canvas {
-  position: relative;
-  isolation: isolate;
   --insight-accent: #818cf8;
-  --insight-bloom-a: rgba(129, 140, 248, 0.24);
-  --insight-bloom-b: rgba(99, 102, 241, 0.22);
-  --insight-bloom-c: rgba(165, 180, 252, 0.17);
-  --insight-orb: radial-gradient(
-    circle at 30% 24%,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(224, 231, 255, 0.7) 13%,
-    rgba(196, 181, 253, 0.3) 38%,
-    rgba(255, 255, 255, 0) 70%
-  );
   --insight-tray: linear-gradient(
     155deg,
     rgba(255, 255, 255, 0.72),
@@ -46,15 +33,6 @@
 }
 
 .dark .insight-canvas {
-  --insight-bloom-a: rgba(99, 102, 241, 0.32);
-  --insight-bloom-b: rgba(129, 140, 248, 0.18);
-  --insight-bloom-c: rgba(165, 180, 252, 0.12);
-  --insight-orb: radial-gradient(
-    circle at 30% 24%,
-    rgba(255, 255, 255, 0.26) 0%,
-    rgba(129, 140, 248, 0.18) 34%,
-    rgba(255, 255, 255, 0) 70%
-  );
   --insight-tray: linear-gradient(
     155deg,
     rgba(255, 255, 255, 0.16),
@@ -72,75 +50,6 @@
   --insight-ring-track: rgba(255, 255, 255, 0.12);
   --insight-axis: #cbd5e1;
   --insight-grid: rgba(255, 255, 255, 0.14);
-}
-
-/* The room light. Two wide, pre-faded washes instead of a filter: a static
-   radial-gradient is painted once, and there is nothing to animate. */
-.insight-canvas::before,
-.insight-canvas::after {
-  content: '';
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  border-radius: 9999px;
-}
-
-.insight-canvas::before {
-  inset: -70px -40px auto;
-  height: 620px;
-  background:
-    radial-gradient(46% 62% at 12% 6%, var(--insight-bloom-a) 0%, transparent 72%),
-    radial-gradient(38% 56% at 72% 0%, var(--insight-bloom-b) 0%, transparent 72%),
-    radial-gradient(34% 48% at 98% 38%, var(--insight-bloom-c) 0%, transparent 74%);
-}
-
-.insight-canvas::after {
-  inset: auto -40px -120px;
-  height: 560px;
-  background:
-    radial-gradient(40% 60% at 24% 100%, var(--insight-bloom-c) 0%, transparent 74%),
-    radial-gradient(44% 58% at 84% 80%, var(--insight-bloom-a) 0%, transparent 76%);
-  opacity: 0.7;
-}
-
-/* Floating glass bubbles. Gradient-only, so they cost no backdrop pass and
-   never become a second blur behind a card. */
-.insight-orb {
-  position: absolute;
-  z-index: 0;
-  border-radius: 9999px;
-  pointer-events: none;
-  background: var(--insight-orb);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.56),
-    0 30px 60px -40px rgba(67, 56, 202, 0.38);
-  animation: insight-float 22s cubic-bezier(0.37, 0, 0.63, 1) infinite;
-}
-
-.insight-orb--a {
-  top: -46px;
-  left: 36%;
-  width: 188px;
-  height: 188px;
-  opacity: 0.55;
-}
-
-.insight-orb--b {
-  top: 108px;
-  right: 2.5%;
-  width: 96px;
-  height: 96px;
-  opacity: 0.38;
-  animation-delay: -7s;
-}
-
-.insight-orb--c {
-  bottom: 3%;
-  left: -62px;
-  width: 214px;
-  height: 214px;
-  opacity: 0.24;
-  animation-delay: -13s;
 }
 
 /* ── Card tray ──────────────────────────────────────────────────────────
@@ -522,16 +431,6 @@
   }
 }
 
-@keyframes insight-float {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(0, -14px, 0);
-  }
-}
-
 /* Chart tooltip internals. The surface, ink, border and radius are the
    existing `.chart-tooltip` token rule in index.css, so both themes are
    already solved; only the row rhythm lives here. */
@@ -563,26 +462,11 @@
   font-weight: 700;
 }
 
-@media (max-width: 767px) {
-  .insight-orb {
-    display: none;
-  }
-
-  .insight-canvas::before {
-    inset: -40px -20px auto;
-    height: 420px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .insight-rise {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
-  }
-
-  .insight-orb {
-    animation: none !important;
   }
 
   .insight-tray,

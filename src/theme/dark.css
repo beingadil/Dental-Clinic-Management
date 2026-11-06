@@ -556,40 +556,39 @@
     background-image: radial-gradient(circle, rgb(148 163 184 / 0.28) 1px, transparent 1px);
   }
 
-  /* The atmosphere, re-read for a near-black canvas.
+  /* The same room at night.
 
-     Dark mode swaps the wallpaper, it does not merely lift it. The aurora is a
-     wash of small orbs drawn for a PALE room; over near-black there is almost
-     nothing there for a frosted pane to refract, which is why the glass read as
-     flat dark blocks. Dark mode now runs the Tahoe wall — the same wallpaper
-     macOS 26 ships, cropped to 16:9 and pre-blurred.
+     Geometry and layering do not change: one static multi-radial wash, one
+     grain tile, three glass orbs. Only the material changes. The light room's
+     pale lavender becomes an indigo-bloom night, and the orbs lose their white
+     core so they read as luminous bubbles rather than lamps.
 
-     The blur is BAKED INTO THE ASSET (src/assets/art/tahoe-wall.jpg, prepared
-     with ffmpeg: 1920x1080, gblur sigma 30, slightly darkened). Blurring at
-     paint time with `filter: blur()` here would force the compositor to blur a
-     full-window surface on every scroll, since panels above it scroll; a
-     pre-blurred 29 kB JPEG costs nothing and looks identical.
+     The wash stays static for the same reason as light mode: the glass rail and
+     header sit on top of it with a backdrop-filter, and a full-window filter
+     that repaints on every scroll is exactly the cost this arrangement avoids. */
+  .dark .app-atmos {
+    --room-base-a: #070b14;
+    --room-base-b: #0a1020;
+    --room-base-c: #0a1726;
+    --room-bloom-a: rgba(99, 102, 241, 0.3);
+    --room-bloom-b: rgba(34, 211, 238, 0.1);
+    --room-bloom-c: rgba(129, 140, 248, 0.2);
+    --room-bloom-d: rgba(52, 211, 153, 0.06);
+    --room-orb-a: rgba(129, 140, 248, 0.2);
+    --room-orb-b: rgba(34, 211, 238, 0.1);
+    --room-orb-core: rgba(255, 255, 255, 0.12);
+  }
 
-     The first gradient is a scrim, not decoration: the wallpaper is a bright
-     blue photograph, and glass panes over it at 5% white would put 15px body
-     ink on mid-blue. It holds the room at roughly 55% brightness so the panes
-     keep their contrast while the wall still reads as colour behind them.
-
-     The grain is lifted for the old reason (noise reads stronger against black
-     than against white), then capped. */
   .dark .app-atmos::before {
-    background-image:
-      linear-gradient(180deg, rgba(6, 12, 26, 0.72), rgba(3, 7, 16, 0.82)),
-      url('../assets/art/tahoe-wall.jpg');
     opacity: 1;
   }
 
-  /* A dot grid is a texture for an empty canvas. Over a photograph it reads as
-     noise on top of an image, so dark mode drops it and lets the wallpaper be
-     the only texture. */
-  .dark .dental-grid-bg {
-    background-image: none;
+  .dark .app-room-orb {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 30px 70px -40px rgba(0, 0, 0, 0.86);
   }
+
   .dark .app-atmos::after {
     opacity: 0.05;
   }
