@@ -1,3 +1,13 @@
+## [2.31.22] - 2026-11-06
+
+A settled invoice in the General Ledger now shows the date its final payment
+was recorded, not only that it is Paid.
+
+### Added
+- General Ledger preview: an invoice row settled in full shows **Paid on**
+  followed by the last payment date recorded against that invoice. Invoices
+  cleared by a credit note keep the Paid badge without inventing a pay date.
+
 ## [2.31.21] - 2026-11-06
 
 The updater now recognizes a completed install by the same version the
