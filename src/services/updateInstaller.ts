@@ -220,6 +220,15 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
   inflight = (async (): Promise<AutoUpdatePhase> => {
     setPhase({ state: 'checking' });
     const status: UpdateStatus = await checkForUpdates();
+
+    // The check can finish after the user has staged or applied an update.
+    // A stale result must never pull the UI back to "up to date" while the
+    // installer is waiting or the app is closing.
+    const afterCheck = getAutoUpdatePhase();
+    if (afterCheck.state === 'ready_to_apply' || afterCheck.state === 'applying') {
+      return afterCheck;
+    }
+
     if (status.state === 'error') {
       setLastUpdateCheck(currentVersion(), 'offline');
       recordUpdateHistory({ version: currentVersion(), state: 'failed', message: status.message });
