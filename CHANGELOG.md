@@ -1,3 +1,50 @@
+## [2.31.24] - 2026-11-10
+
+The Teeth & Shade step of Create Case is now a fully interactive chart, and
+the invoice's account summary is something the operator can lay out on the
+printed page themselves. This also closes out the 2.31.23 housekeeping bump,
+which shipped without a tag or changelog entry.
+
+### Added
+- Odontogram: the chart is now an interactive anatomic typodont (FDI or
+  Universal), with per-arch notation strips above and below the teeth and a
+  prep-type quick menu on the selection itself. Light and dark mode both
+  render the chart correctly, and the panel around it shares one token set.
+- Catalog: a Shades tab manages the VITA guides the chart reads — add a
+  shade to any guide, remove one, or create a whole guide; the open case
+  form picks the change up immediately.
+- Reports & Statements: a Clinic Payments register shows every payment
+  kind (including advance deposits and refunds) with clinic search, type
+  filter chips and totals. The same area carries month-end closing on the
+  Monthly Statement — a totals-only, per-clinic snapshot that is never
+  locked; reopening asks for a reason and writes an audit entry.
+- Print: the account summary is now four independent print sections
+  (opening balance, invoice amount, cash received, closing balance),
+  switched in Settings → Print or per invoice from Sections. Legacy
+  balanceSummary jobs keep their four rows after the upgrade.
+- Print Invoices: the invoice list is a collapsible picker, and the empty
+  state is a clinic dropdown instead of a full list.
+- General Ledger: payments carry a PAY-… voucher chip that opens the
+  payment for editing or deletion.
+
+### Changed
+- "Invoice Rec" is now "Payment Receive" in the navigation and views.
+- Case Restorations Breakdown and the selected-units list match the new
+  theme-aware surfaces; the breakdown's counts and labels stay put while
+  the bars grow inside a fixed track.
+- The FDI/Universal toggle and the arch toolbar (Upper / Lower / All 32
+  Units / Clear) are rebuilt with correct light- and dark-mode contrast.
+
+### Fixed
+- Number strips above and below the chart drifted progressively leftwards
+  (getCTM reports CSS pixels, not viewBox units). Numbers now sit on their
+  tooth centres within half a pixel in both numbering systems.
+- Tooth Specification shows a disabled guide with a hint until a tooth is
+  charted instead of an empty panel; the per-tooth notes field is gone.
+- dark.css carried an interrupted refinement whose unclosed
+  `.ds-glass-select:hover` swallowed the guarded atmosphere/glass blocks;
+  repaired so the dark-theme regression guards check intentional rules.
+
 ## [2.31.22] - 2026-11-06
 
 A settled invoice in the General Ledger now shows the date its final payment
