@@ -1,3 +1,17 @@
+## [2.31.25] - 2026-11-10
+
+Security fix: the bundled C SQLite was below the advisory floor. The
+in-app update for 2.31.24 never reached GitHub because CI's security
+gate correctly refused to ship it; this release is that fix.
+
+### Fixed
+- RUSTSEC-2026-0459 (CVE-2026-119375, CVSS 6.8): libsqlite3-sys 0.30.1,
+  reached through rusqlite 0.32 with `bundled`, is now libsqlite3-sys
+  0.39.1 via rusqlite 0.41.1. The crate is compiled into the shipped
+  Windows installer, so it was fixed rather than ignored.
+- The 2.31.24 CI run failed on this advisory before the installer job
+  could run; no 2.31.24 installer or auto-update manifest was published.
+
 ## [2.31.24] - 2026-11-10
 
 The Teeth & Shade step of Create Case is now a fully interactive chart, and
