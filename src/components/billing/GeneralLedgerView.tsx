@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ACCOUNT_CODES, formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
-import { can } from '../../services/permissions';
+import { can, canPost } from '../../services/permissions';
 import { LedgerEntry } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { formatDoctorName } from '../../utils/doctorName';
@@ -25,10 +25,15 @@ import {
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
 import { caseDetailLines, ledgerPrintDescription, findCaseForEntry } from '../../services/ledgerCaseDetail';
+import { attributeAdjustmentsToInvoices } from '../../services/adjustmentAttribution';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
+import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
+import { InvoiceStatementModal } from './InvoiceStatementModal';
+import { EditAdjustmentModal } from './EditAdjustmentModal';
+import { RecordTransactionModal } from './RecordTransactionModal';
 import EditPaymentModal from './EditPaymentModal';
 import { ConfirmDialog, DataTable } from '../common/ui';
-import { DentalCase, PaymentRecord, Invoice } from '../../types';
+import { DentalCase, PaymentRecord, Invoice, AccountAdjustment } from '../../types';
 
 interface GeneralLedgerViewProps {
   /**
@@ -69,7 +74,7 @@ const NEEDS_CLINIC: ExportNotice = {
 };
 
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClinicId }) => {
-  const { labs, getLedgerEntries, brandingSettings, cases, invoices, user, updatePaymentV2, deletePaymentV2 } = useApp();
+  const { labs, getLedgerEntries, brandingSettings, cases, invoices, user, accountAdjustments, updatePaymentV2, deletePaymentV2, deleteInvoice, updateAccountAdjustment, deleteAccountAdjustment } = useApp();
 
   // Case drill-down state: which case's record is open from a ledger row.
   const [selectedCaseForModal, setSelectedCaseForModalLocal] = useState<DentalCase | null>(null);
@@ -79,6 +84,17 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
      invoice it was posted against. */
   const [voucherToEdit, setVoucherToEdit] = useState<{ payment: PaymentRecord; invoice?: Invoice } | null>(null);
   const [voucherToDelete, setVoucherToDelete] = useState<PaymentRecord | null>(null);
+
+  /* Invoice drill-down from a ledger row: opening the invoice document lets
+     the operator void it (delete) or correct its payments/adjustments. */
+  const [selectedDrawerInvoice, setSelectedDrawerInvoice] = useState<Invoice | null>(null);
+  const [printModalInvoice, setPrintModalInvoice] = useState<Invoice | null>(null);
+  const [voidTarget, setVoidTarget] = useState<Invoice | null>(null);
+  const [adjustmentToEdit, setAdjustmentToEdit] = useState<AccountAdjustment | null>(null);
+  const [adjustmentToDelete, setAdjustmentToDelete] = useState<AccountAdjustment | null>(null);
+  const [isUnifiedRecordModalOpen, setIsUnifiedRecordModalOpen] = useState<boolean>(false);
+  const [unifiedModalInvoiceId, setUnifiedModalInvoiceId] = useState<string | undefined>(undefined);
+  const [unifiedModalLabId, setUnifiedModalLabId] = useState<string | undefined>(undefined);
 
   /* The row's payment voucher, when the row is one. Regular payments and the
      0/0 memos that apply advance credit are both editable vouchers; the
@@ -114,6 +130,12 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
 
   /* Outcome of the last Export/Print press, shown on the page. */
   const [exportNotice, setExportNotice] = useState<ExportNotice | null>(null);
+
+/* Adjustments attributed to invoices, so the invoice drawer can show them. */
+  const adjustmentsByInvoice = useMemo(
+    () => (typeof attributeAdjustmentsToInvoices === 'function' ? attributeAdjustmentsToInvoices(invoices || [], accountAdjustments || []) : new Map()),
+    [invoices, accountAdjustments],
+  );
 
 // Selected clinic object
   const selectedClinic = useMemo(() => {
@@ -830,6 +852,20 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                         without hunting the invoice. The DS chip stays for the
                         case itself. */
                      const voucher = findVoucher(entry);
+                     const inv = entry.entry_type === 'invoice'
+                       ? (invoices || []).find((i) => i.id === entry.reference_id || i.invoice_number === entry.reference_number)
+                       : null;
+                     const invoiceChip = inv ? (
+                       <button
+                         type="button"
+                         onClick={() => setSelectedDrawerInvoice(inv)}
+                         title="Open invoice — view, edit payments/adjustments, or void it"
+                         aria-label={`Open invoice ${inv.invoice_number}`}
+                         className="inline-block font-mono text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-indigo-100 transition-colors cursor-pointer"
+                       >
+                         {inv.invoice_number}
+                       </button>
+                     ) : null;
                      const dsChip = entry.case_number ? (
                        <button
                          type="button"
@@ -845,7 +881,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                          {entry.case_number}
                        </button>
                      ) : null;
-                     if (!dsChip && !voucher) {
+                     if (!dsChip && !voucher && !invoiceChip) {
                        return (
                          <span className="font-mono text-[11px] font-bold text-amber-800 whitespace-nowrap">
                            {entry.reference_number || '—'}
@@ -865,6 +901,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                              {voucher.payment.payment_number || 'PAY'}
                            </button>
                          )}
+                         {invoiceChip}
                          {dsChip}
                        </div>
                      );
@@ -1045,6 +1082,92 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         onConfirm={() => {
           if (voucherToDelete) deletePaymentV2(voucherToDelete.id);
           setVoucherToDelete(null);
+        }}
+      />
+
+      {/* Invoice drill-down: view, void, or correct its payments/adjustments. */}
+      <InvoiceDetailDrawer
+        isOpen={!!selectedDrawerInvoice}
+        onClose={() => setSelectedDrawerInvoice(null)}
+        invoice={selectedDrawerInvoice}
+        attributedAdjustments={
+          selectedDrawerInvoice
+            ? adjustmentsByInvoice.get(selectedDrawerInvoice.id)
+            : undefined
+        }
+        onOpenPaymentModal={(inv) => {
+          setSelectedDrawerInvoice(null);
+          setUnifiedModalLabId(inv.lab_id);
+          setUnifiedModalInvoiceId(inv.id);
+          setIsUnifiedRecordModalOpen(true);
+        }}
+        onOpenJournalModal={() => {}}
+        onPrintInvoice={(inv) => setPrintModalInvoice(inv)}
+        onViewReceipt={() => {}}
+        onDeletePayment={(pay) => setVoucherToDelete(pay)}
+        onEditAdjustment={(adj) => setAdjustmentToEdit(adj)}
+        onDeleteAdjustment={(adj) => setAdjustmentToDelete(adj)}
+        onVoidInvoice={(inv) => setVoidTarget(inv)}
+        canVoid={canPost(user, 'invoice:void')}
+      />
+
+      {printModalInvoice && (
+        <InvoiceStatementModal
+          invoice={printModalInvoice}
+          caseData={cases.find((c) => c.id === printModalInvoice.case_id) || null}
+          cases={cases}
+          onClose={() => setPrintModalInvoice(null)}
+        />
+      )}
+
+      {isUnifiedRecordModalOpen && (
+        <RecordTransactionModal
+          isOpen={isUnifiedRecordModalOpen}
+          onClose={() => {
+            setIsUnifiedRecordModalOpen(false);
+            setUnifiedModalLabId(undefined);
+            setUnifiedModalInvoiceId(undefined);
+          }}
+          initialMode="payment"
+          initialLabId={unifiedModalLabId}
+          initialInvoiceId={unifiedModalInvoiceId}
+        />
+      )}
+
+      {adjustmentToEdit && (
+        <EditAdjustmentModal
+          adjustment={adjustmentToEdit}
+          onSave={(id, patch) => updateAccountAdjustment(id, patch)}
+          onClose={() => setAdjustmentToEdit(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!voidTarget}
+        title={`Void invoice ${voidTarget?.invoice_number || ''}`}
+        consequences={[
+          `${voidTarget?.lab_name || 'The clinic'} will owe ${voidTarget ? (voidTarget.final_amount - (voidTarget.amount_paid || 0) - (voidTarget.credit_notes_total || 0)) : 0} PKR again.`,
+          `Invoice ${voidTarget?.invoice_number || ''} leaves the register; its number is retired.`,
+        ]}
+        confirmLabel="Void Invoice"
+        typedPhrase="VOID"
+        onCancel={() => setVoidTarget(null)}
+        onConfirm={() => {
+          if (voidTarget) deleteInvoice(voidTarget.id);
+          setVoidTarget(null);
+          setSelectedDrawerInvoice(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!adjustmentToDelete}
+        title={`Delete adjustment ${adjustmentToDelete?.adjustment_number || ''}`}
+        consequences={['The adjustment is removed and its invoice effect reversed.']}
+        confirmLabel="Delete Adjustment"
+        onCancel={() => setAdjustmentToDelete(null)}
+        onConfirm={() => {
+          if (adjustmentToDelete) deleteAccountAdjustment(adjustmentToDelete.id);
+          setAdjustmentToDelete(null);
         }}
       />
     </div>

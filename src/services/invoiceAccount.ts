@@ -84,6 +84,12 @@ export interface StatementAccountInput {
    * operator chose to print.
    */
   invoices?: Invoice[] | null;
+  /**
+   * When set, only these invoices count toward the printed "bill" (invoice
+   * amount) line; the rest of the account position still covers the whole
+   * period. Omit to count every invoice in the period.
+   */
+  selectedInvoiceIds?: string[] | null;
   advancePayments?: AdvancePayment[] | null;
   accountAdjustments?: AccountAdjustment[] | null;
   labs?: Pick<DentalLab, 'id' | 'opening_balance' | 'opening_balance_type' | 'created_at'>[] | null;
@@ -412,6 +418,7 @@ export const buildInvoiceAccountPosition = ({
 export const buildStatementAccountPosition = ({
   labId,
   invoices,
+  selectedInvoiceIds,
   advancePayments,
   accountAdjustments,
   labs,
@@ -419,6 +426,11 @@ export const buildStatementAccountPosition = ({
 }: StatementAccountInput): InvoiceAccountPosition => {
   const from = dayOf(period?.from);
   const to = dayOf(period?.to);
+
+  const selectedSet =
+    selectedInvoiceIds && selectedInvoiceIds.length > 0
+      ? new Set(selectedInvoiceIds)
+      : null;
 
   const postings = buildPostings({
     labId,
@@ -434,7 +446,13 @@ export const buildStatementAccountPosition = ({
   const openingBalance = sumPostings(postings, (posting) => !from || posting.day < from);
   const closingBalance = sumPostings(postings, (posting) => !to || posting.day <= to);
 
-  const invoiceAmount = sumType(postings, 'invoice', inPeriod);
+  const invoiceAmount = sumType(
+    postings,
+    'invoice',
+    (posting) =>
+      inPeriod(posting) &&
+      (selectedSet === null || selectedSet.has(posting.invoiceId || '')),
+  );
   const cashPaid = sumType(postings, 'payment', inPeriod);
   const advanceReceived = sumType(postings, 'advance', inPeriod);
   const creditNotes = sumType(postings, 'credit_note', inPeriod);
@@ -442,11 +460,16 @@ export const buildStatementAccountPosition = ({
 
   /* Applications are 0/0 memos, but the reader still needs to know how much of
      the period's invoices was settled from an earlier deposit. */
-  const advanceApplied = advanceApplications(invoices, (day) => {
-    if (from && day < from) return false;
-    if (to && day > to) return false;
-    return true;
-  });
+  const advanceApplied = advanceApplications(
+    selectedSet
+      ? (invoices || []).filter((inv) => selectedSet.has(inv.id))
+      : invoices,
+    (day) => {
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return true;
+    },
+  );
 
   const walletAtStart = from
     ? advanceWallet({ labId, invoices, advancePayments, before: from })

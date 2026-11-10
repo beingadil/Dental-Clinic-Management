@@ -167,13 +167,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
    * it — the SLA table ignored it and the promise came from the table alone. */
   const normalFallbackDays = userPreferences?.default_turnaround_days;
 
-  /** The lab-wide default priority, when it is one of the four real levels. */
-  const defaultPriority =
-    userPreferences?.default_priority &&
-    ['low', 'normal', 'high', 'urgent'].includes(userPreferences.default_priority)
-      ? userPreferences.default_priority
-      : undefined;
-
   const isEdit = Boolean(initialCase?.id);
   const attachmentsForCase = isEdit && initialCase ? (caseAttachments[initialCase.id] || []) : [];
 
@@ -210,12 +203,18 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
    * `UserPreferences.default_priority` is a real Settings control that nothing
    * read — every new case silently started at 'normal' regardless of it — so a
    * lab that set "urgent" for a rush-only workflow got 'normal' instead. */
-  const seedPriority: PriorityLevel =
-    initialCase?.priority || defaultPriority || 'normal';
+  /* New cases always start at Medium ('normal'); an existing case keeps its
+     priority. */
+  const seedPriority: PriorityLevel = initialCase?.priority || 'normal';
 
   const [priority, setPriority] = useState<PriorityLevel>(seedPriority);
+  /* A new case has no delivery date of its own yet, so it always derives one
+     from its (Medium by default) priority's SLA — even when a caller hands us
+     a placeholder date. Editing an existing case keeps the date it had. */
   const [deliveryDate, setDeliveryDate] = useState(
-    initialCase?.delivery_date || computeSlaDueDate(seedPriority, new Date(), normalFallbackDays)
+    isEdit
+      ? initialCase?.delivery_date || computeSlaDueDate(seedPriority, new Date(), normalFallbackDays)
+      : computeSlaDueDate(seedPriority, new Date(), normalFallbackDays)
   );
   /* Day the lab received the job — what the slip prints. Optional and
      pre-filled with today: a job normally arrives today, and an operator

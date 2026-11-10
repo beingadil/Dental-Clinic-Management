@@ -233,12 +233,13 @@ export const PrintInvoicesView: React.FC = () => {
     return buildStatementAccountPosition({
       labId: selectedClinic.id,
       invoices,
+      selectedInvoiceIds: selected.map((inv) => inv.id),
       advancePayments: advancePayments || [],
       accountAdjustments: accountAdjustments || [],
       labs,
       period: { from, to },
     });
-  }, [selectedClinic, selected.length, invoices, labs, advancePayments, accountAdjustments, from, to]);
+  }, [selectedClinic, selected, invoices, labs, advancePayments, accountAdjustments, from, to]);
 
   /* Paginated AFTER the account position, because the totals block the final
      sheet carries is sized from it — an advance deposit or a credit note is a

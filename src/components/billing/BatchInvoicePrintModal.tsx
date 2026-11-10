@@ -177,12 +177,13 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
     return buildStatementAccountPosition({
       labId: selectedClinic.id,
       invoices,
+      selectedInvoiceIds: selected.map((inv) => inv.id),
       advancePayments: advancePayments || [],
       accountAdjustments: accountAdjustments || [],
       labs,
       period: { from, to },
     });
-  }, [selectedClinic, selected.length, invoices, labs, advancePayments, accountAdjustments, from, to]);
+  }, [selectedClinic, selected, invoices, labs, advancePayments, accountAdjustments, from, to]);
 
   /* A selection longer than one sheet is split into sheets that each fit the
      paper, so nothing is sliced mid-row. The sheet count follows the live
