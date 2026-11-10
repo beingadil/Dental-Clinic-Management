@@ -591,7 +591,11 @@ export const ModuleSecurityTab: React.FC = () => {
                 </h4>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
+              <div
+                className={`grid gap-3 ${
+                  selectedLock.enabled ? 'md:grid-cols-3' : 'md:grid-cols-2'
+                }`}
+              >
                 {selectedLock.enabled && (
                   <label className="block">
                     <span className="mb-1 block text-xs font-bold text-slate-700">

@@ -50,7 +50,7 @@ const position = (over: Partial<InvoiceAccountPosition> = {}): InvoiceAccountPos
   ...over,
 });
 
-const renderInvoice = (accountPosition?: InvoiceAccountPosition, sections = ['totals', 'balanceSummary']) =>
+const renderInvoice = (accountPosition?: InvoiceAccountPosition, sections = ['totals', 'openingBalance', 'invoiceAmount', 'cashPaid', 'closingBalance']) =>
   render(
     <PrintDocument
       kind="invoice"
@@ -155,6 +155,28 @@ describe('printed invoice account balance', () => {
     // The invoice itself still prints; only the account-position block
     // (opening / this invoice / closing) is gone.
     expect(text).toContain('Description');
+    expect(text).not.toContain('Account Balance');
+    expect(text).not.toContain('Opening Balance');
+    expect(text).not.toContain('Closing Balance');
+  });
+
+  it('prints only the ticked account-summary rows', () => {
+    const { container } = renderInvoice(position(), ['totals', 'openingBalance', 'closingBalance']);
+    const text = textOf(container);
+
+    expect(text).toContain('Opening Balance');
+    expect(text).toContain('Closing Balance (Dr)');
+    expect(text).not.toContain('This Invoice');
+    // The paid row is off: its figure never appears, and neither does its
+    // footnote.
+    expect(text).not.toContain('Paid (cash / bank)');
+    expect(text).not.toContain('settled from the advance deposit');
+  });
+
+  it('drops the whole block when every account-summary row is untracked', () => {
+    const { container } = renderInvoice(position(), ['totals', 'lineItems']);
+    const text = textOf(container);
+
     expect(text).not.toContain('Account Balance');
     expect(text).not.toContain('Opening Balance');
     expect(text).not.toContain('Closing Balance');

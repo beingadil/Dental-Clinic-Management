@@ -36,6 +36,7 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-odontogram": "^0.6.0",
     "recharts": "^3.10.1",
     "sql.js": "^1.13.0"
   },

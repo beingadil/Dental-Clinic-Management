@@ -17,9 +17,9 @@ import {
   loadInvoiceSectionsAdoptingSummary,
   saveDocumentSections,
   setInvoiceSummaryExcluded,
+  isAccountBalanceRow,
 } from '../../services/printSettings';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
-import { BalanceSummaryToggle } from '../print/BalanceSummaryToggle';
 import { Modal } from '../common/ui';
 import { SavePdfButton } from '../print/SavePdfButton';
 import '../print/printStyles.css';
@@ -85,10 +85,12 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
 
   const applySections = (next: string[]) => {
     /* The summary's marker records a DELIBERATE exclusion, so the adoption
-       loader cannot resurrect a block the operator just switched off. */
-    if (enabled.includes('balanceSummary') && !next.includes('balanceSummary')) {
+       loader cannot resurrect the rows the operator just unticked. */
+    const had = enabled.some(isAccountBalanceRow);
+    const has = next.some(isAccountBalanceRow);
+    if (had && !has) {
       setInvoiceSummaryExcluded(true);
-    } else if (next.includes('balanceSummary')) {
+    } else if (has) {
       setInvoiceSummaryExcluded(false);
     }
     setEnabled(next);
@@ -167,7 +169,6 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <BalanceSummaryToggle sections={enabled} onChange={applySections} />
             <button
               type="button"
               onClick={() => setShowSections((v) => !v)}

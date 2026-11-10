@@ -34,7 +34,7 @@ export const VIEW_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
   cases: 'Dental Workstation',
   labs: 'Dental Clinics',
-  billing: 'Invoice Recording',
+  billing: 'Payment Receive',
   'print-invoices': 'Print Invoices',
   catalog: 'Price List & Catalog',
   reports: 'Reports overview',

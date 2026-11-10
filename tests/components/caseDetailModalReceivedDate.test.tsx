@@ -21,6 +21,7 @@ vi.mock('../../src/context/AppContext', () => ({
     deleteCaseAttachment: vi.fn(),
     user: { id: 'u1', name: 'Tester', role: 'Clinic Entry Manager' },
   }),
+  useOptionalApp: () => null,
 }));
 
 import { CaseDetailModal } from '../../src/components/cases/CaseDetailModal';

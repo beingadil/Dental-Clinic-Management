@@ -45,6 +45,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 
+
 export const BillingView: React.FC = () => {
   const { 
     invoices, 
@@ -102,6 +103,7 @@ export const BillingView: React.FC = () => {
   const [unifiedModalLabId, setUnifiedModalLabId] = useState<string | undefined>(undefined);
   const [unifiedModalInvoiceId, setUnifiedModalInvoiceId] = useState<string | undefined>(undefined);
   const [clinicStatementModalId, setClinicStatementModalId] = useState<string | null>(null);
+
 
 
   const [printModalInvoice, setPrintModalInvoice] = useState<Invoice | null>(null);

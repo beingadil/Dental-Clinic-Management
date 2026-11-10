@@ -2195,3 +2195,79 @@ export const qcInspectionsRepo = {
     return row?.n ?? 0;
   },
 };
+
+/**
+ * The month-close ledger: one frozen totals row per (month, clinic). See
+ * services/monthClose.ts for the rules — totals only, never a lock, and the
+ * reason survives through the audit log.
+ */
+export interface MonthCloseRow {
+  id: string;
+  /** 'YYYY-MM' */
+  month: string;
+  lab_id: string;
+  cases_billed: number;
+  billed: number;
+  collected: number;
+  advance_received: number;
+  advance_applied: number;
+  credit_notes: number;
+  debit_adjustments: number;
+  opening_balance: number;
+  closing_balance: number;
+  advance_credit: number;
+  closed_by: string;
+  closed_at: string;
+}
+
+export const monthCloseRepo = {
+  all(): MonthCloseRow[] {
+    return requireEngine().all<MonthCloseRow>(
+      'SELECT * FROM month_closes ORDER BY month DESC, lab_id ASC',
+    );
+  },
+  forMonth(month: string): MonthCloseRow[] {
+    return requireEngine().all<MonthCloseRow>(
+      'SELECT * FROM month_closes WHERE month = ? ORDER BY lab_id ASC',
+      [month],
+    );
+  },
+  get(month: string, labId: string): MonthCloseRow | undefined {
+    return requireEngine().get<MonthCloseRow>(
+      'SELECT * FROM month_closes WHERE month = ? AND lab_id = ?',
+      [month, labId],
+    );
+  },
+  /** One current row per (month, clinic) — a re-close replaces the stored totals. */
+  upsert(row: Omit<MonthCloseRow, 'id'>): MonthCloseRow {
+    requireEngine().run(
+      `INSERT INTO month_closes (id, month, lab_id, cases_billed, billed, collected,
+                                 advance_received, advance_applied, credit_notes, debit_adjustments,
+                                 opening_balance, closing_balance, advance_credit, closed_by, closed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(month, lab_id) DO UPDATE SET
+         cases_billed = excluded.cases_billed,
+         billed = excluded.billed,
+         collected = excluded.collected,
+         advance_received = excluded.advance_received,
+         advance_applied = excluded.advance_applied,
+         credit_notes = excluded.credit_notes,
+         debit_adjustments = excluded.debit_adjustments,
+         opening_balance = excluded.opening_balance,
+         closing_balance = excluded.closing_balance,
+         advance_credit = excluded.advance_credit,
+         closed_by = excluded.closed_by,
+         closed_at = excluded.closed_at`,
+      [genId('mcl'), row.month, row.lab_id, row.cases_billed, row.billed, row.collected,
+       row.advance_received, row.advance_applied, row.credit_notes, row.debit_adjustments,
+       row.opening_balance, row.closing_balance, row.advance_credit, row.closed_by, row.closed_at],
+    );
+    return requireEngine().get<MonthCloseRow>(
+      'SELECT * FROM month_closes WHERE month = ? AND lab_id = ?',
+      [row.month, row.lab_id],
+    )!;
+  },
+  remove(month: string, labId: string): void {
+    requireEngine().run('DELETE FROM month_closes WHERE month = ? AND lab_id = ?', [month, labId]);
+  },
+};

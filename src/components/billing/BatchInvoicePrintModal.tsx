@@ -17,8 +17,8 @@ import { compareInvoiceNumbers, invoiceEntryDate } from '../../services/invoiceO
 import { paginateStatementInvoices } from '../../services/statementPagination';
 import { PrintDocument, DEFAULT_ENABLED } from '../print/printRenderer';
 import { SavePdfButton } from '../print/SavePdfButton';
-import { loadPrintSettings, loadDocumentSections, saveDocumentSections } from '../../services/printSettings';
-import { BalanceSummaryToggle } from '../print/BalanceSummaryToggle';
+import { loadPrintSettings, loadDocumentSections } from '../../services/printSettings';
+
 import '../print/printStyles.css';
 import { Printer, X, FileSpreadsheet, Building2, ChevronDown, Search } from 'lucide-react';
 import { Modal } from '../common/ui';
@@ -73,16 +73,11 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   const presets = useMemo(() => standardQuickRanges(), []);
   const thisMonth = presets.find((p) => p.label === 'This Month');
   const [printSettings] = useState(() => loadPrintSettings());
-  /* Statement section list for the one-sheet batch summary. Live state: the
-     account-summary switch in the preview writes through to the same stored
-     list Settings → Print owns. */
-  const [statementSections, setStatementSections] = useState<string[]>(() =>
+  /* Statement section list for the one-sheet batch summary. Read-only here: the
+     rows tick themselves on the Print Invoices page (Settings → Print). */
+  const [statementSections] = useState<string[]>(() =>
     loadDocumentSections('statement', DEFAULT_ENABLED.statement)
   );
-  const applySections = (next: string[]) => {
-    setStatementSections(next);
-    saveDocumentSections('statement', next);
-  };
 
 /* The clinic chooser is the shared <ClinicPicker>: a plain <select> listed every
      clinic as an <option>, which is fine at five clinics and useless at fifty —
@@ -555,7 +550,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                 · {pageCount} sheet{pageCount === 1 ? '' : 's'}
               </span>
             </button>
-            <BalanceSummaryToggle sections={statementSections} onChange={applySections} />
+
           </div>
           <span className="text-[11px] text-slate-500">
             Each printed invoice is logged to billing history.

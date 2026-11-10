@@ -96,8 +96,9 @@ describe('printSettings persistence (B1/F1)', () => {
  * `loadDocumentSections` filters stored ids through the fallback it is given.
  */
 describe('statement bank option (adopt / deliberate exclusion)', () => {
-  /* The catalog as it recurs on Settings → Print and the print screens. */
-  const FALLBACK = ['brand', 'docTitle', 'statementFor', 'period', 'invoiceTable', 'balanceSummary', 'bank', 'footer'];
+  /* The catalog as it recurs on Settings → Print and the print screens. The
+     account summary is four rows since the single `balanceSummary` id retired. */
+  const FALLBACK = ['brand', 'docTitle', 'statementFor', 'period', 'invoiceTable', 'openingBalance', 'invoiceAmount', 'cashPaid', 'closingBalance', 'bank', 'footer'];
   /* What lists saved before the bank option existed look like: same catalog, no bank. */
   const LEGACY = FALLBACK.filter((s) => s !== 'bank');
 
@@ -171,28 +172,30 @@ describe('statement bank option (adopt / deliberate exclusion)', () => {
 describe('invoice account summary adoption', () => {
   const FALLBACK = [
     'brand', 'docTitle', 'billTo', 'invoiceMeta', 'lineItems',
-    'totals', 'balanceSummary', 'paymentHistory', 'bank', 'terms', 'signature', 'footer',
+    'totals', 'openingBalance', 'invoiceAmount', 'cashPaid', 'closingBalance',
+    'paymentHistory', 'bank', 'terms', 'signature', 'footer',
   ];
-  const LEGACY_WITH_TOTALS = FALLBACK.filter((s) => s !== 'balanceSummary');
+  const ROW_IDS = ['openingBalance', 'invoiceAmount', 'cashPaid', 'closingBalance'];
+  const LEGACY_WITH_TOTALS = FALLBACK.filter((s) => !ROW_IDS.includes(s));
 
-  it('adds the summary to a saved list that used to print the block', () => {
+  it('adds the summary rows to a saved list that used to print the block', () => {
     saveDocumentSections('invoice', [...LEGACY_WITH_TOTALS]);
     const adopted = loadInvoiceSectionsAdoptingSummary(FALLBACK);
 
-    expect(adopted).toContain('balanceSummary');
+    ROW_IDS.forEach((row) => expect(adopted).toContain(row));
     expect([...adopted].sort()).toEqual([...FALLBACK].sort());
     // Persisted, so Settings → Print and every invoice dialog agree.
     expect(loadDocumentSections('invoice', FALLBACK)).toEqual(FALLBACK);
     expect(isInvoiceSummaryExcluded()).toBe(false);
   });
 
-  it('does not add it to a list that never printed totals', () => {
+  it('does not add the rows to a list that never printed totals', () => {
     const noTotals = LEGACY_WITH_TOTALS.filter((s) => s !== 'totals');
     saveDocumentSections('invoice', noTotals);
     expect(loadInvoiceSectionsAdoptingSummary(FALLBACK)).toEqual(noTotals);
   });
 
-  it('never resurrects a summary the operator switched off', () => {
+  it('never resurrects the rows the operator switched off', () => {
     saveDocumentSections('invoice', [...LEGACY_WITH_TOTALS]);
     setInvoiceSummaryExcluded(true);
 
@@ -207,5 +210,42 @@ describe('invoice account summary adoption', () => {
 
     expect(isInvoiceSummaryExcluded()).toBe(false);
     expect(loadInvoiceSectionsAdoptingSummary(FALLBACK)).toEqual(FALLBACK);
+  });
+});
+
+/**
+ * The account summary was first a single `balanceSummary` section id and is now
+ * four rows the operator ticks individually. Lists saved under the old id must
+ * expand onto the rows (the block kept printing for users who had it on), and a
+ * saved list that had the block unticked must stay unticked.
+ */
+describe('account summary migration (retired single id)', () => {
+  const FALLBACK = [
+    'brand', 'docTitle', 'billTo', 'invoiceMeta', 'lineItems',
+    'totals', 'openingBalance', 'invoiceAmount', 'cashPaid', 'closingBalance',
+    'paymentHistory', 'bank', 'terms', 'signature', 'footer',
+  ];
+  const WITH_RETIRED = FALLBACK.map((id) =>
+    id === 'openingBalance' ? 'balanceSummary' : id,
+  ).filter((id) => !['invoiceAmount', 'cashPaid', 'closingBalance'].includes(id));
+
+  it('expands the retired `balanceSummary` id onto the four rows, in catalog order', () => {
+    saveDocumentSections('invoice', WITH_RETIRED);
+    expect(loadDocumentSections('invoice', FALLBACK)).toEqual(FALLBACK);
+    expect(loadInvoiceSectionsAdoptingSummary(FALLBACK)).toEqual(FALLBACK);
+  });
+
+  it('a legacy list without the retired id still reads exactly as saved', () => {
+    const withoutRows = FALLBACK.filter(
+      (id) => !['openingBalance', 'invoiceAmount', 'cashPaid', 'closingBalance'].includes(id),
+    );
+    saveDocumentSections('invoice', withoutRows);
+    expect(loadDocumentSections('invoice', FALLBACK)).toEqual(withoutRows);
+  });
+
+  it('a partially ticked row list is preserved verbatim', () => {
+    const partial = FALLBACK.filter((id) => id !== 'cashPaid' && id !== 'closingBalance');
+    saveDocumentSections('invoice', partial);
+    expect(loadDocumentSections('invoice', FALLBACK)).toEqual(partial);
   });
 });

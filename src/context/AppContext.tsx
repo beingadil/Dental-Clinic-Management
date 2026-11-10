@@ -2299,3 +2299,12 @@ export const useApp = () => {
   }
   return context;
 };
+
+/**
+ * Non-throwing accessor for surfaces that exist outside the provider:
+ * jsdom tests and headless previews render components in isolation. The
+ * production path always mounts inside <AppProvider>, so callers that need
+ * app state should reach for useApp(); callers that merely want a hint
+ * (theme, accent) can degrade gracefully.
+ */
+export const useOptionalApp = () => useContext(AppContext) ?? null;

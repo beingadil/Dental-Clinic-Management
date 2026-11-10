@@ -25,10 +25,10 @@ import {
 } from 'lucide-react';
 import { buildLedgerPdf, downloadPdf } from '../../lib/pdf';
 import { caseDetailLines, ledgerPrintDescription, findCaseForEntry } from '../../services/ledgerCaseDetail';
-;
 import { CaseDetailModal } from '../cases/CaseDetailModal';
-import { DataTable } from '../common/ui';
-import { DentalCase } from '../../types';
+import EditPaymentModal from './EditPaymentModal';
+import { ConfirmDialog, DataTable } from '../common/ui';
+import { DentalCase, PaymentRecord, Invoice } from '../../types';
 
 interface GeneralLedgerViewProps {
   /**
@@ -69,10 +69,30 @@ const NEEDS_CLINIC: ExportNotice = {
 };
 
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClinicId }) => {
-  const { labs, getLedgerEntries, brandingSettings, cases, invoices, user } = useApp();
+  const { labs, getLedgerEntries, brandingSettings, cases, invoices, user, updatePaymentV2, deletePaymentV2 } = useApp();
 
   // Case drill-down state: which case's record is open from a ledger row.
   const [selectedCaseForModal, setSelectedCaseForModalLocal] = useState<DentalCase | null>(null);
+  /* The voucher this row carries, when it is one. Every payment in the books
+     is reachable from its row: an operator reconciling a clinic can read,
+     correct or delete the payment in place instead of going hunting for the
+     invoice it was posted against. */
+  const [voucherToEdit, setVoucherToEdit] = useState<{ payment: PaymentRecord; invoice?: Invoice } | null>(null);
+  const [voucherToDelete, setVoucherToDelete] = useState<PaymentRecord | null>(null);
+
+  /* The row's payment voucher, when the row is one. Regular payments and the
+     0/0 memos that apply advance credit are both editable vouchers; the
+     reference_id on the ledger entry is the embedded payment's id. */
+  const findVoucher = (entry: LedgerEntry): { payment: PaymentRecord; invoice?: Invoice } | null => {
+    if (entry.entry_type !== 'payment' && entry.entry_type !== 'advance_allocation') return null;
+    for (const inv of invoices || []) {
+      const hit = (inv.payments || []).find(
+        (p) => p.id === entry.reference_id || p.payment_number === entry.reference_number,
+      );
+      if (hit) return { payment: hit, invoice: inv };
+    }
+    return null;
+  };
 
   // Clinic selection: starts empty - the user must actively pick a clinic;
   // there is no consolidated "all clinics" mode. When embedded in the clinic
@@ -803,22 +823,51 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                   className: 'w-32',
                   render: (row) => {
                     if (row.kind === 'opening') return <span className="text-ink-muted">—</span>;
-                    const entry = row.entry;
-                    if (!entry.case_number) return (<span className="font-mono text-[11px] font-bold text-amber-800 whitespace-nowrap">{entry.reference_number || '—'}</span>); return (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const c = cases.find((x) => x.id === entry.case_id)
-                            || cases.find((x) => x.case_number === entry.case_number);
-                          if (c) setSelectedCaseForModalLocal(c);
-                        }}
-                        disabled={!entry.case_id && !cases.some((x) => x.case_number === entry.case_number)}
-                        title={entry.case_id ? 'Open case' : 'Case record not found'}
-                        className="inline-block font-mono text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-indigo-100 transition-colors cursor-pointer disabled:cursor-default disabled:hover:bg-indigo-50"
-                      >
-                        {entry.case_number}
-                      </button>
-                    );
+                     const entry = row.entry;
+                     /* A payment row carries its voucher here, above the case it
+                        settles: the operator can open the payment itself —
+                        amount, method, date, reference — and edit or delete it
+                        without hunting the invoice. The DS chip stays for the
+                        case itself. */
+                     const voucher = findVoucher(entry);
+                     const dsChip = entry.case_number ? (
+                       <button
+                         type="button"
+                         onClick={() => {
+                           const c = cases.find((x) => x.id === entry.case_id)
+                             || cases.find((x) => x.case_number === entry.case_number);
+                           if (c) setSelectedCaseForModalLocal(c);
+                         }}
+                         disabled={!entry.case_id && !cases.some((x) => x.case_number === entry.case_number)}
+                         title={entry.case_id ? 'Open case' : 'Case record not found'}
+                         className="inline-block font-mono text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-indigo-100 transition-colors cursor-pointer disabled:cursor-default disabled:hover:bg-indigo-50"
+                       >
+                         {entry.case_number}
+                       </button>
+                     ) : null;
+                     if (!dsChip && !voucher) {
+                       return (
+                         <span className="font-mono text-[11px] font-bold text-amber-800 whitespace-nowrap">
+                           {entry.reference_number || '—'}
+                         </span>
+                       );
+                     }
+                     return (
+                       <div className="flex max-w-[150px] flex-col items-start gap-1">
+                         {voucher && (
+                           <button
+                             type="button"
+                             onClick={() => setVoucherToEdit(voucher)}
+                             title="Open this payment voucher — amount, method, date, reference — edit or delete it"
+                             aria-label={`Open ${voucher.payment.payment_number || 'payment'} voucher`}
+                             className="inline-block font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-emerald-100 transition-colors cursor-pointer"
+                           >
+                             {voucher.payment.payment_number || 'PAY'}
+                           </button>
+                         )}
+                         {dsChip}
+                       </div>
+                     );
                   },
                 },
                 {
@@ -966,6 +1015,38 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
           onClose={() => setSelectedCaseForModalLocal(null)}
         />
       )}
+
+      {/* The voucher a payment row carries: read, correct or delete it in place.
+          Saving rebuilds the receipt's journal so the register, the general
+          ledger and the printed invoice all move together. */}
+      {voucherToEdit && (
+        <EditPaymentModal
+          isOpen={!!voucherToEdit}
+          payment={voucherToEdit.payment}
+          onSave={(id, patch) => updatePaymentV2(id, patch)}
+          onDelete={(payment) => setVoucherToDelete(payment)}
+          onClose={() => setVoucherToEdit(null)}
+        />
+      )}
+
+      {/* Delete a payment entry. Never the invoice: voiding one stays on the
+          invoice table, where its issuance journal and retired number are the
+          things being explained. */}
+      <ConfirmDialog
+        open={!!voucherToDelete}
+        title={`Delete payment ${voucherToDelete?.payment_number || ''}`}
+        consequences={[
+          `${voucherToDelete?.lab_name || 'The clinic'}'s balance goes back up by ${(voucherToDelete?.amount || 0).toLocaleString()} PKR on the invoice it paid.`,
+          'The receipt, its journal entry and any bank reconciliation item raised for it are removed.',
+          'A PAYMENT_DELETED audit entry records who deleted it.',
+        ]}
+        confirmLabel="Delete Payment"
+        onCancel={() => setVoucherToDelete(null)}
+        onConfirm={() => {
+          if (voucherToDelete) deletePaymentV2(voucherToDelete.id);
+          setVoucherToDelete(null);
+        }}
+      />
     </div>
   );
 };

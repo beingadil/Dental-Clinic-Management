@@ -123,7 +123,7 @@ export const Sidebar: React.FC = () => {
           badge: unpaidInvoicesCount > 0 ? `${unpaidInvoicesCount}` : undefined,
           tone: 'neutral',
           children: [
-            { id: 'billing', label: 'Invoice Rec', icon: Receipt },
+            { id: 'billing', label: 'Payment Receive', icon: Receipt },
             { id: 'print-invoices', label: 'Print Invoices', icon: Printer },
           ],
         },

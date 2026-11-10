@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 
 const DARK_CSS = 'src/theme/dark.css';
 const DASHBOARD_DARK_CSS = 'src/components/dashboard/dashboard-dark.css';
-const THEME_TOGGLE_TS = 'src/components/common/ThemeToggle.tsx';
 
 const darkCss = readFileSync(DARK_CSS, 'utf8');
 const dashboardDarkCss = readFileSync(DASHBOARD_DARK_CSS, 'utf8');
@@ -24,10 +23,6 @@ describe('dark theme error guards', () => {
     // The dark CSS must provide the raised-glass background for the selected segment
     expect(darkCss).toContain('.dark .ds-theme-toggle');
     expect(darkCss).toContain('background: rgb(255 255 255 / 0.05)');
-    // The ThemeToggle.tsx should not rely on bare bg-white that vanishes in dark mode
-    const content = readFileSync(THEME_TOGGLE_TS, 'utf8');
-    // It's OK to have bg-white/30 as light-mode default; the dark override is what matters
-    expect(darkCss).toContain('rgb(255 255 255 / 0.05)');
   });
 
   // ── Guard 3: Clinic picker / ds-glass-select is not a 55% white slab ────

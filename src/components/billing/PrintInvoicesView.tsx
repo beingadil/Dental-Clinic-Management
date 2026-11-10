@@ -15,7 +15,7 @@ import { SavePdfButton } from '../print/SavePdfButton';
 import { loadPrintSettings, saveDocumentSections, loadStatementSectionsAdoptingBank, setStatementBankExcluded, isStatementBankExcluded } from '../../services/printSettings';
 import '../print/printStyles.css';
 import { PrintSectionPicker } from '../common/PrintSectionPicker';
-import { BalanceSummaryToggle } from '../print/BalanceSummaryToggle';
+
 import { useTransientFlag } from '../common/useTransient';
 import { Check, ChevronDown, FileSpreadsheet, Landmark, Printer, Search, SlidersHorizontal } from 'lucide-react';
 import { ClinicPicker } from '../common/ui/ClinicPicker';
@@ -96,6 +96,12 @@ export const PrintInvoicesView: React.FC = () => {
   const [excluded, setExcluded] = useState<string[]>([]);
   const [listSearch, setListSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | InvoiceStatus>('all');
+  /* The invoice list lives behind a dropdown: picking the clinic and the
+     period happens in the band above, and the rows only need to be visible
+     while invoices are actually being ticked. It is ALWAYS collapsible — the
+     control is shown even with an empty result, so the card never turns into
+     a wall the operator cannot fold away. */
+  const [listOpen, setListOpen] = useState(true);
   /* The paper preview is reassurance, not the task — closed by default so the
      choose-and-print path fits one screen. */
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -448,9 +454,22 @@ export const PrintInvoicesView: React.FC = () => {
               );
             })}
           </div>
+          {/* Always available: the empty state stays behind the dropdown too,
+              so the card never turns into a wall of text or rows. */}
+          <button
+            type="button"
+            onClick={() => setListOpen((v) => !v)}
+            aria-expanded={listOpen}
+            className="ds-glass-pill ds-glass-pill-sm ml-auto"
+            title={listOpen ? 'Hide the invoice list' : 'Show the invoice list'}
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${listOpen ? 'rotate-180' : ''}`} />
+            Invoices · {periodInvoices.length}
+          </button>
         </div>
 
-        {/* The rows */}
+        {/* The rows — always behind the dropdown, including the empty state. */}
+        {listOpen && (
         <div className="max-h-[min(50vh,520px)] overflow-y-auto">
           {periodInvoices.length === 0 ? (
             <div className="px-6 py-14 text-center">
@@ -461,8 +480,17 @@ export const PrintInvoicesView: React.FC = () => {
               <p className="mx-auto mt-1 max-w-sm text-[11px] leading-relaxed text-ds-body">
                 {selectedClinic
                   ? `${selectedClinic.name} has nothing billed between ${from || 'the first record'} and ${to || 'today'}.`
-                  : 'Invoices are printed per clinic and period. Pick the clinic above, then set the dates.'}
+                  : 'Invoices are printed per clinic and period. Pick the clinic, then set the dates.'}
               </p>
+              {!selectedClinic && (
+                <ClinicPicker
+                  clinics={labs}
+                  value={labId || null}
+                  onChange={(id) => setLabId(id)}
+                  placeholder="Select clinic…"
+                  className="mx-auto mt-3 max-w-xs text-left"
+                />
+              )}
               {selectedClinic && (from || to) && (
                 <button
                   type="button"
@@ -575,6 +603,7 @@ export const PrintInvoicesView: React.FC = () => {
             </table>
           )}
         </div>
+        )}
 
         {/* Selection read-out + the way into the paper */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ds-line bg-ds-sunken/60 px-4 py-2">
@@ -592,7 +621,7 @@ export const PrintInvoicesView: React.FC = () => {
             <SlidersHorizontal className="h-3.5 w-3.5" />
             Sections · {statementSections.length}
           </button>
-          <BalanceSummaryToggle sections={statementSections} onChange={applySections} />
+
           <button
             type="button"
             onClick={() => setPreviewOpen((o) => !o)}

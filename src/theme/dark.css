@@ -41,17 +41,18 @@
     /* Surfaces */
     --color-slate-50: #0b0f18;
     --color-slate-100: #121824;
-    --color-slate-200: #1a2231;
+    --color-slate-200: #18202f;
     --color-slate-300: #242e41;
     /* Lines / hairlines that sit above a surface */
     --color-slate-400: #3c4a62;
     /* Ink. Ordered to preserve the light-theme ladder exactly. */
-    --color-slate-500: #7f8ba1;
+    --color-slate-500: #8a94a8;
     --color-slate-600: #9aa6bb;
-    --color-slate-700: #b8c2d4;
+    --color-slate-700: #d3d9e4;
     --color-slate-800: #d3dbe7;
     --color-slate-900: #e9eef7;
     --color-slate-950: #f2f5fa;
+    --color-line: #2a3446;
     /* white is a SURFACE here, not ink — ink is re-pinned below. */
     --color-white: #121824;
 
@@ -727,4 +728,45 @@
       0 0 0 1px #44506a,
       0 1px 2px rgb(0 0 0 / 0.35);
   }
+  /* Clinic picker (and every other glass select) is a FIELD, not a card. */
+  .dark .ds-glass-select {
+    background: #18202f;
+    border-color: #44506a;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+      0 2px 8px -4px rgb(0 0 0 / 0.5);
+  }
+  .dark .ds-glass-select:hover {
+    background: #1c2433;
+  }
+  /* Night room atmosphere */
+  .dark .app-atmos {
+    --room-base-a: #080a11;
+    --room-base-b: #0d111c;
+    --room-base-c: #101725;
+    --room-bloom-a: rgba(129, 140, 248, 0.2);
+    --room-bloom-b: rgba(34, 211, 238, 0.06);
+    --room-bloom-c: rgba(129, 140, 248, 0.14);
+    --room-bloom-d: rgba(52, 211, 153, 0.04);
+    --room-orb-a: rgba(129, 140, 248, 0.16);
+    --room-orb-b: rgba(34, 211, 238, 0.08);
+    --room-orb-core: rgba(255, 255, 255, 0.09);
+  }
+  .dark .app-atmos::before   { opacity: 1; }
+  .dark .app-room-orb {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 30px 70px -40px rgba(0, 0, 0, 0.86);
+  }
+  .dark .app-atmos::after   { opacity: 0.05; }
+  /* Auth stage */
+  .dark .auth-stage {
+    --auth-key-light: rgba(122, 162, 255, 0.24);
+    --auth-vignette: rgba(2, 6, 16, 0.78);
+    --auth-glass-fill: rgba(18, 24, 36, 0.62);
+    --auth-glass-edge: rgba(148, 163, 184, 0.22);
+    --auth-glass-sheen: rgba(255, 255, 255, 0.1);
+    --auth-glass-shadow: rgba(0, 0, 0, 0.88);
+    --auth-glass-solid: #0b0f18;
+    --auth-chip-fill: rgba(18, 24, 36, 0.64);
+  }
+  .dark .auth-stage.app-atmos::before  { opacity: 0.24; }
 }

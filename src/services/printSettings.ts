@@ -12,6 +12,7 @@
  * the next save.
  */
 import { settingsRepo } from '../db/repos';
+import { ACCOUNT_BALANCE_ROWS, isAccountBalanceRow } from './printSections';
 
 export interface PrintSettings {
   paper: 'a4' | 'letter';
@@ -73,6 +74,7 @@ export function savePrintSettings(settings: PrintSettings): void {
  * the same stored list, so what you preview is exactly what comes out of the
  * printer — one source of truth instead of per-dialog local state.
  */
+export { ACCOUNT_BALANCE_ROWS, isAccountBalanceRow } from './printSections';
 export function loadDocumentSections(kind: string, fallback: string[]): string[] {
   try {
     let stored: unknown = settingsRepo.get('print', `sections_${kind}`);
@@ -81,8 +83,14 @@ export function loadDocumentSections(kind: string, fallback: string[]): string[]
       try { stored = JSON.parse(stored); } catch { stored = null; }
     }
     if (Array.isArray(stored)) {
+      // Lists written before the account summary was split into rows carry the
+      // retired `balanceSummary` id; expand it onto the four rows in catalog
+      // order (the filter below dedupes and orders to the document's order).
+      const expanded = stored.flatMap((id) =>
+        id === 'balanceSummary' ? [...ACCOUNT_BALANCE_ROWS] : [id],
+      );
       // Keep the stored order of known sections; unknown ids are dropped.
-      return fallback.filter((id) => stored.includes(id));
+      return fallback.filter((id) => expanded.includes(id));
     }
   } catch { /* fall through to the shipped default */ }
   return [...fallback];
@@ -134,11 +142,11 @@ export function loadStatementSectionsAdoptingBank(fallback: string[], hasBankDat
  * joined the invoice section catalog later than operators had started saving
  * lists, exactly like the statement bank block above.
  *
- * Old lists lack the id even though the block used to print as part of
- * `totals` — so a plain reload would silently remove a figure from every
+ * Old lists lack the four row ids even though the block used to print as part
+ * of `totals` — so a plain reload would silently remove a figure from every
  * invoice. Adoption is limited to lists that DID print the block (they carry
  * `totals`), which preserves the previous paper exactly. Once the operator
- * unticks the summary, the marker stops it being resurrected.
+ * unticks every summary row, the marker stops them being resurrected.
  */
 const INVOICE_SUMMARY_MARKER_KEY = 'sections_invoice_balanceSummary';
 
@@ -153,18 +161,18 @@ export function isInvoiceSummaryExcluded(): boolean {
 }
 
 /**
- * Stored invoice sections with the account summary adopted onto lists that
- * predate it. No-op when already present, deliberately excluded, or when the
- * list never printed the block (no `totals`).
+ * Stored invoice sections with the account summary rows adopted onto lists
+ * that predate them. No-op when already present, deliberately excluded, or
+ * when the list never printed the block (no `totals`).
  */
 export function loadInvoiceSectionsAdoptingSummary(fallback: string[]): string[] {
   const stored = loadDocumentSections('invoice', fallback);
-  if (stored.includes('balanceSummary') || isInvoiceSummaryExcluded() || !stored.includes('totals')) {
+  if (stored.some(isAccountBalanceRow) || isInvoiceSummaryExcluded() || !stored.includes('totals')) {
     return stored;
   }
   // Insert in catalog order, not at the end: the print dialog and Settings
-  // must list the section where every other invoice knows it lives.
-  const adopted = fallback.filter((id) => id === 'balanceSummary' || stored.includes(id));
+  // must list the rows where every other invoice knows them.
+  const adopted = fallback.filter((id) => isAccountBalanceRow(id) || stored.includes(id));
   saveDocumentSections('invoice', adopted);
   return adopted;
 }

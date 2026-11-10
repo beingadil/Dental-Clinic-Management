@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { can } from '../../services/permissions';
+import { can, canPost } from '../../services/permissions';
 import { Invoice, SavedVoucher, DentalLab } from '../../types';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { getTodayStr } from '../../utils/dateUtils';
@@ -33,8 +33,10 @@ import {
   Building2,
   FileText,
   FileCheck,
-  CalendarDays
+  CalendarDays,
+  CalendarCheck
 } from 'lucide-react';
+import { MonthEndCloseModal } from './MonthEndCloseModal';
 import { DailyReportView } from './DailyReportView';
 
 interface BillingReportsViewProps {
@@ -81,6 +83,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [voucherSearch, setVoucherSearch] = useState<string>('');
   // Monthly statement: the date window chooses which whole months are on
   // screen. The previous month's closing balance carries forward as this
@@ -566,6 +569,19 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               tone="indigo"
               className="sm:w-64"
             />
+            {/* Month-end closing belongs on the statement itself: this is where
+                the operator reads the month, so this is where the close is. */}
+            {canPost(user, 'payment:record') && (
+              <button
+                onClick={() => setCloseModalOpen(true)}
+                title="Close the month per clinic — stores the statement of record for each clinic-month"
+                aria-label="Open the month-end closing dialog"
+                className="ds-glass-pill text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+              >
+                <CalendarCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Month-end closing</span>
+              </button>
+            )}
             <button
               onClick={handleExportMonthlyExcel}
               title="Export the statement as an Excel workbook (one sheet per month, real numbers)"
@@ -839,6 +855,8 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         </div>
       )}
 
+      {/* Month-end closing: per clinic, one click each */}
+      <MonthEndCloseModal open={closeModalOpen} onClose={() => setCloseModalOpen(false)} />
     </div>
   );
 };

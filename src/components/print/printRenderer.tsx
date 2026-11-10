@@ -15,6 +15,7 @@ import {
   STATEMENT_DETAIL_OMIT,
 } from '../../services/ledgerCaseDetail';
 import type { InvoiceAccountPosition } from '../../services/invoiceAccount';
+import { ACCOUNT_BALANCE_ROWS } from '../../services/printSections';
 import { invoiceEntryDate } from '../../services/invoiceOrder';
 import { PRINT_MARGIN_MM } from '../../services/statementPagination';
 
@@ -47,7 +48,10 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'invoiceMeta', label: 'Invoice meta', hint: 'Invoice #, issue & due date' },
     { id: 'lineItems', label: 'Line items', hint: 'Case units & pricing' },
     { id: 'totals', label: 'Totals & balance', hint: 'Amount, paid, balance' },
-    { id: 'balanceSummary', label: 'Account summary', hint: 'Opening & closing balance' },
+    { id: 'openingBalance', label: 'Opening balance', hint: 'Brought forward incl. advance held (b/f)' },
+    { id: 'invoiceAmount', label: 'This invoice amount', hint: 'Amount billed on this invoice' },
+    { id: 'cashPaid', label: 'Paid (cash / bank)', hint: 'Cash, bank & cheque received' },
+    { id: 'closingBalance', label: 'Closing balance', hint: 'Carried forward (c/f)' },
     { id: 'paymentHistory', label: 'Payment history', hint: 'Recorded payments (hidden when none)' },
     { id: 'bank', label: 'Bank payment details', hint: 'From Settings > Branding' },
     { id: 'terms', label: 'Payment terms note', hint: 'Due-on-receipt note' },
@@ -69,7 +73,10 @@ export const PRINT_SECTIONS: Record<DocumentKind, PrintSectionDef[]> = {
     { id: 'statementFor', label: 'Statement-for block', hint: 'Clinic identity' },
     { id: 'period', label: 'Statement period', hint: 'Date range' },
     { id: 'invoiceTable', label: 'Invoice ledger table', hint: 'Invoices + the case each bills' },
-    { id: 'balanceSummary', label: 'Account summary', hint: 'Opening, this period & closing balance' },
+    { id: 'openingBalance', label: 'Opening balance', hint: 'Brought forward incl. advance held (b/f)' },
+    { id: 'invoiceAmount', label: 'This period’s invoices', hint: 'Invoices raised in the period' },
+    { id: 'cashPaid', label: 'Paid (cash / bank)', hint: 'Cash, bank & cheque received in the period' },
+    { id: 'closingBalance', label: 'Closing balance', hint: 'Carried forward (c/f)' },
     { id: 'bank', label: 'Bank payment details', hint: 'Closing page · edited on the print screen' },
     { id: 'footer', label: 'Page footer', hint: 'Contact line' },
   ],
@@ -83,6 +90,11 @@ export const DEFAULT_ENABLED: Record<DocumentKind, string[]> = {
 };
 
 const on = (sections: string[], id: string) => sections.includes(id);
+/* The account summary block is printed one row at a time. The single
+   `balanceSummary` id that used to carry it is retired; stored lists are
+   expanded onto the four rows on read (services/printSettings). */
+export const anyAccountBalanceRow = (sections: string[]): boolean =>
+  ACCOUNT_BALANCE_ROWS.some((id) => sections.includes(id));
 const money = (n: number) => `PKR ${(n || 0).toLocaleString()}`;
 /* Ledger sign convention: positive is a receivable (Dr), negative is money we
    hold on the clinic's behalf (Cr). The suffix is what stops an opening credit
@@ -101,7 +113,14 @@ const signedMoney = (n: number) => {
    printed row read "Ali Raza A? Retainer" instead of the separator. */
 /* Shared account-position block used by both the single invoice and the batch
    statement. Keeping one renderer means the two documents cannot drift apart
-   about how an advance deposit or a prior balance is shown. */
+   about how an advance deposit or a prior balance is shown.
+
+   The block is four separately tickable rows, matching the section picker's
+   account-summary ticks. Rules:
+   - nothing renders when every row is unticked;
+   - the advance detail rows (advance held b/f, advance received) follow the
+     opening / cash rows they belong to;
+   - credit and debit notes feed the carried balance, so they follow closing. */
 const AccountBalanceBlock: React.FC<{
   position: InvoiceAccountPosition;
   amountLabel: string;
@@ -109,97 +128,111 @@ const AccountBalanceBlock: React.FC<{
   appliedNote?: string;
   /** What the unallocated advance is not applied to: 'these invoices' or 'this invoice'. */
   heldNote?: string;
-}> = ({ position, amountLabel, paidLabel, appliedNote, heldNote }) => (
-  <div className="mb-4 flex justify-end">
-    {/* 320px, not 288px: at 288 the closing row could not hold "CLOSING BALANCE
-        (DR)" and its figure at once, so the label wrapped to two lines and the
-        amount broke after "PKR" — the one figure on the sheet that must read as
-        a single number. The figures below are also nowrap for the same reason. */}
-    <div className="w-80">
-      <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
-        Account Balance
+  /** The document's section list — the four account-summary rows are ticked here. */
+  rows: string[];
+}> = ({ position, amountLabel, paidLabel, appliedNote, heldNote, rows }) => {
+  const show = (id: string) => rows.includes(id);
+  if (!ACCOUNT_BALANCE_ROWS.some((row) => rows.includes(row))) return null;
+  return (
+    <div className="mb-4 flex justify-end">
+      {/* 320px, not 288px: at 288 the closing row could not hold "CLOSING BALANCE
+          (DR)" and its figure at once, so the label wrapped to two lines and the
+          amount broke after "PKR" — the one figure on the sheet that must read as
+          a single number. The figures below are also nowrap for the same reason. */}
+      <div className="w-80">
+        <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+          Account Balance
+        </div>
+        <table className="w-full border-collapse text-[11px]">
+          <tbody>
+            {show('openingBalance') && (
+              <tr className="border border-slate-300">
+                <td className="px-3 py-1 text-slate-600">Opening Balance</td>
+                <td className="whitespace-nowrap px-3 py-1 text-right font-semibold">
+                  {signedMoney(position.openingBalance)}
+                </td>
+              </tr>
+            )}
+            {show('openingBalance') && position.advanceDeposit > 0 && (
+              <tr className="border border-slate-300">
+                <td className="py-1 pl-6 pr-3 text-slate-500">
+                  Advance held b/f — included above
+                </td>
+                <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
+                  {money(position.advanceDeposit)}
+                </td>
+              </tr>
+            )}
+            {show('invoiceAmount') && (
+              <tr className="border border-slate-300">
+                <td className="px-3 py-1 text-slate-600">{amountLabel}</td>
+                <td className="whitespace-nowrap px-3 py-1 text-right">{money(position.invoiceAmount)}</td>
+              </tr>
+            )}
+            {show('cashPaid') && (
+              <tr className="border border-slate-300">
+                <td className="px-3 py-1 text-slate-600">{paidLabel}</td>
+                <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
+                  {money(position.cashPaid)}
+                </td>
+              </tr>
+            )}
+            {show('cashPaid') && (position.advanceReceived || 0) > 0 && (
+              <tr className="border border-slate-300">
+                <td className="px-3 py-1 text-slate-600">Advance received this period</td>
+                <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
+                  {money(position.advanceReceived)}
+                </td>
+              </tr>
+            )}
+            {show('closingBalance') && position.creditNotes > 0 && (
+              <tr className="border border-slate-300">
+                <td className="px-3 py-1 text-slate-600">Credit Notes</td>
+                <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
+                  -{money(position.creditNotes)}
+                </td>
+              </tr>
+            )}
+            {show('closingBalance') && (position.debitNotes || 0) > 0 && (
+              <tr className="border border-slate-300">
+                <td className="px-3 py-1 text-slate-600">Debit Notes</td>
+                <td className="whitespace-nowrap px-3 py-1 text-right">
+                  {money(position.debitNotes)}
+                </td>
+              </tr>
+            )}
+            {show('closingBalance') && (
+              <tr className="border-2 border-slate-900 bg-slate-100">
+                <td className="whitespace-nowrap px-3 py-2 font-bold uppercase tracking-wider">
+                  {position.closingBalance < 0
+                    ? 'Closing Balance (Cr)'
+                    : position.closingBalance > 0
+                    ? 'Closing Balance (Dr)'
+                    : 'Closing Balance'}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold">
+                  {money(Math.abs(position.closingBalance))}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {show('cashPaid') && position.advanceApplied > 0 && (
+          <div className="mt-1 text-right text-[9px] text-slate-500">
+            {money(position.advanceApplied)} {appliedNote || 'of this invoice was settled from the advance deposit.'}
+          </div>
+        )}
+        {show('closingBalance') && (position.unallocatedAdvance || 0) > 0 && (
+          <div className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] leading-snug text-amber-900">
+            <span className="font-bold">Note: </span>
+            {money(position.unallocatedAdvance)} is held on account and is not applied to{' '}
+            {heldNote || 'these invoices'}.
+          </div>
+        )}
       </div>
-      <table className="w-full border-collapse text-[11px]">
-        <tbody>
-          <tr className="border border-slate-300">
-            <td className="px-3 py-1 text-slate-600">Opening Balance</td>
-            <td className="whitespace-nowrap px-3 py-1 text-right font-semibold">
-              {signedMoney(position.openingBalance)}
-            </td>
-          </tr>
-          {position.advanceDeposit > 0 && (
-            <tr className="border border-slate-300 border-t-0">
-              <td className="py-1 pl-6 pr-3 text-slate-500">
-                Advance held b/f — included above
-              </td>
-              <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
-                {money(position.advanceDeposit)}
-              </td>
-            </tr>
-          )}
-          <tr className="border border-slate-300 border-t-0">
-            <td className="px-3 py-1 text-slate-600">{amountLabel}</td>
-            <td className="whitespace-nowrap px-3 py-1 text-right">{money(position.invoiceAmount)}</td>
-          </tr>
-          <tr className="border border-slate-300 border-t-0">
-            <td className="px-3 py-1 text-slate-600">{paidLabel}</td>
-            <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
-              {money(position.cashPaid)}
-            </td>
-          </tr>
-          {(position.advanceReceived || 0) > 0 && (
-            <tr className="border border-slate-300 border-t-0">
-              <td className="px-3 py-1 text-slate-600">Advance received this period</td>
-              <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
-                {money(position.advanceReceived)}
-              </td>
-            </tr>
-          )}
-          {position.creditNotes > 0 && (
-            <tr className="border border-slate-300 border-t-0">
-              <td className="px-3 py-1 text-slate-600">Credit Notes</td>
-              <td className="whitespace-nowrap px-3 py-1 text-right text-ink-success">
-                -{money(position.creditNotes)}
-              </td>
-            </tr>
-          )}
-          {(position.debitNotes || 0) > 0 && (
-            <tr className="border border-slate-300 border-t-0">
-              <td className="px-3 py-1 text-slate-600">Debit Notes</td>
-              <td className="whitespace-nowrap px-3 py-1 text-right">
-                {money(position.debitNotes)}
-              </td>
-            </tr>
-          )}
-          <tr className="border-2 border-slate-900 bg-slate-100">
-            <td className="whitespace-nowrap px-3 py-2 font-bold uppercase tracking-wider">
-              {position.closingBalance < 0
-                ? 'Closing Balance (Cr)'
-                : position.closingBalance > 0
-                ? 'Closing Balance (Dr)'
-                : 'Closing Balance'}
-            </td>
-            <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold">
-              {money(Math.abs(position.closingBalance))}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      {position.advanceApplied > 0 && (
-        <div className="mt-1 text-right text-[9px] text-slate-500">
-          {money(position.advanceApplied)} {appliedNote || 'of this invoice was settled from the advance deposit.'}
-        </div>
-      )}
-      {(position.unallocatedAdvance || 0) > 0 && (
-        <div className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] leading-snug text-amber-900">
-          <span className="font-bold">Note: </span>
-          {money(position.unallocatedAdvance)} is held on account and is not applied to{' '}
-          {heldNote || 'these invoices'}.
-        </div>
-      )}
     </div>
-  </div>
-);
+  );
+};
 
 /* The inline case separator, re-exported from the shared formatter so the
    printed cell and the paginator that prices it spell it once. */
@@ -702,12 +735,13 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               account stand after it". They are deliberately separate because
               the table must keep showing this invoice's full amount even when
               an advance settles half of it. */}
-          {on(sections, 'balanceSummary') && accountPosition && (
+          {anyAccountBalanceRow(sections) && accountPosition && (
             <AccountBalanceBlock
               position={accountPosition}
               amountLabel="This Invoice"
               paidLabel="Paid (cash / bank)"
               heldNote="this invoice"
+              rows={sections}
             />
           )}
           {on(sections, 'paymentHistory') && (invoice.payments || []).length > 0 && (
@@ -953,15 +987,17 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
               </tbody>
             </table>
           )}
-          {on(sections, 'balanceSummary') && showBalance && accountPosition && (
+          {anyAccountBalanceRow(sections) && showBalance && accountPosition && (
             <AccountBalanceBlock
               position={accountPosition}
               amountLabel={balanceRows.length === 1 ? 'This Invoice' : 'Invoices this period'}
               paidLabel="Receipts this period"
               appliedNote="of the selected invoices was settled from advance deposits."
+              heldNote="these invoices"
+              rows={sections}
             />
           )}
-          {on(sections, 'balanceSummary') && showBalance && !accountPosition && (
+          {anyAccountBalanceRow(sections) && showBalance && !accountPosition && (
             <div className="flex justify-end mb-4">
               <table className="text-[11px] w-64">
                 <tbody>

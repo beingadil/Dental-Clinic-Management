@@ -1682,6 +1682,46 @@ export const MIGRATION_029_INVOICE_BUSINESS_DAY: Migration = {
   ],
 };
 
+/**
+ * Month-end closing: one clinic, one calendar month, one frozen totals row.
+ *
+ * Why this exists: the monthly statement used to be computed live every time
+ * it was opened. "Closed" is now an operator decision — close a clinic-month,
+ * the statement of record is stored (totals only, never the documents), and
+ * the closing page can reprint exactly that snapshot later. No lock is taken
+ * anywhere: this table is a statement of record, not a gate on the books.
+ *
+ * Totals only, deliberately — the rows behind them stay live, so correcting
+ * an old payment is normal bookkeeping; re-closing refreshes the snapshot.
+ * One current row per (month, lab_id); the audit log carries the history of
+ * close/reopen events, so a rebuilt month never pretends it never moved.
+ */
+export const MIGRATION_030_MONTH_CLOSES: Migration = {
+  version: 30,
+  name: 'month_closes',
+  statements: [
+    `CREATE TABLE month_closes (
+      id TEXT PRIMARY KEY,
+      month TEXT NOT NULL,
+      lab_id TEXT NOT NULL,
+      cases_billed INTEGER NOT NULL DEFAULT 0,
+      billed REAL NOT NULL DEFAULT 0,
+      collected REAL NOT NULL DEFAULT 0,
+      advance_received REAL NOT NULL DEFAULT 0,
+      advance_applied REAL NOT NULL DEFAULT 0,
+      credit_notes REAL NOT NULL DEFAULT 0,
+      debit_adjustments REAL NOT NULL DEFAULT 0,
+      opening_balance REAL NOT NULL DEFAULT 0,
+      closing_balance REAL NOT NULL DEFAULT 0,
+      advance_credit REAL NOT NULL DEFAULT 0,
+      closed_by TEXT NOT NULL,
+      closed_at TEXT NOT NULL,
+      UNIQUE(month, lab_id)
+    )`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '30')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1712,6 +1752,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_027_USER_PERMISSIONS,
   MIGRATION_028_CUSTOM_ROLES,
   MIGRATION_029_INVOICE_BUSINESS_DAY,
+  MIGRATION_030_MONTH_CLOSES,
 ];
 
 /**

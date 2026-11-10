@@ -722,7 +722,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         <div className="mb-4">
           <Eyebrow>Referral</Eyebrow>
           <p className="mt-1 text-[11.5px] text-ink-muted">
-            The clinic this case came from, and what they have sent.
+            The clinic, doctor and procedure for this case.
           </p>
         </div>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -895,7 +895,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
                 <span className="font-bold text-slate-800">Not applicable to this product.</span>{' '}
                 {caseTypes.find((ct) => ct.id === caseTypeId)?.name} is not per-tooth work, so no
-                teeth or shade are recorded. They will also be left off the job slip and invoice.
+                teeth or shade are recorded, and neither appears on the job slip or invoice.
               </p>
             </div>
           )}
@@ -948,7 +948,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               </label>
               <span className="text-xs text-slate-500">
                 {pendingAttachments.length === 0
-                  ? 'Optional — STL scans, intraoral photos or prescriptions. They attach when the case is created.'
+                  ? 'Optional: STL scans, intraoral photos or prescriptions. They are attached when the case is created.'
                   : `${pendingAttachments.length} file${pendingAttachments.length === 1 ? '' : 's'} ready to attach on create.`}
               </span>
             </div>
@@ -1253,7 +1253,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <p className="mt-0.5 truncate text-xs text-ink-muted">
                 {isEdit
                   ? 'Workflow, charting, attachments & history'
-                  : 'Three focused steps — procedure, charting, schedule'}
+                  : 'Three steps: procedure, charting, schedule'}
               </p>
             </div>
 

@@ -6,6 +6,7 @@ import { REPORTS_TABS, labelOf, type ReportsTab } from '../common/financeTabs';
 import { GeneralLedgerView } from '../billing/GeneralLedgerView';
 import { InsightsView } from '../insights/InsightsView';
 import { BillingReportsView } from '../billing/BillingReportsView';
+import { ClinicPaymentsView } from './ClinicPaymentsView';
 import { JournalEntryModal } from '../billing/JournalEntryModal';
 import { InvoiceStatementModal } from '../billing/InvoiceStatementModal';
 import { CaseJobSlipModal } from '../cases/CaseJobSlipModal';
@@ -15,7 +16,7 @@ export interface ReportsViewProps {
    * Which surface to show. Supplied by the shell from `currentView`, because
    * Analytics & Reports is a nav GROUP (General Ledger | Reports & Statements)
    * rather than one page holding a tab strip — the same shape Billing &
-   * Invoices has with Invoice Rec and Print Invoices.
+   * Invoices has with Payment Receive and Print Invoices.
    *
    * It is named `activeTab` (and NOT destructured into some other local) on
    * purpose: tests/components/financeTabOwnership.test.ts sweeps this file for
@@ -46,7 +47,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ activeTab }) => {
       {activeTab !== 'insights' && (
         <PageHeader
           title="Analytics & Reports"
-          subtitle="Business intelligence, clinic balances, double-entry ledger, audit trail & monthly statement archives"
+          subtitle="Business intelligence, clinic balances, payments register, audit trail & monthly statement archives"
           breadcrumbs={[{ label: 'Financial Hub' }, { label: labelOf(REPORTS_TABS, activeTab) }]}
         />
       )}
@@ -56,6 +57,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ activeTab }) => {
       )}
 
       {activeTab === 'insights' && <InsightsView />}
+
+      {activeTab === 'payments' && <ClinicPaymentsView />}
 
       {activeTab === 'statements' && (
         <BillingReportsView

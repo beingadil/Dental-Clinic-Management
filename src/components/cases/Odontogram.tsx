@@ -1,9 +1,12 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useLayoutEffect, useRef } from "react";
+import ReactOdontogram, { type ToothDetail } from 'react-odontogram';
+import 'react-odontogram/style.css';
+import { useOptionalApp } from '../../context/AppContext';
+import { isThemeMode } from '../../theme/theme';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
   Trash2,
   Activity,
-  Stethoscope,
 } from "lucide-react";
 import "./Odontogram.css";
 import {
@@ -179,14 +182,6 @@ function getToothType(id: ToothId): ToothType {
   }
 }
 
-function isPosterior(type: ToothType): boolean {
-  return type === "first-premolar" ||
-    type === "second-premolar" ||
-    type === "first-molar" ||
-    type === "second-molar" ||
-    type === "third-molar";
-}
-
 /*
  * Generates a natural parabolic dental arch.
  * x increases left -> right, y increases top -> bottom.
@@ -196,8 +191,8 @@ function isPosterior(type: ToothType): boolean {
  */
 function createArch(ids: ToothId[], arch: Arch): Tooth[] {
   const centerX = 500;
-  const leftX = 112;
-  const rightX = 888;
+  const leftX = 34;
+  const rightX = 966;
   const centerY = arch === "upper" ? 278 : 398;
   const edgeY = arch === "upper" ? 130 : 545;
   const teeth = ids.length;
@@ -232,6 +227,11 @@ function createArch(ids: ToothId[], arch: Arch): Tooth[] {
   });
 }
 
+/** Width of the notation strips' viewBox. `getCTM()` reports tooth centres in
+ *  the library chart's PIXEL space (it includes the viewBox scale), so measured
+ *  x values are divided into strip units by this ratio. */
+const NUMBER_STRIP_WIDTH = 900;
+
 const INITIAL_TEETH: Tooth[] = [
   ...createArch(UPPER_PANORAMIC_TEETH, "upper"),
   ...createArch(LOWER_PANORAMIC_TEETH, "lower"),
@@ -254,34 +254,39 @@ export function getToothLayout(): ToothLayoutPoint[] {
 }
 
 /* =========================================================================
-   VISUAL STATE MODEL — prep types mapped to clinical overlay art
+   Prep types mapped to chart fills — the chart colors each tooth by its prep.
+   `teethConditions` in react-odontogram paints the tooth's shadow path; the
+   outline stays the palette's stroke so lettering stays legible on dark.
    ========================================================================= */
 
-interface ToothVisual {
-  prep?: string;       // restoration / prep type id (crown, implant, pontic, ...)
-  shade?: string;      // VITA shade key
-  caries?: boolean;    // note marker "C: ..."
-  filling?: boolean;   // note marker "F: ..."
-}
+const PREP_COLORS: Record<string, { outlineColor: string; fillColor: string }> = {
+  crown: { outlineColor: '#3730a3', fillColor: '#6366f1' },
+  implant: { outlineColor: '#7e22ce', fillColor: '#a855f7' },
+  veneer: { outlineColor: '#6d28d9', fillColor: '#8b5cf6' },
+  inlay_onlay: { outlineColor: '#047857', fillColor: '#10b981' },
+  pontic: { outlineColor: '#b45309', fillColor: '#f59e0b' },
+  abutment: { outlineColor: '#155e75', fillColor: '#0891b2' },
+  post_core: { outlineColor: '#5b21b6', fillColor: '#7c3aed' },
+  coping: { outlineColor: '#475569', fillColor: '#64748b' },
+};
 
-const POST_CORE = "post_core";
+const PREP_LABELS: Record<string, string> = {
+  crown: 'Crown',
+  implant: 'Implant',
+  veneer: 'Veneer',
+  inlay_onlay: 'Inlay / Onlay',
+  pontic: 'Bridge Pontic',
+  abutment: 'Abutment',
+  post_core: 'Post & Core',
+  coping: 'Coping',
+};
 
-/* Caries / filling chart markers are derived from the per-tooth notes:
-   a note starting with "C:" flags caries, "F:" flags an intracoronal filling. */
-function visualFor(
-  id: number,
-  preps: Record<number, string>,
-  shades: Record<number, string>,
-  details: Record<number, ToothDetailData>
-): ToothVisual {
-  const notes = details[id]?.notes || "";
-  return {
-    prep: preps[id],
-    shade: shades[id],
-    caries: /^\s*C\s*:/i.test(notes),
-    filling: /^\s*F\s*:/i.test(notes),
-  };
-}
+/* The quick-prep chips under the chart, in catalog order. */
+const PREP_MENU = Object.entries(PREP_LABELS).map(([id, label]) => ({
+  id,
+  label,
+  color: PREP_COLORS[id],
+}));
 
 /* =========================================================================
    MAIN COMPONENT
@@ -299,12 +304,33 @@ function Odontogram({
   defaultMaterial = 'Zirconia (Multi-layer 3D Pro)',
   onChange,
 }: OdontogramProps) {
+  /* The app paints light and dark by class; the library ships its own palette
+     so it needs the string. `userPreferences.theme_mode` + the OS media query
+     is the same resolution the global bootstrap uses. */
+  const appContext = useOptionalApp();
+  const userPreferences = appContext?.userPreferences;
+  const themeMode = isThemeMode(userPreferences?.theme_mode) ? userPreferences.theme_mode : 'system';
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return themeMode !== 'light';
+    return themeMode === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : themeMode === 'dark';
+  });
+
+  useEffect(() => {
+    const mq = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null;
+    const resolve = () => setIsDark(themeMode === 'system' ? !!mq?.matches : themeMode === 'dark');
+    resolve();
+    if (!mq) return undefined;
+    mq.addEventListener('change', resolve);
+    return () => mq.removeEventListener('change', resolve);
+  }, [themeMode]);
   const [numbering, setNumbering] = useState<"FDI" | "Universal">("FDI");
   const [selected, setSelected] = useState<number[]>(initialSelected);
   const [restorations, setRestorations] = useState<Record<number, string>>(initialRestorations);
   const [shades, setShades] = useState<Record<number, string>>(initialShades);
   const [materials, setMaterials] = useState<Record<number, string>>(initialMaterials);
-  const [toothDetailsState, setToothDetailsState] = useState<Record<number, ToothDetailData>>({});
+  const [toothDetailsState] = useState<Record<number, ToothDetailData>>({});
   const [activeRestoration] = useState("crown");
   const [activeMaterial] = useState(defaultMaterial);
   const [activeShade, setActiveShade] = useState("A2");
@@ -352,6 +378,53 @@ function Odontogram({
   }, []);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  /* The chart library keeps its own selection state; bumping this reseeds it
+     whenever WE change the selection outside the chart (arch buttons, clear,
+     the per-tooth remove X). */
+  const [chartKey, setChartKey] = useState(0);
+  /* Visible tooth numbers layered over the library chart. The library keeps its
+     teeth as unlabelled outlines, so we measure each tooth once per remount and
+     paint the active notation on its crown — same viewBox, so the overlay
+     scales exactly like the chart. */
+  const chartWrapRef = useRef<HTMLDivElement>(null);
+  const [numberOverlay, setNumberOverlay] = useState<{
+    upper: { id: number; x: number }[];
+    lower: { id: number; x: number }[];
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    const wrap = chartWrapRef.current;
+    if (!wrap) return;
+    const libSvg = wrap.querySelector('.Odontogram svg');
+    if (!libSvg) return;
+    try {
+      /* getCTM maps to the SVG's viewport space, i.e. CSS pixels with the
+         viewBox scale already applied — NOT viewBox user units. The strips
+         stretch NUMBER_STRIP_WIDTH units across the same pixels, so measured
+         x values must be inflated into viewBox units or the numbers drift
+         progressively leftwards towards the distal teeth. */
+      const libWidth = (libSvg as SVGSVGElement).getBoundingClientRect().width;
+      const pxToViewBox = libWidth > 0 ? NUMBER_STRIP_WIDTH / libWidth : 1;
+      const teeth = [...libSvg.querySelectorAll('g[class^="teeth-"]')].map((g) => {
+        const el = g as SVGGraphicsElement;
+        const cls = el.getAttribute('class') || '';
+        const fdi = Number.parseInt(cls.split(/\s+/)[0].replace('teeth-', ''), 10);
+        /* getBBox speaks the element's LOCAL user space, which is why mirrored
+           quadrants interleaved. getCTM maps it onto the svg's viewport. */
+        const bb = el.getBBox();
+        const centre = new DOMPoint(bb.x + bb.width / 2, bb.y + bb.height / 2).matrixTransform(
+          el.getCTM() as DOMMatrix,
+        );
+        return { id: fdi, x: centre.x * pxToViewBox };
+      });
+      const upper = teeth.filter((t) => t.id < 30).sort((a, b) => a.x - b.x);
+      const lower = teeth.filter((t) => t.id >= 30).sort((a, b) => a.x - b.x);
+      setNumberOverlay({ upper, lower });
+    } catch {
+      // jsdom has no getBBox; the chart works without the overlay in tests.
+      setNumberOverlay(null);
+    }
+  }, [chartKey, numbering]);
 
   const activeShadeList = useMemo(() => {
     const list: string[] = [];
@@ -365,14 +438,23 @@ function Odontogram({
       : ['A1', 'A2', 'A3', 'A3.5', 'A4', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'D2', 'D3', 'D4', 'BL1', 'BL2', 'BL3', 'BL4'];
   }, [clinicalSpecs]);
 
-  // Teeth geometry merged with current clinical state — FDI id is the identity
-  const teeth = useMemo(() => {
-    return INITIAL_TEETH.map((tooth) => ({
-      ...tooth,
-      visual: visualFor(tooth.id, restorations, shades, toothDetailsState),
-      selected: selectedSet.has(tooth.id),
-    }));
-  }, [restorations, shades, selectedSet, toothDetailsState]);
+  // Notation follows the toggle; conditions colour each tooth by its prep type.
+  const conditionGroups = useMemo(() => {
+    const byPrep = new Map<string, number[]>();
+    selected.forEach((t) => {
+      const prep = restorations[t] || "crown";
+      const list = byPrep.get(prep) || [];
+      list.push(t);
+      byPrep.set(prep, list);
+    });
+    const groups: { label: string; teeth: string[]; outlineColor: string; fillColor: string }[] = [];
+    byPrep.forEach((ids, prep) => {
+      const color = PREP_COLORS[prep];
+      if (!color || ids.length === 0) return;
+      groups.push({ label: PREP_LABELS[prep] || prep, teeth: ids.map((i) => `teeth-${i}`), ...color });
+    });
+    return groups;
+  }, [selected, restorations]);
 
   function getDisplayNumber(fdiTooth: number): number | string {
     return numbering === "FDI" ? fdiTooth : UNIVERSAL_NUMBERS[fdiTooth] || fdiTooth;
@@ -415,38 +497,28 @@ function Odontogram({
     });
   }
 
-  function toggleTooth(tooth: number) {
-    let nextSelected: number[];
-    if (selectedSet.has(tooth)) {
-      nextSelected = selected.filter((t) => t !== tooth);
-      if (selectedToothId === tooth) {
-        setSelectedToothId(nextSelected.length > 0 ? nextSelected[0] : null);
-      }
-    } else {
-      nextSelected = [...selected, tooth].sort((a, b) => a - b);
-      setSelectedToothId(tooth);
-    }
+  const parseToothId = (id: string): number => Number.parseInt(id.replace('teeth-', ''), 10);
 
-    const nextRestorations = { ...restorations };
-    const nextShades = { ...shades };
-    const nextMaterials = { ...materials };
-    if (!nextRestorations[tooth]) nextRestorations[tooth] = activeRestoration || "crown";
-    if (!nextShades[tooth]) nextShades[tooth] = activeShade || "A2";
-    if (!nextMaterials[tooth]) nextMaterials[tooth] = activeMaterial || defaultMaterial;
+  /* Quick prep assignment straight from the chart: the chips colour every
+     selected unit the same way `Teeth & Shade` does. A menu appears the moment
+     something is charted — no trip down to the inspector mid-flow. */
+  const applyPrepToSelection = (prep: string) => {
+    if (selected.length === 0) return;
+    const next = { ...restorations };
+    selected.forEach((t) => {
+      next[t] = prep;
+    });
+    setRestorations(next);
+    emitChange(selected, next, shades, materials);
+  };
 
-    setSelected(nextSelected);
-    setRestorations(nextRestorations);
-    setShades(nextShades);
-    setMaterials(nextMaterials);
-    emitChange(nextSelected, nextRestorations, nextShades, nextMaterials);
-  }
-
-  function selectGroup(teethIds: number[]) {
-    const isAlreadySelected =
-      selected.length === teethIds.length &&
-      teethIds.every((t) => selectedSet.has(t));
-    const nextSelected = isAlreadySelected ? [] : teethIds;
-
+  /* One path for every selection change we originate (arch buttons, the per-tooth
+     remove X, "clear"). Restoration/shade/material defaults are defaulted for
+     newly charted teeth, the chart is reseeded, and the parent is notified. */
+  function applySelection(
+    nextSelected: number[],
+    focusTooth?: number | null,
+  ) {
     const nextRestorations = { ...restorations };
     const nextShades = { ...shades };
     const nextMaterials = { ...materials };
@@ -460,8 +532,54 @@ function Odontogram({
     setRestorations(nextRestorations);
     setShades(nextShades);
     setMaterials(nextMaterials);
-    setSelectedToothId(nextSelected.length > 0 ? nextSelected[0] : null);
+    if (focusTooth !== undefined) setSelectedToothId(focusTooth);
+    setChartKey((k) => k + 1);
     emitChange(nextSelected, nextRestorations, nextShades, nextMaterials);
+  }
+
+  /* The chart owns its internal state and reports the WHOLE selection on every
+     change. We reconcile that with our per-tooth bookkeeping and keep the
+     inspector pointed at the most recently charted tooth. */
+  function handleChartSelection(items: ToothDetail[]) {
+    const next = items.map((t) => parseToothId(t.id)).sort((a, b) => a - b);
+    const nextRestorations = { ...restorations };
+    const nextShades = { ...shades };
+    const nextMaterials = { ...materials };
+    next.forEach((t) => {
+      if (!nextRestorations[t]) nextRestorations[t] = activeRestoration || "crown";
+      if (!nextShades[t]) nextShades[t] = activeShade || "A2";
+      if (!nextMaterials[t]) nextMaterials[t] = activeMaterial || defaultMaterial;
+    });
+
+    setSelected(next);
+    setRestorations(nextRestorations);
+    setShades(nextShades);
+    setMaterials(nextMaterials);
+
+    const added = next.find((id) => !selectedSet.has(id));
+    if (added !== undefined) {
+      setSelectedToothId(added);
+    } else if (next.length === 0) {
+      setSelectedToothId(null);
+    } else {
+      setSelectedToothId((current) =>
+        current !== null && next.includes(current) ? current : next[next.length - 1],
+      );
+    }
+    emitChange(next, nextRestorations, nextShades, nextMaterials);
+  }
+
+  function toggleTooth(tooth: number) {
+    const isSel = selectedSet.has(tooth);
+    const next = isSel ? selected.filter((t) => t !== tooth) : [...selected, tooth].sort((a, b) => a - b);
+    applySelection(next, isSel ? (next.length ? next[0] : null) : tooth);
+  }
+
+  function selectGroup(teethIds: number[]) {
+    const isAlreadySelected =
+      selected.length === teethIds.length &&
+      teethIds.every((t) => selectedSet.has(t));
+    applySelection(isAlreadySelected ? [] : [...teethIds], isAlreadySelected ? null : teethIds[0] ?? null);
   }
 
   /**
@@ -489,13 +607,6 @@ function Odontogram({
     emitChange(selected, restorations, nextShades, materials);
   }
 
-  function updateToothDetailField(tooth: number, key: keyof ToothDetailData, val: any) {
-    const current = toothDetailsState[tooth] || { tooth_number: tooth };
-    const updated = { ...toothDetailsState, [tooth]: { ...current, [key]: val } };
-    setToothDetailsState(updated);
-    emitChange(selected, restorations, shades, materials, updated);
-  }
-
   // Active tooth information for the inspector
   const activeToothObj = selectedToothId ? {
     tooth: selectedToothId,
@@ -505,10 +616,6 @@ function Odontogram({
     restoration: restorations[selectedToothId] || activeRestoration || "crown",
     material: materials[selectedToothId] || activeMaterial || defaultMaterial,
     shade: shades[selectedToothId] || activeShade || "A2",
-    details: toothDetailsState[selectedToothId] || {
-      tooth_number: selectedToothId,
-      notes: ""
-    },
   } : null;
 
   // Restoration breakdown for the summary strip
@@ -523,13 +630,28 @@ function Odontogram({
       else counts.other++;
     });
 
+    const BAR_COLORS = {
+      crown: "var(--brand-600)",
+      implant: "#c084fc",
+      veneer: "#a78bfa",
+      inlay_onlay: "#34d399",
+      pontic: "#fbbf24",
+      abutment: "#22d3ee",
+    } as const;
+    const pick = (count: number, fill: string, label: string) => ({
+      label,
+      count,
+      pct: selected.length ? Math.round((count / total) * 100) : 0,
+      fill,
+    });
+
     return [
-      { label: "Crowns", count: counts.crown, pct: selected.length ? Math.round((counts.crown / total) * 100) : 0, bg: "bg-brand-600" },
-      { label: "Implants", count: counts.implant, pct: selected.length ? Math.round((counts.implant / total) * 100) : 0, bg: "bg-purple-400" },
-      { label: "Veneers", count: counts.veneer, pct: selected.length ? Math.round((counts.veneer / total) * 100) : 0, bg: "bg-violet-400" },
-      { label: "Inlays/Onlays", count: counts.inlay_onlay, pct: selected.length ? Math.round((counts.inlay_onlay / total) * 100) : 0, bg: "bg-emerald-400" },
-      { label: "Pontics", count: counts.pontic, pct: selected.length ? Math.round((counts.pontic / total) * 100) : 0, bg: "bg-amber-400" },
-      { label: "Abutments", count: counts.abutment, pct: selected.length ? Math.round((counts.abutment / total) * 100) : 0, bg: "bg-cyan-400" },
+      pick(counts.crown, BAR_COLORS.crown, "Crowns"),
+      pick(counts.implant, BAR_COLORS.implant, "Implants"),
+      pick(counts.veneer, BAR_COLORS.veneer, "Veneers"),
+      pick(counts.inlay_onlay, BAR_COLORS.inlay_onlay, "Inlays/Onlays"),
+      pick(counts.pontic, BAR_COLORS.pontic, "Pontics"),
+      pick(counts.abutment, BAR_COLORS.abutment, "Abutments"),
     ];
   }, [selected, restorations]);
 
@@ -542,13 +664,13 @@ function Odontogram({
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200 text-xs font-bold shadow-2xs">
+        <div className="dsp-arch-group" role="group" aria-label="Notation system">
           <button
             type="button"
             onClick={() => setNumbering("FDI")}
-            className={`px-3 py-1 rounded-xl transition-all cursor-pointer ${
-              numbering === "FDI" ? "bg-slate-900 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"
-            }`}
+            className="dsp-arch-btn"
+            data-active={numbering === "FDI"}
+            aria-pressed={numbering === "FDI"}
             title="World standard ISO FDI two-digit numbering (11-48)"
           >
             FDI (11–48)
@@ -556,211 +678,309 @@ function Odontogram({
           <button
             type="button"
             onClick={() => setNumbering("Universal")}
-            className={`px-3 py-1 rounded-xl transition-all cursor-pointer ${
-              numbering === "Universal" ? "bg-slate-900 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"
-            }`}
+            className="dsp-arch-btn"
+            data-active={numbering === "Universal"}
+            aria-pressed={numbering === "Universal"}
             title="Universal numbering system (1–32)"
           >
             Universal (1–32)
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => selectGroup(UPPER_PANORAMIC_TEETH)} className="dsp-chip">Upper Arch</button>
-          <button type="button" onClick={() => selectGroup(LOWER_PANORAMIC_TEETH)} className="dsp-chip">Lower Arch</button>
-          <button type="button" onClick={() => selectGroup(ALL_TEETH)} className="dsp-chip dsp-chip-accent">All 32 Units</button>
-          {selected.length > 0 && (
+        <div className="dsp-arch-row">
+          <div className="dsp-arch-group" role="group" aria-label="Arch selection">
             <button
               type="button"
-              onClick={() => {
-                setSelected([]);
-                setSelectedToothId(null);
-                emitChange([], restorations, shades, materials);
-              }}
-              className="dsp-chip dsp-chip-clear"
+              onClick={() => selectGroup(UPPER_PANORAMIC_TEETH)}
+              className="dsp-arch-btn"
+              data-active={UPPER_PANORAMIC_TEETH.every((t) => selectedSet.has(t))}
+              aria-pressed={UPPER_PANORAMIC_TEETH.every((t) => selectedSet.has(t))}
             >
-              <Trash2 className="w-3.5 h-3.5" /> Clear ({selected.length})
+              Upper Arch
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => selectGroup(LOWER_PANORAMIC_TEETH)}
+              className="dsp-arch-btn"
+              data-active={LOWER_PANORAMIC_TEETH.every((t) => selectedSet.has(t))}
+              aria-pressed={LOWER_PANORAMIC_TEETH.every((t) => selectedSet.has(t))}
+            >
+              Lower Arch
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => selectGroup(ALL_TEETH)}
+              className="dsp-arch-all"
+              data-active={ALL_TEETH.every((t) => selectedSet.has(t))}
+              aria-pressed={ALL_TEETH.every((t) => selectedSet.has(t))}
+            >
+              All 32 Units
+            </button>
+            {selected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => applySelection([], null)}
+                className="dsp-arch-clear"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear ({selected.length})
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Main 2-column layout: chart + inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
 
-        {/* Chart column */}
-        <div className="lg:col-span-8 flex flex-col gap-4">
-          <div className="bg-white rounded-3xl p-4 md:p-5 shadow-xs border border-slate-200">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        {/* Chart column — full width */}
+        <div className="lg:col-span-12 flex flex-col gap-4">
+          <div className="dsp-odontogram-lib">
+            <div className="dsp-panel-head">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-brand-600 animate-pulse"></span>
-                  Interactive Dental Odontogram (FDI Charting)
+                <h3 className="dsp-panel-title">
+                  <span className="dsp-panel-pulse" aria-hidden="true"></span>
+                  Interactive Dental Odontogram
+                  <span className="dsp-panel-title-note">({numbering} Charting)</span>
                 </h3>
-                <p className="text-[11px] text-ink-muted mt-0.5">
+                <p className="dsp-panel-sub">
                   Click any tooth to select it, then assign restoration, material, and shade.
                 </p>
               </div>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-600/20">
-                {selected.length} Units Active
+              <span className="dsp-panel-units">
+                {selected.length} {selected.length === 1 ? 'Unit' : 'Units'} Active
               </span>
             </div>
 
-            <svg
-              className="dsp-chart-svg"
-              viewBox="0 0 1000 690"
-              preserveAspectRatio="xMidYMid meet"
-              role="img"
-              aria-label="32 tooth FDI dental odontogram"
-            >
-              {/* Arch guides */}
-              <path d="M 112 130 Q 500 16 888 130" className="dsp-arch-guide" />
-              <path d="M 112 545 Q 500 662 888 545" className="dsp-arch-guide" />
-
-              {/* Midline */}
-              <line x1="500" y1="58" x2="500" y2="648" className="dsp-midline" />
-
-              {/* Jaw labels */}
-              <text x="500" y="34" textAnchor="middle" className="dsp-jaw-label">MAXILLA</text>
-              <text x="500" y="676" textAnchor="middle" className="dsp-jaw-label">MANDIBLE</text>
-
-              {/* All 32 teeth — FDI id is the identity */}
-              {teeth.map((tooth) => (
-                <ToothNode
-                  key={tooth.id}
-                  tooth={tooth}
-                  selected={tooth.selected}
-                  displayNumber={getDisplayNumber(tooth.id)}
-                  onClick={() => toggleTooth(tooth.id)}
-                />
-              ))}
-            </svg>
-
-            {/* Clinical color legend */}
-            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-3 pt-3 border-t border-slate-100 text-[11px] font-medium text-slate-500">
-              <span className="inline-flex items-center gap-1.5"><span className="dsp-dot" style={{ background: "#4f46e5" }}></span> Crown</span>
-              <span className="inline-flex items-center gap-1.5"><span className="dsp-dot" style={{ background: "#9333ea" }}></span> Implant</span>
-              <span className="inline-flex items-center gap-1.5"><span className="dsp-dot" style={{ background: "#8b5cf6" }}></span> Veneer</span>
-              <span className="inline-flex items-center gap-1.5"><span className="dsp-dot" style={{ background: "#10b981" }}></span> Inlay / Onlay</span>
-              <span className="inline-flex items-center gap-1.5"><span className="dsp-dot" style={{ background: "#f59e0b" }}></span> Bridge Pontic</span>
-              <span className="inline-flex items-center gap-1.5"><span className="dsp-dot" style={{ background: "#0891b2" }}></span> Abutment</span>
-              <span className="inline-flex items-center gap-1.5"><span className="dsp-dot" style={{ background: "#7c3aed" }}></span> Post &amp; Core</span>
+            <div ref={chartWrapRef} className="flex flex-col">
+              {/* Notation strip — upper arch, sits ABOVE the teeth */}
+              {numberOverlay && (
+                <svg viewBox={`0 0 ${NUMBER_STRIP_WIDTH} 22`} className="dsp-number-strip" aria-hidden="true">
+                  {numberOverlay.upper.map(({ id, x }) => (
+                    <text
+                      key={id}
+                      x={x}
+                      y="11"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      className="dsp-number-label"
+                    >
+                      {getDisplayNumber(id)}
+                    </text>
+                  ))}
+                </svg>
+              )}
+              <ReactOdontogram
+                key={chartKey}
+                theme={isDark ? 'dark' : 'light'}
+                colors={isDark
+                  ? { darkBlue: '#aab6ff', baseBlue: '#d0d5f6', lightBlue: '#5361e6' }
+                  : { darkBlue: '#3e5edc', baseBlue: '#475569', lightBlue: '#c6ccf8' }}
+                notation={numbering === "FDI" ? "FDI" : "Universal"}
+                layout="square"
+                className="w-full"
+                defaultSelected={selected.map((t) => `teeth-${t}`)}
+                teethConditions={conditionGroups}
+                onChange={handleChartSelection}
+                tooltip={{
+                  content: (payload) =>
+                    payload ? (
+                      <span className="block leading-snug">
+                        <span className="block font-bold">
+                          {TOOTH_NAMES[parseToothId(payload.id)] || payload.type}
+                        </span>
+                        <span className="block text-[10px] opacity-75">
+                          {payload.type} · Universal {payload.notations.universal} · Palmer {payload.notations.palmer}
+                        </span>
+                      </span>
+                    ) : null,
+                }}
+              />
+              {/* Notation strip — lower arch, sits BELOW the teeth */}
+              {numberOverlay && (
+                <svg viewBox={`0 0 ${NUMBER_STRIP_WIDTH} 22`} className="dsp-number-strip" aria-hidden="true">
+                  {numberOverlay.lower.map(({ id, x }) => (
+                    <text
+                      key={id}
+                      x={x}
+                      y="11"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      className="dsp-number-label"
+                    >
+                      {getDisplayNumber(id)}
+                    </text>
+                  ))}
+                </svg>
+              )}
             </div>
-          </div>
+
+            {/* Quick prep menu — appears the moment teeth are charted */}
+            {selected.length > 0 && (
+              <div className="dsp-prep-menu" role="toolbar" aria-label="Set prep type for selected teeth">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+                  <span className="dsp-prep-menu-label whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.16em]">
+                    Set prep · <span className="dsp-prep-menu-count">{selected.length} unit{selected.length === 1 ? "" : "s"}</span>
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {PREP_MENU.map((option) => {
+                      const active = selected.every((t) => (restorations[t] || "crown") === option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => applyPrepToSelection(option.id)}
+                          aria-pressed={active}
+                          title={`Set every selected tooth to ${option.label}`}
+                          className={`dsp-prep-chip ${active ? "dsp-prep-chip-active" : ""}`}
+                        >
+                          <span
+                            className="dsp-prep-chip-dot"
+                            style={{ background: option.color.fillColor, borderColor: option.color.outlineColor }}
+                          />
+                          <span>{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => applySelection([], null)}
+                  className="dsp-prep-chip dsp-prep-chip-clear"
+                  title="Clear the selection"
+                  aria-label="Clear the selection"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
+            </div>
 
           {/* Restoration breakdown */}
-          <div className="bg-white rounded-3xl p-4 md:p-5 shadow-xs border border-slate-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-brand-600" />
-                Case Restorations Breakdown ({selected.length} Units)
+          <div className="dsp-breakdown-card">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider dsp-spec-h flex items-center gap-2">
+                <Activity className="w-4 h-4 text-brand-600" aria-hidden="true" />
+                Case Restorations Breakdown
+                <span className="dsp-panel-units">{selected.length} Units</span>
               </h3>
-              <span className="text-[11px] text-ink-muted font-semibold">Active Restorations</span>
+              <span className="dsp-spec-muted text-[11px] font-semibold">Active Restorations</span>
             </div>
-            <div className="grid grid-cols-6 gap-3 items-end h-24 px-2 text-center select-none">
-              {conditionStats.map((stat, i) => (
-                <div key={i} className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="text-[11px] font-bold text-slate-800">
-                    {stat.count} <span className="text-[9px] text-ink-muted font-normal">({stat.pct}%)</span>
+            <div className="grid grid-cols-6 gap-2 sm:gap-3 select-none">
+              {conditionStats.map((stat) => (
+                <div key={stat.label} className="flex flex-col items-center gap-1.5 min-w-0">
+                  <span className="dsp-breakdown-count">
+                    {stat.count}
+                    <span className="dsp-breakdown-pct">{stat.pct}%</span>
                   </span>
                   <div
-                    className={`w-full max-w-[38px] ${stat.bg} rounded-xl transition-all duration-300 shadow-2xs`}
-                    style={{ height: `${Math.max(12, Math.min(100, stat.pct * 2.2))}%` }}
-                  ></div>
-                  <span className="text-[10px] font-medium text-slate-500 truncate w-full">{stat.label}</span>
+                    className="dsp-breakdown-track"
+                    role="img"
+                    aria-label={`${stat.label}: ${stat.count} of ${selected.length} units (${stat.pct}%)`}
+                  >
+                    <div
+                      className="dsp-breakdown-fill"
+                      style={{
+                        height: `${stat.count > 0 ? Math.max(10, stat.pct) : 0}%`,
+                        background: stat.fill,
+                      }}
+                    />
+                  </div>
+                  <span className="dsp-breakdown-label">{stat.label}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Inspector column */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
-          {activeToothObj ? (
-            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200">
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                  Tooth Specification
-                </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-brand-50 text-brand-700 border border-brand-600/20">
-                  Unit #{activeToothObj.displayNum}
-                </span>
-              </div>
+        {/* Inspector column — moved below the chart so the teeth get the room */}
+        <div className="lg:col-span-12 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+          {/* Tooth Specification — always visible; disabled until a tooth is charted */}
+          <div className="dsp-spec-card">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b dsp-spec-divider">
+              <h2 className="text-xs font-bold uppercase tracking-wider dsp-spec-h">
+                Tooth Specification
+              </h2>
+              <span className="dsp-spec-chip-unit inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black uppercase">
+                {activeToothObj ? `Unit #${activeToothObj.displayNum}` : 'No unit'}
+              </span>
+            </div>
 
-              {/* Identification */}
-              <div className="flex items-start gap-3.5 pb-4 border-b border-slate-100">
-                <div className="w-12 h-16 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs">
-                  <ToothThumbnail type={activeToothObj.type} shade={SHADE_COLORS[activeToothObj.shade] || "#ffffff"} prep={activeToothObj.restoration} />
-                </div>
-                <div className="leading-tight flex-1 min-w-0">
-                  <h3 className="text-sm font-black text-brand-700 truncate">
+            {/* Identification */}
+            <div className="flex items-start gap-3.5 pb-4 border-b dsp-spec-divider">
+              <div className="dsp-spec-thumb w-12 h-16 rounded-xl border flex items-center justify-center shrink-0 shadow-2xs">
+                <ToothThumbnail
+                  type={activeToothObj ? activeToothObj.type : 'central-incisor'}
+                  shade={activeToothObj ? SHADE_COLORS[activeToothObj.shade] || '#ffffff' : '#ffffff'}
+                  prep={activeToothObj ? activeToothObj.restoration : 'crown'}
+                />
+              </div>
+              <div className="leading-tight flex-1 min-w-0">
+                {activeToothObj ? (
+                  <h3 className="text-sm font-black dsp-spec-ink truncate">
                     {activeToothObj.name}
                   </h3>
-                </div>
+                ) : (
+                  <>
+                    <h3 className="text-sm font-black dsp-spec-muted truncate">No tooth charted</h3>
+                    <p className="mt-1 text-[10px] dsp-spec-muted leading-snug">
+                      Click any tooth on the chart to assign a restoration, material and shade.
+                    </p>
+                  </>
+                )}
               </div>
+            </div>
 
-              {/* Shade */}
-              <div className="py-3 border-b border-slate-100 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    VITA Shade Guide:
-                  </label>
-                  <span className="text-xs font-mono font-bold text-brand-700">{activeToothObj.shade}</span>
-                </div>
-                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
-                  {activeShadeList.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => applyShade(s)}
-                      className={`px-2 py-1 text-[10px] font-mono font-bold rounded-md border flex items-center gap-1 transition-all cursor-pointer ${
-                        activeToothObj.shade === s
-                          ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                          : "bg-white hover:bg-slate-100 text-slate-600 border-slate-200"
-                      }`}
-                    >
-                      <span
-                        className="w-2.5 h-2.5 rounded-full border border-slate-400/40"
-                        style={{ background: SHADE_COLORS[s] || "#FFFFFF" }}
-                      />
-                      <span>{s}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Per-tooth notes (prefix "C:" flags caries, "F:" flags a filling marker) */}
-              <div className="pt-3">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                  Per-Tooth Notes (Unit #{activeToothObj.tooth}):
+            {/* Shade */}
+            <div className="py-3 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider dsp-spec-eyebrow">
+                  VITA Shade Guide:
                 </label>
-                <textarea
-                  rows={2}
-                  value={activeToothObj.details.notes || ""}
-                  onChange={(e) => updateToothDetailField(activeToothObj.tooth, "notes", e.target.value)}
-                  placeholder="Incisal translucency, margin finish line, stump shade..."
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-600 resize-none text-slate-900"
-                />
-                <p className="mt-1 text-[10px] text-ink-muted">
-                  Chart markers: start a note with <span className="font-mono font-bold text-slate-500">C:</span> for caries or <span className="font-mono font-bold text-slate-500">F:</span> for an intracoronal filling.
-                </p>
+                <span className="text-xs font-mono font-bold dsp-shade-value">
+                  {activeToothObj ? activeToothObj.shade : '—'}
+                </span>
               </div>
+              <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
+                {activeShadeList.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => applyShade(s)}
+                    disabled={!activeToothObj}
+                    aria-pressed={activeToothObj?.shade === s}
+                    className={`dsp-shade-chip ${activeToothObj?.shade === s ? 'dsp-shade-chip-active' : ''} ${!activeToothObj ? 'dsp-shade-chip-empty' : ''}`}
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full border border-slate-400/40"
+                      style={{ background: SHADE_COLORS[s] || '#FFFFFF' }}
+                    />
+                    <span>{s}</span>
+                  </button>
+                ))}
+              </div>
+              {!activeToothObj && (
+                <p className="text-[10px] dsp-spec-muted pt-1">
+                  The guide stays open for planning — it activates the moment a tooth is selected.
+                </p>
+              )}
             </div>
-          ) : (
-            <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200 text-center py-12">
-              <Stethoscope className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-900">No tooth currently selected</p>
-              <p className="text-[11px] text-ink-muted mt-0.5">Click any tooth on the dental chart to inspect and configure.</p>
-            </div>
-          )}
+          </div>
 
           {/* Selected units list */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1">
-              Case Selected Teeth Units ({selected.length})
-            </h4>
+          <div className="dsp-units-card space-y-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b dsp-spec-divider pb-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider dsp-spec-h">
+                Case Selected Teeth Units ({selected.length})
+              </h4>
+              <span className="text-[11px] font-semibold dsp-spec-muted">Units in this job</span>
+            </div>
             {selected.length === 0 ? (
-              <div className="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-xs text-ink-muted">
+              <div className="dsp-units-empty p-4 text-center text-xs dsp-spec-muted">
                 No units assigned yet.
               </div>
             ) : (
@@ -773,22 +993,22 @@ function Odontogram({
                     <div
                       key={t}
                       onClick={() => setSelectedToothId(t)}
-                      className={`p-2.5 bg-white rounded-2xl border transition-all flex items-center justify-between cursor-pointer hover:border-brand-600/40 ${
-                        isCurrent ? "border-brand-600 ring-2 ring-brand-600/15 shadow-xs" : "border-slate-200"
+                      className={`p-2.5 dsp-units-row flex items-center justify-between cursor-pointer ${
+                        isCurrent ? "dsp-units-row-active" : ""
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-10 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shrink-0">
-                          <span className="font-mono font-black text-xs text-slate-900">
+                        <div className="dsp-spec-thumb w-8 h-10 rounded-lg border flex items-center justify-center p-1 shrink-0">
+                          <span className="font-mono font-black text-xs dsp-spec-ink">
                             #{getDisplayNumber(t)}
                           </span>
                         </div>
                         <div className="leading-tight min-w-0">
-                          <h4 className="text-xs font-bold text-slate-900 truncate">
+                          <h4 className="text-xs font-bold dsp-spec-ink truncate">
                             {TOOTH_NAMES[t] ? TOOTH_NAMES[t].split("(")[0] : `Tooth #${t}`}
                           </h4>
-                          <p className="text-[10px] text-slate-500 mt-0.5 truncate">
-                            {mat.split("(")[0]} • <span className="font-bold text-brand-700">{s}</span>
+                          <p className="text-[10px] dsp-spec-muted mt-0.5 truncate">
+                            {mat.split("(")[0]} • <span className="font-bold dsp-shade-value">{s}</span>
                           </p>
                         </div>
                       </div>
@@ -798,7 +1018,7 @@ function Odontogram({
                           e.stopPropagation();
                           toggleTooth(t);
                         }}
-                        className="p-1.5 text-ink-muted hover:text-ink-danger hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        className="p-1.5 dsp-spec-muted hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
                         title="Deselect tooth"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -829,278 +1049,8 @@ function Odontogram({
 export default React.memo(Odontogram);
 
 /* =========================================================================
-   TOOTH NODE (SVG)
+   INSPECTOR THUMBNAIL — same tooth-type silhouette the spec card prints
    ========================================================================= */
-
-function ToothNode({
-  tooth,
-  selected,
-  displayNumber,
-  onClick,
-}: {
-  tooth: Tooth & { visual: ToothVisual; selected: boolean };
-  selected: boolean;
-  displayNumber: number | string;
-  onClick: () => void;
-}) {
-  const upper = tooth.arch === "upper";
-  const label = displayNumber;
-
-  return (
-    <g
-      className="dsp-tooth"
-      transform={`translate(${tooth.x} ${tooth.y}) rotate(${tooth.rotation})`}
-      onClick={onClick}
-      tabIndex={0}
-      role="button"
-      aria-label={`Tooth ${tooth.id}`}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onClick();
-        }
-      }}
-    >
-      {selected && (
-        <ellipse cx="0" cy="0" rx="24" ry="40" className="dsp-selection-halo" />
-      )}
-
-      {/* Posterior crowns get a slight horizontal taper so adjacent units never touch */}
-      <g transform={isPosterior(tooth.type) ? "scale(0.84 1)" : undefined}>
-        <ToothShape type={tooth.type} arch={tooth.arch} selected={selected} shade={tooth.visual.shade} />
-      </g>
-
-      <ClinicalOverlay
-        state={{
-          prep: tooth.visual.prep,
-          filling: !!tooth.visual.filling,
-          caries: !!tooth.visual.caries,
-        }}
-        arch={tooth.arch}
-        type={tooth.type}
-      />
-
-      <text
-        x="0"
-        y={upper ? "-56" : "56"}
-        textAnchor="middle"
-        className={selected ? "dsp-fdi-number dsp-fdi-active" : "dsp-fdi-number"}
-        transform={`rotate(${-tooth.rotation})`}
-      >
-        {label}
-      </text>
-    </g>
-  );
-}
-
-/* =========================================================================
-   ANATOMICAL TOOTH SHAPES — 8 differentiated types, upper/lower variants
-   ========================================================================= */
-
-function ToothShape({
-  type,
-  arch,
-  selected,
-  shade,
-}: {
-  type: ToothType;
-  arch: Arch;
-  selected: boolean;
-  shade?: string;
-}) {
-  const toothClass = selected ? "dsp-tooth-shape dsp-tooth-selected" : "dsp-tooth-shape";
-  const fill = shade ? SHADE_COLORS[shade] || "#ffffff" : "#ffffff";
-  const upper = arch === "upper";
-
-  switch (type) {
-    case "central-incisor":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -13 22 C -15 13 -15 1 -13 -11 C -12 -20 -8 -28 0 -30 C 8 -28 12 -20 13 -11 C 15 1 15 13 13 22 C 8 27 4 29 0 29 C -4 29 -8 27 -13 22 Z`
-            : `M -13 -22 C -15 -13 -15 -1 -13 11 C -12 20 -8 28 0 30 C 8 28 12 20 13 11 C 15 1 15 -13 13 -22 C 8 -27 4 -29 0 -29 C -4 -29 -8 -27 -13 -22 Z`}
-        />
-      );
-    case "lateral-incisor":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -11 21 C -13 11 -13 0 -11 -11 C -10 -19 -6 -25 0 -27 C 6 -25 10 -19 11 -11 C 13 0 13 11 11 21 C 6 26 3 27 0 27 C -3 27 -6 26 -11 21 Z`
-            : `M -11 -21 C -13 -11 -13 0 -11 11 C -10 19 -6 25 0 27 C 6 25 10 19 11 11 C 13 0 13 -11 11 -21 C 6 -26 3 -27 0 -27 C -3 -27 -6 -26 -11 -21 Z`}
-        />
-      );
-    case "canine":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -15 21 C -16 11 -15 0 -12 -12 C -9 -22 -4 -28 0 -36 C 4 -28 9 -22 12 -12 C 15 0 16 11 15 21 C 9 27 5 30 0 30 C -5 30 -9 27 -15 21 Z`
-            : `M -15 -21 C -16 -11 -15 0 -12 12 C -9 22 -4 28 0 36 C 4 28 9 22 12 12 C 15 0 16 -11 15 -21 C 9 -27 5 -30 0 -30 C -5 -30 -9 -27 -15 -21 Z`}
-        />
-      );
-    case "first-premolar":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -17 20 C -18 10 -17 0 -14 -11 C -12 -20 -8 -27 -3 -29 C -1 -26 -1 -22 0 -18 C 1 -22 2 -26 4 -29 C 9 -27 13 -20 15 -11 C 18 0 18 10 17 20 C 11 26 6 29 0 29 C -6 29 -11 26 -17 20 Z`
-            : `M -17 -20 C -18 -10 -17 0 -14 11 C -12 20 -8 27 -3 29 C -1 26 -1 22 0 18 C 1 22 2 26 4 29 C 9 27 13 20 15 11 C 18 0 18 -10 17 -20 C 11 -26 6 -29 0 -29 C -6 -29 -11 -26 -17 -20 Z`}
-        />
-      );
-    case "second-premolar":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -18 20 C -19 10 -18 0 -15 -11 C -13 -20 -9 -26 -3 -29 C -1 -26 -1 -23 0 -19 C 1 -23 2 -26 4 -29 C 9 -26 14 -20 16 -11 C 19 0 19 10 18 20 C 12 26 7 29 0 29 C -7 29 -12 26 -18 20 Z`
-            : `M -18 -20 C -19 -10 -18 0 -15 11 C -13 20 -9 26 -3 29 C -1 26 -1 23 0 19 C 1 23 2 26 4 29 C 9 26 14 20 16 11 C 19 0 19 -10 18 -20 C 12 -26 7 -29 0 -29 C -7 -29 -12 -26 -18 -20 Z`}
-        />
-      );
-    case "first-molar":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -23 20 C -25 9 -24 -3 -21 -13 C -18 -23 -12 -29 -5 -31 C -2 -29 -1 -25 0 -21 C 1 -25 3 -29 6 -31 C 13 -29 19 -23 22 -13 C 25 -3 25 9 23 20 C 17 27 9 31 0 31 C -9 31 -17 27 -23 20 Z`
-            : `M -23 -20 C -25 -9 -24 3 -21 13 C -18 23 -12 29 -5 31 C -2 29 -1 25 0 21 C 1 25 3 29 6 31 C 13 29 19 23 22 13 C 25 3 25 -9 23 -20 C 17 -27 9 -31 0 -31 C -9 -31 -17 -27 -23 -20 Z`}
-        />
-      );
-    case "second-molar":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -24 20 C -26 8 -25 -4 -21 -14 C -18 -23 -12 -29 -5 -31 C -2 -29 -1 -25 0 -21 C 1 -25 3 -29 6 -31 C 13 -29 19 -23 22 -14 C 26 -4 26 8 24 20 C 18 28 9 31 0 31 C -9 31 -18 28 -24 20 Z`
-            : `M -24 -20 C -26 -8 -25 4 -21 14 C -18 23 -12 29 -5 31 C -2 29 -1 25 0 21 C 1 25 3 29 6 31 C 13 29 19 23 22 14 C 26 4 26 -8 24 -20 C 18 -28 9 -31 0 -31 C -9 -31 -18 -28 -24 -20 Z`}
-        />
-      );
-    case "third-molar":
-      return (
-        <path
-          className={toothClass}
-          style={shade ? { fill } : undefined}
-          d={upper
-            ? `M -26 19 C -28 8 -27 -4 -23 -14 C -19 -24 -12 -29 -5 -30 C -2 -28 -1 -24 0 -20 C 2 -24 3 -28 7 -30 C 14 -29 21 -23 24 -14 C 28 -4 28 8 26 19 C 19 27 10 30 0 30 C -10 30 -19 27 -26 19 Z`
-            : `M -26 -19 C -28 -8 -27 4 -23 14 C -19 24 -12 29 -5 30 C -2 28 -1 24 0 20 C 2 24 3 28 7 30 C 14 29 21 23 24 14 C 28 4 28 -8 26 -19 C 19 -27 10 -30 0 -30 C -10 -30 -19 -27 -26 -19 Z`}
-        />
-      );
-  }
-}
-
-/* =========================================================================
-   CLINICAL OVERLAYS — conditions drawn on top of intact anatomy
-   ========================================================================= */
-
-function ClinicalOverlay({
-  state,
-  arch,
-  type,
-}: {
-  state: { prep?: string; filling?: boolean; caries?: boolean };
-  arch: Arch;
-  type: ToothType;
-}) {
-  const upper = arch === "upper";
-  const prep = state.prep;
-  const posterior = isPosterior(type);
-
-  return (
-    <g pointerEvents="none">
-      {/* Occlusal fissure pattern for posterior teeth */}
-      {posterior && (
-        <path
-          d={upper
-            ? `M -11 -3 L 0 5 L 11 -3 M 0 5 L -7 11 M 0 5 L 7 11`
-            : `M -11 3 L 0 -5 L 11 3 M 0 -5 L -7 -11 M 0 -5 L 7 -11`}
-          className="dsp-tooth-detail"
-        />
-      )}
-
-      {state.caries && (
-        <circle cx="0" cy="3" r="5" className="dsp-caries" />
-      )}
-
-      {state.filling && (
-        <path
-          d={`M -9 -3 Q 0 -10 9 -3 L 6 6 Q 0 10 -6 6 Z`}
-          className="dsp-filling"
-          transform={upper ? undefined : "scale(1,-1)"}
-        />
-      )}
-
-      {/* Prep-type overlays */}
-      {prep === "crown" && (
-        <path
-          d={upper
-            ? `M -19 -16 Q 0 -31 19 -16 L 15 13 Q 0 21 -15 13 Z`
-            : `M -19 16 Q 0 31 19 16 L 15 -13 Q 0 -21 -15 -13 Z`}
-          className="dsp-crown"
-        />
-      )}
-      {prep === "veneer" && (
-        <path
-          d={upper
-            ? `M -13 -20 C -14 -8 -14 6 -12 18`
-            : `M -13 20 C -14 8 -14 -6 -12 -18`}
-          className="dsp-veneer"
-        />
-      )}
-      {prep === "inlay_onlay" && (
-        <path
-          d={upper
-            ? `M -9 -2 L 0 4 L 9 -2 M 0 4 L -5 9 M 0 4 L 5 9`
-            : `M -9 2 L 0 -4 L 9 2 M 0 -4 L -5 -9 M 0 -4 L 5 -9`}
-          className="dsp-inlay"
-        />
-      )}
-      {prep === "pontic" && (
-        <ellipse cx="0" cy={upper ? 8 : -8} rx="14" ry="9" className="dsp-pontic" />
-      )}
-      {prep === "abutment" && (
-        <g>
-          <rect x="-8" y={upper ? 10 : -18} width="16" height="8" rx="2" className="dsp-abutment" />
-        </g>
-      )}
-      {prep === "implant" && (
-        <g>
-          <rect x="-5" y={upper ? -18 : -18} width="10" height="36" rx="3" className="dsp-implant" />
-          <path
-            d={`M -5 -11 H 5 M -5 -4 H 5 M -5 3 H 5 M -5 10 H 5`}
-            className="dsp-implant-lines"
-          />
-        </g>
-      )}
-      {prep === POST_CORE && (
-        <path
-          d={upper ? `M 0 -18 L 0 19` : `M 0 18 L 0 -19`}
-          className="dsp-post-core"
-        />
-      )}
-      {prep === "coping" && (
-        <path
-          d={upper
-            ? `M -17 -14 Q 0 -28 17 -14 L 13 12 Q 0 19 -13 12 Z`
-            : `M -17 14 Q 0 28 17 14 L 13 -12 Q 0 -19 -13 -12 Z`}
-          className="dsp-coping"
-        />
-      )}
-    </g>
-  );
-}
-
-/* =========================================================================
-   INSPECTOR THUMBNAIL — same anatomy as the chart, rendered from ToothType
-   ========================================================================= */
-
 function ToothThumbnail({ type, shade, prep }: { type: ToothType; shade: string; prep: string }) {
   const paths: Record<ToothType, string> = {
     "central-incisor": "M 6 28 C 4 20 4 10 6 2 C 9 -1 15 -1 18 2 C 20 10 20 20 18 28 C 15 31 9 31 6 28 Z",

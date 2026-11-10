@@ -68,7 +68,7 @@ const MainAppContent: React.FC = () => {
    * Module locks are opened per visit, not per session. The gate components
    * remember an unlock in the service's session set; this shell effect closes
    * the module the operator just left, so coming back asks again. Switching
-   * between views of the SAME module (Invoice Recording ↔ Print Invoices,
+   * between views of the SAME module (Payment Receive ↔ Print Invoices,
    * Ledger ↔ Statements) does not touch the unlock.
    */
   const currentModule = moduleForView(currentView);

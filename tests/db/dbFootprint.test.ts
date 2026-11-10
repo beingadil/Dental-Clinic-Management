@@ -22,8 +22,12 @@ import { SqliteEngine } from '../../src/db/engine';
  * (twelve indexes dropped, one replacement created).
  */
 
+// Migration 030 added `month_closes` (month, clinic, totals, closed_by/at) for
+// the month-end closing feature: ~10KB is the table's own floor. The index it
+// carries comes from the UNIQUE(month, lab_id) constraint, so the index count
+// held at 17 — no redundant index was added for this query.
 const PAGE = 4096;
-const FLOOR_CEILING = 555000;
+const FLOOR_CEILING = 570000;
 
 let SQL: any;
 let engine: SqliteEngine;

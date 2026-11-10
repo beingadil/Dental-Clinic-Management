@@ -35,6 +35,7 @@ import {
   BookOpen,
   FileSpreadsheet,
   FileText,
+  HandCoins,
 } from 'lucide-react';
 import type { TabItem } from './ui';
 
@@ -65,7 +66,7 @@ export type BillingTab = 'invoices';
  * The audit trail is not lost data: audit events are still recorded and still
  * reachable through the journal inspector. It is no longer a separate screen.
  */
-export type ReportsTab = 'general_ledger' | 'statements' | 'insights';
+export type ReportsTab = 'general_ledger' | 'statements' | 'insights' | 'payments';
 
 /**
  * The sidebar entry the Reports group opens on.
@@ -96,6 +97,7 @@ export const REPORTS_TABS = [
   { id: 'general_ledger', label: 'General Ledger', icon: BookOpen },
   { id: 'statements', label: 'Reports & Statements', icon: FileSpreadsheet },
   { id: 'insights', label: 'Insight', icon: BarChart3 },
+  { id: 'payments', label: 'Clinic Payments', icon: HandCoins },
 ] as const satisfies readonly TabItem<ReportsTab>[];
 
 /**
@@ -116,7 +118,7 @@ export const reportsTabForView = (view: string): ReportsTab | null => {
 /**
  * The two surfaces of the Reports group, as sidebar children.
  *
- * Billing & Invoices was split into a group of two views (Invoice Rec, Print
+ * Billing & Invoices was split into a group of two views (Payment Receive, Print
  * Invoices) and the operator asked for the same shape here: General Ledger and
  * Reports & Statements are separate destinations in the rail, not a tab strip
  * inside one page. Deriving the children from REPORTS_TABS keeps the rail, the

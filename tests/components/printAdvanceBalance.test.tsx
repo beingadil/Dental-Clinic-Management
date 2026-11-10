@@ -46,7 +46,7 @@ const renderStatement = (invoice: Invoice, advanceBalance: number) =>
   render(
     <PrintDocument
       kind="statement"
-      sections={['invoiceTable', 'balanceSummary']}
+      sections={['invoiceTable', 'openingBalance', 'invoiceAmount', 'cashPaid', 'closingBalance']}
       branding={branding}
       invoices={[invoice]}
       cases={[]}

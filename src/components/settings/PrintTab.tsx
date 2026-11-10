@@ -7,6 +7,7 @@ import {
   loadInvoiceSectionsAdoptingSummary,
   saveDocumentSections,
   setInvoiceSummaryExcluded,
+  isAccountBalanceRow,
   PrintSettings,
 } from '../../services/printSettings';
 import { DocumentKind, PRINT_SECTIONS, DEFAULT_ENABLED } from '../print/printRenderer';
@@ -44,9 +45,10 @@ export const PrintTab: React.FC = () => {
     /* The invoice account summary has an adoption marker: an explicit off here
        has to be recorded, or the next invoice preview would add it back. */
     if (sectionKind === 'invoice') {
-      const had = (docSections.invoice || []).includes('balanceSummary');
-      if (had && !next.includes('balanceSummary')) setInvoiceSummaryExcluded(true);
-      else if (next.includes('balanceSummary')) setInvoiceSummaryExcluded(false);
+      const had = (docSections.invoice || []).some(isAccountBalanceRow);
+      const has = next.some(isAccountBalanceRow);
+      if (had && !has) setInvoiceSummaryExcluded(true);
+      else if (has) setInvoiceSummaryExcluded(false);
     }
     setDocSections((prev) => ({ ...prev, [sectionKind]: next }));
     saveDocumentSections(sectionKind, next);
