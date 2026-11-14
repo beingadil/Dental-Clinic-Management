@@ -1,3 +1,12 @@
+## [2.31.28] - 2026-11-14
+
+### Fixed
+- The tag-vs-version gate in the desktop CI job was syntactically invalid
+  PowerShell; it aborted every tagged release before the installer could
+  build. Split the tag comparison out of the 'if' condition. v2.31.27
+  carried this failure and never produced an installer; this release is
+  that fix shipped.
+
 ## [2.31.27] - 2026-11-14
 
 The security and delivery release: it fixes what an internal audit
