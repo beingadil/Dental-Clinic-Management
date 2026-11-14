@@ -1,3 +1,26 @@
+## [2.31.26] - 2026-11-10
+
+The General Ledger now opens the invoice you were just reading.
+
+### Added
+- General Ledger: every invoice row carries its invoice number as a chip.
+  Clicking it opens the invoice document — correct payments and adjustments,
+  void the invoice, or print its statement — on the same drawer Billing uses.
+  The void and adjustment actions were not permission-gated in this build;
+  that gap was closed in the following release after a security audit found a
+  read-only role could void an invoice and move money.
+
+### Changed
+- Print Invoices and batch print: the statement's "This period's invoices"
+  figure now counts only the invoices selected for printing (the account
+  position otherwise covers the whole period), and the advance-applied
+  figure follows the same selection.
+- New cases now always start at Medium ('normal'), and a new case's delivery
+  date always derives from its (Medium) priority's SLA. The Settings
+  "Default Priority for New Cases" control became inert on 2.31.25 and has
+  now been removed; if the lab-default is wanted back, it returns together
+  with reading the preference.
+
 ## [2.31.25] - 2026-11-10
 
 Security fix: the bundled C SQLite was below the advisory floor. The

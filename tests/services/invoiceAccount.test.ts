@@ -405,6 +405,58 @@ describe('statement account position — period dated opening and closing', () =
     expect(position.unallocatedAdvance).toBe(50000);
   });
 
+  it('never counts another clinic’s advance applications against this one', () => {
+    const mine = mirInvoices().map((inv) =>
+      inv.id === 'mir-inv-1'
+        ? {
+            ...inv,
+            payments: [
+              ...(inv.payments || []),
+              paymentWith({
+                id: 'mir-alloc',
+                invoice_id: 'mir-inv-1',
+                amount: 5000,
+                payment_method: 'advance',
+                payment_type: 'advance_allocation',
+                payment_date: '2026-09-12',
+              }),
+            ],
+          }
+        : inv,
+    );
+    const otherClinicInvoice = invoiceWith({
+      id: 'other-inv-1',
+      invoice_number: 'INV-9001',
+      lab_id: 'lab-2',
+      final_amount: 40000,
+      amount_paid: 20000,
+      payment_status: 'partial',
+      created_at: '2026-09-10',
+      issue_date: '2026-09-10',
+      payments: [
+        paymentWith({
+          id: 'other-alloc',
+          invoice_id: 'other-inv-1',
+          amount: 20000,
+          payment_method: 'advance',
+          payment_type: 'advance_allocation',
+          payment_date: '2026-09-12',
+        }),
+      ],
+    });
+
+    const position = buildPeriod({
+      period: { from: '2026-09-01', to: '2026-09-30' },
+      invoices: [...mine, otherClinicInvoice],
+      advances: [mirAdvance()],
+    });
+
+    // Mir Dental applied 5,000 of its own deposit. The other clinic's 20,000
+    // application rides on an invoice that is not ours.
+    expect(position.advanceApplied).toBe(5000);
+    expect(position.unallocatedAdvance).toBe(45000);
+  });
+
   it('never lets a post-period receipt leak backwards into the opening', () => {
     const invoices = mirInvoices();
     // The 23,000 arrived in October, after the September statement closed.

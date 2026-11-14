@@ -1051,7 +1051,9 @@ export default React.memo(Odontogram);
 /* =========================================================================
    INSPECTOR THUMBNAIL — same tooth-type silhouette the spec card prints
    ========================================================================= */
-function ToothThumbnail({ type, shade, prep }: { type: ToothType; shade: string; prep: string }) {
+/** Memoized: mounts once per charted tooth type; re-renders only when the
+ *  tooth type/shade/prep actually changes. */
+const ToothThumbnail = React.memo(function ToothThumbnail({ type, shade, prep }: { type: ToothType; shade: string; prep: string }) {
   const paths: Record<ToothType, string> = {
     "central-incisor": "M 6 28 C 4 20 4 10 6 2 C 9 -1 15 -1 18 2 C 20 10 20 20 18 28 C 15 31 9 31 6 28 Z",
     "lateral-incisor": "M 7 27 C 5 19 5 10 7 3 C 10 0 14 0 17 3 C 19 10 19 19 17 27 C 14 30 10 30 7 27 Z",
@@ -1076,4 +1078,4 @@ function ToothThumbnail({ type, shade, prep }: { type: ToothType; shade: string;
       )}
     </svg>
   );
-}
+});

@@ -11,7 +11,7 @@ import {
   listMonthCloses,
 } from '../../src/services/monthClose';
 import { buildMonthlyStatements } from '../../src/services/monthlyStatement';
-import type { Invoice, PaymentRecord, AdvancePayment, AccountAdjustment, DentalLab } from '../../src/types';
+import type { Invoice, PaymentRecord, AdvancePayment, AccountAdjustment, DentalLab, UserProfile } from '../../src/types';
 
 /**
  * Month-end closing:
@@ -223,6 +223,25 @@ describe('month-end closing', () => {
     const input = buildInput();
     expect(() => closeMonth({ ...input, month: '2026-3', labId: 'lab-1' })).toThrow(/YYYY-MM/);
     expect(() => reopenMonth({ ...input, month: 'March 2026', labId: 'lab-1', reason: 'x' })).toThrow(/YYYY-MM/);
+  });
+
+  it('refuses a close from a role without billing:close and writes no row', () => {
+    const input = buildInput();
+    const entry: UserProfile = { id: 'u-entry', username: 'entry', email: 'e@x', name: 'Entry Manager', role: 'Clinic Entry Manager', isSuperAdmin: false };
+    expect(() =>
+      closeMonth({ ...input, month: '2026-03', labId: 'lab-1', actor: 'Entry Manager', user: entry }),
+    ).toThrow(/permission/i);
+    expect(closedMonthFor('2026-03').get('lab-1')).toBeUndefined();
+  });
+
+  it('refuses a reopen from a role without billing:close and keeps the row', () => {
+    const input = buildInput();
+    closeMonth({ ...input, month: '2026-03', labId: 'lab-1', actor: 'Super Admin' });
+    const entry: UserProfile = { id: 'u-entry', username: 'entry', email: 'e@x', name: 'Entry Manager', role: 'Clinic Entry Manager', isSuperAdmin: false };
+    expect(() =>
+      reopenMonth({ ...input, month: '2026-03', labId: 'lab-1', actor: 'Entry Manager', user: entry, reason: 'Force it' }),
+    ).toThrow(/permission/i);
+    expect(closedMonthFor('2026-03').get('lab-1')).toBeDefined();
   });
 });
 

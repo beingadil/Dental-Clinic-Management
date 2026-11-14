@@ -93,7 +93,7 @@ export const SettingsView: React.FC = () => {
     { id: 'security', label: 'Module Security', icon: ShieldCheck, group: 'Account & Access', allowed: may('users:manage') },
     { id: 'backup', label: 'Database & Backup', icon: Database, group: 'Data & System', allowed: may('backup:restore') },
     { id: 'testing', label: 'System Reset', icon: Trash2, group: 'Data & System', allowed: may('data:wipe') },
-    { id: 'updates', label: 'Updates', icon: ArrowUpCircle, group: 'Data & System', allowed: true },
+    { id: 'updates', label: 'Updates', icon: ArrowUpCircle, group: 'Data & System', allowed: may('updates:install') },
   ] as const;
   const visibleTabs = tabDefs.filter((t) => t.allowed);
   const tabGroups = visibleTabs.reduce<Record<string, { id: string; label: string; icon: typeof Palette }[]>>((acc, t) => {
@@ -210,7 +210,7 @@ export const SettingsView: React.FC = () => {
       {activeTab === 'preferences' && <PreferencesTab />}
       {activeTab === 'security' && may('users:manage') && <ModuleSecurityTab />}
       {activeTab === 'print' && may('print:edit') && <PrintTab />}
-      {activeTab === 'updates' && <UpdatesTab />}
+      {activeTab === 'updates' && may('updates:install') && <UpdatesTab />}
       
         </div>
       </div>

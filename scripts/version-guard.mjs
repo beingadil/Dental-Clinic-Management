@@ -85,6 +85,23 @@ if (tauriConf.version !== version) {
   });
 }
 
+// The lockfile is what `npm ci` in CI installs from, and it carries the root
+// package's version in two places. It shipped at an older version while
+// everything else was bumped (v2.31.26 carried 2.31.25) because nothing read
+// it, and `npm ci` does not complain — the drift was invisible. Both spots
+// move with package.json or the guard fails.
+const packageLock = JSON.parse(
+  fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'),
+);
+for (const [where, v] of [
+  ['package-lock.json (top)', packageLock.version],
+  ['package-lock.json (packages[""])', packageLock.packages?.['']?.version],
+]) {
+  if (v !== version) {
+    offenders.push({ file: where, line: 0, lit: `${v ?? 'missing'} (package.json says ${version})` });
+  }
+}
+
 // Cargo's package version is compiled into the executable as
 // CARGO_PKG_VERSION, and the Rust updater reads the running build from it.
 // When it lagged package.json, a freshly installed build still identified as

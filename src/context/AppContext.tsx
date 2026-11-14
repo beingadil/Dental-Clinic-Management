@@ -1803,6 +1803,25 @@ const deleteLab = (id: string) => {
   };
 
   const deleteInvoice = (id: string) => {
+    /* Voiding is Accounting, not a correction. The drawer renders the button
+       visually disabled without this, but a greyed button is cosmetic — this
+       is the gate that keeps a read-only role from deleting an invoice and
+       its journal. */
+    if (user && !canPost(user, 'invoice:void')) {
+      showToast(deniedTooltip, 'error');
+      try {
+        auditRepo.log({
+          actor: user.name,
+          action: 'rbac.denied',
+          entity_type: 'permission',
+          entity_id: 'invoice:void',
+          entity_ref: id,
+          reason: 'insufficient_permission',
+          notes: 'Denied: invoice:void',
+        });
+      } catch { /* the denial must not hinge on the audit write */ }
+      return;
+    }
     const target = invoices.find((inv) => inv.id === id);
     if (!target) return;
 
@@ -2015,6 +2034,24 @@ const deleteLab = (id: string) => {
    * would strip an unrelated note's credit off the invoices.
    */
   const deleteAccountAdjustment = (id: string): boolean => {
+    /* Money authority, enforced at the write, not only in the drawer that
+       opened the confirm. A read-only role must not move a clinic's balance
+       through an adjustment. */
+    if (user && !canPost(user, 'payment:edit')) {
+      showToast(deniedTooltip, 'error');
+      try {
+        auditRepo.log({
+          actor: user.name,
+          action: 'rbac.denied',
+          entity_type: 'permission',
+          entity_id: 'payment:edit',
+          entity_ref: id,
+          reason: 'insufficient_permission',
+          notes: 'Denied: payment:edit (adjustment delete)',
+        });
+      } catch { /* the denial must not hinge on the audit write */ }
+      return false;
+    }
     const adj = accountAdjustments.find((a) => a.id === id);
     if (!adj) return false;
     const applied = attributedCreditTotal(id, invoices, accountAdjustments);
@@ -2042,7 +2079,29 @@ const deleteLab = (id: string) => {
     id: string,
     patch: { amount?: number; reason?: string; date?: string; reference_number?: string }
   ): boolean => {
-    const adj = accountAdjustments.find((a) => a.id === id);
+    /* Editing a credit note is the same authority as issuing one; picking by
+       type keeps the drawer's per-type permissions honest. */
+    const adjForPerm = accountAdjustments.find((a) => a.id === id);
+    const action =
+      adjForPerm?.type === 'credit_note' ? 'credit:issue'
+      : adjForPerm?.type === 'refund' ? 'refund:issue'
+      : 'debit:issue';
+    if (user && !canPost(user, action)) {
+      showToast(deniedTooltip, 'error');
+      try {
+        auditRepo.log({
+          actor: user.name,
+          action: 'rbac.denied',
+          entity_type: 'permission',
+          entity_id: action,
+          entity_ref: id,
+          reason: 'insufficient_permission',
+          notes: `Denied: ${action} (adjustment edit)`,
+        });
+      } catch { /* the denial must not hinge on the audit write */ }
+      return false;
+    }
+    const adj = adjForPerm;
     if (!adj) return false;
 
     const nextAmount = patch.amount === undefined ? adj.amount : patch.amount;
@@ -2144,6 +2203,17 @@ const deleteLab = (id: string) => {
     () => (allowedLabIds ? invoices.filter((inv) => !inv.lab_id || allowedLabIds.has(inv.lab_id)) : invoices),
     [invoices, allowedLabIds]
   );
+  // Every money list follows the same rule as labs/invoices: a narrowed user
+  // sees only their clinics' rows. The raw state stays in the domain hooks;
+  // these are the views the UI must render from.
+  const visibleAdvancePayments = useMemo(
+    () => (allowedLabIds ? advancePayments.filter((a) => !a.lab_id || allowedLabIds.has(a.lab_id)) : advancePayments),
+    [advancePayments, allowedLabIds]
+  );
+  const visibleAccountAdjustments = useMemo(
+    () => (allowedLabIds ? accountAdjustments.filter((a) => !a.lab_id || allowedLabIds.has(a.lab_id)) : accountAdjustments),
+    [accountAdjustments, allowedLabIds]
+  );
 
   return (
     <AppContext.Provider
@@ -2240,8 +2310,8 @@ const deleteLab = (id: string) => {
         bulkMarkPaid,
         deleteInvoice,
 
-        advancePayments,
-        accountAdjustments,
+        advancePayments: visibleAdvancePayments,
+        accountAdjustments: visibleAccountAdjustments,
         journalEntries,
         auditEvents,
         reconciliationItems,

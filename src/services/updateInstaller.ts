@@ -243,12 +243,7 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
       return phase;
     }
 
-    const { version, notes, released_at } = status as {
-      version: string;
-      notes?: string;
-      released_at?: string;
-    };
-    const downloadUrl = (status as any).download_url as string | undefined;
+    const { version, notes, released_at, download_url: downloadUrl, payload_checksum: expectedChecksum } = status;
 
     // Record availability immediately so the panel can show it even if the
     // download or verification later fails.
@@ -307,7 +302,7 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
         const receipt = await api.invoke('update_install', {
           version,
           downloadUrl: downloadUrl ?? null,
-          expectedChecksum: (status as any).payload_checksum ?? null,
+          expectedChecksum: expectedChecksum ?? null,
         });
         phase = {
           state: 'ready_to_apply',

@@ -138,7 +138,11 @@ interface PaginationBarProps {
   onPageSizeChange: (size: number) => void;
 }
 
-export function PaginationBar({
+/**
+ * Memoized: the page chrome shouldn't re-reconcile on every keystroke that
+ * churns the parent list — it only re-renders when the page arithmetic moves.
+ */
+export const PaginationBar = React.memo(function PaginationBar({
   page,
   totalPages,
   pageSize,
@@ -219,4 +223,4 @@ export function PaginationBar({
       </nav>
     </div>
   );
-}
+});

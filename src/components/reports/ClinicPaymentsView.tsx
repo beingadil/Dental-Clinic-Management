@@ -6,6 +6,8 @@ import { ClinicPicker } from '../common/ui/ClinicPicker';
 import { formatPKR } from '../../services/financeDomain';
 import { formatDate } from '../../utils/dateUtils';
 import { DataTable, type DataTableColumn } from '../common/ui/DataTable';
+import { usePagination } from '../common/ui/Pagination';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
   Banknote,
   ArrowUpRight,
@@ -16,23 +18,25 @@ import {
   Receipt,
   Building2,
 } from 'lucide-react';
+import { can } from '../../services/permissions';
 
 /**
- * CLINIC PAYMENTS — the one place every payment the lab has received or paid
- * out is listed, whatever kind it is.
+ * CLINIC PAYMENTS — the one place every money-shaped entry the lab posted
+ * is listed, whatever kind it is.
  *
  * The point of this tab is completeness, not aggregation: cash, bank transfer
  * and cheque payments against invoices, advance deposits sitting with us,
- * advance credit applied to invoices (a 0/0 memo, NOT new money) and refunds
- * we paid out. Per-payment detail — voucher number, method, reference number,
- * who recorded it, notes — is printed on the row instead of hidden behind a
- * drill-down, because "proper details" is what the operator asked for.
+ * advance credit applied to invoices (a 0/0 memo, NOT new money), refunds
+ * we paid out, and the accounting adjustments that move a clinic's balance
+ * without touching cash — credit notes, debit adjustments and write-offs.
+ * Per-payment detail — voucher number, method, reference number, who recorded
+ * it, notes — is printed on the row instead of hidden behind a drill-down,
+ * because "proper details" is what the operator asked for.
  *
- * Invoices themselves are not payments and are deliberately absent; credit
- * notes and debit adjustments are adjustments, not money, and also absent.
+ * Invoices themselves are not payments and are deliberately absent.
  */
 
-type PaymentKind = 'direct' | 'advance_deposit' | 'advance_applied' | 'refund';
+type PaymentKind = 'direct' | 'advance_deposit' | 'advance_applied' | 'refund' | 'adjustment';
 
 interface PaymentRow {
   id: string;
@@ -50,9 +54,14 @@ interface PaymentRow {
   reference: string;
   amount: number;
   direction: 'in' | 'out' | 'memo';
+  /** Sign prefix shown on memo rows that move the balance, not cash. */
+  memoSign?: '−' | '+';
   recordedBy: string;
   notes: string;
 }
+
+/** Stable row key — the memoized DataTable compares these by identity. */
+const paymentRowKey = (row: PaymentRow) => row.id;
 
 const METHOD_LABEL: Record<string, string> = {
   cash: 'Cash',
@@ -66,6 +75,13 @@ const KIND_META: Record<PaymentKind, { label: string; chip: string }> = {
   advance_deposit: { label: 'Advance deposit', chip: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   advance_applied: { label: 'Advance applied', chip: 'bg-slate-100 text-slate-600 border-slate-200' },
   refund: { label: 'Refund', chip: 'bg-rose-50 text-rose-700 border-rose-200' },
+  adjustment: { label: 'Adjustment', chip: 'bg-amber-50 text-amber-800 border-amber-200' },
+};
+
+const ADJUSTMENT_LABEL: Record<string, string> = {
+  credit_note: 'Credit note',
+  debit_adjustment: 'Debit adjustment',
+  write_off: 'Write-off',
 };
 
 const isAdvanceAllocation = (payment: { payment_method?: string; payment_type?: string }): boolean =>
@@ -75,7 +91,7 @@ const isAdvanceAllocation = (payment: { payment_method?: string; payment_type?: 
 const dayOf = (value?: string): string => String(value || '').slice(0, 10);
 
 export const ClinicPaymentsView: React.FC = () => {
-  const { labs, invoices, advancePayments, accountAdjustments, cases } = useApp();
+  const { labs, invoices, advancePayments, accountAdjustments, cases, user } = useApp();
 
   const [clinicId, setClinicId] = useState('');
   const [from, setFrom] = useState('');
@@ -83,6 +99,9 @@ export const ClinicPaymentsView: React.FC = () => {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | PaymentKind>('all');
   const [sortDesc, setSortDesc] = useState(true);
+  /* The input is painted instantly, the filter settles 200 ms later, so a
+     10k-row register does not recompute on every keystroke. */
+  const deferredQuery = useDebouncedValue(query, 200);
 
   const caseById = useMemo(() => {
     const map = new Map<string, string>();
@@ -139,24 +158,49 @@ export const ClinicPaymentsView: React.FC = () => {
       });
     });
 
-    /* Refunds: money paid back to the clinic by the lab. Debit adjustments and
-       credit notes are accounting entries, not payments, so they stay out. */
+    /* Adjustments: money-shaped ledger documents. Refunds are cash back to
+       the clinic (direction out). Credit notes, debit adjustments and
+       write-offs are non-cash entries on the clinic's account — they ride
+       the memo direction and carry a sign instead. */
+    const invoiceById = new Map<string, string>();
+    (invoices || []).forEach((inv) => invoiceById.set(inv.id, inv.invoice_number || ''));
     (accountAdjustments || []).forEach((adj) => {
-      if (adj.type !== 'refund') return;
+      if (adj.type === 'refund') {
+        out.push({
+          id: `ref-${adj.id}`,
+          date: dayOf(adj.date || adj.created_at),
+          typeLabel: KIND_META.refund.label,
+          kind: 'refund',
+          voucher: adj.adjustment_number || '—',
+          clinicId: adj.lab_id,
+          clinicName: adj.lab_name || 'Clinic',
+          caseNumber: adj.case_number || '',
+          invoiceNumber: adj.invoice_number || invoiceById.get(adj.invoice_id || '') || '',
+          method: 'Refund',
+          reference: adj.reference_number || '',
+          amount: adj.amount || 0,
+          direction: 'out',
+          recordedBy: adj.recorded_by || '',
+          notes: adj.reason || adj.notes || '',
+        });
+        return;
+      }
+      const isDebit = adj.type === 'debit_adjustment';
       out.push({
-        id: `ref-${adj.id}`,
+        id: `adj-${adj.id}`,
         date: dayOf(adj.date || adj.created_at),
-        typeLabel: KIND_META.refund.label,
-        kind: 'refund',
+        typeLabel: ADJUSTMENT_LABEL[adj.type] || 'Adjustment',
+        kind: 'adjustment',
         voucher: adj.adjustment_number || '—',
         clinicId: adj.lab_id,
         clinicName: adj.lab_name || 'Clinic',
         caseNumber: adj.case_number || '',
-        invoiceNumber: adj.invoice_number || '',
-        method: 'Refund',
+        invoiceNumber: adj.invoice_number || invoiceById.get(adj.invoice_id || '') || '',
+        method: 'Adjustment',
         reference: adj.reference_number || '',
         amount: adj.amount || 0,
-        direction: 'out',
+        direction: 'memo',
+        memoSign: isDebit ? '+' : '−',
         recordedBy: adj.recorded_by || '',
         notes: adj.reason || adj.notes || '',
       });
@@ -166,7 +210,7 @@ export const ClinicPaymentsView: React.FC = () => {
   }, [invoices, advancePayments, accountAdjustments, caseById]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     const list = rows.filter((row) => {
       if (clinicId && row.clinicId !== clinicId) return false;
       if (from && row.date < from) return false;
@@ -182,24 +226,34 @@ export const ClinicPaymentsView: React.FC = () => {
       return true;
     });
     return sortDesc ? list.sort((a, b) => (a.date === b.date ? 0 : a.date > b.date ? -1 : 1)) : list.sort((a, b) => (a.date === b.date ? 0 : a.date > b.date ? 1 : -1));
-  }, [rows, clinicId, from, to, kind, query, sortDesc]);
+  }, [rows, clinicId, from, to, kind, deferredQuery, sortDesc]);
+
+  /* The register is the one uncapped table in the app — mount a page, not the
+     whole backlog. Same pattern as the invoice table. */
+  const { pageItems, pagination } = usePagination(filtered, {
+    initialPageSize: 50,
+    resetKey: `${clinicId}|${from}|${to}|${kind}|${deferredQuery}|${sortDesc}`,
+  });
 
   const totals = useMemo(() => {
     let received = 0;
     let refunds = 0;
-    let advanceApplied = 0;
     let deposits = 0;
+    let creditNotes = 0;
+    let debitAdjustments = 0;
     filtered.forEach((row) => {
       if (row.direction === 'in') {
         received += row.amount;
         if (row.kind === 'advance_deposit') deposits += row.amount;
       } else if (row.direction === 'out') {
         refunds += row.amount;
-      } else {
-        advanceApplied += row.amount;
+      } else if (row.kind === 'adjustment') {
+        if (row.typeLabel === 'Debit adjustment') debitAdjustments += row.amount;
+        else creditNotes += row.amount;
       }
+      // Advance-applied memos carry no cash; they are not totals.
     });
-    return { received, refunds, advanceApplied, deposits, net: received - refunds };
+    return { received, refunds, deposits, creditNotes, debitAdjustments, net: received - refunds };
   }, [filtered]);
 
   const KIND_FILTERS: { id: 'all' | PaymentKind; label: string }[] = [
@@ -208,9 +262,10 @@ export const ClinicPaymentsView: React.FC = () => {
     { id: 'advance_deposit', label: 'Advance deposits' },
     { id: 'advance_applied', label: 'Advance applied' },
     { id: 'refund', label: 'Refunds' },
+    { id: 'adjustment', label: 'Adjustments' },
   ];
 
-  const columns: DataTableColumn<PaymentRow>[] = [
+  const columns = useMemo<DataTableColumn<PaymentRow>[]>(() => [
     {
       header: (
         <button type="button" onClick={() => setSortDesc((v) => !v)} className="cursor-pointer hover:text-slate-800">
@@ -259,7 +314,7 @@ export const ClinicPaymentsView: React.FC = () => {
         <span className={`font-mono font-bold tabular-nums whitespace-nowrap ${
           row.direction === 'out' ? 'text-ink-danger' : row.direction === 'memo' ? 'text-slate-500' : 'text-ink-success'
         }`}>
-          {row.direction === 'out' ? '−' : ''}{formatPKR(row.amount)}
+          {row.direction === 'out' ? '−' : row.memoSign || ''}{formatPKR(row.amount)}
         </span>
       ),
     },
@@ -271,14 +326,14 @@ export const ClinicPaymentsView: React.FC = () => {
       header: 'Notes',
       render: (row) => <span className="block max-w-64 truncate text-slate-600" title={row.notes}>{row.notes || '—'}</span>,
     },
-  ];
+  ], [sortDesc]);
 
-  const emptyState = rows.length === 0 ? (
+  const emptyState = useMemo(() => rows.length === 0 ? (
     <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-12 text-center">
       <HandCoins className="mx-auto mb-2 h-6 w-6 text-slate-300" />
       <p className="text-xs font-bold text-slate-700">No payments recorded yet</p>
       <p className="mx-auto mt-1 max-w-sm text-[11px] leading-relaxed text-slate-500">
-        Cash, bank and cheque receipts, advance deposits and refunds all appear here once they are recorded in the system.
+        Cash, bank and cheque receipts, advance deposits, refunds and adjustments — credit notes, debit adjustments and write-offs — all appear here once they are recorded in the system.
       </p>
     </div>
   ) : (
@@ -296,6 +351,34 @@ export const ClinicPaymentsView: React.FC = () => {
         Clear filters
       </button>
     </div>
+  ), [rows.length]);
+
+  if (!can(user, 'reports:view')) {
+    return (
+      <div className="p-6 text-center text-slate-500 text-sm">
+        <p className="font-semibold text-slate-700 mb-1">Insufficient permission</p>
+        <p className="text-xs">The Clinic Payments register is available to Super Admin and Audit Checker roles.</p>
+      </div>
+    );
+  }
+
+  const tfoot = useMemo(
+    () => (
+      <tr className="border-t-2 border-slate-900 bg-slate-50 text-xs font-bold text-slate-800">
+        <td className="ds-sticky-col bg-slate-50 px-3 py-2 whitespace-nowrap">Totals ({filtered.length})</td>
+        <td className="px-3 py-2" colSpan={6}>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Received {formatPKR(totals.received)} · Refunds {formatPKR(totals.refunds)}
+            {(totals.creditNotes > 0 || totals.debitAdjustments > 0) && (
+              <> · Credit notes −{formatPKR(totals.creditNotes)} · Debit notes +{formatPKR(totals.debitAdjustments)}</>
+            )}
+          </span>
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums">{formatPKR(totals.net)}</td>
+        <td className="px-3 py-2" colSpan={2} />
+      </tr>
+    ),
+    [filtered.length, totals.received, totals.refunds, totals.creditNotes, totals.debitAdjustments, totals.net],
   );
 
   return (
@@ -370,6 +453,16 @@ export const ClinicPaymentsView: React.FC = () => {
             <span className="inline-flex items-center gap-1.5"><ArrowDownLeft className="h-3.5 w-3.5 text-ink-success" />Received <strong className="font-mono text-slate-900">{formatPKR(totals.received)}</strong></span>
             <span className="inline-flex items-center gap-1.5"><HandCoins className="h-3.5 w-3.5 text-indigo-500" />Deposits <strong className="font-mono text-slate-900">{formatPKR(totals.deposits)}</strong></span>
             <span className="inline-flex items-center gap-1.5"><ArrowUpRight className="h-3.5 w-3.5 text-ink-danger" />Refunds <strong className="font-mono text-slate-900">{formatPKR(totals.refunds)}</strong></span>
+            {totals.creditNotes > 0 && (
+              <span className="inline-flex items-center gap-1.5" title="Credit notes and write-offs on the clinics' accounts — non-cash, reduce the balance">
+                Credit notes <strong className="font-mono text-slate-900">−{formatPKR(totals.creditNotes)}</strong>
+              </span>
+            )}
+            {totals.debitAdjustments > 0 && (
+              <span className="inline-flex items-center gap-1.5" title="Debit adjustments added to the clinics' accounts — non-cash, raise the balance">
+                Debit notes <strong className="font-mono text-slate-900">+{formatPKR(totals.debitAdjustments)}</strong>
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5"><Banknote className="h-3.5 w-3.5 text-slate-500" />Net <strong className="font-mono text-slate-900">{formatPKR(totals.net)}</strong></span>
             <span className="text-slate-400">· {filtered.length} row{filtered.length === 1 ? '' : 's'}</span>
           </div>
@@ -388,20 +481,12 @@ export const ClinicPaymentsView: React.FC = () => {
         </div>
         <DataTable<PaymentRow>
           columns={columns}
-          data={filtered}
-          rowKey={(row) => row.id}
+          data={pageItems}
+          rowKey={paymentRowKey}
           stickyFirstColumn
           emptyState={emptyState}
-          tfoot={(
-            <tr className="border-t-2 border-slate-900 bg-slate-50 text-xs font-bold text-slate-800">
-              <td className="ds-sticky-col bg-slate-50 px-3 py-2 whitespace-nowrap">Totals ({filtered.length})</td>
-              <td className="px-3 py-2" colSpan={6}>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Received {formatPKR(totals.received)} · Refunds {formatPKR(totals.refunds)}</span>
-              </td>
-              <td className="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums">{formatPKR(totals.net)}</td>
-              <td className="px-3 py-2" colSpan={2} />
-            </tr>
-          )}
+          tfoot={tfoot}
+          footer={pagination}
         />
       </div>
     </section>

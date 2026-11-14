@@ -62,7 +62,7 @@ export const MonthEndCloseModal: React.FC<{ open: boolean; onClose: () => void }
 
 const MonthEndCloseBody: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { labs, invoices, advancePayments, accountAdjustments, brandingSettings, user, showToast } = useApp();
-  const mayClose = canPost(user, 'payment:record');
+  const mayClose = canPost(user, 'billing:close');
 
   const [month, setMonth] = useState<string>(() => getTodayStr().slice(0, 7));
   const [closedVersion, setClosedVersion] = useState(0);
@@ -107,6 +107,7 @@ const MonthEndCloseBody: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         labId: row.lab_id,
         labName: row.lab_name,
         actor: user?.name || 'System',
+        user: user ?? null,
       });
       showToast(`${row.lab_name} — ${formatMonthLabel(month)} closed.`, 'success');
       refresh();
@@ -133,6 +134,7 @@ const MonthEndCloseBody: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         labId,
         labName,
         actor: user?.name || 'System',
+        user: user ?? null,
         reason,
       });
       showToast(`${labName} — ${formatMonthLabel(month)} reopened.`, 'info');
@@ -273,6 +275,7 @@ const MonthEndCloseBody: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                           closeMonth({
                             invoices, advancePayments, accountAdjustments, labs,
                             month: d.month, labId: d.labId, labName: d.labName, actor: user?.name || 'System',
+                            user: user ?? null,
                           });
                           showToast(`${d.labName} — ${formatMonthLabel(d.month)} re-closed.`, 'success');
                           refresh();

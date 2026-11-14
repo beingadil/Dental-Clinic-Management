@@ -82,7 +82,13 @@ const ALIGN = {
  * caller (`BillingView`) keeps its card where it already had one. That makes it
  * safe to adopt anywhere without a visual decision to re-litigate per call.
  */
-export function DataTable<T>({
+/**
+ * Memoized: the heavy tables mount hundreds of rows, and a parent re-render
+ * that only swaps a filter shouldn't force the whole table to reconcile.
+ */
+export const DataTable = React.memo(DataTableInner) as typeof DataTableInner;
+
+function DataTableInner<T>({
   columns,
   data,
   rowKey,

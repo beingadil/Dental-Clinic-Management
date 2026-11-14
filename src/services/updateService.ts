@@ -12,11 +12,10 @@ import { sha256Hex } from '../db/crypto';
  *               the branded installer from the Release page. Nothing is
  *               auto-replaced on disk — the downloaded setup.exe applies the
  *               update, so the app never corrupts itself mid-run.
- * Offline mode: an administrator imports a `.dentalupdate` package (same
- *               manifest) manually from a USB stick — no network required.
- *               Both paths go through the same version + checksum validation.
  *
- * A fully offline computer can always be updated via the offline package.
+ * There is no offline/USB import (the `.dentalupdate` package route was
+ * removed), so an unconnected machine cannot update itself — an
+ * administrator brings the installer from the Releases page instead.
  */
 
 /**
@@ -46,7 +45,7 @@ export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
   | { state: 'up_to_date'; version: string }
-  | { state: 'available'; version: string; notes?: string; released_at?: string; download_url?: string }
+  | { state: 'available'; version: string; notes?: string; released_at?: string; download_url?: string; payload_checksum?: string }
   | { state: 'error'; message: string };
 
 export function compareVersions(a: string, b: string): number {
@@ -114,10 +113,11 @@ async function fetchLatestManifest(): Promise<UpdateManifest | null> {
     } catch { /* fall through to the Releases API */ }
   }
 
-  // 2 — GitHub Releases API fallback
+  // 2 — GitHub Releases API fallback. Same 8 s ceiling as the primary
+  //    source — a captive portal must not leave the UI on "Checking" forever.
   try {
-    const res = await fetch(GITHUB_LATEST_RELEASE_URL, { cache: 'no-store' });
-    if (!res.ok) return null;
+    const res = await quietFetch(GITHUB_LATEST_RELEASE_URL);
+    if (!res) return null;
     const rel = (await res.json()) as GithubReleaseInfo;
     const version = (rel.tag_name || '').replace(/^v/, '');
     if (!version) return null;
@@ -136,19 +136,13 @@ async function fetchLatestManifest(): Promise<UpdateManifest | null> {
 }
 
 /** Checks for a newer version. Never throws; returns a status. */
-export async function checkForUpdates(manifestUrl?: string): Promise<UpdateStatus> {
+export async function checkForUpdates(): Promise<UpdateStatus> {
   if (!isOnline()) {
-    return { state: 'error', message: 'Offline — use an offline update package (.dentalupdate) instead.' };
+    return { state: 'error', message: 'Offline — updates need a network connection. Ask an administrator for the latest installer from the Releases page.' };
   }
   try {
-    const manifest = manifestUrl ? undefined : await fetchLatestManifest();
-    const m =
-      manifest ??
-      (await (async () => {
-        const res = await quietFetch(manifestUrl as string);
-        if (!res) throw new Error('Update source is unreachable (offline or blocked).');
-        return (await res.json()) as UpdateManifest;
-      })());
+    const m = await fetchLatestManifest();
+    if (!m) throw new Error('Update source is unreachable (offline or blocked).');
     if (m.magic !== 'DENTALUPDATE') {
       return { state: 'error', message: 'Update source is not a valid Dental Solutions manifest.' };
     }
@@ -159,6 +153,10 @@ export async function checkForUpdates(manifestUrl?: string): Promise<UpdateStatu
         notes: m.notes,
         released_at: m.released_at,
         download_url: m.download_url,
+        /* The manifest hash reaches the verifier instead of being dropped on
+           the floor here — this is what binds the manifest to the installer
+           CI hashed in SHA256SUMS.txt. */
+        payload_checksum: m.payload_checksum,
       };
     }
     return { state: 'up_to_date', version: APP_VERSION };
@@ -197,9 +195,9 @@ export async function downloadUpdate(downloadUrl?: string): Promise<{ ok: boolea
 /**
  * Parses and validates an offline `.dentalupdate` package file.
  * D2 decision (2026-10-01): the offline import UI was removed — updates are
- * manifest-driven only. This parser stays because the package format and its
- * validation tests pin the contract CI's release job writes; do not call it
- * from new UI without reintroducing the documented feature.
+ * manifest-driven only. Nothing in the repo produces or consumes this
+ * package format today; the parser remains because its contract is pinned
+ * by unit tests. Do not call it from new code.
  */
 export async function parseOfflineUpdate(text: string): Promise<
   { ok: true; manifest: UpdateManifest } | { ok: false; error: string }

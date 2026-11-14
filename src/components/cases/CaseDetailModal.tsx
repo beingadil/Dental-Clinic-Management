@@ -198,13 +198,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [department, setDepartment] = useState<string>(initialCase?.department || '');
   const [shade, setShade] = useState(initialCase?.shade || initialShade || 'A2');
 
-  /* Priority seed, in precedence order: an existing case keeps what it has, a
-   * template may carry its own default, and otherwise the LAB's default applies.
-   * `UserPreferences.default_priority` is a real Settings control that nothing
-   * read — every new case silently started at 'normal' regardless of it — so a
-   * lab that set "urgent" for a rush-only workflow got 'normal' instead. */
-  /* New cases always start at Medium ('normal'); an existing case keeps its
-     priority. */
+  /* Priority seed: an existing case keeps what it has. New cases start at
+     Medium ('normal'), matching the v2.31.26 behaviour — the Settings control
+     "Default Priority for New Cases" is inert on this build (it is hidden in
+     Settings) and is pending either full restoration or removal. */
   const seedPriority: PriorityLevel = initialCase?.priority || 'normal';
 
   const [priority, setPriority] = useState<PriorityLevel>(seedPriority);

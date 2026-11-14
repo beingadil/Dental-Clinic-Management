@@ -33,6 +33,10 @@ describe('billing permission matrix (B3, RBAC v2)', () => {
     ['Clinic Entry Manager', 'invoice:void', false],
     ['Audit Checker', 'invoice:void', false],
     ['Super Admin', 'invoice:void', true],
+    // Closing a month is an accounting decision — Super Admin only.
+    ['Super Admin', 'billing:close', true],
+    ['Clinic Entry Manager', 'billing:close', false],
+    ['Audit Checker', 'billing:close', false],
     ['Super Admin', 'credit:issue', true],
     ['Super Admin', 'refund:issue', true],
     ['Super Admin', 'payment:bulk', true],

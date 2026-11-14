@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Drawer, InvoiceStatusBadge, DataTable } from '../common/ui';
 import { useApp } from '../../context/AppContext';
+import { canPost, deniedTooltip } from '../../services/permissions';
 import { Invoice, JournalLine, PaymentRecord, AccountAdjustment } from '../../types';
 import { formatPKR, deriveInvoiceStatus } from '../../services/financeDomain';
 import { formatDoctorName } from '../../utils/doctorName';
@@ -45,6 +46,10 @@ interface InvoiceDetailDrawerProps {
   onVoidInvoice?: (invoice: Invoice) => void;
   /** Whether the signed-in user may void an invoice. */
   canVoid?: boolean;
+  /** Whether the signed-in user may edit/issue adjustments (any of credit/debit/refund). */
+  canEditAdjustments?: boolean;
+  /** Whether the signed-in user may delete adjustments. */
+  canDeleteAdjustments?: boolean;
 }
 
 export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
@@ -61,8 +66,10 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   attributedAdjustments,
   onVoidInvoice,
   canVoid,
+  canEditAdjustments = true,
+  canDeleteAdjustments = true,
 }) => {
-  const { cases, accountAdjustments, journalEntries, advancePayments, applyAdvanceCreditV2 } = useApp();
+  const { cases, accountAdjustments, journalEntries, advancePayments, applyAdvanceCreditV2, user } = useApp();
   const [jvOpen, setJvOpen] = useState(false);
 
   /* B7: quick-apply of unallocated clinic advance credit (folded in from the
@@ -105,6 +112,12 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
 
   const handleApplyAdvance = () => {
     if (applyLatchRef.current) return;
+    /* The drawer decides for itself, not on a hunch: a role without
+       advance:deposit sees the same clear refusal the service gives. */
+    if (user && !canPost(user, 'advance:deposit')) {
+      setApplyError(deniedTooltip);
+      return;
+    }
     const amount = Number(applyAmount);
     if (!amount || amount <= 0 || isNaN(amount)) {
       setApplyError('Enter an amount greater than zero.');
@@ -191,6 +204,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
             {onVoidInvoice && (
               <button
                 onClick={() => onVoidInvoice(invoice)}
+                disabled={!canVoid}
                 className={`p-2 rounded-lg transition-colors ${
                   canVoid
                     ? 'text-ink-muted hover:text-ink-danger hover:bg-rose-50 cursor-pointer'
@@ -571,9 +585,10 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                       {onEditAdjustment && (
                         <button
                           type="button"
-                          onClick={() => onEditAdjustment(cn)}
-                          className="p-1 text-amber-700 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
-                          title={`Edit adjustment ${cn.adjustment_number}`}
+                          disabled={!canEditAdjustments}
+                          onClick={() => canEditAdjustments && onEditAdjustment(cn)}
+                          className="p-1 text-amber-700 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                          title={canEditAdjustments ? `Edit adjustment ${cn.adjustment_number}` : 'Editing adjustments requires credit/debit/refund issuance'}
                           aria-label={`Edit adjustment ${cn.adjustment_number}`}
                         >
                           <Pencil className="w-3.5 h-3.5" />
@@ -582,9 +597,10 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                       {onDeleteAdjustment && (
                         <button
                           type="button"
-                          onClick={() => onDeleteAdjustment(cn)}
-                          className="p-1 text-amber-700 hover:text-ink-danger hover:bg-rose-50 rounded cursor-pointer"
-                          title={`Delete adjustment ${cn.adjustment_number}`}
+                          disabled={!canDeleteAdjustments}
+                          onClick={() => canDeleteAdjustments && onDeleteAdjustment(cn)}
+                          className="p-1 text-amber-700 hover:text-ink-danger hover:bg-rose-50 rounded cursor-pointer disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                          title={canDeleteAdjustments ? `Delete adjustment ${cn.adjustment_number}` : 'Deleting adjustments requires the payment-edit permission'}
                           aria-label={`Delete adjustment ${cn.adjustment_number}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />

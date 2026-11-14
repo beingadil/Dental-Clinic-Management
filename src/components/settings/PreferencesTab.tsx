@@ -233,21 +233,10 @@ export const PreferencesTab: React.FC = () => {
           />
         </div>
 
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">Default Priority for New Cases</label>
-          <GlassSelect
-            value={userPreferences?.default_priority || 'normal'}
-            onChange={(v) => updateUserPreferences({ default_priority: v as any })}
-            ariaLabel="Default priority"
-            className="w-full p-2.5 text-xs font-bold capitalize"
-            options={[
-              { value: 'low', label: 'Low Priority' },
-              { value: 'normal', label: 'Normal Priority' },
-              { value: 'rush', label: 'Rush Priority' },
-              { value: 'urgent', label: 'Urgent Priority' },
-            ]}
-          />
-        </div>
+        {/* v2.31.26 made every new case start at Medium and this select stopped
+            driving anything — it is deliberately not offered rather than shown
+            doing nothing. Restore the control together with reading the
+            preference if the lab-default behaviour returns. */}
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Interface Zoom</label>

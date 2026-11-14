@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { canManageSystem } from '../../services/permissions';
 import {
   ArrowUpCircle,
   CheckCircle2,
@@ -81,6 +83,11 @@ function buildSteps(phase: AutoUpdatePhase, version: string | null): Step[] {
 }
 
 export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating' | 'inline' }) {
+  const { user } = useApp();
+  /* The updater can close the app to install itself. A role without
+     updates:install gets no check and no controls — the work happens only
+     where an authorized administrator is signed in. */
+  const mayInstall = canManageSystem(user, 'updates:install');
   const floating = variant === 'floating';
   const [phase, setPhase] = useState<AutoUpdatePhase>({ state: 'idle' });
   const [dismissed, setDismissed] = useState(false);
@@ -90,8 +97,8 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
   // One automatic check per session, started from the app shell so it no
   // longer depends on which view happens to be mounted.
   useEffect(() => {
-    if (floating) ensureAutoUpdateCheck();
-  }, [floating]);
+    if (floating && mayInstall) ensureAutoUpdateCheck();
+  }, [floating, mayInstall]);
 
   const version =
     phase.state === 'idle' || phase.state === 'checking' || phase.state === 'up_to_date'
@@ -108,7 +115,17 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
       ? Math.min(100, Math.round((phase.received / phase.total) * 100))
       : null;
 
-  // Floating: only speak up when there is something to do or report.
+  // No authorization, nothing to show. The inline layout (Settings → Updates)
+  // renders a plain restriction note instead of a silent gap; the floating
+  // shell renders nothing at all.
+  if (!mayInstall) {
+    return variant === 'inline' ? (
+      <div className="p-4 text-sm text-slate-600">
+        <p className="font-semibold text-slate-700">Restricted</p>
+        <p className="mt-1 text-xs">Updating is limited to an administrator holding the updates:install permission.</p>
+      </div>
+    ) : null;
+  }
   if (floating && (phase.state === 'idle' || phase.state === 'up_to_date' || phase.state === 'checking')) {
     return null;
   }

@@ -17,6 +17,8 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { canManageSystem } from '../../services/permissions';
 import {
   ArrowUpCircle,
   CheckCircle2,
@@ -44,6 +46,7 @@ function formatBytes(n: number): string {
 }
 
 export function UpdatePill() {
+  const { user } = useApp();
   const [phase, setPhase] = useState<AutoUpdatePhase>({ state: 'idle' });
   const [dismissed, setDismissed] = useState(false);
 
@@ -54,6 +57,11 @@ export function UpdatePill() {
   useEffect(() => {
     setDismissed(false);
   }, [phase.state]);
+
+  /* The pill can only act, never merely inform, so a role without
+     updates:install sees nothing here — an update it cannot install is
+     noise, not an announcement. */
+  const mayInstall = canManageSystem(user, 'updates:install');
 
   const busy = isAutoUpdateBusy(phase);
   const version =
@@ -66,7 +74,7 @@ export function UpdatePill() {
       ? Math.min(100, Math.round((phase.received / phase.total) * 100))
       : null;
 
-  if (dismissed) return null;
+  if (dismissed || !mayInstall) return null;
 
   let tone = 'border-slate-200 bg-white text-slate-700';
   let icon: React.ReactNode = null;

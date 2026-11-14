@@ -366,15 +366,18 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
         "objects.githubusercontent.com",
         "release-assets.githubusercontent.com",
     ];
-    if !url.starts_with("https://") {
+    // Parse once, properly — string-splitting the authority lets
+    // "https://github.com:@evil.example/" through with host "github.com".
+    let Ok(parsed) = reqwest::Url::parse(&url) else {
+        return Err("URL is not parseable".into());
+    };
+    if parsed.scheme() != "https" {
         return Err("Only https URLs can be opened".into());
     }
-    let host = url
-        .trim_start_matches("https://")
-        .split(&['/', '?', ':'][..])
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
+    let host = parsed
+        .host_str()
+        .map(|h| h.to_ascii_lowercase())
+        .ok_or_else(|| format!("URL host is not allowed: {url}"))?;
     if !ALLOWED_HOSTS.contains(&host.as_str()) {
         return Err(format!("URL host is not allowed: {host}"));
     }
@@ -656,7 +659,13 @@ async fn update_install(
     );
     let receipt_path = dir.join("stage-receipt.json");
     if let Err(e) = fs::write(&receipt_path, serde_json::to_string_pretty(&receipt).unwrap_or_default()) {
-        eprintln!("[updater] FAILED to write stage receipt {:?}: {}", receipt_path, e);
+        // Returning here is the whole point: the UI must not offer "Restart &
+        // Apply" for a staged update whose receipt does not exist — boot
+        // would find no staged update and report failure, or worse, strand
+        // the installer silently.
+        return Err(format!(
+            "Update staged but its receipt could not be written to {receipt_path:?}: {e}. Check that the temp directory is writable, then try again."
+        ));
     }
 
     emit_progress(&app, &version, received, total, "ready");
@@ -817,9 +826,15 @@ fn update_apply(app: AppHandle) -> Result<bool, String> {
             std::env::current_exe().unwrap_or_else(|_| PathBuf::from("dental-solutions.exe"))
         });
 
-    // Record that the installer was launched BEFORE spawning it. If this
-    // process comes back on the old version, diagnostics must report a failed
-    // apply instead of offering the same installer again forever.
+    // Launch the waiter BEFORE the marker: if the launch itself fails, the
+    // receipt must not claim an apply was attempted when nothing was, or
+    // every boot reports "update interrupted" forever. Spawning first makes
+    // the failure honest and retryable from the UI.
+    spawn_install_waiter(&staged, &relaunch_target)?;
+
+    // Record that the installer was launched. If this process comes back on
+    // the old version, diagnostics must report a failed apply instead of
+    // offering the same installer again forever.
     let receipt_path = std::env::temp_dir()
         .join("dental-solutions-update")
         .join("stage-receipt.json");
@@ -833,9 +848,7 @@ fn update_apply(app: AppHandle) -> Result<bool, String> {
         &receipt_path,
         serde_json::to_string_pretty(&receipt).unwrap_or_default(),
     )
-    .map_err(|e| format!("Could not record the update attempt: {e}"))?;
-
-    spawn_install_waiter(&staged, &relaunch_target)?;
+    .map_err(|e| format!("Installer was launched, but its receipt could not be updated: {e}"))?;
 
     // Let the invoke response (Ok) reach the webview first, then exit. A hard
     // app.exit(0) raced the IPC reply on the download path and left the UI
