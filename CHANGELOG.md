@@ -1,3 +1,74 @@
+## [2.31.27] - 2026-11-14
+
+The security and delivery release: it fixes what an internal audit
+found, makes the printed account statement trustworthy under partial
+printing, and stops installers from failing to reach the machines they
+belong on.
+
+### Security
+- The invoice void control in the invoice drawer was only *visually*
+  disabled — a read-only role could void an invoice and its journal.
+  The button is genuinely `disabled` now and `deleteInvoice` enforces
+  `invoice:void` in the service, with an `rbac.denied` audit row on
+  refusal. Same fix for the void/apply controls on the General Ledger
+  invoice chip.
+- Editing or deleting a credit note, refund or debit adjustment had no
+  permission check at any layer. All three now require the issuing
+  permission, and deleting one requires `payment:edit`.
+- "Apply clinic advance credit" had no permission check. It now
+  requires `advance:deposit`, and the drawer refuses up front with a
+  clear message.
+- Cross-clinic advance figures leaked onto printed statements:
+  `advanceApplications` iterated every invoice while the postings it
+  fed were already clinic-scoped, so a clinic's statement showed
+  another clinic's advance applications. Applications are now scoped
+  the same way; regression test included.
+- The Clinic Payments register is gated on `reports:view`, matching its
+  sibling views.
+- Month-end close/reopen now enforce a new `billing:close` action inside
+  the service itself (previously the modal hid the button; the service
+  wrote anyway). Super Admin only by default.
+- The auto-updater honours `updates:install`: the installer panel,
+  dashboard pill and Settings → Updates tab are hidden or restricted
+  for roles without it.
+- `open_external` (desktop) parsed the allowed host by string-splitting,
+  so `https://github.com:@hostile.example/` passed. It parses with
+  proper URL parsing now.
+- CSV exports escape cells starting with =, +, -, @.
+
+### Fixed
+- The invoice statement footnotes when its invoice line covers only the
+  invoices selected to print; opening/cash/closing still cover the
+  whole period.
+- Module Security states plainly that a module password is a door, not
+  a wall — the same books render elsewhere.
+- The inert "Default Priority for New Cases" control is removed from
+  Application Defaults (it had stopped reading the preference in 2.31.26).
+
+### Changed — performance and scale
+- Clinic Payments mounts 50 rows at a time with the same idiom as the
+  invoice table, and its search now debounces 200 ms. Uncapped table
+  rendering was the one real "thousands of entries" hazard.
+- Adjustments — credit notes, debit adjustments, write-offs — now
+  appear in the register as amber-chipped rows with a memo sign, filter
+  via an "Adjustments" chip, and total separately in the strip.
+- `DataTable`, `PaginationBar` and the tooth thumbnail are memoized;
+  the register's columns/empty state/footer are memoized around them.
+- New scale benchmark (~1,500 invoices, ~3,000 payments): ledger build
+  ~25 ms — logged, not gated.
+- `cargo audit` covers the two new QUIC advisories via
+  quinn-proto 0.11.19 / quinn-udp 0.5.16 (locked updates, fixes not
+  ignores).
+
+### Release infrastructure
+- CI fails the tag run if the tag does not match package.json; the
+  installer is selected by version substring (fails, not first-.exe, on
+  mismatch); tag runs are no longer cancelled mid-release; the version
+  guard now checks package-lock.json (it shipped 2.31.25 with 2.31.26
+  and nothing noticed); the manifest's payload checksum now flows into
+  the Rust verifier — it was silently dropped in the web layer — and
+  stage-receipt failures abort honestly instead of looping.
+
 ## [2.31.26] - 2026-11-10
 
 The General Ledger now opens the invoice you were just reading.
