@@ -209,7 +209,8 @@ jobs:
             exit 0
           }
           $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          if ($ref = $env:GITHUB_REF_NAME; $ref -ne "v$pkg") {
+          $ref = $env:GITHUB_REF_NAME
+          if ($ref -ne "v$pkg") {
             throw "Tag $ref does not match package.json version ($pkg). Fix the version bump or the tag before this can release."
           }
           node scripts/version-guard.mjs
