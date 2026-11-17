@@ -117,7 +117,12 @@ jobs:
         # Dev dependencies are included on purpose: they run on the build
         # machine that produces the artifact, so a compromised build-time
         # package reaches production just as effectively as a runtime one.
-        run: npm audit --audit-level=high
+        # The gate is scripts/npm-audit-gate.mjs, not a bare `npm audit`:
+        # npm has no --ignore flag, so as of 2026-11-17 the only high
+        # advisory in the tree is an unpatchable, build-time-only picomatch
+        # ReDoS (GHSA-fc5q-39xc-vjpf) — the allowlist lives there, with a
+        # written reachability justification. Everything else still fails.
+        run: node scripts/npm-audit-gate.mjs
 
       - uses: dtolnay/rust-toolchain@stable
 

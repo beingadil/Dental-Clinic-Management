@@ -1,3 +1,21 @@
+## [2.31.30] - 2026-11-17
+
+Release respin of v2.31.29. **No application changes.**
+
+### Fixed
+- The security job's `npm audit --audit-level=high` step fails every build
+  since GHSA-fc5q-39xc-vjpf (picomatch ReDoS, CVE-2026-112366) was reviewed
+  on 2026-11-17: the advisory covers every released picomatch version, no
+  patched release exists, and the only npm "fix" (`--force`) downgrades
+  vite and still reports picomatch as affected. The step is replaced by
+  `scripts/npm-audit-gate.mjs` — an explicit allowlist with a written
+  reachability justification (build/test-time only, this repo's own glob
+  patterns, nothing shipped to clinics), mirroring the cargo-audit ignores.
+  Anything not allowlisted still fails the gate.
+- v2.31.29 was tagged and its CI failed at this step before any release was
+  produced; this release carries byte-identical application code plus the
+  gate fix. The v2.31.29 tag is left standing as the failed run it was.
+
 ## [2.31.29] - 2026-11-17
 
 The auto-update hardening release: the rest of the update-chain audit, fixed
