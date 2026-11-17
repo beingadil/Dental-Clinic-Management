@@ -17,6 +17,14 @@ interface GlassSelectBase {
   disabled?: boolean;
   /** Force the in-menu filter on or off. Default: on from 6 options up. */
   searchable?: boolean;
+  /** Optional id for the trigger button — lets a form's label htmlFor it, and
+   *  lets a parent move focus onto it (the case-entry Enter chain). */
+  triggerId?: string;
+  /** Called INSTEAD of opening the menu when Enter is pressed on the closed
+   *  trigger. The case-entry form uses it for Enter-to-next-field navigation;
+   *  the menu stays reachable via ArrowDown / Space / click. No effect for
+   *  multi mode. */
+  onEnterAdvance?: () => void;
 }
 
 /** Below this many options a filter field costs more room than it saves. */
@@ -102,6 +110,11 @@ export const GlassSelect: React.FC<GlassSelectProps> = (props) => {
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listId = useId();
+  /* Typeahead state for the CLOSED trigger: printable characters narrow the
+     choice in place (native <select> semantics), committed immediately so the
+     very next Enter can move past this field. */
+  const typeaheadRef = useRef('');
+  const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Filter by label only — that is what the operator reads on the row. The
      query is cleared on every open, so a select never comes back pre-filtered
@@ -146,6 +159,24 @@ export const GlassSelect: React.FC<GlassSelectProps> = (props) => {
   const selectable = useMemo(
     () => rows.filter((r): r is GlassSelectOption => !('heading' in r)),
     [rows]
+  );
+
+  /* Narrow the choice in place, in the same order a native <select> does:
+     first option whose trimmed label STARTS with the buffer, else the first
+     that CONTAINS it. Buffer is reset after a short pause. */
+  const findTypeahead = (buffer: string) => {
+    const lc = buffer.toLowerCase();
+    const startsWith = selectable.find((o) => o.label.trim().toLowerCase().startsWith(lc));
+    if (startsWith) return startsWith;
+    return selectable.find((o) => o.label.trim().toLowerCase().includes(lc));
+  };
+
+  // The typeahead reset timer must not fire on an unmounted component.
+  useEffect(
+    () => () => {
+      if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+    },
+    []
   );
 
   /**
@@ -249,8 +280,41 @@ export const GlassSelect: React.FC<GlassSelectProps> = (props) => {
   };
 
   const onTriggerKeyDown = (e: React.KeyboardEvent) => {
+    /* Closed-trigger typeahead (native <select> semantics): printable
+       characters narrow and commit the choice IN PLACE — focusing a long
+       list and pressing "z" lands on "Zirconia" without opening the menu.
+       The buffer resets after a pause so separate searches don't blend. */
+    const printable =
+      e.key.length === 1 &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      /[\p{L}\p{N}]/u.test(e.key);
+    if (printable && props.multiple !== true) {
+      e.preventDefault();
+      const next = `${typeaheadRef.current}${e.key.toLowerCase()}`.slice(0, 48);
+      typeaheadRef.current = next;
+      if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+      typeaheadTimer.current = setTimeout(() => {
+        typeaheadRef.current = '';
+      }, 900);
+      const hit = findTypeahead(next);
+      if (hit && hit.value !== value) props.onChange(hit.value);
+      return;
+    }
     if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
+      if (e.key === 'Enter' && props.onEnterAdvance) {
+        // Enter accepts the typeahead result and moves past this field —
+        // the menu stays reachable via ArrowDown / Space / click.
+        if (typeaheadTimer.current) {
+          clearTimeout(typeaheadTimer.current);
+          typeaheadTimer.current = null;
+        }
+        typeaheadRef.current = '';
+        props.onEnterAdvance();
+        return;
+      }
       openMenu();
     }
   };
@@ -406,6 +470,7 @@ export const GlassSelect: React.FC<GlassSelectProps> = (props) => {
       <button
         type="button"
         ref={triggerRef}
+        id={props.triggerId}
         disabled={disabled}
         onClick={() => (open ? (triggerRef.current?.focus(), setOpen(false)) : openMenu())}
         onKeyDown={onTriggerKeyDown}
