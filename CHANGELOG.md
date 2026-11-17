@@ -1,3 +1,17 @@
+## [2.31.31] - 2026-11-17
+
+Release respin of v2.31.30. **No application changes beyond one test.**
+
+### Fixed
+- The `signed_system_binary_passes_signature_check` Rust test — which
+  asserted PowerShell's `Get-AuthenticodeSignature` reports `Valid` for a
+  Microsoft catalog-signed system binary — failed on the Windows CI runner
+  while passing on the development machine. That assertion depends on
+  catalog/CRL network state, which is exactly the wrong thing for a build
+  gate to depend on. The test is removed; the deterministic unsigned-file
+  rejection test remains. The v2.31.30 tag is left standing as another
+  failed run; no release was produced from it.
+
 ## [2.31.30] - 2026-11-17
 
 Release respin of v2.31.29. **No application changes.**
