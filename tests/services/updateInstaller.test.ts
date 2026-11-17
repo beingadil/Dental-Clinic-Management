@@ -11,6 +11,7 @@ import {
   isAutoUpdateBusy,
   onAutoUpdatePhase,
   reconcileInstallReceipt,
+  runAutoUpdate,
   type AutoUpdatePhase,
 } from '../../src/services/updateInstaller';
 
@@ -90,6 +91,8 @@ describe('isAutoUpdateBusy', () => {
       // reported as busy, or the panel would grey out "Restart & Apply".
       { state: 'ready_to_apply', version: '9.9.9', bytes: 100 },
       { state: 'failed', message: 'offline' },
+      // Handed to the browser: no Rust work in flight — the user decides.
+      { state: 'handed_off', version: '9.9.9', message: 'opened in browser' },
     ];
     for (const phase of waiting) {
       expect(isAutoUpdateBusy(phase), phase.state).toBe(false);
@@ -251,12 +254,100 @@ describe('receipt reconciliation', () => {
     expect(getAutoUpdatePhase()).toEqual(before);
   });
 
+  it('ignores a receipt whose magic is not ours — no history, no phase', async () => {
+    const invoke = mockTauri(async () => ({
+      running_version: '2.16.0',
+      receipt_status: 'settled',
+      receipt: receipt({ magic: 'FORGED-RECEIPT' }),
+    }));
+
+    await reconcileInstallReceipt();
+
+    // The settled path would normally record "installed" once — a forged
+    // receipt must NOT.
+    expect(
+      getUpdateHistory().filter((h) => h.state === 'installed'),
+    ).toHaveLength(0);
+    expect(getAutoUpdatePhase().state).not.toBe('ready_to_apply');
+    expect(invoke).toHaveBeenCalledTimes(1); // diagnostics only, no cleanup
+  });
+
   it('never throws when diagnostics fail outright', async () => {
     mockTauri(async () => {
       throw new Error('receipt unreadable');
     });
 
     await expect(reconcileInstallReceipt()).resolves.toBeNull();
+  });
+});
+
+describe('untrusted release URL fallback', () => {
+  beforeEach(() => {
+    settingsRepo.set('updates', 'history', []);
+  });
+
+  it('hands off to the browser instead of invoking Rust when the manifest has no download_url', async () => {
+    const calls: string[] = [];
+    mockTauri(async (cmd) => {
+      calls.push(cmd);
+      if (cmd === 'open_external') return null;
+      throw new Error(`unexpected IPC: ${cmd}`);
+    });
+    // The webview's window.open would print a noisy jsdom warning; stub it.
+    (window as any).open = vi.fn();
+    // A manifest that checks out as "available" but carries no download_url —
+    // the API fallback produces exactly this when no -setup.exe asset exists.
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        magic: 'DENTALUPDATE',
+        version: '99.99.99',
+        channel: 'stable',
+        released_at: '2026-11-17T00:00:00Z',
+        payload_checksum: 'sha256:' + 'a'.repeat(64),
+      }),
+    })));
+    try {
+      const phase = await runAutoUpdate();
+      expect(phase.state).toBe('handed_off');
+      // The Rust downloader must NOT be invoked — it would refuse the URL.
+      expect(calls).not.toContain('update_install');
+      // The user still gets a route to the installer: the browser.
+      expect(calls).toContain('open_external');
+      const handedOff = getUpdateHistory().find((h) => h.state === 'handed_off');
+      expect(handedOff?.version).toBe('99.99.99');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('hands off to the releases page when the download URL is off the trusted allowlist', async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    mockTauri(async (cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'open_external') return null;
+      throw new Error(`unexpected IPC: ${cmd}`);
+    });
+    (window as any).open = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        magic: 'DENTALUPDATE',
+        version: '99.99.98',
+        channel: 'stable',
+        released_at: '2026-11-17T00:00:00Z',
+        download_url: 'https://cdn.example.com/dental-solutions-setup.exe', // NOT a trusted host
+      }),
+    })));
+    try {
+      const phase = await runAutoUpdate();
+      expect(phase.state).toBe('handed_off');
+      expect(calls.map((c) => c.cmd)).not.toContain('update_install');
+      const openCall = calls.find((c) => c.cmd === 'open_external');
+      expect(openCall?.args?.url).toBe('https://github.com/beingadil/Dental-Clinic-Management/releases/latest');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

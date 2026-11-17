@@ -48,14 +48,100 @@ export type UpdateStatus =
   | { state: 'available'; version: string; notes?: string; released_at?: string; download_url?: string; payload_checksum?: string }
   | { state: 'error'; message: string };
 
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((x) => parseInt(x, 10) || 0);
-  const pb = b.split('.').map((x) => parseInt(x, 10) || 0);
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return 1;
-    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return -1;
+/**
+ * Mirror of the Rust `is_trusted_download_url` in src-tauri/src/lib.rs — the
+ * same allowlist, evaluated on the webview side so the UI can decide its
+ * fallback BEFORE invoking Rust (which re-checks and fails closed either way).
+ * Both sides list the hosts that can serve a signed GitHub release asset.
+ */
+export const TRUSTED_RELEASE_HOSTS = [
+  'github.com',
+  'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
+] as const;
+
+export function isTrustedReleaseUrl(url?: string | null): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    return (TRUSTED_RELEASE_HOSTS as readonly string[]).includes(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** Parsed form of a dotted numeric version with an optional prerelease tag. */
+interface ParsedVersion {
+  /** Dotted numeric core, zero-extended by the comparator — any component count. */
+  core: number[];
+  /** Prerelease identifiers: all-numeric identifiers become numbers. */
+  pre: (number | string)[];
+}
+
+/**
+ * Parses `v?X(.Y(.Z)…)?(-pre.…)?`. Returns null on anything else. Mirrors
+ * `parse_semver` in src-tauri/src/lib.rs — the two must agree, and the shared
+ * golden fixtures in tests/services/updateService.test.ts and the Rust unit
+ * tests in src-tauri/src/lib.rs pin the same cases.
+ */
+export function parseVersion(raw: string): ParsedVersion | null {
+  const m = /^v?(\d+(?:\.\d+)*)(?:-([0-9A-Za-z.-]+))?$/.exec(raw.trim());
+  if (!m) return null;
+  const core = m[1].split('.').map((p) => Number(p));
+  if (core.some((n) => !Number.isFinite(n) || n > Number.MAX_SAFE_INTEGER)) return null;
+  const pre = m[2]
+    ? m[2].split('.').map((p) => (/^\d+$/.test(p) ? Number(p) : p))
+    : [];
+  return { core, pre };
+}
+
+function comparePrerelease(a: (number | string)[], b: (number | string)[]): number {
+  // A release version outranks any of its own prereleases (2.31.27 > 2.31.27-rc.1).
+  if (a.length === 0) return b.length === 0 ? 0 : 1;
+  if (b.length === 0) return -1;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (i >= a.length) return -1; // prefix of the longer list sorts first
+    if (i >= b.length) return 1;
+    const x = a[i];
+    const y = b[i];
+    if (typeof x === 'number' && typeof y === 'number') {
+      if (x !== y) return x < y ? -1 : 1;
+    } else if (typeof x === 'number') {
+      return -1; // numeric identifiers sort below alphanumeric ones
+    } else if (typeof y === 'number') {
+      return 1;
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
   }
   return 0;
+}
+
+/**
+ * Full-semver comparison used for every update decision.
+ *
+ * Rules (mirror of `semver_cmp` in src-tauri/src/lib.rs):
+ * - the numeric core is compared component-wise and padded with zeros, so a
+ *   four-part `2.31.26.1` outranks `2.31.26` instead of truncating to it;
+ * - a prerelease sorts BEFORE its release (`2.31.27-rc.1 < 2.31.27`);
+ * - prerelease identifiers compare numerically when all-numeric, otherwise in
+ *   ASCII order; an all-numeric identifier sorts below an alphanumeric one.
+ * - an unparseable `a` sorts below everything (no update is offered);
+ *   an unparseable `b` sorts above everything.
+ */
+export function compareVersions(a: string, b: string): number {
+  const pa = parseVersion(a);
+  const pb = parseVersion(b);
+  if (!pa && !pb) return 0;
+  if (!pa) return -1;
+  if (!pb) return 1;
+  const len = Math.max(pa.core.length, pb.core.length);
+  for (let i = 0; i < len; i++) {
+    const d = (pa.core[i] ?? 0) - (pb.core[i] ?? 0);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  return comparePrerelease(pa.pre, pb.pre);
 }
 
 export function isOnline(): boolean {
@@ -79,9 +165,9 @@ interface GithubReleaseInfo {
  */
 /**
  * Silence the browser console on unreachable update sources: the boot check
- * runs every hour and an offline/dev machine would otherwise log CSP + CORS
- * errors for each dead URL on every check. A failed source is the expected
- * steady state, not an error worth surfacing.
+ * runs once per app session and an offline/dev machine would otherwise log
+ * CSP + CORS errors for each dead URL on every check. A failed source is the
+ * expected steady state, not an error worth surfacing.
  */
 const quietFetch = async (url: string): Promise<Response | null> => {
   try {

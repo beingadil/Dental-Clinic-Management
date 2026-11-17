@@ -1,3 +1,70 @@
+## [2.31.29] - 2026-11-17
+
+The auto-update hardening release: the rest of the update-chain audit, fixed
+and verified — the apply path no longer trusts its own receipt, and an
+unsigned or off-allowlist release can no longer strand a clinic.
+
+### Security
+- The desktop apply path now confines the staged installer to the updater's
+  own staging directory. Previously `update_apply` executed a path taken
+  verbatim from the stage receipt; any process able to write that JSON in
+  `%TEMP%` could name an arbitrary executable. The relaunch target is
+  likewise re-derived from the registry/running exe instead of the receipt,
+  so a doctored receipt can no longer point the post-install launcher at
+  anything else.
+- The apply path re-derives the expected checksum from the release's
+  published SHA256SUMS.txt instead of the receipt's self-referential hash —
+  the same fail-closed authority `update_install` uses. An offline machine
+  refuses to apply rather than trust the receipt.
+- `save_file_bytes` now enforces an extension allowlist (.csv, .xlsx, .pdf,
+  .html, .sql, .json, .txt, .dentalbackup) and refuses to overwrite
+  directories. The save dialog's filter was UX-only; the webview could drop
+  `.exe`/`.bat` payloads anywhere the user could write. `save_webview_as_pdf`
+  likewise rejects directory targets alongside its existing .pdf gate.
+- The update download now hands off to the system browser when the release
+  URL is missing or off the trusted-host allowlist instead of stranding every
+  client on "not a trusted release host". The new `handed_off` phase is shown
+  as such (indigo), recorded in the update history, and comes with a direct
+  link back to the Releases page.
+- Release signing can now be switched on with two repository secrets
+  (WINDOWS_PFX_BASE64 / WINDOWS_PFX_PASSWORD): CI signs the NSIS installer
+  with SHA-256 Authenticode + timestamp, verifies it with `signtool verify`,
+  and re-hashes before upload. The updater carries the verification seam
+  (Authenticode check before the file is kept) behind a deliberate
+  one-line compile-time flip in lib.rs — flipping enforcement before a signed
+  release would brick auto-update, so it ships disabled and is enabled in the
+  first signed release, on purpose.
+
+### Fixed
+- A successful browser hand-off is no longer recorded as a failure; it uses a
+  distinct `handed_off` state in the phase machine, the panel and the
+  history log.
+- Receipt `magic` is asserted on the frontend, not just the Rust side — a
+  receipt missing it is ignored completely (no "installed" recorded, no
+  phase change).
+- Full semver comparison shared by the update check (TS) and the receipt
+  classifier (Rust): four-part cores compare correctly instead of truncating,
+  and a prerelease sorts before its release. Both sides pin the same golden
+  fixtures in their unit tests.
+- After a settled (installed) receipt, the next boot deletes the staged
+  installer, its receipt and stale `.pre-update-*.bak` database backups
+  (keeps the newest) instead of leaving them on disk forever.
+- The Settings → Updates trust row says "Automatic check on launch" — the
+  updater has one check per app session, never hourly.
+- The Rust CI gate now enforces what its cargo-audit ignores claim: a step
+  asserts zvariant/glib/zbus_names stay absent from the Windows dependency
+  graph, failing the build if a future dependency reaches them.
+- The release job name says NSIS (only NSIS is built), and the manifest is
+  re-fetched and verified after publication — version must equal the tag and
+  payload_checksum must equal the signed installer's hash, or the release
+  fails.
+- `version-guard` allow-list entries are keyed by file + literal, not
+  literal alone.
+
+### Added
+- Rust unit tests for the SHA256SUMS.txt parser, the semver parser and the
+  staging-path confinement (`cargo test --lib` covers them in CI).
+
 ## [2.31.28] - 2026-11-14
 
 ### Fixed

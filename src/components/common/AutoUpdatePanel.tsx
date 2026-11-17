@@ -20,6 +20,7 @@ import {
   onAutoUpdatePhase,
   runAutoUpdate,
 } from '../../services/updateInstaller';
+import { downloadUpdate, GITHUB_RELEASES_PAGE } from '../../services/updateService';
 
 /**
  * The auto-installer UI — the app's ONLY update surface.
@@ -109,6 +110,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
   const ready = phase.state === 'ready_to_apply';
   const applying = phase.state === 'applying';
   const failed = phase.state === 'failed';
+  const handedOff = phase.state === 'handed_off';
   const steps = buildSteps(phase, version);
   const progress =
     phase.state === 'downloading' && phase.total > 0
@@ -132,8 +134,8 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
   if (floating && phase.state === 'available') {
     return null; // the download starts by itself; no interstitial needed
   }
-  if (floating && phase.state === 'failed' && dismissed) {
-    return null; // a failed attempt can be swept away; Settings keeps the log
+  if (floating && (phase.state === 'failed' || phase.state === 'handed_off') && dismissed) {
+    return null; // a failed attempt / browser hand-off can be swept away; Settings keeps the log
   }
 
   const shell = floating
@@ -147,6 +149,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
     backing_up: 'Backing up your data',
     ready_to_apply: 'Update ready to install',
     applying: 'Restarting and applying the update',
+    handed_off: 'Installer opened in your browser',
     failed: 'Update needs attention',
   };
 
@@ -156,7 +159,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
     <div className={shell} role="status" aria-live="polite">
       <div
         className={`bg-white rounded-2xl border shadow-lg overflow-hidden ${
-          ready || applying
+          ready || applying || handedOff
             ? 'border-indigo-300'
             : failed
               ? 'border-rose-200'
@@ -166,15 +169,15 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
         {/* Header */}
         <div
           className={`px-4 py-3 flex items-center gap-2.5 ${
-            ready || applying
+            ready || applying || handedOff
               ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white'
               : failed
                 ? 'bg-rose-50 border-b border-rose-100'
                 : 'bg-slate-50 border-b border-slate-100'
           }`}
         >
-          <div className={`p-2 rounded-xl ${ready || applying ? 'bg-white/15' : 'bg-indigo-50 text-indigo-600'}`}>
-            {ready || applying ? (
+          <div className={`p-2 rounded-xl ${ready || applying || handedOff ? 'bg-white/15' : 'bg-indigo-50 text-indigo-600'}`}>
+            {ready || applying || handedOff ? (
               <ArrowUpCircle className="w-4 h-4" />
             ) : failed ? (
               <TriangleAlert className="w-4 h-4 text-ink-danger" />
@@ -185,10 +188,10 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className={`text-xs font-bold truncate ${ready || applying ? '' : failed ? 'text-rose-900' : 'text-slate-900'}`}>
+            <p className={`text-xs font-bold truncate ${ready || applying || handedOff ? '' : failed ? 'text-rose-900' : 'text-slate-900'}`}>
               {title}
             </p>
-            <p className={`text-[11px] truncate ${ready || applying ? 'text-indigo-100' : failed ? 'text-rose-700' : 'text-slate-500'}`}>
+            <p className={`text-[11px] truncate ${ready || applying || handedOff ? 'text-indigo-100' : failed ? 'text-rose-700' : 'text-slate-500'}`}>
               {version
                 ? `Dental Solutions v${version}${phase.state === 'ready_to_apply' ? ' — verified and on disk' : ''}`
                 : 'Dental Solutions'}
@@ -230,7 +233,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
           )}
 
           {/* Step list — inline layout only, so the floating card stays compact */}
-          {!floating && phase.state !== 'checking' && (
+          {!floating && phase.state !== 'checking' && phase.state !== 'handed_off' && (
             <ul className="space-y-1.5">
               {steps.map((s) => (
                 <li key={s.key} className="flex items-center gap-2 text-[11px]">
@@ -266,6 +269,12 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
               Dental Solutions on the new version. This takes a few seconds.
             </p>
           )}
+          {handedOff && (
+            <div className="flex items-start gap-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <ArrowUpCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-indigo-900">{phase.message}</p>
+            </div>
+          )}
           {failed && <p className="text-[11px] text-rose-700">{phase.message}</p>}
 
           {/* Actions */}
@@ -286,6 +295,15 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
                   Not now
                 </button>
               </>
+            )}
+            {handedOff && (
+              <button
+                onClick={() => void downloadUpdate(GITHUB_RELEASES_PAGE)}
+                className="px-3.5 py-2 ds-glass-pill text-[11px] font-bold cursor-pointer flex items-center gap-1.5"
+              >
+                <ArrowUpCircle className="w-3.5 h-3.5" />
+                Open Releases page
+              </button>
             )}
             {failed && (
               <button

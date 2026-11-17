@@ -176,7 +176,31 @@ jobs:
             --ignore RUSTSEC-2026-0371 \
             --ignore RUSTSEC-2026-0372
 
-  # ---- Desktop installers: real Tauri build (NSIS + MSI) on Windows ----
+      - name: Assert Linux-only crates are absent from the Windows graph
+        # The ignores above are conditional on these crates never being
+        # compiled for Windows — but nothing enforced that condition, so a
+        # future dependency that reaches them on Windows would inherit a
+        # silent pass. This step IS the enforcement: it runs the three cargo
+        # tree queries the justifications are based on and fails the job if
+        # any of them starts printing a dependency chain. `--target
+        # x86_64-pc-windows-msvc -i <pkg>` prints "nothing to print" when the
+        # package is not in that graph (verified locally on this repo).
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          for pkg in zvariant glib zbus_names; do
+            echo "--- cargo tree --target x86_64-pc-windows-msvc -i $pkg"
+            out="$(cargo tree --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc -i "$pkg" 2>&1 || true)"
+            echo "$out"
+            if ! printf '%s' "$out" | grep -qi 'nothing to print'; then
+              echo "::error::$pkg is now reachable from the Windows dependency graph — the cargo-audit ignore for it is no longer justified. Fix the dependency chain or re-evaluate the advisory before merging."
+              fail=1
+            fi
+          done
+          exit $fail
+
+  # ---- Desktop installer: real Tauri build (NSIS) on Windows ----
   # Runs only after the web and security jobs pass. Produces downloadable
   # artifacts on every run so a clinic PC can install without a local Rust
   # toolchain. `security` is a hard dependency on purpose: an unsigned,
@@ -188,6 +212,13 @@ jobs:
     # The release step below creates a GitHub Release on v* tags.
     permissions:
       contents: write
+    # Code signing activates only when the certificate secrets exist (see the
+    # "Sign the NSIS installer" step). Secrets cannot be referenced in
+    # step-level `if:` expressions, so the boolean is computed once here:
+    # when the secrets are absent the sign step is skipped and the release
+    # ships unsigned, exactly as before.
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_PFX_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -243,7 +274,7 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
-      - name: Build Tauri installers (NSIS + MSI)
+      - name: Build Tauri installer (NSIS)
         run: npm run tauri:build
 
       - name: Upload installer (artifact, every run)
@@ -279,6 +310,40 @@ jobs:
           "ASSET_NAME=$assetName" | Out-File $env:GITHUB_ENV -Append
           "INSTALLER_SHA256=$hash" | Out-File $env:GITHUB_ENV -Append
           Write-Host "Installer: $($exe.Name)  ->  asset $assetName  sha256 $hash"
+
+      # ---- Code signing: only when the certificate secrets are configured ----
+      # Activated by adding two repository secrets: WINDOWS_PFX_BASE64 (the
+      # .pfx, base64-encoded) and WINDOWS_PFX_PASSWORD. The step then signs
+      # the installer with the SHA-256 Authenticode algorithm, timestamps it,
+      # and verifies its own work with signtool verify /pa. A failure fails
+      # the release — a half-signed binary is never uploaded. Everything
+      # downstream (SHA256SUMS.txt, the uploaded asset, the update manifest)
+      # is re-hashed AFTER signing so the chain describes the signed bytes.
+      - name: Sign the NSIS installer (optional — activates with WINDOWS_PFX_* secrets)
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_SIGNING_CERT == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'update-signing.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+          try {
+            $exe = $env:INSTALLER_PATH
+            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if (-not $signtool) { throw "signtool.exe not found in the Windows SDK on this runner." }
+            & $signtool.FullName sign /fd SHA256 /f $pfxPath /p $env:WINDOWS_PFX_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $exe
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed with exit code $LASTEXITCODE" }
+            & $signtool.FullName verify /pa /v $exe
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed with exit code $LASTEXITCODE" }
+            $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+            "INSTALLER_SHA256=$hash" | Out-File $env:GITHUB_ENV -Append
+            Write-Host "Signed and re-hashed: sha256 $hash"
+          } finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
 
       # ---- GitHub Release: only when a v* tag is pushed ----
       - name: Create SHA-256 checksum
@@ -339,3 +404,35 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: pages
+
+      # peaceiris pushes the gh-pages branch and returns as soon as the push
+      # is accepted — a silently failed publish (or a stale raw cache) would
+      # leave every clinic on the old version with no signal. This step
+      # re-fetches the manifest until it matches the tag it publishes, and
+      # fails the release otherwise.
+      - name: Verify the published manifest
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag.TrimStart('v')
+          $expectedChecksum = "sha256:$env:INSTALLER_SHA256"
+          $url = "https://raw.githubusercontent.com/beingadil/Dental-Clinic-Management/gh-pages/update-manifest.json?v=$tag"
+          $ok = $false
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            try {
+              $m = Invoke-RestMethod -Uri $url -TimeoutSec 20
+              if ($m.version -eq $version -and $m.payload_checksum -eq $expectedChecksum) {
+                Write-Host "Manifest live at $url — version=$($m.version), payload_checksum matches the release."
+                $ok = $true
+                break
+              }
+              Write-Host "Attempt ${attempt}: manifest not updated yet (version=$($m.version)); retrying in 10s…"
+            } catch {
+              Write-Host "Attempt ${attempt}: fetch failed ($($_.Exception.Message)); retrying in 10s…"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $ok) {
+            throw "The published manifest does not match $tag — clients would never see this release. Re-run the workflow."
+          }

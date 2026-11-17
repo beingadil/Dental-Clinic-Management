@@ -46,10 +46,13 @@ function suspiciousVersions(v) {
 }
 const suspicious = suspiciousVersions(version);
 
-/** Historical constant allowed verbatim (migration 004 seeds fresh DBs). */
-const ALLOWED_EXACT = new Map([
+/** Historical constants allowed verbatim, keyed by FILE + literal. A
+ *  literal-only allow-list would let the same '2.0.0' string hide anywhere in
+ *  src/ (a copied constant in a new file would pass silently); file-keying
+ *  confines each exception to the one place it is documented for. */
+const ALLOWED_EXACT = new Set([
   // src/db/migrations.ts: fresh-install seed, intentionally the original version
-  ['2.0.0', 'src/db/migrations.ts (migration 004 seed stamps the original app version on fresh databases)'],
+  'src/db/migrations.ts::2.0.0',
 ]);
 
 const SEMVER_IN_STRING = /['"](\d)\.(\d{1,2})\.(\d{1,2})['"]/g;
@@ -64,7 +67,7 @@ function walk(dir) {
     const text = fs.readFileSync(full, 'utf8');
     for (const m of text.matchAll(SEMVER_IN_STRING)) {
       const lit = `${m[1]}.${m[2]}.${m[3]}`;
-      if (ALLOWED_EXACT.has(lit)) continue;
+      if (ALLOWED_EXACT.has(`${rel}::${lit}`)) continue;
       if (suspicious.has(lit)) offenders.push({ file: rel, line: text.slice(0, m.index).split('\n').length, lit });
     }
   }

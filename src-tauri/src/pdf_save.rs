@@ -144,6 +144,13 @@ unsafe fn copy_stream_to_file(src: &IStream, path: &str) -> windows_core::Result
 /// receives the chosen absolute path and renders the CURRENT document —
 /// the open print modal — into it.
 ///
+/// Hardening note: the path arrives from the webview, but the dialog filter
+/// is UX-only. The boundary enforced here is the extension gate
+/// (`.pdf` only, no directories) — a compressed webview can no longer drop
+/// another file type. The path itself cannot be confined: the operator picks
+/// where PDFs land, and a Save As confined to one directory is a broken Save
+/// As. That accepted risk is the same trust we place in the Save dialog.
+///
 /// ASYNC, deliberately. `webview.with_webview` schedules the WebView2 capture
 /// onto the UI thread, and this function then waits for it. As a *synchronous*
 /// command it ran on that same thread, so the UI thread was blocked inside
@@ -157,7 +164,16 @@ pub async fn save_webview_as_pdf(
     webview: tauri::Webview<tauri::Wry>,
     path: String,
 ) -> Result<String, String> {
-    if !path.to_ascii_lowercase().ends_with(".pdf") {
+    let target = std::path::PathBuf::from(&path);
+    if target.is_dir() {
+        return Err("Refusing to overwrite a directory.".into());
+    }
+    let name_ends_pdf = target
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.to_ascii_lowercase().ends_with(".pdf"))
+        .unwrap_or(false);
+    if !name_ends_pdf {
         return Err("File name must end with .pdf".into());
     }
 

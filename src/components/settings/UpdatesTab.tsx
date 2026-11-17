@@ -37,10 +37,11 @@ export const UpdatesTab: React.FC = () => {
   const isAvailable = phase.state === 'available';
   const isDownloading = phase.state === 'downloading';
   const isFailed = phase.state === 'failed';
+  const isHandedOff = phase.state === 'handed_off';
 
   const statusTone = isFailed
     ? 'bg-rose-50 border-rose-200 text-rose-900'
-    : isAvailable
+    : isAvailable || isHandedOff
     ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
     : 'bg-emerald-50 border-emerald-200 text-emerald-900';
 
@@ -50,9 +51,11 @@ export const UpdatesTab: React.FC = () => {
     ? 'Update available'
     : isDownloading
     ? 'Downloading…'
+    : isHandedOff
+    ? 'Installer opened in browser'
     : 'Up to date';
 
-  const StatusIcon = isFailed ? TriangleAlert : isAvailable ? ArrowUpCircle : CheckCircle2;
+  const StatusIcon = isFailed ? TriangleAlert : isAvailable || isHandedOff ? ArrowUpCircle : CheckCircle2;
 
   return (
     <div className="space-y-6">
@@ -70,6 +73,8 @@ export const UpdatesTab: React.FC = () => {
               <p className="text-xs mt-0.5 opacity-80">
                 {isFailed
                   ? (phase.state === 'failed' ? phase.message : 'The last update attempt did not complete. Try again below.')
+                  : isHandedOff
+                  ? (phase.state === 'handed_off' ? phase.message : '')
                   : isAvailable
                   ? 'A new version is ready to download and install.'
                   : 'Dental Solutions is running the latest version.'}
@@ -122,7 +127,7 @@ export const UpdatesTab: React.FC = () => {
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 text-[11px] text-slate-500">
         <span className="flex items-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          Automatic hourly checks
+          Automatic check on launch
         </span>
         <span className="flex items-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -152,7 +157,7 @@ export const UpdatesTab: React.FC = () => {
                   className={`absolute -left-1.5 mt-1 w-3 h-3 rounded-full border-2 border-white ${
                     h.state === 'installed'
                       ? 'bg-emerald-500'
-                      : h.state === 'available'
+                      : h.state === 'available' || h.state === 'handed_off'
                       ? 'bg-indigo-500'
                       : h.state === 'up_to_date'
                       ? 'bg-slate-300'
@@ -163,6 +168,7 @@ export const UpdatesTab: React.FC = () => {
                   <span className="text-xs font-bold text-slate-800">
                     {h.state === 'available' && `v${h.version} detected`}
                     {h.state === 'installed' && `Updated to v${h.version}`}
+                    {h.state === 'handed_off' && `v${h.version} installer opened in browser`}
                     {h.state === 'failed' && `Update failed${h.version !== currentVersion() ? ` (v${h.version})` : ''}`}
                     {h.state === 'up_to_date' && 'Checked — up to date'}
                   </span>

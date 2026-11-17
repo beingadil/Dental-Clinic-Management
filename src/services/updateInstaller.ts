@@ -13,7 +13,7 @@
  * Downloading and verifying is automatic; closing the app is always a click.
  */
 import { settingsRepo } from '../db/repos';
-import { checkForUpdates, downloadUpdate, UpdateStatus, currentVersion } from './updateService';
+import { checkForUpdates, downloadUpdate, UpdateStatus, currentVersion, isTrustedReleaseUrl, GITHUB_RELEASES_PAGE } from './updateService';
 import { recordUpdateHistory, getUpdateHistory } from './updateHistory';
 import { listen } from '@tauri-apps/api/event';
 import { flushNow } from '../db/persistence';
@@ -39,6 +39,13 @@ export type AutoUpdatePhase =
   /** Installer downloaded, checksum-verified and on disk; nothing has run yet. */
   | { state: 'ready_to_apply'; version: string; bytes: number; staged_path?: string; checksum?: string }
   | { state: 'applying'; version: string }
+  /**
+   * The installer could not be applied by this build (web build, or the
+   * release URL is missing/off the trusted-host allowlist), so the download
+   * was handed to the system browser instead. Distinct from `failed`: the
+   * hand-off itself succeeded; no error occurred.
+   */
+  | { state: 'handed_off'; version: string; message: string }
   | { state: 'failed'; message: string };
 
 interface TauriApi {
@@ -54,6 +61,9 @@ function tauri(): TauriApi | null {
 export function isDesktopShell(): boolean {
   return tauri() !== null;
 }
+
+/** Same magic the Rust side writes into the stage receipt; must match exactly. */
+const STAGE_RECEIPT_MAGIC = 'DENTALUPDATE-RECEIPT';
 
 type Listener = (phase: AutoUpdatePhase) => void;
 
@@ -149,6 +159,16 @@ export async function reconcileInstallReceipt(): Promise<UpdateDiagnostics | nul
   const diag = await readUpdateDiagnostics();
   if (!diag) return null;
 
+  /* The Rust side filters receipts on this magic before the diagnostics IPC
+     reaches us; the frontend keeps its own copy of the check so the documented
+     contract is pinned here too — a receipt missing it is not one of ours and
+     gets no phase or history side effects. */
+  if (diag.receipt && diag.receipt.magic !== STAGE_RECEIPT_MAGIC) {
+    // eslint-disable-next-line no-console
+    console.warn('[updates] stage receipt has an unrecognised magic — ignoring it');
+    return diag;
+  }
+
   if (diag.receipt_status === 'settled' && diag.receipt) {
     // Record once per version: `installed` is only meaningful for the build
     // that actually landed, and it must never be claimed while still pending.
@@ -162,6 +182,14 @@ export async function reconcileInstallReceipt(): Promise<UpdateDiagnostics | nul
         message: `Staged ${diag.receipt.staged_at} from v${diag.receipt.previous_version || '?'}`,
       });
     }
+    /* The install landed — the staged installer, the receipt and any stale
+       pre-update database backups are dead weight. Native-side cleanup is
+       best-effort and confined to the staging dir / the DB's directory. */
+    void (async () => {
+      try {
+        await tauri()?.invoke('update_cleanup_settled');
+      } catch { /* cleanup is optional; never block boot */ }
+    })();
     return diag;
   }
 
@@ -251,14 +279,34 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
     recordUpdateHistory({ version, state: 'available' });
     setPhase({ state: 'available', version, notes, released_at });
 
-    if (!isDesktopShell()) {
-      // Web build: hand off to the system browser (the user completes it).
-      await downloadUpdate(downloadUrl);
+    /* #12 — the desktop shell must never strand the user on a security
+       refusal. When the manifest/API yields no usable download URL — or the
+       URL is off the trusted-host allowlist (a renamed asset or a new CDN
+       host) — the Rust side refuses to download BY DESIGN. Falling back to
+       "not a trusted release host — refusing to download" as a dead end
+       leaves every client blocked, so hand the job to the browser instead:
+       the direct URL when it is trusted, the releases page otherwise. */
+    const trustedDownload = isTrustedReleaseUrl(downloadUrl);
+    if (!isDesktopShell() || !trustedDownload) {
+      const handUrl = trustedDownload && downloadUrl ? downloadUrl : GITHUB_RELEASES_PAGE;
+      const res = await downloadUpdate(handUrl);
+      if (!res.ok) {
+        const phase: AutoUpdatePhase = {
+          state: 'failed',
+          message: res.error || 'Could not open the installer download in your browser — open the Releases page manually.',
+        };
+        recordUpdateHistory({ version, state: 'failed', message: phase.message });
+        setPhase(phase);
+        return phase;
+      }
       const phase: AutoUpdatePhase = {
-        state: 'failed',
-        message: 'This build cannot install updates by itself — the installer download opened in your browser.',
+        state: 'handed_off',
+        version,
+        message: !isDesktopShell()
+          ? 'This build cannot install updates by itself — the installer download opened in your browser. Run it to finish the update.'
+          : 'The update could not be downloaded automatically (the release link was missing or failed verification). The Releases page opened in your browser — download and run the installer to finish updating.',
       };
-      recordUpdateHistory({ version, state: 'failed', message: phase.message });
+      recordUpdateHistory({ version, state: 'handed_off', message: phase.message });
       setPhase(phase);
       return phase;
     }
@@ -323,7 +371,26 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
       setPhase(phase);
       return phase;
     } catch (e: any) {
-      const phase: AutoUpdatePhase = { state: 'failed', message: e?.message || String(e) };
+      const rawMessage = e?.message || String(e);
+      /* Belt and braces: the pre-flight isTrustedReleaseUrl check above makes
+         this unreachable in the normal case, but the Rust allowlist is the
+         authority — if the two ever drift, fall back to the browser instead
+         of showing the user a dead-end security refusal. */
+      if (typeof rawMessage === 'string' && rawMessage.includes('not a trusted release host')) {
+        const res = await downloadUpdate(GITHUB_RELEASES_PAGE);
+        const phase: AutoUpdatePhase = res.ok
+          ? {
+              state: 'handed_off',
+              version,
+              message:
+                'The update could not be downloaded automatically (the release link failed host verification). The Releases page opened in your browser — download and run the installer to finish updating.',
+            }
+          : { state: 'failed', message: res.error || rawMessage };
+        recordUpdateHistory({ version, state: phase.state, message: phase.message });
+        setPhase(phase);
+        return phase;
+      }
+      const phase: AutoUpdatePhase = { state: 'failed', message: rawMessage };
       recordUpdateHistory({ version, state: 'failed', message: phase.message });
       setPhase(phase);
       return phase;
