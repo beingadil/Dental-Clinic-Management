@@ -1,3 +1,15 @@
+## [2.31.33] - 2026-11-18
+
+### Fixed
+- The collapsed navigation rail glued every icon to the left edge of its
+  capsule instead of centring it — the invisible badge kept `margin-left:
+  auto` (eating all free space) and the chevron kept `w-3.5` even with `w-0`
+  appended later by class order, so `justify-center` had nothing to
+  distribute. Collapsed-mode decoratives are now `display:none`.
+- The closed disclosure grids under expandable nav groups (Billing,
+  Analytics) are `visibility:hidden` (delayed past the open/close animation),
+  so their children are no longer tabbable or announced while invisible.
+
 ## [2.31.32] - 2026-11-18
 
 ### Added
