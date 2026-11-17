@@ -178,6 +178,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const fromInputRef = useRef<HTMLInputElement>(null);
 
   const today = todayISO();
@@ -188,10 +189,16 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
   // Which endpoint the calendar edits next: 'from' first, then 'to'.
   const [picking, setPicking] = useState<'from' | 'to'>('from');
 
-  // Close on outside click
+  // Close on outside click. The popup is portalled to document.body, so the
+  // "inside" test spans TWO subtrees: the trigger wrapper and the portal
+  // panel. Checking only the trigger made every click inside the calendar
+  // read as "outside" and auto-closed the popup without picking anything.
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (containerRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -353,6 +360,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
           positioning; here left/top are viewport coordinates, period. */}
       {open && createPortal(
         <div
+          ref={panelRef}
           role="dialog"
           aria-label="Choose date range"
           className="fixed z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5 max-h-[calc(100vh-1rem)] overflow-y-auto"
