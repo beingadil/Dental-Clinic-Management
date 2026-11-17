@@ -6,7 +6,7 @@
  * `--brand-*` tokens that `bg-brand-600` / `text-brand-700` resolve against.
  *
  * The form carried 32 hardcoded `indigo-*` utilities. Indigo happens to be the
- * FIRST swatch and its hex (`#4f46e5`) is also the default `--brand-600`, so
+ * FIRST swatch and its hex (`#5e6ad2`) is also the default `--brand-600`, so
  * nothing looked wrong in development and every screenshot passed review — the
  * form was indigo, which is exactly right for a lab that had picked indigo and
  * exactly wrong for every other lab. The failure was invisible until someone
@@ -31,7 +31,7 @@ const chartTsx = readFileSync(CHART_TSX, 'utf8');
 const chartCss = readFileSync(CHART_CSS, 'utf8');
 
 /** The raw indigo values that were hardcoded in the chart's paint rules. */
-const INDIGO_HEX = ['#eef2ff', '#e0e7ff', '#4f46e5', '#4338ca'];
+const INDIGO_HEX = ['#edeefe', '#d8dbfb', '#b9beee', '#5e6ad2', '#4950ad'];
 
 /** Every `indigo-<n>` utility occurrence, with the line it sits on. */
 function indigoUsages(src: string): { line: number; text: string }[] {

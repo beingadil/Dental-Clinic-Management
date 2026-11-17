@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { getTodayStr } from '../../utils/dateUtils';
 
@@ -196,6 +197,27 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
+  // The trigger pill sits in a toolbar with the table directly beneath it.
+  // The popup therefore floats to the RIGHT of the pill as a fixed panel —
+  // never over the invoice rows the operator is choosing for, and never
+  // clipping behind a scrolling sibling.
+  const [openPos, setOpenPos] = useState<{ top: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const PANEL_W = 316;
+      const left = Math.min(rect.right + 10, Math.max(8, window.innerWidth - PANEL_W - 8));
+      const top = Math.min(rect.top, Math.max(8, window.innerHeight - 380));
+      setOpenPos({ top, left });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [open]);
+
   // Escape closes the popup without touching the selected range.
   useEffect(() => {
     if (!open) return;
@@ -326,12 +348,15 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
         )}
       </div>
 
-      {/* Popup */}
-      {open && (
+      {/* Popup — portalled to body so a transformed ancestor (entrance
+          animations, will-change layers) cannot re-originate its 'fixed'
+          positioning; here left/top are viewport coordinates, period. */}
+      {open && createPortal(
         <div
           role="dialog"
           aria-label="Choose date range"
-          className="absolute left-0 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5"
+          className="fixed z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5 max-h-[calc(100vh-1rem)] overflow-y-auto"
+          style={openPos ?? undefined}
         >
           {/* Quick ranges — same list in every module. */}
           <div className="flex flex-wrap gap-1">
@@ -451,7 +476,8 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
               Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

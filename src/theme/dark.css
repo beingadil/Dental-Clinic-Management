@@ -38,23 +38,24 @@
    * inverse surface.
    */
   .dark {
-    /* Surfaces */
-    --color-slate-50: #0b0f18;
-    --color-slate-100: #121824;
-    --color-slate-200: #18202f;
-    --color-slate-300: #242e41;
+    /* Surfaces — the premium dark ladder. Warm, near-black, one step per
+       elevation. No blue cast: the accent carries the hue, not the room. */
+    --color-slate-50: #0e0f12;
+    --color-slate-100: #15161c;
+    --color-slate-200: #1c1d24;
+    --color-slate-300: #262832;
     /* Lines / hairlines that sit above a surface */
-    --color-slate-400: #3c4a62;
+    --color-slate-400: #34363f;
     /* Ink. Ordered to preserve the light-theme ladder exactly. */
-    --color-slate-500: #8a94a8;
-    --color-slate-600: #9aa6bb;
-    --color-slate-700: #d3d9e4;
-    --color-slate-800: #d3dbe7;
-    --color-slate-900: #e9eef7;
-    --color-slate-950: #f2f5fa;
-    --color-line: #2a3446;
+    --color-slate-500: #8a8d99;
+    --color-slate-600: #a2a6b2;
+    --color-slate-700: #d6d8de;
+    --color-slate-800: #d6d8de;
+    --color-slate-900: #ececf1;
+    --color-slate-950: #f4f4f8;
+    --color-line: #262832;
     /* white is a SURFACE here, not ink — ink is re-pinned below. */
-    --color-white: #121824;
+    --color-white: #15161c;
 
     /*
      * Chromatic ramps. Each hue keeps its identity and its 500/600 anchor
@@ -581,30 +582,30 @@
      header sit on top of it with a backdrop-filter, and a full-window filter
      that repaints on every scroll is exactly the cost this arrangement avoids. */
   .dark .app-atmos {
-    --room-base-a: #080a11;
-    --room-base-b: #0d111c;
-    --room-base-c: #101725;
-    --room-bloom-a: rgba(129, 140, 248, 0.2);
-    --room-bloom-b: rgba(34, 211, 238, 0.06);
-    --room-bloom-c: rgba(129, 140, 248, 0.14);
-    --room-bloom-d: rgba(52, 211, 153, 0.04);
-    --room-orb-a: rgba(129, 140, 248, 0.16);
-    --room-orb-b: rgba(34, 211, 238, 0.08);
-    --room-orb-core: rgba(255, 255, 255, 0.09);
+    --room-base-a: #0e0f12;
+    --room-base-b: #101116;
+    --room-base-c: #121318;
+    --room-bloom-a: rgba(94, 106, 210, 0.028);
+    --room-bloom-b: rgba(94, 106, 210, 0.02);
+    --room-bloom-c: rgba(94, 106, 210, 0.024);
+    --room-bloom-d: rgba(255, 255, 255, 0.012);
+    --room-orb-a: rgba(94, 106, 210, 0);
+    --room-orb-b: rgba(94, 106, 210, 0);
+    --room-orb-core: rgba(255, 255, 255, 0);
   }
 
   .dark .app-atmos::before {
     opacity: 1;
   }
 
-  .dark .app-room-orb {
+  .dark .app-room-orb { display: none; /* premium dark removes the orbs */
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.1),
       0 30px 70px -40px rgba(0, 0, 0, 0.86);
   }
 
   .dark .app-atmos::after {
-    opacity: 0.05;
+    opacity: 0.012;
   }
 
   /* The first-run stage, lit for a low-key scene. The rig is the same one —
@@ -703,30 +704,24 @@
     background: #1c2433;
   }
 
-  /* Theme switch: the selected segment used to rely on `bg-white`, which is
-     re-pointed to a surface token here. The result was dark ink on a
-     transparent button. Paint the selected segment as raised glass and keep
-     the other two quiet until hover. */
+  /* Theme switch: the selected segment used to paint its own fill, which
+     fought the sliding thumb. The thumb now owns the raised pane; here we only
+     settle the ink — the thumb's dark gradient is in shell.css. */
   .dark .ds-theme-toggle {
     background: rgb(255 255 255 / 0.05);
-    border-color: #2a3446;
+    border-color: #25272f;
     box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05);
   }
   .dark .ds-theme-toggle button {
-    background-color: transparent;
-    color: #8a94a8;
+    color: #8a8d99;
   }
   .dark .ds-theme-toggle button:hover {
-    background-color: rgb(255 255 255 / 0.06);
-    color: #f2f5fa;
+    background-color: transparent;
+    color: #ececf1;
   }
-  .dark .ds-theme-toggle button[aria-checked='true'],
-  .dark .ds-theme-toggle button[aria-checked='true']:hover {
-    background-color: #1c2433;
+  .dark .ds-theme-toggle button[aria-checked='true'] {
+    background-color: transparent;
     color: #c7d2fe;
-    box-shadow:
-      0 0 0 1px #44506a,
-      0 1px 2px rgb(0 0 0 / 0.35);
   }
   /* Clinic picker (and every other glass select) is a FIELD, not a card. */
   .dark .ds-glass-select {
@@ -739,24 +734,24 @@
   .dark .ds-glass-select:hover {
     background: #1c2433;
   }
-  /* Night room atmosphere */
+  /* Night room atmosphere — the premium dark room: warm black, still. */
   .dark .app-atmos {
-    --room-base-a: #080a11;
-    --room-base-b: #0d111c;
-    --room-base-c: #101725;
-    --room-bloom-a: rgba(129, 140, 248, 0.2);
-    --room-bloom-b: rgba(34, 211, 238, 0.06);
-    --room-bloom-c: rgba(129, 140, 248, 0.14);
-    --room-bloom-d: rgba(52, 211, 153, 0.04);
-    --room-orb-a: rgba(129, 140, 248, 0.16);
-    --room-orb-b: rgba(34, 211, 238, 0.08);
-    --room-orb-core: rgba(255, 255, 255, 0.09);
+    --room-base-a: #0e0f12;
+    --room-base-b: #101116;
+    --room-base-c: #121318;
+    --room-bloom-a: rgba(94, 106, 210, 0.028);
+    --room-bloom-b: rgba(94, 106, 210, 0.02);
+    --room-bloom-c: rgba(94, 106, 210, 0.024);
+    --room-bloom-d: rgba(255, 255, 255, 0.012);
+    --room-orb-a: rgba(94, 106, 210, 0);
+    --room-orb-b: rgba(94, 106, 210, 0);
+    --room-orb-core: rgba(255, 255, 255, 0);
   }
   .dark .app-atmos::before   { opacity: 1; }
-  .dark .app-room-orb {
+  .dark .app-room-orb { display: none; /* premium dark removes the orbs */
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 30px 70px -40px rgba(0, 0, 0, 0.86);
   }
-  .dark .app-atmos::after   { opacity: 0.05; }
+  .dark .app-atmos::after   { opacity: 0.012; }
   /* Auth stage */
   .dark .auth-stage {
     --auth-key-light: rgba(122, 162, 255, 0.24);

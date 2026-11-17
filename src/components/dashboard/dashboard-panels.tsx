@@ -193,7 +193,7 @@ export const GreetingHeader: React.FC<{
       data-purpose="dashboard-greeting"
     >
       <div className="min-w-0">
-        <h1 className="flex items-center gap-2.5 text-[22px] sm:text-[26px] font-extrabold tracking-[-0.02em] text-ds-ink leading-none">
+        <h1 className="flex items-center gap-2.5 text-[19px] sm:text-[23px] font-semibold tracking-[-0.025em] text-ds-ink leading-none">
           <span className="truncate">
             {greeting}, {userName}
           </span>

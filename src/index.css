@@ -29,7 +29,7 @@
   --brand-50: #eef2ff;
   --brand-100: #e0e7ff;
   --brand-200: #c7d2fe;
-  --brand-600: #4f46e5;
+  --brand-600: #5e6ad2;
   --brand-700: #4338ca;
 }
 
@@ -89,7 +89,7 @@
      and only the ink half is theme-scoped. Values are the unmodified brand
      swatches, so light-theme rendering is byte-identical to the utilities
      these rules replace. Dark counterparts in src/theme/dark.css. */
-  --color-ink-brand: #4b47cf;
+  --color-ink-brand: #4953a9;
   --color-ink-brand-strong: #4444b5;
   --color-fill-danger: #e3104a;
   --color-fill-danger-hover: #d9003a;

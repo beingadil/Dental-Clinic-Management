@@ -21,6 +21,7 @@
 import React from 'react';
 import { userPreferencesRepo } from '../../db/userPreferencesRepo';
 import { getNowStamp } from '../../utils/dateUtils';
+import { DEFAULT_HIDDEN } from './panelRegistry';
 
 export type PanelWidth = 'full' | 'half';
 
@@ -66,7 +67,13 @@ export function knownKeys(all: string[], prefs: PanelPrefs): PanelPrefs {
 export function parsePrefs(raw: unknown, allKeys: string[]): PanelPrefs {
   const asList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
   const inner = raw && typeof raw === 'object' ? (raw as Record<string, unknown>)[PANELS_KEY] : undefined;
-  const r = (inner ?? {}) as Partial<PanelPrefs>;
+  /* No saved layout means the shipped dashboard, not the empty one: reveal the
+     essentials and nothing else. A saved layout — even an empty one — is the
+     reader's deliberate choice and wins over this seed. */
+  if (!inner || typeof inner !== 'object') {
+    return knownKeys(allKeys, { pinned: [], hidden: [...DEFAULT_HIDDEN], wide: [] });
+  }
+  const r = inner as Partial<PanelPrefs>;
   return knownKeys(allKeys, {
     pinned: asList(r.pinned),
     hidden: asList(r.hidden),

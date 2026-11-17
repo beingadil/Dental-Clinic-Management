@@ -1074,7 +1074,7 @@ const ToothThumbnail = React.memo(function ToothThumbnail({ type, shade, prep }:
           <path d="M 9 12 H 15 M 9 17 H 15 M 9 22 H 15" stroke="#65727b" strokeWidth="1" fill="none" />
         </g>
       ) : (
-        <path d={paths[type]} fill={shade} stroke="#4f46e5" strokeWidth="1.3" />
+        <path d={paths[type]} fill={shade} stroke="var(--brand-600)" strokeWidth="1.3" />
       )}
     </svg>
   );
