@@ -213,7 +213,7 @@ export const Sidebar: React.FC = () => {
             )}
             <span
               className={`ds-nav-fade min-w-0 text-left overflow-hidden whitespace-nowrap ${
-                isCollapsed ? 'w-0 opacity-0 -translate-x-2 pointer-events-none' : 'w-auto opacity-100 translate-x-0'
+                isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'
               }`}
             >
               <span className="ds-brand-name block truncate">
@@ -290,26 +290,30 @@ export const Sidebar: React.FC = () => {
                         />
                         <span
                           className={`ds-nav-fade truncate flex-1 min-w-0 ${
-                            isCollapsed ? 'w-0 opacity-0 -translate-x-2' : 'w-auto opacity-100 translate-x-0'
+                            isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'
                           }`}
                         >
                           {item.label}
                         </span>
+                        {!isCollapsed && (
                         <ChevronDown
                           className={`ds-nav-fade w-3.5 shrink-0 transition-transform duration-[280ms] [transition-timing-function:cubic-bezier(.32,.72,0,1)] ${
                             isExpanded ? 'rotate-180' : ''
-                          } ${isCollapsed ? 'w-0 opacity-0 -translate-x-2' : ''}`}
+                          }`}
                           aria-hidden="true"
                         />
+                        )}
+                        {!isCollapsed && (
                         <span
                           className={`ds-nav-fade ds-nav-badge shrink min-w-0 ${
                             !item.badge ? 'invisible' : ''
-                          } ${isCollapsed ? 'w-0 opacity-0 -translate-x-2' : 'w-auto opacity-100 translate-x-0'}`}
+                          } w-auto opacity-100 translate-x-0`}
                           data-tone={item.tone ?? 'neutral'}
-                          aria-hidden={isCollapsed || !item.badge}
+                          aria-hidden={!item.badge}
                         >
                           {item.badge}
                         </span>
+                        )}
                       </button>
                       <div className="ds-disc-grid" data-open={isExpanded && !isCollapsed}>
                         <div className="min-h-0 overflow-hidden">
@@ -375,15 +379,15 @@ export const Sidebar: React.FC = () => {
                     />
                     <span
                       className={`ds-nav-fade truncate min-w-0 ${
-                        isCollapsed ? 'w-0 opacity-0 -translate-x-2 pointer-events-none' : 'w-auto opacity-100 translate-x-0'
+                        isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'
                       }`}
                     >
                       {item.label}
                     </span>
                     <span
                       className={`ds-nav-fade ds-nav-badge min-w-0 ${
-                        item.badge ? '' : 'invisible'
-                      } ${isCollapsed ? 'w-0 opacity-0 -translate-x-2' : 'w-auto opacity-100 translate-x-0'}`}
+                        !item.badge ? 'invisible' : ''
+                      } ${isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'}`}
                       data-tone={item.tone ?? 'neutral'}
                       aria-hidden={isCollapsed || !item.badge}
                     >
