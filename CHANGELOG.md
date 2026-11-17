@@ -1,3 +1,32 @@
+## [2.31.32] - 2026-11-18
+
+### Added
+- The New Case basics grid now walks itself with Enter: patient name →
+  doctor → dental clinic → case procedure → Continue. Text fields advance on
+  Enter; the two dropdown triggers advance instead of opening their menu
+  (a new `onEnterAdvance` on GlassSelect). ArrowDown / Space / click still
+  open the menu, and Enter keeps its old behavior everywhere the new
+  advancing is not wired.
+- A closed GlassSelect trigger does native-select typeahead: printable
+  characters narrow and commit the choice in place — focusing Case Procedure
+  and pressing "z" commits "Zirconia Bridge (3-Unit)" without opening the
+  menu. Prefix match first, substring fallback, 900 ms buffer reset. Multi
+  mode is unchanged.
+- Target Delivery Date now uses the same enhanced picker as Received Date
+  (calendar, month/year navigation, manual entry) instead of the raw browser
+  input. The SLA-derived pre-fill is unchanged, and the field's error state
+  is exposed with aria-invalid / aria-describedby via new DatePickerSingle
+  props.
+
+### Fixed
+- Every date-range filter (Billing, Ledger, Payments, Case List, Insights)
+  closed itself on ANY click inside its own calendar — the portal moved the
+  panel to `document.body` but the outside-click handler only knew the
+  trigger wrapper. Clicks inside the panel no longer close it. Shipped broken
+  in 2.31.31; this release is the hotfix.
+- The received-date wizard test now waits generously (parallel-load flake),
+  and the date-range picker got a mousedown regression test.
+
 ## [2.31.31] - 2026-11-17
 
 Release respin of v2.31.30. **No application changes beyond one test.**
