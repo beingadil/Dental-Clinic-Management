@@ -4,15 +4,21 @@
  * must output a strict intent JSON. Never Groq-fabricated figures.
  */
 import { groqChat } from './voiceGroq';
+import { getTodayStr } from '../utils/dateUtils';
 import { remember, memoryContext } from './voiceMemory';
 import {
   clinicCandidates,
   getAdvanceWallet,
+  getCashCollected,
   getCodeAnswer,
   getClinicBalance,
   getLedgerAnswer,
+  getMonthCloseStatus,
+  getOverdueCases,
+  getStandings,
   getStatementAnswer,
   getUnpaid,
+  monthFromQuery,
   periodFromQuery,
   resolveClinic,
   searchInvoicesInContext,
@@ -60,6 +66,7 @@ export async function askAssistant(raw: string, ctx: VoiceContext): Promise<Assi
   const done = (text: string) => finish(text, q);
   if (!q) return done('Ask me about a clinic’s balance, statement, ledger, outstanding invoices, or an invoice search.');
   const lower = folded(q);
+  const period = periodFromQuery(q);
 
   // ── navigation (JARVIS control of the software) ─────────────────────────
   const NAV: Record<string, string> = {
@@ -92,11 +99,28 @@ export async function askAssistant(raw: string, ctx: VoiceContext): Promise<Assi
       'I can control Dental Solutions hands-free:',
       '• Open any screen: “Open dashboard”, “Open general ledger”, “Open settings”',
       '• Money: “Mir Dental balance”, “Statement for Mir Dental last month”, “Ledger for Mir Dental since Oct 1”, “Outstanding invoices for Mir Dental”, “Advance wallet for Mir Dental”',
+      '• Whole business: “Cash collected today”, “Overdue cases”, “Standings”, “Month close status for October 2026”',
       '• Search: “Find invoice INV-0042” (patient name included if you enabled clinical detail in Settings)',
       '• Actions (with on-screen confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000 for Mir Dental”',
       '• Code and docs: “How does the monthly statement compute closing balance?”',
       'Voice writes require confirmation; destructive actions (void, delete, wipe, restore) stay physical.',
     ].join('\n'));
+  }
+
+  // ── whole-book analytics (no clinic needed) ─────────────────────────────
+  if (/cash collected|collection today|money in|income today|collection\b/.test(lower)) {
+    const from = /today/.test(lower) ? getTodayStr() : period.from;
+    const to = /today/.test(lower) ? getTodayStr() : period.to;
+    return done(getCashCollected(ctx, from, to));
+  }
+  if (/overdue case|cases overdue|pending cases/.test(lower)) {
+    return done(getOverdueCases(ctx));
+  }
+  if (/standings|best clinic|top clinic|worst clinic|who owes/.test(lower)) {
+    return done(getStandings(ctx));
+  }
+  if (/month.?close|closed month|month closed/.test(lower)) {
+    return done(getMonthCloseStatus(monthFromQuery(q)));
   }
 
   // ── code/docs questions ───────────────────────────────────────────────
@@ -113,8 +137,6 @@ export async function askAssistant(raw: string, ctx: VoiceContext): Promise<Assi
   }
   const directResolve = resolveClinic(ctx, q.match(/(?:for|of)\s+([A-Za-z0-9 ()&-]{2,})/i)?.[1]?.trim());
   const chosen = clinic ?? directResolve;
-
-  const period = periodFromQuery(q);
 
   const needsClinic = /balance|owe|statement|ledger|outstanding|unpaid|overdue|advance|wallet|baki|udhar/.test(lower);
   if (needsClinic && !chosen) {

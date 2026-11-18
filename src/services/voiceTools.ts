@@ -8,13 +8,16 @@ import { availableAdvanceCredit } from './transactionDomain';
 import { buildLedgerEntries } from './ledgerDomain';
 import { invoiceMatchesSearch } from './invoiceSearch';
 import { searchRag } from './ragQuery';
-import type { Invoice, AdvancePayment, AccountAdjustment, DentalLab, UserProfile } from '../types';
+import type { Invoice, AdvancePayment, AccountAdjustment, DentalLab, DentalCase, UserProfile } from '../types';
+import { collectAllPayments } from './ledgerDomain';
+import { listMonthCloses } from './monthClose';
 
 export interface VoiceContext {
   labs: DentalLab[];
   invoices: Invoice[];
   advancePayments: AdvancePayment[];
   accountAdjustments: AccountAdjustment[];
+  cases?: DentalCase[];
   user?: UserProfile | null;
   /** Owner/Super-Admin opt-in for patient detail on reads. */
   allowClinicalDetail?: boolean;
@@ -144,4 +147,63 @@ export const getCodeAnswer = async (q: string) => {
   const hits = await searchRag(q, { limit: 4 });
   if (!hits.length) return null;
   return hits.map((h) => `• ${h.citation} — ${h.excerpt.replace(/\s+/g, ' ').slice(0, 160)}`).join('\n');
+};
+
+const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+export const monthFromQuery = (q: string): string | null => {
+  const year = q.match(/(20\d{2})/)?.[1];
+  const month = MONTHS.findIndex((m) => q.toLowerCase().includes(m));
+  if (year && month >= 0) return `${year}-${String(month + 1).padStart(2, '0')}`;
+  return null;
+};
+
+export const getCashCollected = (ctx: VoiceContext, from?: string, to?: string) => {
+  const inRange = collectAllPayments(ctx.invoices || [])
+    .filter((p) => {
+      const d = String(p.payment_date).slice(0, 10);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+  const total = inRange.reduce((acc, p) => acc + (p.amount || 0), 0);
+  const adv = (ctx.advancePayments || []).filter((a) => {
+    const d = String(a.payment_date || a.created_at).slice(0, 10);
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  }).reduce((acc, a) => acc + (a.amount || 0), 0);
+  return `Cash collected ${from ? `${from} → ${to || 'today'}` : 'overall'}: PKR ${roundMoney(total).toLocaleString()} in payments, PKR ${roundMoney(adv).toLocaleString()} in advances.`;
+};
+
+export const getOverdueCases = (ctx: VoiceContext) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const due = (ctx.cases || [])
+    .filter((c) => c.delivery_date && String(c.delivery_date) < today && !['delivered', 'cancelled'].includes((c.status || '').toLowerCase()))
+    .slice(0, 5);
+  if (!due.length) return 'No overdue cases right now.';
+  return `Overdue cases: ${due.map((c) => `${c.case_number}${ctx.allowClinicalDetail && c.patient_name ? ` (${c.patient_name})` : ''} — due ${String(c.delivery_date).slice(0, 10)}`).join('; ')}.`;
+};
+
+/** Top clinics on net receivable (outstanding) across the book. */
+export const getStandings = (ctx: VoiceContext) => {
+  const rows = (ctx.labs || [])
+    .map((lab) => { const { signed } = getClinicBalance(ctx, lab.id); return { name: lab.name, signed }; })
+    .filter((r) => r.signed !== 0)
+    .sort((a, b) => b.signed - a.signed)
+    .slice(0, 5);
+  if (!rows.length) return 'No clinic has an outstanding balance.';
+  return rows.map((r) => `${r.name}: PKR ${Math.abs(r.signed).toLocaleString()} ${r.signed > 0 ? 'Dr' : 'Cr'}`).join('; ');
+};
+
+/** Month close status from the persisted month_closes registry. */
+export const getMonthCloseStatus = (monthHint: string | null) => {
+  try {
+    const month = monthHint || new Date().toISOString().slice(0, 7);
+    const closes = listMonthCloses();
+    const inMonth = closes.filter((c) => String(c.month) === month);
+    if (!inMonth.length) return `No clinics closed for ${month} yet — run month close from Reports → Statements → Month-end close.`;
+    return `${month} closed for ${inMonth.length} clinic(s) (${inMonth.map((c) => c.lab_id).slice(0, 5).join(', ')}${inMonth.length > 5 ? '…' : ''}).`;
+  } catch {
+    return 'Month close data is unavailable.';
+  }
 };

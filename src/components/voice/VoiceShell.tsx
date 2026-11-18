@@ -45,7 +45,7 @@ const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
 /** Push-to-talk + offline answers. Write actions require explicit confirmation. */
 export const VoiceShell: React.FC = () => {
   const {
-    user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments,
+    user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView,
   } = useApp();
   const [open, setOpen] = useState(false);
@@ -96,7 +96,7 @@ export const VoiceShell: React.FC = () => {
       if (writeCmd) { queueWrite(writeCmd, text); setBusy(false); return; }
       setStatus('thinking');
       const result = await askAssistant(text, {
-        labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], user,
+        labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], cases: cases || [], user,
         allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
       });
       if (result.navigateTo) {
