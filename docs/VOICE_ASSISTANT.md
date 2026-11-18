@@ -16,7 +16,7 @@ Status: Phase 0 foundations landed; target v1 is payments/advance writes only.
 3. Speech out: `speechSynthesis`, tiered phrases, never reads clinical notes by default.
 4. Clarification state machine: per-intent slot tables, missing-slot questions, ambiguity listing, cancel token, 8s silence timeout, always echo before acting.
 5. Intent router: deterministic fast-path → Groq LLM (strict JSON tool schema) → offline template fallback. Every returned tool call is validated against the allow-list and re-authorized at execution.
-6. RAG: tracked-corpus FTS5 index (`scripts/build-rag-index.mjs`), chunked by heading/symbol, schema `{path, module, type, symbol, heading_path, sha, source}`, BM25 + filters, citations `path:symbol`.
+6. RAG: tracked-corpus FTS4 index with JS-side BM25 (`scripts/build-rag-index.mjs`), chunked by heading/symbol, schema `{path, module, type, symbol, heading_path, content, sha, source, token_count}`, BM25 + filters, citations `path:symbol`.
 7. Deterministic tool layer: read-only services for balances/ledger/statements/advance wallet/overdues; write tools for payment/advance only.
 8. Narration: Groq LLM with retrieved context + tool JSON; refuses invented numbers; cites ground truth; falls back offline.
 

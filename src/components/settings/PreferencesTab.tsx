@@ -202,7 +202,7 @@ const DashboardLayoutCard: React.FC = () => {
 
 /** TAB: APPLICATION PREFERENCES — extracted verbatim from SettingsView (P3 split). */
 export const PreferencesTab: React.FC = () => {
-  const { userPreferences, updateUserPreferences } = useApp();
+  const { user, userPreferences, updateUserPreferences } = useApp();
   const themeMode: ThemeMode = isThemeMode(userPreferences?.theme_mode) ? userPreferences.theme_mode : 'system';
 
   return (
@@ -381,6 +381,83 @@ export const PreferencesTab: React.FC = () => {
         </div>
 
         <DashboardLayoutCard />
+
+        {/* Voice Assistant — OFF by default; Groq remains an opt-in channel
+            wired in a later phase (docs/VOICE_ASSISTANT.md). */}
+        <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Voice Assistant</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Offline speech output; speech input and Groq routing arrive in later phases.</p>
+            </div>
+            <GlassSelect
+              value={userPreferences?.voice_enabled ? 'true' : 'false'}
+              onChange={(v) => updateUserPreferences({ voice_enabled: v === 'true' })}
+              ariaLabel="Voice assistant enabled"
+              className="w-44 p-2 text-xs font-bold"
+              options={[
+                { value: 'false', label: 'Off (default)' },
+                { value: 'true', label: 'On' },
+              ]}
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Locale</label>
+              <GlassSelect
+                value={userPreferences?.voice_locale || 'en-PK'}
+                onChange={(v) => updateUserPreferences({ voice_locale: v })}
+                ariaLabel="Voice locale"
+                className="w-full p-2 text-xs font-bold"
+                options={[
+                  { value: 'en-PK', label: 'English (Pakistan)' },
+                  { value: 'en-US', label: 'English (US)' },
+                  { value: 'en-GB', label: 'English (UK)' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Speech rate</label>
+              <GlassSelect
+                value={String(userPreferences?.voice_tts_rate ?? 1)}
+                onChange={(v) => updateUserPreferences({ voice_tts_rate: Number(v) })}
+                ariaLabel="Speech rate"
+                className="w-full p-2 text-xs font-bold"
+                options={[
+                  { value: '0.75', label: 'Slow' },
+                  { value: '1', label: 'Normal' },
+                  { value: '1.25', label: 'Fast' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Confirmation</label>
+              <GlassSelect
+                value={userPreferences?.voice_confirmation_mode || 'writes-only'}
+                onChange={(v) => updateUserPreferences({ voice_confirmation_mode: v as 'always' | 'writes-only' | 'off' })}
+                ariaLabel="Voice confirmation mode"
+                className="w-full p-2 text-xs font-bold"
+                options={[
+                  { value: 'always', label: 'Always confirm' },
+                  { value: 'writes-only', label: 'Confirm writes only' },
+                  { value: 'off', label: 'Off' },
+                ]}
+              />
+            </div>
+          </div>
+          {user?.isSuperAdmin === true && (
+            <GlassSelect
+              value={userPreferences?.voice_read_clinical_detail ? 'true' : 'false'}
+              onChange={(v) => updateUserPreferences({ voice_read_clinical_detail: v === 'true' })}
+              ariaLabel="Read clinical detail aloud"
+              className="w-full p-2 text-xs font-bold border border-amber-200"
+              options={[
+                { value: 'false', label: 'Never read clinical detail aloud (default)' },
+                { value: 'true', label: 'Super Admin: read clinical detail (teeth / shade / procedure)' },
+              ]}
+            />
+          )}
+        </div>
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Auto-Archive Delivered Cases</label>
