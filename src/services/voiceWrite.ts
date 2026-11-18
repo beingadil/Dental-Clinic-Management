@@ -3,7 +3,7 @@
  * record a payment and record an advance deposit. Anything else is not writable.
  */
 export interface WriteCommand {
-  kind: 'payment' | 'advance';
+  kind: 'payment' | 'advance' | 'createClinic';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
@@ -43,6 +43,14 @@ const isPayment = (t: string): boolean =>
   /^(record|add|post)\s+(a\s+)?(payment|receipt|collection)\b/i.test(t.trim())
   || /^receive\s+(a\s+)?payment\b/i.test(t.trim());
 
+const isCreateClinic = (t: string): boolean =>
+  /^(add|create|new|make)\s+(a\s+)?(clinic|lab|dental clinic)\b/i.test(t.trim());
+
+const extractClinicName = (text: string): string => {
+  const m = text.match(/(?:add|create|new|make)\s+(?:a\s+)?(?:clinic|lab|dental clinic)\s+([A-Za-z0-9 ()&-]{2,60})/i);
+  return (m?.[1] || '').trim();
+};
+
 const isAdvance = (t: string): boolean =>
   /^(record|add|post)\s+(an\s+)?(advance|deposit)\b/i.test(t.trim())
   || /^record\s+advance\s+deposit\b/i.test(t.trim());
@@ -50,6 +58,10 @@ const isAdvance = (t: string): boolean =>
 export const parseWriteCommand = (text: string): WriteCommand | null => {
   const t = (text || '').trim();
   if (!t) return null;
+  if (isCreateClinic(t)) {
+    const name = extractClinicName(t);
+    return name ? { kind: 'createClinic', amount: 0, clinicHint: name, method: 'bank' } : null;
+  }
   const amount = extractAmount(t);
   const clinicHint = extractClinicHint(t);
   if (isPayment(t)) {
