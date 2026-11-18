@@ -16,7 +16,7 @@ type SpeechRecognitionLike = {
   interimResults: boolean;
   maxAlternatives: number;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((e?: { error?: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -186,7 +186,19 @@ export const VoiceShell: React.FC = () => {
       const transcript = Array.from(e.results).map((r) => r[0]?.transcript || '').join(' ').trim();
       if (transcript) { setQuery(transcript); void submit(transcript); }
     };
-    rec.onerror = () => { setStatus('error'); setAnswer('Could not hear you. Try again or type the question.'); };
+    rec.onerror = (e) => {
+      const code = e?.error || 'unknown';
+      const message =
+        code === 'not-allowed' || code === 'service-not-allowed'
+          ? 'Microphone is blocked. Click the padlock in the address bar → Allow for microphone, then try again.'
+          : code === 'no-speech'
+          ? 'No speech detected. Speak right after the listening icon appears.'
+          : code === 'network'
+          ? 'Speech recognition needs a network connection (Chrome/Edge use an online recognizer). Check internet and try again, or type the question.'
+          : `Speech recognition failed (${code}). Try again or type the question.`;
+      setStatus('error');
+      setAnswer(message);
+    };
     rec.onend = () => { if (status === 'listening') setStatus('idle'); };
     try { rec.start(); window.setTimeout(() => rec.stop(), 8000); } catch { setStatus('error'); }
   };
@@ -256,7 +268,7 @@ export const VoiceShell: React.FC = () => {
             <button type="button" onClick={listen} aria-label="Listen" title="Listen" className="ds-tap rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><AudioLines className="h-4 w-4" /></button>
             <button type="submit" disabled={busy} aria-label="Ask" className="ds-tap rounded-lg bg-indigo-600 p-2 text-white hover:bg-indigo-700 disabled:opacity-50"><SendHorizonal className="h-4 w-4" /></button>
           </form>
-          <p className="mt-2 text-[10px] text-slate-400">{groqEnabled() ? 'Groq routing enabled (opt-in).' : 'Offline answers. Add a Groq key in Settings to enable cloud routing.'}</p>
+          <p className="mt-2 text-[10px] text-slate-400">{groqEnabled() ? 'Groq routing enabled (opt-in).' : 'Offline answers. Add a Groq key in Settings to enable routing.'} Mic input needs Chrome/Edge online and the mic permission; if it fails, type the question.</p>
         </div>
       )}
     </aside>
