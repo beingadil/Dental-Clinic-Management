@@ -12,7 +12,7 @@ import type { VoiceContext } from './voiceTools';
 import {
   getAdvanceWallet, getCashCollected, getClinicBalance, getLedgerAnswer, getMonthCloseStatus,
   getOverdueCases, getStandings, getStatementAnswer, getUnpaid, monthFromQuery, periodFromQuery,
-  searchInvoicesInContext, getCodeAnswer, clinicCandidates,
+  searchInvoicesInContext, getCodeAnswer, clinicCandidates, narrateStatement, getTodayBriefing,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { parseWriteCommand, type WriteCommand } from './voiceWrite';
@@ -135,6 +135,23 @@ const tools: VoiceTool[] = [
       const bal = getClinicBalance(ctx, need.clinic.id);
       return { kind: 'read', text: `${need.clinic.name}: PKR ${Math.abs(bal.signed).toLocaleString()} ${bal.label}.` };
     },
+  },
+  {
+    id: 'narrate', description: 'Walk through a statement or ledger in plain language', risk: 'read',
+    match: /^(walk me through|narrate|explain|summari[zs]e)\b/i,
+    run: (ctx, q) => {
+      if (!/(statement|ledger|all time|this month|last month|october|september|november|august|2026)/i.test(q)) return null;
+      const need = needClinic(ctx, q);
+      if (need.error !== undefined) return { kind: 'read', text: need.error };
+      const period = periodFromQuery(q);
+      const { from, to } = period.allTime ? { from: undefined, to: undefined } : period;
+      return { kind: 'read', text: narrateStatement(ctx, need.clinic.id, from, to) };
+    },
+  },
+  {
+    id: 'briefing', description: 'Morning briefing: cash, deliveries, outstanding, overdue', risk: 'read',
+    match: /briefing|what needs me today|what is due today/,
+    run: (ctx) => ({ kind: 'read', text: getTodayBriefing(ctx) }),
   },
   {
     id: 'statement', description: 'Monthly/All Time statement for a clinic', risk: 'read',
@@ -305,7 +322,7 @@ const tools: VoiceTool[] = [
       text: [
         'Everything voice can do right now:',
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
-        '• Read: cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
+        '• Read: morning briefing (“morning briefing”), walk me through a statement (“walk me through Mir Dental statement last month”), cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
         '• Search: “Find invoice INV-0042”',
         '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',

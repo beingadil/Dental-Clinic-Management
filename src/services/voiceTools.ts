@@ -142,6 +142,38 @@ export const searchInvoicesInContext = (ctx: VoiceContext, q: string) => {
   return `Found ${hits.length} invoice${hits.length === 1 ? '' : 's'}: ${hits.slice(0, 5).map((i) => `${i.invoice_number}${ctx.allowClinicalDetail && i.patient_name ? ` (${i.patient_name})` : ''}`).join(', ')}`;
 };
 
+export const getTodayBriefing = (ctx: VoiceContext) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const cash = getCashCollected(ctx, today, today);
+  const delivering = (ctx.cases || []).filter((c) => String(c.delivery_date).slice(0, 10) === today && c.status !== 'delivered' && c.status !== 'cancelled');
+  const overdue = (ctx.cases || []).filter((c) => c.delivery_date && String(c.delivery_date).slice(0, 10) < today && c.status !== 'delivered' && c.status !== 'cancelled');
+  const overdueInvoices = (ctx.invoices || []).filter((i) => invoiceBalanceDue(i) > 0).length;
+  const patient = (c: typeof delivering[number]) => (ctx.allowClinicalDetail && c.patient_name ? ` (${c.patient_name})` : '');
+  const deliverLine = delivering.length
+    ? `Delivering today: ${delivering.slice(0, 5).map((c) => `${c.case_number}${patient(c)}`).join(', ')}${delivering.length > 5 ? '…' : ''}.`
+    : 'Nothing due for delivery today.';
+  return `${cash} ${overdueInvoices} invoice(s) still outstanding. ${deliverLine} ${overdue.length} case(s) overdue.`;
+};
+
+export const narrateStatement = (ctx: VoiceContext, labId: string, from?: string, to?: string) => {
+  const base = buildMonthlyStatements({
+    invoices: ctx.invoices,
+    advancePayments: ctx.advancePayments,
+    accountAdjustments: ctx.accountAdjustments,
+    labs: ctx.labs,
+  });
+  const visible = filterMonthlyStatements(base, []);
+  const months = windowMonthlyStatements(visible, { from: from || '', to: to || '', clinics: [ctx.labs.find((l) => l.id === labId)!] });
+  if (!months.length) return 'No statement data for that window.';
+  const parts = months.slice(0, 3).map((block) => {
+    const row = block.rows.find((r) => r.lab_id === labId);
+    if (!row) return null;
+    const label = block.month === 'all-time' ? 'All Time' : block.month;
+    return `${label}: opened at PKR ${roundMoney(row.opening_balance).toLocaleString()}, billed PKR ${roundMoney(row.billed).toLocaleString()} across ${row.cases_billed} case(s), collected PKR ${roundMoney(row.collected).toLocaleString()}, credit notes PKR ${roundMoney(row.credit_notes).toLocaleString()}, closing PKR ${roundMoney(row.closing_balance).toLocaleString()} ${row.closing_balance >= 0 ? 'Dr' : 'Cr'}.`;
+  }).filter(Boolean).join(' ');
+  return parts || 'No statement rows for that clinic.';
+};
+
 /** Codebase/docs answers via the offline RAG index. */
 export const getCodeAnswer = async (q: string) => {
   const hits = await searchRag(q, { limit: 4 });
