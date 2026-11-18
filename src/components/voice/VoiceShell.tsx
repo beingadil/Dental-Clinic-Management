@@ -48,7 +48,7 @@ const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
 export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
-    recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase,
+    recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
   } = useApp();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -122,7 +122,7 @@ export const VoiceShell: React.FC = () => {
           invoices: invoices || [],
           cases: cases || [],
           advancePayments: advancePayments || [],
-          setCurrentView, addLab, updateLab, updateCase, recordTransactionV2, recordAdvanceDepositV2,
+          setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase, recordTransactionV2, recordAdvanceDepositV2,
         },
       });
       if (result.navigateTo) {
@@ -225,6 +225,47 @@ export const VoiceShell: React.FC = () => {
         setStatus('error');
         setAnswer(err instanceof Error ? err.message : 'Could not update the doctor.');
       }
+      return;
+    }
+    if (pending.kind === 'addCaseNote' && pending.caseNumber && pending.noteText) {
+      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        addCaseNote(target.id, pending.noteText, user?.name || 'Voice');
+        setAnswer(`Note added on ${pending.caseNumber}.`);
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not add the note.'); }
+      return;
+    }
+    if (pending.kind === 'recordQc' && pending.caseNumber && pending.qcResult) {
+      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        const receipt = recordQcCase({
+          action: 'record',
+          case_id: target.id,
+          result: pending.qcResult,
+          reason_code: pending.qcReason as never,
+          inspector: user?.name || 'Voice',
+        });
+        const after = receipt?.status_after ? ` Case moved to ${receipt.status_after}.` : '';
+        setAnswer(`QC ${pending.qcResult.toUpperCase()} recorded on ${pending.caseNumber}.${after}`);
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not record the QC result.'); }
+      return;
+    }
+    if (pending.kind === 'archiveCase' && pending.caseNumber) {
+      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      if (target.status !== 'delivered') { setStatus('error'); setAnswer(`Case ${pending.caseNumber} is "${target.status}" — archive works on delivered cases only.`); setPending(null); setPendingNote(''); return; }
+      try {
+        archiveCase(target.id);
+        setAnswer(`Case ${pending.caseNumber} archived.`);
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not archive the case.'); }
       return;
     }
     const { clinic, candidates } = resolveClinicForWrite(pending.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };

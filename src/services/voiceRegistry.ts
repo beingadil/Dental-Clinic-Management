@@ -31,6 +31,9 @@ export interface VoiceApi {
   addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance' | 'opening_balance_type'>) => DentalLab;
   updateLab: (id: string, updates: Partial<DentalLab>) => void;
   updateCase: (id: string, updates: Partial<DentalCase>, note?: string) => void;
+  addCaseNote: (caseId: string, noteText: string, author: string) => void;
+  recordQcCase: (command: import('../types').QcCommand) => import('../types').QcReceipt;
+  archiveCase: (id: string) => void;
   recordTransactionV2: (command: { clinicId: string; amount: number; method: 'cash' | 'bank' | 'cheque'; date: string; notes?: string; allocations: { invoiceId: string; amount: number }[]; saveRemainingAsAdvance?: boolean; isVerified?: boolean }) => { receiptNumber: string };
   recordAdvanceDepositV2: (command: { clinicId: string; amount: number; method: 'cash' | 'bank' | 'cheque'; date: string; notes?: string; isVerified?: boolean }) => { receiptNumber: string };
 }
@@ -247,6 +250,42 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'addCaseNote', description: 'Append a note to a case (500 chars)', risk: 'write',
+    match: /^(add|post|log)\s+(a\s+)?note\s+(on|for|to)\s+(case\s+)?(DS-\d+)\s*[:\-]?\s*(.+)$/i,
+    run: (_ctx, q) => {
+      const m = q.match(/(DS-\d+)\s*[:\-]?\s*(.+)$/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      const text = (m?.[2] || '').trim().slice(0, 500);
+      if (!caseNumber || !text) return { kind: 'read', text: 'Say: “Add note on case DS-0393: doctor approved wax-up by phone”.' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'addCaseNote', amount: 0, clinicHint: caseNumber, caseNumber, noteText: text, method: 'bank' }, summary: `Add note to ${caseNumber}: “${text}”` };
+    },
+  },
+  {
+    id: 'recordQc', description: 'Record a QC inspection (pass/fail)', risk: 'write',
+    match: /^(record|log|file)?\s*qc\s+(pass|passed|fail|failed)\s+(case\s+)?(DS-\d+)(?:\s+(occlusion|shade_mismatch|margin_fit|contact_tightness|finish_polish|damage|dimension|other))?/i,
+    run: (_ctx, q) => {
+      const m = q.match(/qc\s+(pass|passed|fail|failed)\s+(case\s+)?(DS-\d+)(?:\s+(occlusion|shade_mismatch|margin_fit|contact_tightness|finish_polish|damage|dimension|other))?/i);
+      if (!m) return { kind: 'read', text: 'Say: “QC pass case DS-0393” or “QC fail case DS-0393 margin_fit”.' };
+      const result = /pass/i.test(m[1]) ? 'pass' : 'fail';
+      const caseNumber = m[3].toUpperCase();
+      const reason = m[4]?.toLowerCase();
+      if (result === 'fail' && !reason) {
+        return { kind: 'read', text: 'QC fail needs a reason: margin_fit, shade_mismatch, occlusion, contact_tightness, finish_polish, damage, dimension, other. Say: “QC fail case DS-0393 margin_fit”.' };
+      }
+      return { kind: 'action', risk: 'write', pending: { kind: 'recordQc', amount: 0, clinicHint: caseNumber, caseNumber, qcResult: result, qcReason: reason, method: 'bank' }, summary: `Record QC ${result.toUpperCase()}${reason ? ` (${reason})` : ''} for ${caseNumber}` };
+    },
+  },
+  {
+    id: 'archiveCase', description: 'Archive a delivered case', risk: 'write',
+    match: /^(archive|complete|close)\s+(case\s+)?(DS-\d+)\b/i,
+    run: (_ctx, q) => {
+      const m = q.match(/(DS-\d+)/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      if (!caseNumber) return { kind: 'read', text: 'Say: “Archive case DS-0393” — works on delivered cases.' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'archiveCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Archive ${caseNumber}` };
+    },
+  },
+  {
     id: 'help', description: 'List everything voice can do', risk: 'read',
     match: /^(what can you do|help|commands|capabilities|list commands|what are you capable of|how can you help)\b/,
     run: () => ({
@@ -256,7 +295,7 @@ const tools: VoiceTool[] = [
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
         '• Read: cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
         '• Search: “Find invoice INV-0042”',
-        '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000 for Mir Dental”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”',
+        '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000 for Mir Dental”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Add note on case DS-0393: wax-up approved”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',
       ].join('\n'),
