@@ -22,6 +22,8 @@ import {
 export interface AssistantResult {
   text: string;
   spoke: boolean;
+  /** When set, the voice shell navigates the app to this view id. */
+  navigateTo?: string;
 }
 
 const folded = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -58,6 +60,44 @@ export async function askAssistant(raw: string, ctx: VoiceContext): Promise<Assi
   const done = (text: string) => finish(text, q);
   if (!q) return done('Ask me about a clinic’s balance, statement, ledger, outstanding invoices, or an invoice search.');
   const lower = folded(q);
+
+  // ── navigation (JARVIS control of the software) ─────────────────────────
+  const NAV: Record<string, string> = {
+    dashboard: 'dashboard', home: 'dashboard', overview: 'dashboard',
+    case: 'cases', cases: 'cases', workstation: 'cases', 'dental workstation': 'cases', records: 'cases',
+    labs: 'labs', lab: 'labs', clinics: 'labs', clinic: 'labs', 'dental clinics': 'labs',
+    billing: 'billing', payments: 'billing', finance: 'billing', 'payment receive': 'billing',
+    ledger: 'general_ledger', 'general ledger': 'general_ledger', books: 'general_ledger',
+    statement: 'statements', statements: 'statements', monthly: 'statements', 'monthly statement': 'statements', vouchers: 'statements',
+    insights: 'insights', analytics: 'insights', insight: 'insights', reports: 'analytics',
+    catalog: 'catalog', catalogue: 'catalog', pricing: 'catalog', price: 'catalog',
+    notifications: 'notifications', alerts: 'notifications', inbox: 'notifications',
+    settings: 'settings', preferences: 'settings',
+    'print invoices': 'print-invoices', batch: 'print-invoices', 'batch print': 'print-invoices',
+  };
+  const navMatch = lower.match(/^(?:open|show|go to|navigate to|take me to)\s+([a-z -]{2,40})$/);
+  if (navMatch) {
+    const target = navMatch[1].trim();
+    const view = NAV[target];
+    if (view) {
+      const result = { text: `Opening ${target}.`, spoke: true as const, navigateTo: view };
+      try { remember(q, result.text); } catch { /* best effort */ }
+      return result;
+    }
+    return done('I can open: dashboard, cases, labs, billing, general ledger, statements, insights, catalog, notifications, settings, print-invoices.');
+  }
+
+  if (/^(what can you do|help|commands|capabilities|list commands|what are you capable of|how can you help)\b/.test(lower)) {
+    return done([
+      'I can control Dental Solutions hands-free:',
+      '• Open any screen: “Open dashboard”, “Open general ledger”, “Open settings”',
+      '• Money: “Mir Dental balance”, “Statement for Mir Dental last month”, “Ledger for Mir Dental since Oct 1”, “Outstanding invoices for Mir Dental”, “Advance wallet for Mir Dental”',
+      '• Search: “Find invoice INV-0042” (patient name included if you enabled clinical detail in Settings)',
+      '• Actions (with on-screen confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000 for Mir Dental”',
+      '• Code and docs: “How does the monthly statement compute closing balance?”',
+      'Voice writes require confirmation; destructive actions (void, delete, wipe, restore) stay physical.',
+    ].join('\n'));
+  }
 
   // ── code/docs questions ───────────────────────────────────────────────
   if (/^how (does|do|is)\b|^what is\b|^where is\b|^why\b|\bcodebase\b|\bsettings?\b|\bhelp me\b/.test(lower)) {

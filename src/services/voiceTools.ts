@@ -16,6 +16,8 @@ export interface VoiceContext {
   advancePayments: AdvancePayment[];
   accountAdjustments: AccountAdjustment[];
   user?: UserProfile | null;
+  /** Owner/Super-Admin opt-in for patient detail on reads. */
+  allowClinicalDetail?: boolean;
 }
 
 export const resolveClinic = (ctx: VoiceContext, hint: string | undefined): DentalLab | null => {
@@ -85,7 +87,7 @@ export const getUnpaid = (ctx: VoiceContext, labId: string, opts?: { overdue?: b
     .filter((r) => !opts?.overdue || (r.inv.due_date && String(r.inv.due_date) < new Date().toISOString().slice(0, 10)))
     .sort((a, b) => b.balance - a.balance);
   if (!rows.length) return 'No outstanding invoices for this clinic.';
-  const top = rows.slice(0, 5).map((r) => `${r.inv.invoice_number}: PKR ${roundMoney(r.balance).toLocaleString()}`).join('; ');
+  const top = rows.slice(0, 5).map((r) => `${r.inv.invoice_number}: PKR ${roundMoney(r.balance).toLocaleString()}${ctx.allowClinicalDetail && r.inv.patient_name ? ` (${r.inv.patient_name})` : ''}`).join('; ');
   return `Outstanding invoices (${rows.length} total): ${top}`;
 };
 
@@ -134,7 +136,7 @@ export const getLedgerAnswer = (ctx: VoiceContext, labId: string, from?: string,
 export const searchInvoicesInContext = (ctx: VoiceContext, q: string) => {
   const hits = (ctx.invoices || []).filter((inv) => invoiceMatchesSearch(inv, q));
   if (!hits.length) return 'No invoices match that search.';
-  return `Found ${hits.length} invoice${hits.length === 1 ? '' : 's'}: ${hits.slice(0, 5).map((i) => i.invoice_number).join(', ')}`;
+  return `Found ${hits.length} invoice${hits.length === 1 ? '' : 's'}: ${hits.slice(0, 5).map((i) => `${i.invoice_number}${ctx.allowClinicalDetail && i.patient_name ? ` (${i.patient_name})` : ''}`).join(', ')}`;
 };
 
 /** Codebase/docs answers via the offline RAG index. */

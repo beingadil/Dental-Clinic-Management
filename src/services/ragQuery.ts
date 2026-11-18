@@ -84,7 +84,10 @@ export async function searchRag(query: string, opts: RagQueryOptions = {}): Prom
     const avgRow = engine.get<{ value: number }>("SELECT value FROM rag_stats WHERE key='avg_len'");
     const nDocs = nDocsRow?.value ?? rows.length;
     const avgLen = avgRow?.value ?? 1;
-    const dfRows = engine.all<{ term: string; df: number }>('SELECT term, df FROM rag_df');
+    const dfRows = engine.all<{ term: string; df: number }>(
+      `SELECT term, df FROM rag_df WHERE term IN (${terms.map(() => '?').join(',')})`,
+      terms as any[],
+    );
     const dfs = new Map(dfRows.map((r) => [r.term, r.df]));
 
     const zw = manifest?.zoneWeights ?? { symbol: 3, heading: 2, content: 1 };

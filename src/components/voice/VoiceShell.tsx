@@ -46,7 +46,7 @@ const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
 export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments,
-    recordTransactionV2, recordAdvanceDepositV2,
+    recordTransactionV2, recordAdvanceDepositV2, setCurrentView,
   } = useApp();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<ShellStatus>('idle');
@@ -97,7 +97,11 @@ export const VoiceShell: React.FC = () => {
       setStatus('thinking');
       const result = await askAssistant(text, {
         labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], user,
+        allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
       });
+      if (result.navigateTo) {
+        setCurrentView(result.navigateTo);
+      }
       setAnswer(result.text);
       setStatus('done');
       speak(result.text, {
