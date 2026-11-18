@@ -3,7 +3,7 @@
  * record a payment and record an advance deposit. Anything else is not writable.
  */
 export interface WriteCommand {
-  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase';
+  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
@@ -19,6 +19,9 @@ export interface WriteCommand {
   /** QC outcome for recordQcInspection. */
   qcResult?: 'pass' | 'fail';
   qcReason?: string;
+  /** For updateClinicField */
+  field?: 'name' | 'phone' | 'email' | 'address' | 'city' | 'doctor';
+  value?: string;
 }
 
 const AMOUNT = /(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]{0,12})/i;

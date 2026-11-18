@@ -286,6 +286,18 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'updateClinicField', description: 'Edit a clinic field by voice (name, phone, email, address, city, doctor)', risk: 'write',
+    match: /^(update|set|change|edit)\s+(?:the\s+)?(phone|email|address|doctor|name|city)\s+(?:for|of|at)\s+([A-Za-z0-9 ()&-]{2,40})\s+(?:to|as)\s+(.+)$/i,
+    run: (_ctx, q) => {
+      const m = q.match(/^(?:update|set|change|edit)\s+(?:the\s+)?(phone|email|address|doctor|name|city)\s+(?:for|of|at)\s+([A-Za-z0-9 ()&-]{2,40})\s+(?:to|as)\s+(.+)$/i);
+      const field = (m?.[1] || '').toLowerCase() as 'phone' | 'email' | 'address' | 'doctor' | 'name' | 'city';
+      const clinic = m?.[2]?.trim();
+      const value = (m?.[3] || '').trim();
+      if (!clinic || !value || value.length > 200) return { kind: 'read', text: 'Say: “Update phone for Mir Dental to 0300-1234567”.' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'updateClinicField', amount: 0, clinicHint: clinic, field, value, method: 'bank' }, summary: `Update ${field} for ${clinic} to “${value}”` };
+    },
+  },
+  {
     id: 'help', description: 'List everything voice can do', risk: 'read',
     match: /^(what can you do|help|commands|capabilities|list commands|what are you capable of|how can you help)\b/,
     run: () => ({
@@ -295,7 +307,7 @@ const tools: VoiceTool[] = [
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
         '• Read: cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
         '• Search: “Find invoice INV-0042”',
-        '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000 for Mir Dental”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Add note on case DS-0393: wax-up approved”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
+        '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',
       ].join('\n'),

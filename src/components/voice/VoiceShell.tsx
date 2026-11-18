@@ -268,6 +268,27 @@ export const VoiceShell: React.FC = () => {
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not archive the case.'); }
       return;
     }
+    if (pending.kind === 'updateClinicField' && pending.field && pending.value) {
+      const ranked = rankCandidates(labs || [], pending.clinicHint);
+      const norm = (s: string) => (s || '').toLowerCase();
+      const exact = (labs || []).find((l) => norm(l.name) === norm(pending.clinicHint!));
+      const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
+      if (!chosen) {
+        setStatus('error');
+        setAnswer(ranked.length > 1 ? `Which clinic — ${ranked.map((r) => r.lab.name).slice(0, 4).join(', ')}?` : 'I could not match that clinic. Say the exact clinic name.');
+        return;
+      }
+      try {
+        const updates: Record<string, string> = pending.field === 'doctor'
+          ? { contact_person: pending.value, doctor_name: pending.value }
+          : { [pending.field]: pending.value };
+        updateLab(chosen.id, updates);
+        setAnswer(`${pending.field} for ${chosen.name} updated.`);
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the clinic.'); }
+      return;
+    }
     const { clinic, candidates } = resolveClinicForWrite(pending.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };
     if (!clinic) {
       setStatus('error');
