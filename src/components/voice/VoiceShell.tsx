@@ -60,6 +60,7 @@ export const VoiceShell: React.FC = () => {
   const [pending, setPending] = useState<WriteCommand | null>(null);
   const [pendingRisk, setPendingRisk] = useState<'write' | 'destructive'>('write');
   const [pendingNote, setPendingNote] = useState('');
+  const [slotMode, setSlotMode] = useState<{ kind: 'createClinic'; step: 'name' | 'doctor' | 'phone'; name?: string; doctor?: string; phone?: string } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const cloudStop = useRef<null | (() => void)>(null);
@@ -101,6 +102,43 @@ export const VoiceShell: React.FC = () => {
   const submit = async (raw?: string) => {
     const text = (raw ?? query).trim();
     if (!text || busy) return;
+
+    /* Guided entry interview: “Add clinic” asks for the name, doctor, phone one
+       at a time, mirrors the New Clinic form, then opens the form pre-filled. */
+    if (slotMode) {
+      const val = text.trim();
+      const skip = /^(skip|none|no|-)$/i.test(val);
+      if (slotMode.step === 'name') {
+        if (skip || val.length < 2) { setAnswer('A clinic needs a name — say the clinic name.'); return; }
+        setSlotMode({ ...slotMode, name: val, step: 'doctor' });
+        setAnswer(`Got “${val}”. Doctor's name? Say “skip” to leave it blank.`);
+        return;
+      }
+      if (slotMode.step === 'doctor') {
+        setSlotMode({ ...slotMode, doctor: skip ? undefined : val, step: 'phone' });
+        setAnswer(skip ? 'Okay. Phone? Say “skip” to leave it blank.' : `Got doctor ${val}. Phone? Say “skip” to leave it blank.`);
+        return;
+      }
+      const phone = skip ? undefined : val;
+      const detail = { name: slotMode.name!, doctor: slotMode.doctor, phone };
+      setCurrentView('labs');
+      try {
+        window.dispatchEvent(new CustomEvent('voice:create-clinic', { detail }));
+      } catch { /* prefill is best effort; the operator can always type it */ }
+      setSlotMode(null);
+      setAnswer(`Opening Labs → New Clinic pre-filled with “${detail.name}”${detail.doctor ? `, doctor ${detail.doctor}` : ''}. Review the form and press “Add clinic” to finish.`);
+      speak('Opening the new clinic form with your details — review and press add clinic.', {
+        rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
+        locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false,
+      });
+      return;
+    }
+    if (/^(add|create|new|make)\s+(a\s+)?(clinic|lab|dental clinic)\s*$/i.test(text)) {
+      setSlotMode({ kind: 'createClinic', step: 'name' });
+      setAnswer('What is the clinic’s name?');
+      setStatus('idle');
+      return;
+    }
 
     // Spoken confirmation path: an action is pending — a spoken yes confirms.
     if (pending) {
