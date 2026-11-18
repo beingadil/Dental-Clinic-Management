@@ -149,6 +149,25 @@ export const getCodeAnswer = async (q: string) => {
   return hits.map((h) => `• ${h.citation} — ${h.excerpt.replace(/\s+/g, ' ').slice(0, 160)}`).join('\n');
 };
 
+/** Score clinics by name tokens length ≥ 3 present in the query. */
+export const guessClinic = (ctx: VoiceContext, q: string) => {
+  const foldedLocal = q.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const hay = ` ${foldedLocal} `;
+  const scored = (ctx.labs || [])
+    .map((lab) => {
+      const tokens = (lab.name || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').trim().split(' ').filter((t) => t.length >= 3);
+      const score = tokens.reduce((acc, t) => acc + (hay.includes(` ${t} `) ? t.length : 0), 0);
+      return { lab, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score === scored[1].score) {
+    return { ambiguous: scored.slice(0, 4).map((s) => s.lab.name) };
+  }
+  return scored[0].lab;
+};
+
 const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
 export const monthFromQuery = (q: string): string | null => {
   const year = q.match(/(20\d{2})/)?.[1];

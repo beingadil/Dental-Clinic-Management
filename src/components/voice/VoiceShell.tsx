@@ -6,7 +6,7 @@ import { speak, cancelSpeech } from '../../services/voiceUtterance';
 import { askAssistant } from '../../services/voiceAssistant';
 import { groqEnabled } from '../../services/voiceGroq';
 import { recordClip, transcribeWithGroq } from '../../services/voiceGroqStt';
-import { parseWriteCommand, type WriteCommand } from '../../services/voiceWrite';
+import type { WriteCommand } from '../../services/voiceWrite';
 import { getTodayStr } from '../../utils/dateUtils';
 import { invoiceBalanceDue } from '../../services/financeDomain';
 
@@ -46,7 +46,7 @@ const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
 export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
-    recordTransactionV2, recordAdvanceDepositV2, setCurrentView,
+    recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab,
   } = useApp();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<ShellStatus>('idle');
@@ -77,6 +77,11 @@ export const VoiceShell: React.FC = () => {
     setPending(cmd);
     setPendingNote(note);
     setStatus('done');
+    if (cmd.kind === 'createClinic') {
+      setAnswer(`Confirm: create clinic “${cmd.clinicHint}”?`);
+      speak(`Confirm: create clinic ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
+      return;
+    }
     const amount = `PKR ${cmd.amount.toLocaleString()}`;
     const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}` : 'advance deposit';
     setAnswer(`Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
@@ -92,15 +97,25 @@ export const VoiceShell: React.FC = () => {
     setBusy(true);
     setAnswer('');
     try {
-      const writeCmd = parseWriteCommand(text);
-      if (writeCmd) { queueWrite(writeCmd, text); setBusy(false); return; }
       setStatus('thinking');
       const result = await askAssistant(text, {
         labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], cases: cases || [], user,
         allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
+        api: {
+          labs: labs || [],
+          invoices: invoices || [],
+          cases: cases || [],
+          advancePayments: advancePayments || [],
+          setCurrentView, addLab, recordTransactionV2, recordAdvanceDepositV2,
+        },
       });
       if (result.navigateTo) {
         setCurrentView(result.navigateTo);
+      }
+      if (result.pendingWrite) {
+        queueWrite(result.pendingWrite, text);
+        setBusy(false);
+        return;
       }
       setAnswer(result.text);
       setStatus('done');
@@ -131,6 +146,30 @@ export const VoiceShell: React.FC = () => {
 
   const confirmPending = () => {
     if (!pending) return;
+    if (pending.kind === 'createClinic') {
+      try {
+        const created = addLab({
+          name: pending.clinicHint,
+          contact_person: '',
+          phone: '',
+          email: '',
+          address: '',
+          doctor_name: '',
+          code: '',
+          notes: pendingNote || 'Created by voice assistant',
+          opening_balance: 0,
+          opening_balance_type: 'debit',
+        });
+        setAnswer(`Clinic “${created.name}” created. Open Settings or the directory to add doctor, phone and pricing.`);
+        setStatus('done');
+        setPending(null);
+        setPendingNote('');
+      } catch (err) {
+        setStatus('error');
+        setAnswer(err instanceof Error ? err.message : 'Could not create the clinic.');
+      }
+      return;
+    }
     const { clinic, candidates } = resolveClinicForWrite(pending.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };
     if (!clinic) {
       setStatus('error');

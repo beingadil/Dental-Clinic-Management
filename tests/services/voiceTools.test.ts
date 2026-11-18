@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { guessClinic } from '../../src/services/voiceAssistant';
-import { periodFromQuery } from '../../src/services/voiceTools';
+import { guessClinic, periodFromQuery } from '../../src/services/voiceTools';
 
 const ctx = {
   labs: [
