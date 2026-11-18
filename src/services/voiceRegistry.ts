@@ -17,6 +17,12 @@ import {
 import { guessClinic } from './voiceTools';
 import { parseWriteCommand, type WriteCommand } from './voiceWrite';
 import type { Invoice, DentalCase, DentalLab, AdvancePayment } from '../types';
+import { can } from './permissions';
+import { downloadCSV } from './csvExport';
+import { collectAllPayments } from './ledgerDomain';
+import { buildUnifiedTransactions, transactionCsvRows } from './transactionRegister';
+import { invoiceBalanceDue } from './financeDomain';
+import { formatDoctorName } from '../utils/doctorName';
 
 export type VoiceRisk = 'read' | 'write' | 'destructive';
 export type ConfirmMode = 'none' | 'confirm';
@@ -152,6 +158,41 @@ const tools: VoiceTool[] = [
     id: 'briefing', description: 'Morning briefing: cash, deliveries, outstanding, overdue', risk: 'read',
     match: /briefing|what needs me today|what is due today/,
     run: (ctx) => ({ kind: 'read', text: getTodayBriefing(ctx) }),
+  },
+  {
+    id: 'exportInvoicesCsv', description: 'Export the invoice list as a CSV file', risk: 'read',
+    match: /^export\b.*\binvoices?\b|\binvoices?\b.*\bexport/i,
+    run: (ctx) => {
+      if (ctx.user && !can(ctx.user, 'reports:export')) return { kind: 'read', text: 'Requires the “Export reports” permission.' };
+      const rows: (string | number | null | undefined)[][] = [['Invoice #', 'Case #', 'Dental Clinic', 'Doctor', 'Material / Type', 'Final Amount (PKR)', 'Amount Paid (PKR)', 'Remaining (PKR)', 'Status', 'Due Date']];
+      for (const inv of ctx.invoices || []) {
+        rows.push([
+          inv.invoice_number, inv.case_number, inv.lab_name, formatDoctorName(inv.doctor_name || '', ''),
+          inv.case_type_name, inv.final_amount || inv.amount || 0, inv.amount_paid || 0,
+          invoiceBalanceDue(inv), String(inv.payment_status || '').toUpperCase(), inv.due_date,
+        ]);
+      }
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadCSV(`Dental_Solutions_Invoices_${stamp}`, rows);
+      return { kind: 'read', text: `Exporting ${rows.length - 1} invoices to the downloads folder.` };
+    },
+  },
+  {
+    id: 'exportTransactionsCsv', description: 'Export the unified transaction register as CSV', risk: 'read',
+    match: /^export\b.*\b(transactions?|transaction register|register|transactions?)\b/i,
+    run: (ctx) => {
+      if (ctx.user && !can(ctx.user, 'reports:export')) return { kind: 'read', text: 'Requires the “Export reports” permission.' };
+      const register = buildUnifiedTransactions({
+        allPayments: collectAllPayments(ctx.invoices || []),
+        advancePayments: ctx.advancePayments || [],
+        accountAdjustments: ctx.accountAdjustments || [],
+        invoices: ctx.invoices || [],
+      });
+      const rows = transactionCsvRows(register);
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadCSV(`Dental_Solutions_Transactions_${stamp}`, rows);
+      return { kind: 'read', text: `Exporting ${rows.length - 1} transactions to the downloads folder.` };
+    },
   },
   {
     id: 'statement', description: 'Monthly/All Time statement for a clinic', risk: 'read',
@@ -323,7 +364,7 @@ const tools: VoiceTool[] = [
         'Everything voice can do right now:',
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
         '• Read: morning briefing (“morning briefing”), walk me through a statement (“walk me through Mir Dental statement last month”), cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
-        '• Search: “Find invoice INV-0042”',
+        '• Search: “Find invoice INV-0042” → exports: “Export invoices”, “Export transactions” (needs “Export reports” permission)',
         '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',

@@ -5,10 +5,10 @@
  * declarative tool with risk + confirmation contract. This file only glues the
  * registry to the LLM fallback, the local memory and the voice shell.
  */
-import { groqChat } from './voiceGroq';
-import { memoryContext, remember } from './voiceMemory';
-import { runVoiceTool, toolDescriptions, type VoiceToolContext } from './voiceRegistry';
+import { remember } from './voiceMemory';
+import { runVoiceTool, type VoiceToolContext } from './voiceRegistry';
 import type { WriteCommand } from './voiceWrite';
+import { planWithGroq, canonicalFor } from './voicePlanner';
 
 export interface AssistantResult {
   text: string;
@@ -82,16 +82,17 @@ export async function askAssistant(raw: string, ctx: VoiceToolContext): Promise<
     return { text: result.summary, spoke: true, pendingWrite: result.pending, risk: result.risk as 'write' | 'destructive' };
   }
 
-  // ── Groq fallback for anything the registry does not match ─────────────
-  const groq = await groqChat([
-    { role: 'system', content: `You are a strict intent classifier for a dental lab billing app. Reply with ONLY JSON like {"intent":"none"}. The assistant's current capabilities: ${toolDescriptions()}\nValid intents: none, or one capability name. Never output prose.\n${memoryContext()}` },
-    { role: 'user', content: q },
-  ], { maxTokens: 120 });
-  if (groq) {
-    // Re-run the registry once the LLM has constrained the utterance; the
-    // registry (not the LLM) executes — the LLM only re-expresses intent.
-    const retry = await runVoiceTool(ctx, groq);
+  // ── Groq planner: map free-form language to ONE registered tool ──────
+  const plan = await planWithGroq(q, (ctx.labs || []).map((l) => ({ id: l.id, name: l.name })));
+  if (plan) {
+    const canonical = canonicalFor(plan);
+    const retry = await runVoiceTool(ctx, canonical);
     if (retry?.kind === 'read') return { text: retry.text, spoke: true };
+    if (retry?.kind === 'action') {
+      return { text: retry.summary, spoke: true, pendingWrite: retry.pending, risk: retry.risk as 'write' | 'destructive' };
+    }
+    // Planner found a tool but the registry couldn't run it (needs clinic or date)
+    return done(`I can do that — tell me the clinic (e.g. “Ledger for Mir Dental last month”).`);
   }
 
   return done(buildClarification(ctx, q));
