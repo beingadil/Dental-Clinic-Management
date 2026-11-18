@@ -9,6 +9,12 @@ const KEY = 'ds.voice.groq.key';
 const ENABLED = 'ds.voice.groq.enabled';
 
 export const groqKeyPresent = (): boolean => Boolean(localStorage.getItem(KEY));
+
+/** Key for audio upload — still requires the caller to enforce voice_cloud_transcription. */
+export const getGroqKeyForAudio = (): string | null => {
+  const key = localStorage.getItem(KEY);
+  return key && localStorage.getItem(ENABLED) === 'true' ? key : null;
+};
 export const groqEnabled = (): boolean => groqKeyPresent() && localStorage.getItem(ENABLED) === 'true';
 export const setGroqKey = (key: string): void => {
   const trimmed = key.trim();

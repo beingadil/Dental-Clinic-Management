@@ -5,6 +5,7 @@ import { moduleForView, isViewProtected, isModuleUnlocked } from '../../services
 import { speak, cancelSpeech } from '../../services/voiceUtterance';
 import { askAssistant } from '../../services/voiceAssistant';
 import { groqEnabled } from '../../services/voiceGroq';
+import { recordClip, transcribeWithGroq } from '../../services/voiceGroqStt';
 import { parseWriteCommand, type WriteCommand } from '../../services/voiceWrite';
 import { getTodayStr } from '../../utils/dateUtils';
 import { invoiceBalanceDue } from '../../services/financeDomain';
@@ -56,15 +57,17 @@ export const VoiceShell: React.FC = () => {
   const [pendingNote, setPendingNote] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const cloudStop = useRef<null | (() => void)>(null);
 
   const voiceEnabled = !!userPreferences?.voice_enabled;
+  const cloudMic = !!userPreferences?.voice_cloud_transcription && groqEnabled();
   const locked = useMemo(() => {
     const id = moduleForView(currentView);
     if (!id) return false;
     return isViewProtected(id, currentView) && !isModuleUnlocked(id);
   }, [currentView]);
 
-  const close = () => { setOpen(false); setStatus('idle'); cancelSpeech(); recRef.current?.stop(); };
+  const close = () => { setOpen(false); setStatus('idle'); cancelSpeech(); recRef.current?.stop(); cloudStop.current?.(); cloudStop.current = null; };
   const toggle = () => {
     if (locked) { setStatus('locked'); setAnswer('This module is locked.'); return; }
     setOpen((v) => { const next = !v; if (next) setStatus('idle'); return next; });
@@ -177,11 +180,41 @@ export const VoiceShell: React.FC = () => {
 
   const listen = () => {
     if (locked || busy) return;
+    // Opt-in Groq Whisper path — used when browser speech is unavailable or fails.
+    if (cloudMic && typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)) {
+      void (async () => {
+        setStatus('listening');
+        setAnswer('Listening — speak now…');
+        try {
+          const handle = await recordClip();
+          const timeout = window.setTimeout(async () => {
+            try {
+              const blob = await handle.stop();
+              setStatus('thinking');
+              setAnswer('Transcribing…');
+              const text = await transcribeWithGroq(blob);
+              if (text) { setQuery(text); void submit(text); }
+              else { setStatus('error'); setAnswer('Groq transcription did not return text. Check the Groq key in Settings, or type the question.'); }
+            } finally { cloudStop.current = null; }
+          }, 6000);
+          cloudStop.current = () => { window.clearTimeout(timeout); handle.cancel(); };
+        } catch (err) {
+          const msg = err instanceof Error && err.name === 'NotAllowedError'
+            ? 'Microphone is blocked. Click the padlock next to the address bar → Allow for microphone, then try again.'
+            : 'Microphone is unavailable. Type your question — the assistant answers it the same way.';
+          setStatus('error');
+          setAnswer(msg);
+        }
+      })();
+      return;
+    }
+
     const rec = getRecognition();
-    if (!rec) { setStatus('error'); setAnswer('Speech recognition is not available in this runtime. Type the question instead.'); return; }
+    if (!rec) { setStatus('error'); setAnswer('Built-in speech recognition is not available here. Enable “Cloud microphone (Groq)” in Settings → Voice Assistant, or type the question.'); return; }
     recRef.current?.stop();
     recRef.current = rec;
     setStatus('listening');
+    setAnswer('Listening — speak now…');
     rec.onresult = (e) => {
       const transcript = Array.from(e.results).map((r) => r[0]?.transcript || '').join(' ').trim();
       if (transcript) { setQuery(transcript); void submit(transcript); }
@@ -194,8 +227,8 @@ export const VoiceShell: React.FC = () => {
           : code === 'no-speech'
           ? 'No speech detected. Speak right after the listening icon appears.'
           : code === 'network'
-          ? 'Speech recognition needs a network connection (Chrome/Edge use an online recognizer). Check internet and try again, or type the question.'
-          : `Speech recognition failed (${code}). Try again or type the question.`;
+          ? 'The built-in recognizer failed (Chrome/Edge need internet). Enable “Cloud microphone (Groq)” in Settings, or type the question.'
+          : `Speech recognition failed (${code}). Try “Cloud microphone (Groq)” in Settings, or type the question.`;
       setStatus('error');
       setAnswer(message);
     };
@@ -268,7 +301,7 @@ export const VoiceShell: React.FC = () => {
             <button type="button" onClick={listen} aria-label="Listen" title="Listen" className="ds-tap rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><AudioLines className="h-4 w-4" /></button>
             <button type="submit" disabled={busy} aria-label="Ask" className="ds-tap rounded-lg bg-indigo-600 p-2 text-white hover:bg-indigo-700 disabled:opacity-50"><SendHorizonal className="h-4 w-4" /></button>
           </form>
-          <p className="mt-2 text-[10px] text-slate-400">{groqEnabled() ? 'Groq routing enabled (opt-in).' : 'Offline answers. Add a Groq key in Settings to enable routing.'} Mic input needs Chrome/Edge online and the mic permission; if it fails, type the question.</p>
+          <p className="mt-2 text-[10px] text-slate-400">Mic: {cloudMic ? 'Groq Whisper (audio goes to Groq).' : 'Built-in Chrome/Edge online recognizer.'} If neither works, type the question. {groqEnabled() ? 'Groq routing ON.' : 'Groq routing off — offline answers.'}</p>
         </div>
       )}
     </aside>
