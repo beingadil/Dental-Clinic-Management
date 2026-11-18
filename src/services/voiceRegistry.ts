@@ -17,6 +17,13 @@ import {
 import { guessClinic } from './voiceTools';
 import { parseWriteCommand, type WriteCommand } from './voiceWrite';
 import type { Invoice, DentalCase, DentalLab, AdvancePayment } from '../types';
+import {
+  loadPrintSettings, loadDocumentSections,
+} from './printSettings';
+import { loadNotificationConfig } from './notificationSettings';
+import { closedMonthFor, clinicMonthSnapshots } from './monthClose';
+import { formatMonthLabel } from './monthlyStatement';
+import { PRINT_SECTIONS, DEFAULT_ENABLED } from '../components/print/printRenderer';
 import { can } from './permissions';
 import { downloadCSV } from './csvExport';
 import { collectAllPayments } from './ledgerDomain';
@@ -195,6 +202,87 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'printSettingsSave', description: 'Save the global print layout (paper, margins, font, logo, job-slip style)', risk: 'write',
+    match: /^(set|change|update|use)\b.*\b(paper|a4|letter|margin|font|logo|job slip)/i,
+    run: (ctx, q) => {
+      if (ctx.user && !can(ctx.user, 'print:edit')) return { kind: 'read', text: 'Requires the “Edit print templates” permission.' };
+      const patch: Record<string, unknown> = {};
+      const paper = q.match(/\b(a4|letter)\b/i)?.[1]?.toLowerCase(); if (paper) patch.paper = paper;
+      const margin = q.match(/\b(narrow|normal|wide)\b/i)?.[1]?.toLowerCase(); if (margin) patch.margin = margin;
+      const fsize = q.match(/\b(compact|normal|large)\b/i)?.[1]?.toLowerCase(); if (fsize) patch.fontSize = fsize;
+      if (/\b(hide|no|without|off)\s+logo|logo (off|hidden)/i.test(q)) patch.showLogo = false;
+      else if (/\blogo\b/i.test(q)) patch.showLogo = true;
+      const lp = q.match(/logo.{0,12}\b(left|center|right)\b/i)?.[1]?.toLowerCase(); if (lp) patch.logoPosition = lp;
+      const js = q.match(/job slip(?: style)? (compact|full)/i)?.[1]?.toLowerCase(); if (js) patch.jobSlipStyle = js;
+      if (!Object.keys(patch).length) return { kind: 'read', text: 'Say what to change — paper, margins, font, logo, or job-slip style.' };
+      const next = { ...loadPrintSettings(), ...patch };
+      return { kind: 'action', risk: 'write', pending: { kind: 'printSettingsSave', amount: 0, clinicHint: '', method: 'bank', printSettings: next }, summary: `Print settings — ${Object.entries(patch).map(([k, v]) => `${k}: ${v}`).join(', ')}` };
+    },
+  },
+  {
+    id: 'printSectionsSave', description: 'Set which sections print for a document kind (invoice/statement/receipt/job_slip)', risk: 'write',
+    match: /^(set|change|update|reset)\b.*\b(invoice|job.?slip|receipt|statement)\b.*(section|print)|\b(invoice|job.?slip|receipt|statement) sections\b/i,
+    run: (ctx, q) => {
+      if (ctx.user && !can(ctx.user, 'print:edit')) return { kind: 'read', text: 'Requires the “Edit print templates” permission.' };
+      const kindMatch = q.match(/job.?slip|receipt|statement|invoice/i)?.[0]?.toLowerCase().replace(/[ _]+/g, '_');
+      const kind = (kindMatch === 'jobslip' ? 'job_slip' : kindMatch) as 'invoice' | 'job_slip' | 'receipt' | 'statement' | undefined;
+      if (!kind) return { kind: 'read', text: 'Say which document — invoice, statement, receipt or job slip.' };
+      const catalog = PRINT_SECTIONS[kind] || [];
+      const ids = catalog.map((s) => s.id);
+      if (/\b(reset|default)\b/.test(q)) {
+        return { kind: 'action', risk: 'write', pending: { kind: 'printSectionsSave', amount: 0, clinicHint: '', method: 'bank', docKind: kind, sections: [...DEFAULT_ENABLED[kind]] }, summary: `Reset ${kind} sections to defaults` };
+      }
+      const hits = ids.filter((id) => q.toLowerCase().includes(id.toLowerCase()));
+      let sections: string[] | null = null;
+      if (/\b(only|just)\b/i.test(q)) sections = hits.length ? hits : null;
+      else if (/\b(without|hide|exclude|remove|drop)\b/i.test(q)) {
+        const current = loadDocumentSections(kind, DEFAULT_ENABLED[kind]);
+        sections = current.filter((id) => !hits.includes(id));
+      }
+      if (!sections || !sections.length) return { kind: 'read', text: `Say e.g. “invoice sections only ${ids.slice(0, 3).join(', ')}” or “invoice sections without ${ids[0]}”. Options: ${ids.join(', ')}.` };
+      return { kind: 'action', risk: 'write', pending: { kind: 'printSectionsSave', amount: 0, clinicHint: '', method: 'bank', docKind: kind, sections }, summary: `${kind} prints ${sections.join(', ')}` };
+    },
+  },
+  {
+    id: 'notificationConfigSave', description: 'Save notification cadence / escalation configuration', risk: 'write',
+    match: /^(set|change|update|enable|disable|turn)\b.*\b(notif|reminder|remind|escalation|cadence)/i,
+    run: (ctx, q) => {
+      if (ctx.user && !can(ctx.user, 'notifications:edit')) return { kind: 'read', text: 'Requires the “Edit notification config” permission.' };
+      const cfg = loadNotificationConfig();
+      const was = JSON.stringify(cfg);
+      const pay = /\b(payment|invoice|pending)\b/i.test(q);
+      const FREQ: [RegExp, string][] = [
+        [/1 day before/i, '1_day_before'], [/on (the )?due date/i, 'on_due_date'], [/1 day after/i, '1_day_after'],
+        [/3 days after/i, '3_days_after'], [/7 days after/i, '7_days_after'], [/14 days after/i, '14_days_after'],
+      ];
+      const hits = FREQ.filter(([re]) => re.test(q)).map(([, id]) => id);
+      if (FREQ.some(([re]) => re.test(q))) { if (pay) cfg.payment_frequencies = hits; else cfg.overdue_frequencies = hits; }
+      if (/enable|turn on.*escalation/i.test(q)) cfg.enable_escalation = true;
+      if (/disable|turn off.*escalation/i.test(q)) cfg.enable_escalation = false;
+      const thr = q.match(/escalat\w*[^0-9]{0,20}(\d{1,2})\s*days?/i); if (thr) cfg.escalation_threshold_days = +thr[1];
+      if (/\b(daily|every day)\b/i.test(q)) cfg.recurring_interval = 'daily';
+      else if (/every 3 days/i.test(q)) cfg.recurring_interval = 'every_3_days';
+      else if (/\b(weekly|every week)\b/i.test(q)) cfg.recurring_interval = 'weekly';
+      if (JSON.stringify(cfg) === was) return { kind: 'read', text: 'Nothing recognized — say e.g. “payment reminders 1 day before and on due date, escalate after 7 days weekly”.' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'notificationConfigSave', amount: 0, clinicHint: '', method: 'bank', notification: cfg }, summary: `Notification config — ${pay ? 'payment' : 'overdue'} reminders ${(pay ? cfg.payment_frequencies : cfg.overdue_frequencies).join(', ') || 'unchanged'}; escalation ${cfg.enable_escalation ? 'on' : 'off'} after ${cfg.escalation_threshold_days}d, ${cfg.recurring_interval}` };
+    },
+  },
+  {
+    id: 'closeMonth', description: 'Close a clinic month (statement of record; re-close anytime)', risk: 'write',
+    match: /^(close|re-?close)\b.*\b(month|20\d{2}(-\d{2})?|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|october)\b/i,
+    run: (ctx, q) => {
+      const month = monthFromQuery(q) ?? q.match(/\b20\d{2}-(0[1-9]|1[0-2])\b/)?.[0] ?? null;
+      if (!month) return { kind: 'read', text: 'Say which month — “Close October 2026 for Mir Dental”.' };
+      const need = needClinic(ctx, q);
+      if (need.error !== undefined) return { kind: 'read', text: need.error };
+      const again = closedMonthFor(month).has(need.clinic.id);
+      const rows = clinicMonthSnapshots({ invoices: ctx.invoices, advancePayments: ctx.advancePayments, accountAdjustments: ctx.accountAdjustments, labs: ctx.labs }, month);
+      const row = rows.find((r) => r.lab_id === need.clinic.id);
+      const line = row ? `billed PKR ${row.billed.toLocaleString()}, collected PKR ${row.collected.toLocaleString()}, closing PKR ${Math.abs(row.closing_balance).toLocaleString()}` : 'no postings this month';
+      return { kind: 'action', risk: 'write', pending: { kind: 'closeMonth', amount: 0, clinicHint: need.clinic.name, labId: need.clinic.id, labName: need.clinic.name, month, method: 'bank' }, summary: `${again ? 'Re-close' : 'Close'} ${formatMonthLabel(month)} — ${line}. Nothing locks; corrections re-close` };
+    },
+  },
+  {
     id: 'statement', description: 'Monthly/All Time statement for a clinic', risk: 'read',
     match: /statement|monthly/,
     run: (ctx, q) => {
@@ -364,7 +452,8 @@ const tools: VoiceTool[] = [
         'Everything voice can do right now:',
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
         '• Read: morning briefing (“morning briefing”), walk me through a statement (“walk me through Mir Dental statement last month”), cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
-        '• Search: “Find invoice INV-0042” → exports: “Export invoices”, “Export transactions” (needs “Export reports” permission)',
+        '• Export: “Export invoices”, “Export transactions”',
+        '• Settings/print: “Invoice sections only brand, lineItems, totals”, “Print settings A4”, “Set notifications 1 day before”',
         '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',

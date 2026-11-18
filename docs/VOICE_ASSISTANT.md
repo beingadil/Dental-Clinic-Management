@@ -1,6 +1,6 @@
 # Voice Assistant (RAG + voice shell) — design
 
-Status: Phases 0–7 landed. Phase 8 (release gates + full installer rebuild) pending.
+Status: Phases 0–8 landed. Planner layer + voice CSV exports + print/notification/closeMonth tools wired; offline mode degrades to deterministic registry + clarification questions.
 
 ## Product posture
 

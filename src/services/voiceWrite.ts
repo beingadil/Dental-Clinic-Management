@@ -3,7 +3,7 @@
  * record a payment and record an advance deposit. Anything else is not writable.
  */
 export interface WriteCommand {
-  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField';
+  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
@@ -22,6 +22,18 @@ export interface WriteCommand {
   /** For updateClinicField */
   field?: 'name' | 'phone' | 'email' | 'address' | 'city' | 'doctor';
   value?: string;
+  /** Print settings object for printSettingsSave (PrintSettings). */
+  printSettings?: unknown;
+  /** Document kind for printSectionsSave (invoice | job_slip | receipt | statement). */
+  docKind?: 'invoice' | 'job_slip' | 'receipt' | 'statement';
+  /** Section ids for printSectionsSave. */
+  sections?: string[];
+  /** NotificationConfig for notificationConfigSave. */
+  notification?: unknown;
+  /** 'YYYY-MM' for closeMonth. */
+  month?: string;
+  labId?: string;
+  labName?: string;
 }
 
 const AMOUNT = /(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]{0,12})/i;

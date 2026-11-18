@@ -6,6 +6,10 @@ import { useApp } from '../../context/AppContext';
 import { moduleForView, isViewProtected, isModuleUnlocked } from '../../services/moduleSecurity';
 import { speak, cancelSpeech } from '../../services/voiceUtterance';
 import { askAssistant } from '../../services/voiceAssistant';
+import { canPost } from '../../services/permissions';
+import { savePrintSettings, saveDocumentSections, setStatementBankExcluded, setInvoiceSummaryExcluded } from '../../services/printSettings';
+import { saveNotificationConfig, announceNotificationConfigChanged } from '../../services/notificationSettings';
+import { closeMonth } from '../../services/monthClose';
 import { groqEnabled } from '../../services/voiceGroq';
 import { recordClip, transcribeWithGroq } from '../../services/voiceGroqStt';
 import type { WriteCommand } from '../../services/voiceWrite';
@@ -88,6 +92,16 @@ export const VoiceShell: React.FC = () => {
     if (cmd.kind === 'createClinic') {
       setAnswer(`${destructiveBanner}Confirm: create clinic “${cmd.clinicHint}”?`);
       speak(`Confirm: create clinic ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
+      return;
+    }
+    if (cmd.amount === 0) {
+      const label = cmd.kind === 'printSettingsSave' ? 'apply the print settings'
+        : cmd.kind === 'printSectionsSave' ? `set ${cmd.docKind} print sections`
+        : cmd.kind === 'notificationConfigSave' ? 'save the notification configuration'
+        : cmd.kind === 'closeMonth' ? `close ${cmd.month || ''} for ${cmd.labName || cmd.clinicHint}`
+        : 'continue';
+      setAnswer(`${destructiveBanner}Confirm: ${label}.`);
+      speak(`Confirm ${label}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
       return;
     }
     const amount = `PKR ${cmd.amount.toLocaleString()}`;
@@ -325,6 +339,46 @@ export const VoiceShell: React.FC = () => {
         setStatus('done');
         setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the clinic.'); }
+      return;
+    }
+    if (pending.kind === 'printSettingsSave') {
+      try {
+        savePrintSettings(pending.printSettings as never);
+        setAnswer('Print settings saved.');
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save print settings.'); }
+      return;
+    }
+    if (pending.kind === 'printSectionsSave' && pending.docKind && pending.sections) {
+      try {
+        saveDocumentSections(pending.docKind, pending.sections);
+        if (pending.docKind === 'statement') setStatementBankExcluded(!pending.sections.includes('bank'));
+        if (pending.docKind === 'invoice') setInvoiceSummaryExcluded(false);
+        setAnswer(`${pending.docKind} sections saved: ${pending.sections.join(', ')}.`);
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save print sections.'); }
+      return;
+    }
+    if (pending.kind === 'notificationConfigSave') {
+      try {
+        saveNotificationConfig(pending.notification as never);
+        announceNotificationConfigChanged();
+        setAnswer('Notification configuration saved — sweeps will use the new cadence.');
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save notification config.'); }
+      return;
+    }
+    if (pending.kind === 'closeMonth' && pending.month && pending.labId) {
+      if (user && !canPost(user, 'payment:record')) { setStatus('error'); setAnswer('Requires the “Record payment” permission to close a month.'); return; }
+      try {
+        closeMonth({ invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], labs: labs || [], month: pending.month, labId: pending.labId, labName: pending.labName, actor: user?.name || 'System' });
+        setAnswer(`${pending.month} closed for ${pending.labName}. Nothing locks — corrections can re-close.`);
+        setStatus('done');
+        setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not close the month.'); }
       return;
     }
     const { clinic, candidates } = resolveClinicForWrite(pending.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };
