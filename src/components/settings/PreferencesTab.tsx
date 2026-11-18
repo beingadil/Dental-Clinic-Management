@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { GlassSelect } from '../common/ui/GlassSelect';
 import { auditRepo } from '../../db/repos';
@@ -7,6 +7,7 @@ import { isThemeMode, type ThemeMode } from '../../theme/theme';
 import { useDashboardLayout, type DashboardDensity } from '../../components/dashboard/useDashboardLayout';
 import { PANEL_KEYS } from '../../components/dashboard/panelRegistry';
 import { setGroqKey, clearGroqKey, groqKeyPresent, groqEnabled } from '../../services/voiceGroq';
+import { listMemories, clearMemories } from '../../services/voiceMemory';
 
 
 /**
@@ -202,6 +203,45 @@ const DashboardLayoutCard: React.FC = () => {
 };
 
 /** TAB: APPLICATION PREFERENCES — extracted verbatim from SettingsView (P3 split). */
+const VoiceExtras: React.FC<{
+  voiceUri?: string;
+  onVoiceUri: (uri: string) => void;
+}> = ({ voiceUri, onVoiceUri }) => {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [memoryCount, setMemoryCount] = useState(() => listMemories().length);
+  const uk = groqKeyPresent();
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    const load = () => setVoices(window.speechSynthesis.getVoices());
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+    return () => { window.speechSynthesis.onvoiceschanged = null; };
+  }, []);
+  return (
+    <div className="rounded-xl border border-slate-200 p-3">
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">System voice</label>
+      <GlassSelect
+        value={voiceUri || ''}
+        onChange={onVoiceUri}
+        ariaLabel="System voice"
+        className="mt-1 w-full p-2 text-xs font-bold"
+        options={[
+          { value: '', label: 'Use system default' },
+          ...voices.slice(0, 40).map((v) => ({ value: v.voiceURI, label: `${v.name} (${v.lang})` })),
+        ]}
+      />
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div>
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Local memory (learns from us)</span>
+          <span className="text-[10px] text-slate-400">{memoryCount} redacted Q/A pairs stored on this device. Never sent to Groq.</span>
+        </div>
+        <button type="button" onClick={() => { clearMemories(); setMemoryCount(0); }} className="rounded-lg border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-100">Clear memory</button>
+      </div>
+      {uk && <p className="mt-2 text-[10px] font-semibold text-emerald-700">Groq routing ON — memory digest is included (redacted) so routing stays consistent.</p>}
+    </div>
+  );
+};
+
 const GroqKeyControl: React.FC = () => {
   const [key, setKey] = useState('');
   const [status, setStatus] = useState<string>('');
@@ -515,6 +555,7 @@ export const PreferencesTab: React.FC = () => {
             />
           )}
           <GroqKeyControl />
+          <VoiceExtras voiceUri={userPreferences?.voice_tts_voice_uri} onVoiceUri={(v) => updateUserPreferences({ voice_tts_voice_uri: v || undefined })} />
         </div>
 
         <div>

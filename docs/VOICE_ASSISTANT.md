@@ -1,6 +1,6 @@
 # Voice Assistant (RAG + voice shell) — design
 
-Status: Phase 0 foundations landed; target v1 is payments/advance writes only.
+Status: Phases 0–7 landed. Phase 8 (release gates + full installer rebuild) pending.
 
 ## Product posture
 
@@ -30,7 +30,19 @@ Status: Phase 0 foundations landed; target v1 is payments/advance writes only.
 
 ## Settings (additive `voice_*` keys; no migration)
 
-`voice_enabled`, `voice_locale`, `voice_tts_voice_uri`, `voice_tts_rate`, `voice_confirmation_mode`, `voice_read_clinical_detail`, `voice_groq_enabled`, `voice_cloud_transcription`. Groq key is NOT stored in preferences JSON; it lives in a dedicated secure setting the same way secrets are stored elsewhere in the app (never in bundle, never in git).
+`voice_enabled`, `voice_locale`, `voice_tts_voice_uri`, `voice_tts_rate`, `voice_confirmation_mode`, `voice_read_clinical_detail`, `voice_groq_enabled`, `voice_cloud_transcription`. Groq key is NOT stored in preferences JSON; it is kept in a dedicated local entry (`ds.voice.groq.key`) — never in bundle, never in git.
+
+## Natural voice
+
+- System-voice picker (`voice_tts_voice_uri`) populated from `speechSynthesis.getVoices()`; default = OS voice.
+- Locale + speech rate tunable (`voice_locale`, `voice_tts_rate`, 0.5–2.0).
+- Utterances always pass through `voiceRedaction.ts` first.
+
+## Local memory ("learns from us")
+
+- Every answer pair is redacted and stored locally (`ds.voice.memory`, capped 50 entries).
+- Memory is never sent to Groq; only a short redacted digest (≤ 12 Q/A pairs) is appended to the routing prompt when Groq routing is enabled.
+- Clearable from Settings → Application Defaults → Voice Assistant → Local memory.
 
 ## Test matrix
 
@@ -41,3 +53,4 @@ Status: Phase 0 foundations landed; target v1 is payments/advance writes only.
 ## Build order
 
 0 Foundations (this doc, audit-wipe fix) → 1 voice shell + speechSynthesis → 2 RAG indexer + FTS API → 3 business tool layer → 4 Groq router + offline fallback → 5 clarification state machine → 6 speech-in paths → 7 payments/advance write path → 8 hardening + release.
+
