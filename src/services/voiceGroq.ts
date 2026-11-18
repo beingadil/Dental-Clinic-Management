@@ -26,7 +26,7 @@ export const setGroqEnabled = (on: boolean): void => { localStorage.setItem(ENAB
 export interface GroqChatMessage { role: 'system' | 'user' | 'assistant'; content: string }
 
 export async function groqChat(messages: GroqChatMessage[], opts?: { maxTokens?: number; timeoutMs?: number }): Promise<string | null> {
-  const key = localStorage.getItem(KEY);
+  const key = typeof localStorage === 'undefined' ? null : localStorage.getItem(KEY);
   if (!key || localStorage.getItem(ENABLED) !== 'true') return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 12000);
