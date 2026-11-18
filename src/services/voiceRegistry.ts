@@ -29,6 +29,8 @@ export interface VoiceApi {
   /** navigate the whole app */
   setCurrentView: (view: string) => void;
   addLab: (lab: Omit<DentalLab, 'id' | 'created_at' | 'rating' | 'reviews_count' | 'opening_balance' | 'opening_balance_type'>) => DentalLab;
+  updateLab: (id: string, updates: Partial<DentalLab>) => void;
+  updateCase: (id: string, updates: Partial<DentalCase>, note?: string) => void;
   recordTransactionV2: (command: { clinicId: string; amount: number; method: 'cash' | 'bank' | 'cheque'; date: string; notes?: string; allocations: { invoiceId: string; amount: number }[]; saveRemainingAsAdvance?: boolean; isVerified?: boolean }) => { receiptNumber: string };
   recordAdvanceDepositV2: (command: { clinicId: string; amount: number; method: 'cash' | 'bank' | 'cheque'; date: string; notes?: string; isVerified?: boolean }) => { receiptNumber: string };
 }
@@ -211,6 +213,34 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'setCaseStatus', description: 'Move a case to another workflow stage (ready/delivered/QC/…)', risk: 'write',
+    match: /^(mark|move|set|advance|change)\s+(the\s+)?case\s*(DS-\d+)?\s*(to|as)?\s*(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)\b/i,
+    run: (_ctx, q) => {
+      const m = q.match(/DS-\d+/i);
+      const statusWord = q.match(/(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)/i)?.[1]?.toLowerCase();
+      const map: Record<string, string> = {
+        'draft': 'draft', 'received': 'received', 'in progress': 'in_progress', 'in_progress': 'in_progress',
+        'qc': 'qc', 'quality': 'qc', 'ready': 'ready', 'delivered': 'delivered',
+        'revision': 'revision', 'rework': 'revision', 'cancelled': 'cancelled',
+      };
+      const target = map[statusWord || ''];
+      if (!m || !target) return { kind: 'read', text: 'Say which case and which stage, e.g. “Mark case DS-0393 ready”.' };
+      const caseNumber = m[0].toUpperCase();
+      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: target, method: 'bank' }, summary: `Move case ${caseNumber} to “${target}”` };
+    },
+  },
+  {
+    id: 'updateClinicDoctor', description: 'Set the doctor for a clinic', risk: 'write',
+    match: /^(set|update|change)\s+(the\s+)?doctor\s+(for|of|at)\s+([A-Za-z0-9 ()&-]{2,40})\s+(to|as)\s+(.+)$/i,
+    run: (_ctx, q) => {
+      const m = q.match(/^(?:set|update|change)\s+(?:the\s+)?doctor\s+(?:for|of|at)\s+([A-Za-z0-9 ()&-]{2,40})\s+(?:to|as)\s+(.+)$/i);
+      const clinic = m?.[1]?.trim();
+      const doctor = m?.[2]?.trim().replace(/^dr\.?\s*/i, 'Dr ');
+      if (!clinic || !doctor || doctor.length < 2) return { kind: 'read', text: 'Say “Update doctor for Mir Dental to Dr Tariq”.' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'updateClinicDoctor', amount: 0, clinicHint: clinic, doctorName: doctor, method: 'bank' }, summary: `Set doctor for ${clinic} to ${doctor}` };
+    },
+  },
+  {
     id: 'help', description: 'List everything voice can do', risk: 'read',
     match: /^(what can you do|help|commands|capabilities|list commands|what are you capable of|how can you help)\b/,
     run: () => ({
@@ -220,7 +250,7 @@ const tools: VoiceTool[] = [
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
         '• Read: cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
         '• Search: “Find invoice INV-0042”',
-        '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000 for Mir Dental”, “Add clinic Mir Dental”',
+        '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000 for Mir Dental”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',
       ].join('\n'),

@@ -46,7 +46,7 @@ const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
 export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
-    recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab,
+    recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase,
   } = useApp();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<ShellStatus>('idle');
@@ -54,6 +54,7 @@ export const VoiceShell: React.FC = () => {
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<WriteCommand | null>(null);
+  const [pendingRisk, setPendingRisk] = useState<'write' | 'destructive'>('write');
   const [pendingNote, setPendingNote] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -73,19 +74,21 @@ export const VoiceShell: React.FC = () => {
     setOpen((v) => { const next = !v; if (next) setStatus('idle'); return next; });
   };
 
-  const queueWrite = (cmd: WriteCommand, note: string) => {
+  const queueWrite = (cmd: WriteCommand, note: string, risk: 'write' | 'destructive' = 'write') => {
     setPending(cmd);
+    setPendingRisk(risk);
     setPendingNote(note);
     setStatus('done');
+    const destructiveBanner = risk === 'destructive' ? 'DESTRUCTIVE — this cannot be undone: ' : '';
     if (cmd.kind === 'createClinic') {
-      setAnswer(`Confirm: create clinic “${cmd.clinicHint}”?`);
+      setAnswer(`${destructiveBanner}Confirm: create clinic “${cmd.clinicHint}”?`);
       speak(`Confirm: create clinic ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
       return;
     }
     const amount = `PKR ${cmd.amount.toLocaleString()}`;
     const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}` : 'advance deposit';
-    setAnswer(`Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
-    speak(`Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
+    setAnswer(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
+    speak(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
       rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
       locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false,
     });
@@ -94,6 +97,15 @@ export const VoiceShell: React.FC = () => {
   const submit = async (raw?: string) => {
     const text = (raw ?? query).trim();
     if (!text || busy) return;
+
+    // Spoken confirmation path: an action is pending — a spoken yes confirms.
+    if (pending) {
+      if (/^(confirm|yes|do it|go ahead|ok)$/i.test(text)) { confirmPending(); return; }
+      if (/^(cancel|no|stop|abort)$/i.test(text)) { cancelPending(); return; }
+      setAnswer(pendingRisk === 'destructive' ? 'Say “confirm” to proceed or “cancel” to abort. This action cannot be undone.' : 'Say “confirm” to post it or “cancel”.');
+      return;
+    }
+
     setBusy(true);
     setAnswer('');
     try {
@@ -106,14 +118,14 @@ export const VoiceShell: React.FC = () => {
           invoices: invoices || [],
           cases: cases || [],
           advancePayments: advancePayments || [],
-          setCurrentView, addLab, recordTransactionV2, recordAdvanceDepositV2,
+          setCurrentView, addLab, updateLab, updateCase, recordTransactionV2, recordAdvanceDepositV2,
         },
       });
       if (result.navigateTo) {
         setCurrentView(result.navigateTo);
       }
       if (result.pendingWrite) {
-        queueWrite(result.pendingWrite, text);
+        queueWrite(result.pendingWrite, text, result.risk === 'destructive' ? 'destructive' : 'write');
         setBusy(false);
         return;
       }
@@ -167,6 +179,46 @@ export const VoiceShell: React.FC = () => {
       } catch (err) {
         setStatus('error');
         setAnswer(err instanceof Error ? err.message : 'Could not create the clinic.');
+      }
+      return;
+    }
+    if (pending.kind === 'setCaseStatus' && pending.caseNumber && pending.targetStatus) {
+      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
+      if (!target) {
+        setStatus('error');
+        setAnswer(`No case ${pending.caseNumber} found.`);
+        return;
+      }
+      try {
+        updateCase(target.id, { status: pending.targetStatus } as never, `Voice: moved to ${pending.targetStatus}`);
+        setAnswer(`Case ${pending.caseNumber} moved to ${pending.targetStatus}.`);
+        setStatus('done');
+        setPending(null);
+        setPendingNote('');
+      } catch (err) {
+        setStatus('error');
+        setAnswer(err instanceof Error ? err.message : 'Could not move the case.');
+      }
+      return;
+    }
+    if (pending.kind === 'updateClinicDoctor' && pending.doctorName) {
+      const ranked = rankCandidates(labs || [], pending.clinicHint);
+      const exact = (labs || []).find((l) => l.name.toLowerCase() === pending.clinicHint.toLowerCase());
+      const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
+      if (!chosen) {
+        setStatus('error');
+        setAnswer(ranked.length > 1 ? `Which clinic — ${ranked.map((r) => r.lab.name).slice(0, 4).join(', ')}?` : 'I could not match that clinic. Say the exact clinic name.');
+        return;
+      }
+      try {
+        updateLab(chosen.id, { contact_person: pending.doctorName, doctor_name: pending.doctorName });
+        setAnswer(`Doctor for ${chosen.name} set to ${pending.doctorName}.`);
+        setStatus('done');
+        setPending(null);
+        setPendingNote('');
+      } catch (err) {
+        setStatus('error');
+        setAnswer(err instanceof Error ? err.message : 'Could not update the doctor.');
       }
       return;
     }
@@ -322,10 +374,11 @@ export const VoiceShell: React.FC = () => {
 
           {pending && (
             <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
-              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" /> Confirm the action below</div>
+              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : 'Confirm the action below'}</div>
               <p className="mt-1.5">{answer}</p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-500">Or say “confirm” / “cancel”.</p>
               <div className="mt-2 flex gap-2">
-                <button type="button" onClick={confirmPending} className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">Confirm & post</button>
+                <button type="button" onClick={confirmPending} className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white ${pendingRisk === 'destructive' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{pendingRisk === 'destructive' ? 'Confirm destructive' : 'Confirm & post'}</button>
                 <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
               </div>
             </div>

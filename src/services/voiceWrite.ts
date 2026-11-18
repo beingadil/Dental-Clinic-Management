@@ -3,11 +3,17 @@
  * record a payment and record an advance deposit. Anything else is not writable.
  */
 export interface WriteCommand {
-  kind: 'payment' | 'advance' | 'createClinic';
+  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
   method: 'cash' | 'bank' | 'cheque';
+  /** For setCaseStatus */
+  caseNumber?: string;
+  /** Target workflow stage ('ready' | 'delivered' | 'qc' | …). */
+  targetStatus?: string;
+  /** New doctor name for updateClinicDoctor. */
+  doctorName?: string;
 }
 
 const AMOUNT = /(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]{0,12})/i;
