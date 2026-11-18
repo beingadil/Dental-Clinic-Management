@@ -673,14 +673,24 @@ function syncNow(c: SyncCollections): void {
       );
     }
 
-    // ── audit ──
-    tx.run('DELETE FROM audit_events');
+    /* ── audit ──
+
+       The old code did DELETE FROM audit_events and re-inserted only what React
+       state mirrored. But audit_repo.log and every direct log call writes
+       straight to the DB without passing React state — so the next sync wiped
+       them silently, including module locks, auth events and month-close rows,
+       and invoice-number retirement depends on intact INVOICE_VOIDED rows.
+
+       Merge instead: keep DB-only rows, upsert the mirrored ones. */
     for (const a of c.auditEvents) {
       if (seenAuditEventIds.has(a.id)) continue; // dedup: one row per event
       seenAuditEventIds.add(a.id);
       tx.run(
         `INSERT INTO audit_events (id, timestamp, actor, action, entity_type, entity_id, entity_ref, reason, old_state, new_state, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET timestamp=excluded.timestamp, actor=excluded.actor, action=excluded.action,
+           entity_type=excluded.entity_type, entity_id=excluded.entity_id, entity_ref=excluded.entity_ref,
+           reason=excluded.reason, old_state=excluded.old_state, new_state=excluded.new_state, notes=excluded.notes`,
         [a.id, a.timestamp, a.actor, a.action, a.entity_type, a.entity_id, a.entity_ref || null,
          a.reason || null, encodeAuditState(a.old_state),
          encodeAuditState(a.new_state), a.notes || null]
