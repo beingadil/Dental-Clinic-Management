@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Mic, Lock, X, SendHorizonal, AudioLines, CheckCircle2 } from 'lucide-react';
+import { VoiceOrb } from './VoiceOrb';
+import { listMemories, clearMemories } from '../../services/voiceMemory';
+import { X, SendHorizonal, AudioLines, CheckCircle2, History, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { moduleForView, isViewProtected, isModuleUnlocked } from '../../services/moduleSecurity';
 import { speak, cancelSpeech } from '../../services/voiceUtterance';
@@ -49,6 +51,8 @@ export const VoiceShell: React.FC = () => {
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase,
   } = useApp();
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [memoryCount, setMemoryCount] = useState(() => listMemories().length);
   const [status, setStatus] = useState<ShellStatus>('idle');
   const [query, setQuery] = useState('');
   const [answer, setAnswer] = useState('');
@@ -130,6 +134,7 @@ export const VoiceShell: React.FC = () => {
         return;
       }
       setAnswer(result.text);
+      setMemoryCount(listMemories().length);
       setStatus('done');
       speak(result.text, {
         rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
@@ -348,26 +353,47 @@ export const VoiceShell: React.FC = () => {
 
   return (
     <aside aria-label="Voice assistant" className="no-print pointer-events-none fixed bottom-24 right-4 sm:right-6 z-[90] flex flex-col items-end gap-2">
-      <button
-        type="button"
-        aria-label={locked ? 'Voice assistant locked' : 'Toggle voice assistant (Ctrl+Shift+V)'}
-        aria-expanded={open}
-        aria-disabled={locked}
-        title={locked ? 'Module locked' : 'Voice assistant (Ctrl+Shift+V)'}
+      {/* The orb is the single entry point; breathing idle → ring pulse while listening/thinking. */}
+      <VoiceOrb
+        state={locked ? 'locked' : status === 'listening' ? 'listening' : status === 'thinking' ? 'thinking' : 'idle'}
+        locked={locked}
         onClick={toggle}
-        className={`pointer-events-auto ds-tap flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors ${
-          locked ? 'cursor-not-allowed border-slate-300 bg-slate-100 text-slate-400' : 'cursor-pointer border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50'
-        }`}
-      >
-        {locked ? <Lock className="h-4 w-4" /> : <Mic className="h-5 w-5" />}
-      </button>
+      />
+
 
       {open && (
-        <div className="pointer-events-auto w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+        <div className={`pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl ${expanded ? 'fixed inset-4 sm:inset-10 z-[95] flex flex-col overflow-hidden' : 'w-80'}`}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Voice Assistant</span>
-            <button type="button" onClick={close} aria-label="Close voice assistant" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Voice Assistant {expanded ? '— dedicated panel' : ''}</span>
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={() => setExpanded((v) => !v)} aria-label={expanded ? 'Collapse panel' : 'Open dedicated panel'} title={expanded ? 'Collapse' : 'Dedicated panel'} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </button>
+              <button type="button" onClick={close} aria-label="Close voice assistant" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
+            </div>
           </div>
+          {expanded && (
+            <div className="mt-3 grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-3">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 overflow-y-auto max-h-[30vh] lg:max-h-full">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500"><Sparkles className="h-3.5 w-3.5" /> Quick commands</div>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {['Cash collected today', 'Overdue cases', 'Standings', 'Mir Dental balance', 'Outstanding invoices for Mir Dental', 'Month close status for October 2026', 'Open general ledger', 'Open settings'].map((cmd) => (
+                    <button key={cmd} type="button" onClick={() => void submit(cmd)} className="text-left rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700 hover:border-indigo-300 hover:text-indigo-700">{cmd}</button>
+                  ))}
+                </div>
+                <div className="mt-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500"><History className="h-3.5 w-3.5" /> Memory ({listMemories().length})<button type="button" onClick={() => { clearMemories(); setMemoryCount(0); }} className="ml-auto text-[10px] font-bold text-slate-400 hover:text-rose-600">Clear</button></div>
+                <div className="mt-1.5 max-h-48 overflow-y-auto lg:max-h-none divide-y divide-slate-200">
+                  {listMemories().slice(0, 12).map((m) => (
+                    <div key={m.id} className="py-1.5">
+                      <p className="text-[10px] font-semibold text-slate-600">{m.question}</p>
+                      <p className="text-[10px] text-slate-400 leading-snug line-clamp-2">{m.answer}</p>
+                    </div>
+                  ))}
+                  {memoryCount === 0 && <p className="text-[11px] text-slate-400 py-2">Answers get stored here (redacted) as the assistant learns.</p>}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="mt-3 min-h-[64px] whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-700" role="status" aria-live="polite">
             {busy ? 'Thinking…' : answer || 'Ask a clinic balance, statement, ledger, outstanding or advance wallet — or say “Record payment of PKR 5,000 for Mir Dental”.'}
           </div>

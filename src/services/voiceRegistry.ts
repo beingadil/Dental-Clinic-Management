@@ -204,11 +204,17 @@ const tools: VoiceTool[] = [
     },
   },
   {
-    id: 'createClinic', description: 'Create a new clinic', risk: 'write',
+    id: 'createClinic', description: 'Create a new clinic (with duplicate detection)', risk: 'write',
     match: /^(add|create|new|make)\s+(a\s+)?(clinic|lab)\b/i,
-    run: (_ctx, q) => {
+    run: (ctx, q) => {
       const cmd = parseWriteCommand(q);
       if (!cmd || cmd.kind !== 'createClinic') return null;
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const wanted = norm(cmd.clinicHint);
+      const existing = (ctx.labs || []).find((l) => norm(l.name) === wanted);
+      if (existing) {
+        return { kind: 'read', text: `Clinic “${existing.name}” already exists — I will not duplicate it. Say “Open labs” to view it or “Update doctor for ${existing.name} to <name>” if you meant to change it.` };
+      }
       return { kind: 'action', risk: 'write', pending: cmd, summary: `Create clinic “${cmd.clinicHint}”` };
     },
   },
