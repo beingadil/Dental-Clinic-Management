@@ -52,6 +52,8 @@ const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
 export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
+    caseTypes, labContacts, labAddresses, pricingOverrides,
+    addLabContact, addLabAddress, addPricingOverride, addCase,
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
   } = useApp();
   const [open, setOpen] = useState(false);
@@ -64,7 +66,10 @@ export const VoiceShell: React.FC = () => {
   const [pending, setPending] = useState<WriteCommand | null>(null);
   const [pendingRisk, setPendingRisk] = useState<'write' | 'destructive'>('write');
   const [pendingNote, setPendingNote] = useState('');
-  const [slotMode, setSlotMode] = useState<{ kind: 'createClinic'; step: 'name' | 'doctor' | 'phone'; name?: string; doctor?: string; phone?: string } | null>(null);
+  type SlotMode =
+    | { kind: 'createClinic'; step: 'name' | 'doctor' | 'phone'; name?: string; doctor?: string; phone?: string }
+    | { kind: 'createCase'; step: 'patient' | 'clinic' | 'caseType' | 'price' | 'delivery' | 'doctor'; patient?: string; clinic?: string; caseType?: string; doctor?: string; price?: number; delivery?: string };
+  const [slotMode, setSlotMode] = useState<SlotMode | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const cloudStop = useRef<null | (() => void)>(null);
@@ -105,7 +110,9 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     const amount = `PKR ${cmd.amount.toLocaleString()}`;
-    const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}` : 'advance deposit';
+    const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}`
+      : cmd.kind === 'createCase' ? `create case for ${cmd.patientName || 'patient'} — ${cmd.caseTypeName} at ${cmd.clinicHint}`
+      : 'advance deposit';
     setAnswer(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
     speak(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
       rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
@@ -122,29 +129,110 @@ export const VoiceShell: React.FC = () => {
     if (slotMode) {
       const val = text.trim();
       const skip = /^(skip|none|no|-)$/i.test(val);
-      if (slotMode.step === 'name') {
-        if (skip || val.length < 2) { setAnswer('A clinic needs a name — say the clinic name.'); return; }
-        setSlotMode({ ...slotMode, name: val, step: 'doctor' });
-        setAnswer(`Got “${val}”. Doctor's name? Say “skip” to leave it blank.`);
+      if (slotMode.kind === 'createClinic') {
+        if (slotMode.step === 'name') {
+          if (skip || val.length < 2) { setAnswer('A clinic needs a name — say the clinic name.'); return; }
+          setSlotMode({ ...slotMode, name: val, step: 'doctor' });
+          setAnswer(`Got “${val}”. Doctor's name? Say “skip” to leave it blank.`);
+          return;
+        }
+        if (slotMode.step === 'doctor') {
+          setSlotMode({ ...slotMode, doctor: skip ? undefined : val, step: 'phone' });
+          setAnswer(skip ? 'Okay. Phone? Say “skip” to leave it blank.' : `Got doctor ${val}. Phone? Say “skip” to leave it blank.`);
+          return;
+        }
+        const phone = skip ? undefined : val;
+        const detail = { name: slotMode.name!, doctor: slotMode.doctor, phone };
+        setCurrentView('labs');
+        try {
+          window.dispatchEvent(new CustomEvent('voice:create-clinic', { detail }));
+        } catch { /* prefill is best effort; the operator can always type it */ }
+        setSlotMode(null);
+        setAnswer(`Opening Labs → New Clinic pre-filled with “${detail.name}”${detail.doctor ? `, doctor ${detail.doctor}` : ''}. Review the form and press “Add clinic” to finish.`);
+        speak('Opening the new clinic form with your details — review and press add clinic.', {
+          rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
+          locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false,
+        });
         return;
       }
-      if (slotMode.step === 'doctor') {
-        setSlotMode({ ...slotMode, doctor: skip ? undefined : val, step: 'phone' });
-        setAnswer(skip ? 'Okay. Phone? Say “skip” to leave it blank.' : `Got doctor ${val}. Phone? Say “skip” to leave it blank.`);
+
+      /* Guided case creation — asks for the same fields the New Case form asks. */
+      if (slotMode.step === 'patient') {
+        if (skip || val.length < 2) { setAnswer('Patient name is required.'); return; }
+        setSlotMode({ ...slotMode, patient: val, step: 'clinic' });
+        setAnswer('Which clinic?');
         return;
       }
-      const phone = skip ? undefined : val;
-      const detail = { name: slotMode.name!, doctor: slotMode.doctor, phone };
-      setCurrentView('labs');
-      try {
-        window.dispatchEvent(new CustomEvent('voice:create-clinic', { detail }));
-      } catch { /* prefill is best effort; the operator can always type it */ }
+      if (slotMode.step === 'clinic') {
+        const matches = (labs || []).filter((l) => l.name.toLowerCase().includes(val.toLowerCase()));
+        if (matches.length === 1) {
+          setSlotMode({ ...slotMode, clinic: matches[0].name, step: 'caseType' });
+          setAnswer(`Got ${matches[0].name}. Which case type? For example: “Zirconia Crown”.`);
+          return;
+        }
+        setAnswer(matches.length > 1 ? `Which clinic — ${matches.map((m) => m.name).slice(0, 5).join(', ')}?` : 'No matching clinic. Say the exact clinic name or add it first.');
+        return;
+      }
+      if (slotMode.step === 'caseType') {
+        const wanted = val.toLowerCase();
+        const exact = (caseTypes || []).find((c) => c.name.toLowerCase() === wanted);
+        const partial = (caseTypes || []).filter((c) => c.name.toLowerCase().includes(wanted));
+        const chosen = exact || (partial.length === 1 ? partial[0] : partial[0]);
+        if (!chosen) {
+          const examples = (caseTypes || []).slice(0, 4).map((c) => c.name).join(', ');
+          setAnswer(`No case type “${val}”. Known: ${examples}.`);
+          return;
+        }
+        if (!exact && partial.length > 1) {
+          setAnswer(`Which case type — ${partial.slice(0, 5).map((c) => c.name).join(', ')}?`);
+          return;
+        }
+        setSlotMode({ ...slotMode, caseType: chosen.name, step: 'price' });
+        setAnswer(`Got ${chosen.name}. Price, PKR?`);
+        return;
+      }
+      if (slotMode.step === 'price') {
+        const n = Number(val.replace(/[^\d.]/g, ''));
+        if (!Number.isFinite(n) || n <= 0) { setAnswer('Give a positive amount, e.g. “8500”.'); return; }
+        setSlotMode({ ...slotMode, price: n, step: 'delivery' });
+        setAnswer('Delivery date? (YYYY-MM-DD, or “tomorrow”)');
+        return;
+      }
+      if (slotMode.step === 'delivery') {
+        const resolveDate = (raw: string): string | null => {
+          const t = raw.toLowerCase().trim();
+          if (t === 'today') return getTodayStr();
+          if (t === 'tomorrow') { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+          if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+          const d = new Date(raw);
+          if (Number.isNaN(d.getTime())) return null;
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+        const d = resolveDate(val);
+        if (!d) { setAnswer('Say a date like 2026-11-30, “today” or “tomorrow”.'); return; }
+        setSlotMode({ ...slotMode, delivery: d, step: 'doctor' });
+        setAnswer(`Delivery ${d}. Doctor? Say “skip” to leave blank.`);
+        return;
+      }
+      // doctor step → finish
+      const doctor = skip ? undefined : val;
+      const ct = (caseTypes || []).find((c) => c.name.toLowerCase() === (slotMode.caseType || '').toLowerCase());
       setSlotMode(null);
-      setAnswer(`Opening Labs → New Clinic pre-filled with “${detail.name}”${detail.doctor ? `, doctor ${detail.doctor}` : ''}. Review the form and press “Add clinic” to finish.`);
-      speak('Opening the new clinic form with your details — review and press add clinic.', {
-        rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
-        locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false,
-      });
+      queueWrite(
+        {
+          kind: 'createCase', amount: slotMode.price!, clinicHint: slotMode.clinic!,
+          caseTypeId: ct?.id, caseTypeName: slotMode.caseType, doctorName: doctor,
+          patientName: slotMode.patient, deliveryDate: slotMode.delivery, method: 'bank',
+        },
+        'voice:createCase',
+        'write',
+      );
+      return;
+    }
+    if (/^(add|create|new|register|log)\s+(a\s+)?(case|job)\s*$/i.test(text)) {
+      setSlotMode({ kind: 'createCase', step: 'patient' });
+      setAnswer('Patient name?');
+      setStatus('idle');
       return;
     }
     if (/^(add|create|new|make)\s+(a\s+)?(clinic|lab|dental clinic)\s*$/i.test(text)) {
@@ -167,7 +255,8 @@ export const VoiceShell: React.FC = () => {
     try {
       setStatus('thinking');
       const result = await askAssistant(text, {
-        labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], cases: cases || [], user,
+        labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], cases: cases || [],
+        caseTypes: caseTypes || [], labContacts: labContacts || [], labAddresses: labAddresses || [], pricingOverrides: pricingOverrides || [], user,
         allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
         api: {
           labs: labs || [],
@@ -339,6 +428,46 @@ export const VoiceShell: React.FC = () => {
         setStatus('done');
         setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the clinic.'); }
+      return;
+    }
+    if (pending.kind === 'createCase' && pending.patientName && pending.clinicHint && pending.caseTypeName) {
+      const exact = (labs || []).find((l) => l.name.toLowerCase() === pending.clinicHint!.toLowerCase());
+      const ranked = rankCandidates(labs || [], pending.clinicHint!);
+      const clinic = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
+      const ct = (caseTypes || []).find((c) => c.name.toLowerCase() === pending.caseTypeName!.toLowerCase());
+      if (!clinic || !ct) { setStatus('error'); setAnswer('Could not resolve the clinic or case type.'); return; }
+      try {
+        const created = addCase({
+          lab_id: clinic.id, lab_name: clinic.name,
+          case_type_id: ct.id, case_type_name: ct.name,
+          doctor_name: pending.doctorName || 'Voice',
+          selected_teeth: [], delivery_date: pending.deliveryDate!,
+          priority: 'normal', price: pending.amount, discount: 0, final_price: pending.amount,
+          status: 'received', patient_name: pending.patientName,
+        } as never);
+        setAnswer(`Case created for ${pending.patientName} at ${clinic.name} — ${ct.name}, PKR ${pending.amount.toLocaleString()}. Case number: ${created.case_number}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not create the case.'); }
+      return;
+    }
+    if (pending.kind === 'addClinicContact' || pending.kind === 'addClinicAddress' || pending.kind === 'addPricingOverride') {
+      const exact = (labs || []).find((l) => (l.name || '').toLowerCase() === (pending.clinicHint || '').toLowerCase());
+      const ranked = rankCandidates(labs || [], pending.clinicHint || '');
+      const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
+      if (!chosen) { setStatus('error'); setAnswer(ranked.length > 1 ? `Which clinic — ${ranked.map((r) => r.lab.name).slice(0, 4).join(', ')}?` : 'I could not match that clinic. Say the exact clinic name.'); return; }
+      try {
+        if (pending.kind === 'addClinicContact') {
+          addLabContact({ lab_id: chosen.id, name: pending.contactName!, phone: pending.contactPhone!, email: pending.contactEmail ?? '', role: pending.contactRole || undefined, notes: 'Added by voice assistant', is_primary: !!pending.isPrimary });
+          setAnswer(`Contact “${pending.contactName}” added to ${chosen.name}${pending.isPrimary ? ' as primary' : ''}.`);
+        } else if (pending.kind === 'addClinicAddress') {
+          addLabAddress({ lab_id: chosen.id, type: pending.addressType!, street: pending.street!, city: pending.city!, state: pending.state!, postal_code: pending.postalCode!, country: pending.country!, is_default: !!pending.isDefault });
+          setAnswer(`${pending.addressType} address added for ${chosen.name}${pending.isDefault ? ' as default' : ''}.`);
+        } else {
+          addPricingOverride({ lab_id: chosen.id, case_type_id: pending.caseTypeId!, case_type_name: pending.caseTypeName!, standard_price: pending.standardPrice!, custom_price: pending.customPrice!, discount_percentage: pending.discountPercentage, effective_date: pending.effectiveDate });
+          setAnswer(`Pricing override set for ${pending.caseTypeName} at ${chosen.name}: PKR ${pending.customPrice?.toLocaleString()}.`);
+        }
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save.'); }
       return;
     }
     if (pending.kind === 'printSettingsSave') {

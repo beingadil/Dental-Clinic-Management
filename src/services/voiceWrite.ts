@@ -3,7 +3,7 @@
  * record a payment and record an advance deposit. Anything else is not writable.
  */
 export interface WriteCommand {
-  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth';
+  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth' | 'addClinicContact' | 'addClinicAddress' | 'addPricingOverride' | 'createCase';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
@@ -22,6 +22,27 @@ export interface WriteCommand {
   /** For updateClinicField */
   field?: 'name' | 'phone' | 'email' | 'address' | 'city' | 'doctor';
   value?: string;
+  /** Contact for addClinicContact. */
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  contactRole?: string;
+  isPrimary?: boolean;
+  /** Address for addClinicAddress. */
+  addressType?: 'billing' | 'shipping' | 'lab_location';
+  street?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  isDefault?: boolean;
+  /** Pricing override for addPricingOverride. */
+  caseTypeId?: string;
+  caseTypeName?: string;
+  standardPrice?: number;
+  customPrice?: number;
+  discountPercentage?: number;
+  effectiveDate?: string;
   /** Print settings object for printSettingsSave (PrintSettings). */
   printSettings?: unknown;
   /** Document kind for printSectionsSave (invoice | job_slip | receipt | statement). */
@@ -34,6 +55,9 @@ export interface WriteCommand {
   month?: string;
   labId?: string;
   labName?: string;
+  /** Guided case creation */
+  patientName?: string;
+  deliveryDate?: string;
 }
 
 const AMOUNT = /(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]{0,12})/i;

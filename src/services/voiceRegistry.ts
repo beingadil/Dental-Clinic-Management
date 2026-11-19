@@ -268,6 +268,74 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'addClinicContact', description: 'Add a contact to a clinic (phone required; may be primary)', risk: 'write',
+    match: /^(add|create|new)\s+(a\s+)?contact\s+/i,
+    run: (ctx, q) => {
+      const top = q.match(/^(?:add|create|new)\s+(?:a\s+)?contact\s+([A-Za-z][A-Za-z .'-]{1,59}?)\s+(?:to|for|at)\s+(.+)$/i);
+      if (!top) return { kind: 'read', text: 'Say: “Add contact Ahmed Khan to Mir Dental, phone 0300-1122334, primary”.' };
+      const name = top[1].trim();
+      const rest = top[2];
+      const clinic = clinicFor(ctx, rest);
+      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Which clinic? Say, for example: “Add contact Ahmed Khan to Mir Dental”.' };
+      const details = rest.slice(rest.toLowerCase().indexOf(String(clinic.name).toLowerCase()) + clinic.name.length);
+      const phone = details.match(/(?:phone|mobile|cell|number)?\s*:?\s*(\+?\d[\d\s()-]{6,19}\d)/i)?.[1]?.trim();
+      if (!phone) return { kind: 'read', text: 'A phone number is required: “Add contact Ahmed Khan to Mir Dental, phone 0300-1122334”.' };
+      const email = details.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0];
+      const role = details.match(/\brole\s*[:=]?\s*([A-Za-z -]{2,30})/i)?.[1]?.trim();
+      const isPrimary = /\bprimary\b|\bmain contact\b/i.test(details);
+      const repl = (ctx.labContacts || []).find((c) => c.lab_id === clinic.id && c.is_primary);
+      const summary = `Add contact “${name}” (${phone}) for ${clinic.name}${isPrimary ? ' as PRIMARY' : ''}${repl ? ` — replaces primary “${repl.name}”` : ''}`;
+      return { kind: 'action', risk: 'write', pending: { kind: 'addClinicContact', amount: 0, clinicHint: clinic.name, contactName: name, contactPhone: phone, contactEmail: email, contactRole: role, isPrimary, method: 'bank' }, summary };
+    },
+  },
+  {
+    id: 'addClinicAddress', description: 'Add a billing/shipping/lab address for a clinic', risk: 'write',
+    match: /^(add|create|new)\s+(a\s+)?(billing|shipping|lab[_ ]?location)\s+address\s+for\s+/i,
+    run: (ctx, q) => {
+      const m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(billing|shipping|lab[_ ]?location)\s+address\s+for\s+([A-Za-z0-9 ()&-]{2,60})\s*[:\-]\s*(.+)$/i);
+      if (!m) return { kind: 'read', text: 'Say: “Add billing address for Mir Dental: 12 Main Blvd, Lahore, Punjab 54000, Pakistan”.' };
+      const type = m[1].toLowerCase().replace(/ /g, '_') as 'billing' | 'shipping' | 'lab_location';
+      const clinic = (ctx.labs || []).find((l) => folded(l.name).startsWith(folded(m[2]))) || clinicFor(ctx, m[2]);
+      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Which clinic? Say, for example: “Add billing address for Mir Dental: …”.' };
+      const parts = m[3].split(',').map((s) => s.trim()).filter(Boolean);
+      const isDefault = /\bdefault\b|\bprimary\b/i.test(m[3]);
+      const postal = m[3].match(/\b(\d{5,6})\b/)?.[1];
+      const country = parts[parts.length - 1]?.replace(/\bdefault\b|\bprimary\b/gi, '').trim();
+      const street = parts[0];
+      const city = parts[1];
+      const state = parts[2]?.replace(/\d{5,6}/g, '').trim();
+      if (!street || !city || !state || !postal || !country || country.length < 2) {
+        return { kind: 'read', text: 'Need street, city, state, postal code and country: “Add billing address for Mir Dental: 12 Main Blvd, Lahore, Punjab 54000, Pakistan”.' };
+      }
+      const repl = isDefault ? (ctx.labAddresses || []).find((a) => a.lab_id === clinic.id && a.type === type && a.is_default) : undefined;
+      const summary = `Add ${type} address for ${clinic.name}: ${street}, ${city}${isDefault ? ' as DEFAULT' : ''}${repl ? ` — replaces existing default address “${repl.street}, ${repl.city}”` : ''}`;
+      return { kind: 'action', risk: 'write', pending: { kind: 'addClinicAddress', amount: 0, clinicHint: clinic.name, addressType: type, street, city, state, postalCode: postal, country, isDefault, method: 'bank' }, summary };
+    },
+  },
+  {
+    id: 'addPricingOverride', description: 'Set or replace a clinic pricing override for a case type', risk: 'write',
+    match: /^(add|set|create|update)\s+(a\s+)?(pricing override|price override|override)\s+for\s+/i,
+    run: (ctx, q) => {
+      const m = q.match(/^(?:add|set|create|update)\s+(?:a\s+)?(?:pricing override|price override|override)\s+for\s+([A-Za-z0-9 ()&-]{2,60})\s*[:\-]\s*(.+)$/i);
+      if (!m) return { kind: 'read', text: 'Say: “Add pricing override for Mir Dental: Zirconia Crown at PKR 25,000”.' };
+      const clinic = (ctx.labs || []).find((l) => folded(l.name).startsWith(folded(m[1]))) || clinicFor(ctx, m[1]);
+      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Which clinic? Say, for example: “Add pricing override for Mir Dental: Zirconia Crown at PKR 25,000”.' };
+      const tail = m[2];
+      const ctM = tail.match(/^(.+?)\s+(?:at|@|for)\s+(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]*)/i);
+      if (!ctM) return { kind: 'read', text: 'Include the case type and price: “Add pricing override for Mir Dental: Zirconia Crown at PKR 25,000”.' };
+      const wanted = ctM[1].trim().toLowerCase();
+      const ct = (ctx.caseTypes || []).find((c) => c.name.toLowerCase() === wanted)
+        || (ctx.caseTypes || []).find((c) => c.name.toLowerCase().includes(wanted));
+      if (!ct) return { kind: 'read', text: `No case type “${ctM[1].trim()}”. Known: ${(ctx.caseTypes || []).slice(0, 4).map((c) => c.name).join(', ')}.` };
+      const customPrice = Number(ctM[2].replace(/,/g, ''));
+      const discount = tail.match(/(\d{1,2}(?:\.\d+)?)\s*%/)?.[1];
+      const eff = tail.match(/(?:effective|from)\s*(\d{4}-\d{2}-\d{2})/i)?.[1];
+      const repl = (ctx.pricingOverrides || []).find((p) => p.lab_id === clinic.id && p.case_type_id === ct.id);
+      const summary = `Pricing override for ${ct.name} at ${clinic.name}: PKR ${customPrice.toLocaleString()} (std PKR ${ct.base_price.toLocaleString()})${repl ? ` — replaces existing override PKR ${repl.custom_price.toLocaleString()}` : ''}${discount ? `, ${discount}% off` : ''}`;
+      return { kind: 'action', risk: 'write', pending: { kind: 'addPricingOverride', amount: 0, clinicHint: clinic.name, caseTypeId: ct.id, caseTypeName: ct.name, standardPrice: ct.base_price, customPrice, discountPercentage: discount ? Number(discount) : undefined, effectiveDate: eff, method: 'bank' }, summary };
+    },
+  },
+  {
     id: 'closeMonth', description: 'Close a clinic month (statement of record; re-close anytime)', risk: 'write',
     match: /^(close|re-?close)\b.*\b(month|20\d{2}(-\d{2})?|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|october)\b/i,
     run: (ctx, q) => {
@@ -453,6 +521,7 @@ const tools: VoiceTool[] = [
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
         '• Read: morning briefing (“morning briefing”), walk me through a statement (“walk me through Mir Dental statement last month”), cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
         '• Export: “Export invoices”, “Export transactions”',
+        '• Clinics: add contacts, addresses, pricing overrides',
         '• Settings/print: “Invoice sections only brand, lineItems, totals”, “Print settings A4”, “Set notifications 1 day before”',
         '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',

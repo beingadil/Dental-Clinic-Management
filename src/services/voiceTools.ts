@@ -18,6 +18,11 @@ export interface VoiceContext {
   advancePayments: AdvancePayment[];
   accountAdjustments: AccountAdjustment[];
   cases?: DentalCase[];
+  /** Catalog + rows needed for pricing overrides (optional; empty = no replace detection). */
+  caseTypes?: import('../types').CaseType[];
+  pricingOverrides?: import('../types').LabPricingOverride[];
+  labContacts?: import('../types').LabContact[];
+  labAddresses?: import('../types').LabAddress[];
   user?: UserProfile | null;
   /** Owner/Super-Admin opt-in for patient detail on reads. */
   allowClinicalDetail?: boolean;
