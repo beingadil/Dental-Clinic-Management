@@ -8,7 +8,7 @@
 import { remember } from './voiceMemory';
 import { runVoiceTool, type VoiceToolContext } from './voiceRegistry';
 import type { WriteCommand } from './voiceWrite';
-import { planWithGroq, canonicalFor } from './voicePlanner';
+import { runAgenticLoop } from './voiceAgent';
 
 export interface AssistantResult {
   text: string;
@@ -82,18 +82,10 @@ export async function askAssistant(raw: string, ctx: VoiceToolContext): Promise<
     return { text: result.summary, spoke: true, pendingWrite: result.pending, risk: result.risk as 'write' | 'destructive' };
   }
 
-  // ── Groq planner: map free-form language to ONE registered tool ──────
-  const plan = await planWithGroq(q, (ctx.labs || []).map((l) => ({ id: l.id, name: l.name })));
-  if (plan) {
-    const canonical = canonicalFor(plan);
-    const retry = await runVoiceTool(ctx, canonical);
-    if (retry?.kind === 'read') return { text: retry.text, spoke: true };
-    if (retry?.kind === 'action') {
-      return { text: retry.summary, spoke: true, pendingWrite: retry.pending, risk: retry.risk as 'write' | 'destructive' };
-    }
-    // Planner found a tool but the registry couldn't run it (needs clinic or date)
-    return done(`I can do that — tell me the clinic (e.g. “Ledger for Mir Dental last month”).`);
-  }
+  // ── Online agentic loop (skipped when Groq is absent/unreachable) ──────
+  const agentResult = await runAgenticLoop(q, ctx);
+  if (agentResult?.navigateTo) return { ...agentResult, spoke: true } as AssistantResult;
+  if (agentResult?.text) return { ...agentResult, spoke: true } as AssistantResult;
 
   return done(buildClarification(ctx, q));
 }

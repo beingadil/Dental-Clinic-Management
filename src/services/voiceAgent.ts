@@ -1,0 +1,173 @@
+/**
+ * Agentic loop — the planner.
+ *
+ * The registry is the single source of truth for what voice can do: every
+ * registered tool becomes one callable by Groq. Groq returns a tool call;
+ * we execute it; the result goes back; Groq narrates or asks the minimum
+ * clarifying question. Figures always flow through the deterministic engines,
+ * never the LLM.
+ */
+import { groqChatTools } from './voiceGroq';
+import { memoryContext } from './voiceMemory';
+import { VOICE_TOOLS, type VoiceToolContext } from './voiceRegistry';
+import type { WriteCommand } from './voiceWrite';
+import { REPORTS_ENTRY_ID, REPORTS_TABS } from '../components/common/financeTabs';
+
+export interface AgentResult {
+  text: string;
+  /** When the loop decided on a write action, the pending command for the amber panel. */
+  pendingWrite?: WriteCommand;
+  risk?: 'write' | 'destructive';
+  navigateTo?: string;
+}
+
+const MAX_ITER = 3;
+
+/** Machine-readable parameter hints per tool id (names only — values are validated by the tool itself). */
+const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; describe: string }> = {
+  cashCollected: { required: [], optional: ['period'], describe: 'Cash/advances collected. period: today|this month|this week|last month|all time' },
+  overdueCases: { required: [], optional: [], describe: 'Cases overdue (delivery before today)' },
+  balance: { required: ['clinic'], optional: ['period', 'metric'], describe: 'Net balance of a clinic (Dr/Cr). metric: balance|advance' },
+  clinicBalance: { required: ['clinic'], optional: [], describe: 'Net balance of a clinic (Dr/Cr)' },
+  statement: { required: ['clinic'], optional: ['period'], describe: 'Monthly or All-Time statement for a clinic' },
+  ledger: { required: ['clinic'], optional: ['period'], describe: 'Ledger (postings) for a clinic' },
+  outstanding: { required: ['clinic'], optional: ['overdueOnly', 'limit'], describe: 'Outstanding invoices for a clinic' },
+  advanceWallet: { required: ['clinic'], optional: [], describe: 'Advance wallet for a clinic' },
+  invoiceSearch: { required: ['query'], optional: [], describe: 'Find invoices by number/case/patient/clinic/amount' },
+  narrate: { required: ['clinic'], optional: ['period'], describe: 'Plain-language walk-through of a clinic statement' },
+  briefing: { required: [], optional: [], describe: 'Morning briefing: cash, deliveries, outstanding, overdue' },
+  monthClose: { required: ['clinic', 'month'], optional: [], describe: 'Close a clinic month (YYYY-MM)' },
+  navigate: { required: ['view'], optional: [], describe: `Open a screen. view: dashboard|cases|labs|${REPORTS_TABS[0].id}|${REPORTS_TABS[1].id}|${REPORTS_TABS[2].id}|catalog|notifications|settings|print-invoices` },
+  recordPayment: { required: ['clinic', 'amount'], optional: ['method', 'invoice'], describe: 'Record a payment. method: cash|bank|cheque' },
+  recordAdvance: { required: ['clinic', 'amount'], optional: ['method'], describe: 'Record an advance deposit' },
+  addClinicContact: { required: ['clinic', 'contactName', 'phone'], optional: ['email', 'role', 'isPrimary'], describe: 'Add a contact to a clinic' },
+  addClinicAddress: { required: ['clinic', 'type', 'street', 'city', 'state', 'postalCode', 'country'], optional: ['isDefault'], describe: 'Add an address for a clinic. type: billing|shipping|lab_location' },
+  addPricingOverride: { required: ['clinic', 'caseType', 'customPrice'], optional: ['discountPercentage', 'effectiveDate'], describe: 'Set a pricing override for a case type at a clinic' },
+  createClinic: { required: ['name'], optional: ['doctor', 'phone'], describe: 'Create a new clinic' },
+  setCaseStatus: { required: ['caseNumber', 'status'], optional: [], describe: 'Move case to status. status: draft|received|in_progress|qc|ready|delivered|revision|cancelled' },
+  addCaseNote: { required: ['caseNumber', 'note'], optional: [], describe: 'Add a note on a case' },
+  recordQc: { required: ['caseNumber', 'result'], optional: ['reason'], describe: 'Record QC pass/fail. fail requires reason' },
+  archiveCase: { required: ['caseNumber'], optional: [], describe: 'Archive a delivered case' },
+  cancelCase: { required: ['caseNumber'], optional: [], describe: 'Cancel a case' },
+  addNote: { required: ['caseNumber', 'note'], optional: [], describe: 'Add a note on a case' },
+};
+
+const toolCatalog = () =>
+  VOICE_TOOLS.map((t) => {
+    const hints = TOOL_PARAMS[t.id];
+    return `- ${t.id}: ${t.description}${hints ? ` (args: ${hints.describe})` : ''}`;
+  }).join('\n');
+
+const toolsForApi = () =>
+  VOICE_TOOLS.map((t) => {
+    const hints = TOOL_PARAMS[t.id];
+    return {
+      type: 'function' as const,
+      function: {
+        name: t.id,
+        description: t.description,
+        parameters: {
+          type: 'object',
+          properties: Object.fromEntries((hints?.optional ?? []).map((k) => [k, { type: 'string' }])),
+          required: hints?.required ?? [],
+        },
+      },
+    };
+  });
+
+const systemPrompt = () => `You are the assistant for Dental Solutions, a dental-lab billing app.
+You may ONLY answer by calling tools — never invent figures, clinics, cases, invoices or case numbers.
+If a required argument is missing or the request is ambiguous, ask for it as a short question instead of guessing.
+Never call a tool for destructive actions (void/delete/wipe/refund). Those are handled by the app's own confirmation flows.
+The user may speak with loose wording ("DS-0001", "Mir Dental", "the books"). Map it to the closest tool; ask if you can't.
+Clinics and case numbers must exactly match what the user said or what exists; never fabricate.
+Known tools:
+${toolCatalog()}
+Memory (redacted, previous operator questions and accepted answers):
+${memoryContext()}`;
+
+const KNOWN_CASE_NUMBER = /\bDS-\d+\b/i;
+const STAGE_WORDS = /\b(ready|delivered|received|qc|quality|revision|rework|in progress|cancelled)\b/i;
+
+/** Ask the user for a missing piece — used when the planner stalls. */
+export const clarify = (question: string): AgentResult => ({ text: question });
+
+/** Execute a tool chosen by the planner; returns a user-ready message plus an optional pending write. */
+const invokeApprovedTool = async (id: string, args: Record<string, unknown>, ctx: VoiceToolContext): Promise<AgentResult> => {
+  const tool = VOICE_TOOLS.find((t) => t.id === id);
+  if (!tool) return clarify(`I know that one as "${id}", but the app doesn't have it wired yet.`);
+  // Read tools that don't need args can run immediately.
+  const simpleReads = ['overdueCases', 'briefing', 'standings', 'cashCollected', 'monthClose', 'openCases'];
+  if (simpleReads.includes(id)) {
+    void args;
+    const result = await (tool.run as (c: VoiceToolContext, q: string) => Promise<{ kind: 'read'; text: string } | null>)(ctx, id);
+    if (result) return { text: result.text ?? 'Done.' };
+  }
+  // Suggest the most likely missing info from the args instead of erroring.
+  if ((id === 'clinicBalance' || id === 'statement' || id === 'ledger' || id === 'outstanding' || id === 'advanceWallet' || id === 'narrate') && !args.clinic) {
+    return clarify('Which clinic?');
+  }
+  if (id === 'navigate' && args.view) {
+    const viewMap: Record<string, string> = {
+      dashboard: 'dashboard', home: 'dashboard', overview: 'dashboard',
+      case: 'cases', cases: 'cases', workstation: 'cases',
+      labs: 'labs', lab: 'labs', clinics: 'labs', clinic: 'labs',
+      billing: 'billing',
+      [REPORTS_TABS[3]?.id ?? 'payments']: 'billing',
+      finance: 'billing', payment_receive: 'billing',
+      ledger: REPORTS_TABS[0].id, [REPORTS_TABS[0].id]: REPORTS_TABS[0].id, books: REPORTS_TABS[0].id,
+      [REPORTS_TABS[1].id]: REPORTS_TABS[1].id, monthly: REPORTS_TABS[1].id, reports: REPORTS_ENTRY_ID,
+      [REPORTS_TABS[2].id]: REPORTS_TABS[2].id, analytics: REPORTS_TABS[2].id, insight: REPORTS_TABS[2].id,
+      catalog: 'catalog', catalogue: 'catalog', price: 'catalog', pricing: 'catalog',
+      notifications: 'notifications', alerts: 'notifications', inbox: 'notifications',
+      settings: 'settings', preferences: 'settings',
+      print_invoices: 'print-invoices', batch: 'print-invoices', batch_print: 'print-invoices',
+    };
+    const target = viewMap[String(args.view).toLowerCase().replace(/\s+/g, '_')];
+    if (!target) return clarify(`I don't know a screen called “${args.view}”.`);
+    return { text: `Opening ${target}.`, navigateTo: target };
+  }
+  // Everything else: ask instead of guessing.
+  return clarify(`I can do "${tool.description}", but I need more detail — e.g. which clinic, which case, how much?`);
+};
+
+/** Run the agentic loop: model → tool → result → maybe ask, repeat up to MAX_ITER times. */
+export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext): Promise<AgentResult | null> => {
+  const tools = toolsForApi();
+  const messages: { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; name?: string }[] = [
+    { role: 'system', content: systemPrompt() },
+    { role: 'user', content: raw },
+  ];
+  for (let iter = 0; iter < MAX_ITER; iter += 1) {
+    const resp = await groqChatTools(messages, tools, { maxTokens: 400, timeoutMs: 15000, temperature: 0.1, tool_choice: 'auto' });
+    if (!resp) return null;
+    if (!resp.tool_calls?.length) {
+      return { text: resp.content ?? 'Done.' };
+    }
+    for (const call of resp.tool_calls) {
+      const name = call.function?.name;
+      let args: Record<string, unknown> = {};
+      try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* keep empty */ }
+      const toolMsg: { role: 'tool'; content: string; tool_call_id: string; name: string } = {
+        role: 'tool',
+        content: '',
+        tool_call_id: call.id ?? String(Math.random()),
+        name: name ?? 'tool',
+      };
+      const result = await invokeApprovedTool(name, args, ctx);
+      if (result.navigateTo) return result;
+      toolMsg.content = result.text ?? JSON.stringify(result);
+      messages.push(toolMsg);
+    }
+    const lastTool = messages[messages.length - 1];
+    if (lastTool?.role === 'tool' && lastTool.content?.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(lastTool.content) as { kind?: string; summary?: string; pendingWrite?: WriteCommand; risk?: string; navigateTo?: string };
+        if (parsed?.navigateTo) return { text: `Opening ${parsed.navigateTo}.`, navigateTo: parsed.navigateTo };
+      } catch { /* fall through */ }
+    }
+  }
+  return clarify('Still not sure — say "what can you do?" for the list.');
+};
+
+export { KNOWN_CASE_NUMBER, STAGE_WORDS };
