@@ -6,6 +6,7 @@ import { useApp } from '../../context/AppContext';
 import { moduleForView, isViewProtected, isModuleUnlocked } from '../../services/moduleSecurity';
 import { speak, cancelSpeech } from '../../services/voiceUtterance';
 import { askAssistant } from '../../services/voiceAssistant';
+import { probeGroq } from '../../services/voiceGate';
 import { can, canPost } from '../../services/permissions';
 import { savePrintSettings, saveDocumentSections, setStatementBankExcluded, setInvoiceSummaryExcluded } from '../../services/printSettings';
 import { saveNotificationConfig, announceNotificationConfigChanged } from '../../services/notificationSettings';
@@ -57,6 +58,7 @@ export const VoiceShell: React.FC = () => {
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
   } = useApp();
   const [open, setOpen] = useState(false);
+  const [online, setOnline] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [memoryCount, setMemoryCount] = useState(() => listMemories().length);
   const [status, setStatus] = useState<ShellStatus>('idle');
@@ -659,9 +661,26 @@ export const VoiceShell: React.FC = () => {
   }, [voiceEnabled, user, open, locked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (!voiceEnabled) cancelSpeech(); }, [voiceEnabled]);
+  useEffect(() => {
+    if (!voiceEnabled) { setOnline(true); return; }
+    let alive = true;
+    const check = async () => { const ok = await probeGroq(); if (alive) setOnline(ok); };
+    void check();
+    const timer = window.setInterval(check, 15000);
+    const onOnline = () => { void check(); };
+    const onOffline = () => { setOnline(false); cancelSpeech(); setOpen(false); };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [voiceEnabled]);
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
-  if (!voiceEnabled || !user) return null;
+  if (!voiceEnabled || !user || !online) return null;
 
   return (
     <aside aria-label="Voice assistant" className="no-print pointer-events-none fixed bottom-24 right-4 sm:right-6 z-[90] flex flex-col items-end gap-2">
