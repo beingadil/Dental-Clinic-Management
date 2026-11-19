@@ -33,6 +33,12 @@ interface DatePickerSingleProps {
   /** Text when nothing is picked; defaults to "Not set". */
   placeholder?: string;
   className?: string;
+  /** Applied to the trigger button so a form's `<label htmlFor>` points at it. */
+  id?: string;
+  /** Mirror of an errored field — aria-invalid on the trigger. */
+  invalid?: boolean;
+  /** id of the error/helper text — aria-describedby on the trigger. */
+  describedBy?: string;
 }
 
 export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
@@ -41,6 +47,9 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
   onChange,
   placeholder = 'Not set',
   className = '',
+  id,
+  invalid,
+  describedBy,
 }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -104,8 +113,11 @@ export const DatePickerSingle: React.FC<DatePickerSingleProps> = ({
     <div ref={containerRef} className={`relative ${className}`}>
       <button
         type="button"
+        id={id}
         onClick={() => setOpen((o) => !o)}
         aria-label={label}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         className={`w-full flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-all cursor-pointer ${
           value
             ? 'bg-indigo-50 border-indigo-200 text-indigo-900 font-semibold pr-9'

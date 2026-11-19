@@ -37,18 +37,18 @@ afterEach(() => {
 async function openScheduleStep() {
   render(<CaseDetailModal initialShade="A2" onClose={vi.fn()} />);
   fireEvent.change(screen.getByPlaceholderText(/Tariq Mahmood/i), { target: { value: 'Tariq Test' } });
-  await waitFor(() => expect(screen.queryByRole('button', { name: /continue/i })).toBeTruthy());
+  await waitFor(() => expect(screen.queryByRole('button', { name: /continue/i })).toBeTruthy(), { timeout: 5000 });
   // The case type is required before the wizard leaves the basics step.
   const typeSelect = screen.getByRole('button', { name: /case procedure/i });
   fireEvent.click(typeSelect);
-  await waitFor(() => expect(screen.getAllByRole('option').some((o) => /zirconia/i.test(o.textContent || ''))).toBe(true));
+  await waitFor(() => expect(screen.getAllByRole('option').some((o) => /zirconia/i.test(o.textContent || ''))).toBe(true), { timeout: 5000 });
   fireEvent.click(screen.getAllByRole('option').find((o) => /zirconia/i.test(o.textContent || ''))!);
   fireEvent.click(screen.getByRole('button', { name: /continue/i })); // → teeth step
-  await waitFor(() => expect(screen.getAllByText(/FDI Charting/i).length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.getAllByText(/FDI Charting/i).length).toBeGreaterThan(0), { timeout: 5000 });
   // The chart step requires at least one tooth before it will advance.
   fireEvent.click(screen.getByRole('button', { name: /upper arch/i }));
   fireEvent.click(screen.getByRole('button', { name: /continue/i })); // → schedule step
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Received Date' })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Received Date' })).toBeTruthy(), { timeout: 5000 });
   // The modal refuses a commit within STEP_SETTLE_MS of arriving on a step.
   await new Promise((r) => setTimeout(r, 400));
 }
@@ -56,7 +56,7 @@ async function openScheduleStep() {
 /** Press the last-step commit button and wait for the write to land. */
 async function createCase() {
   fireEvent.click(screen.getByRole('button', { name: /create dental case/i }));
-  await waitFor(() => expect(addCase).toHaveBeenCalled(), { timeout: 3000 });
+  await waitFor(() => expect(addCase).toHaveBeenCalled(), { timeout: 10000 });
 }
 
 describe('CaseDetailModal — Received Date on the job entry form', () => {

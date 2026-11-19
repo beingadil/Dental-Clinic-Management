@@ -70,6 +70,7 @@ export const PERMISSION_MODULES: { module: string; actions: { key: string; label
     { key: 'payment:edit', label: 'Edit payment' },
     { key: 'payment:bulk', label: 'Bulk mark paid' },
     { key: 'invoice:void', label: 'Void invoice' },
+    { key: 'billing:close', label: 'Close month' },
   ]},
   { module: 'Reports', actions: [
     { key: 'reports:view', label: 'View reports' },
@@ -140,7 +141,8 @@ export type BillingAction =
   | 'refund:issue'
   | 'payment:edit'
   | 'payment:bulk'
-  | 'invoice:void';
+  | 'invoice:void'
+  | 'billing:close';
 
 export type SystemAction =
   | 'view'

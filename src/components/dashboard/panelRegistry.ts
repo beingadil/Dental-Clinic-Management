@@ -72,3 +72,20 @@ export const PANEL_RANK: Record<string, PanelRank> = {
 
 /** Rank for a panel key, defaulting to `primary` for unknown keys. */
 export const rankOf = (key: string): PanelRank => PANEL_RANK[key] ?? 'primary';
+
+/**
+ * Panels hidden until the user opts them back in. The dashboard ships as the
+ * four things a lab reads before it drinks its coffee — where the work sits,
+ * what is on it, and what cannot be ignored — and every panel below is one
+ * click away in the layout bar, not gone forever.
+ */
+export const DEFAULT_HIDDEN: readonly string[] = [
+  'schedule',
+  'revenue',
+  'atRisk',
+  'activity',
+  'quickActions',
+  'workload',
+  'performance',
+  'upcoming',
+];

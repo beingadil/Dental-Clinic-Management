@@ -217,6 +217,12 @@ const AccountBalanceBlock: React.FC<{
             )}
           </tbody>
         </table>
+        {position.selectionLimited && (
+          <p className="mt-1 text-[8px] leading-snug text-slate-500">
+            The invoice line covers only the invoices selected to print; opening, cash and
+            closing balances still cover this period in full.
+          </p>
+        )}
         {show('cashPaid') && position.advanceApplied > 0 && (
           <div className="mt-1 text-right text-[9px] text-slate-500">
             {money(position.advanceApplied)} {appliedNote || 'of this invoice was settled from the advance deposit.'}

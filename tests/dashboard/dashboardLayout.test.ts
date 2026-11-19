@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { packColumns, columnsForWidth } from '../../src/components/dashboard/useMasonry';
 import { parsePrefs, parseOrder, parseLayouts, orderPanels, visiblePanels, type PanelPrefs, type NamedLayout } from '../../src/components/dashboard/useDashboardLayout';
+import { DEFAULT_HIDDEN } from '../../src/components/dashboard/panelRegistry';
 
 const KEYS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
@@ -113,7 +114,7 @@ describe('columnsForWidth', () => {
 
 describe('parsePrefs', () => {
   it('returns defaults for a user who has never saved', () => {
-    expect(parsePrefs(undefined, KEYS)).toEqual({ pinned: [], hidden: [], wide: [] });
+    expect(parsePrefs(undefined, KEYS)).toEqual({ pinned: [], hidden: [...DEFAULT_HIDDEN].filter((k) => KEYS.includes(k)), wide: [] });
   });
 
   it('reads the namespaced blob (dashboard.panels) the hook stores', () => {

@@ -168,7 +168,7 @@ export const Sidebar: React.FC = () => {
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-ds-inverse/40 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          className="fixed inset-0 bg-ds-inverse/40 backdrop-blur-xs z-40 lg:hidden transition-opacity duration-[280ms] [transition-timing-function:cubic-bezier(.32,.72,0,1)]"
         />
       )}
 
@@ -184,7 +184,7 @@ export const Sidebar: React.FC = () => {
           mobile dock's safe-area padding and the collapsed rail's icon
           centring have to agree with it. */}
       <aside
-        className={`ds-rail ds-rail-float fixed lg:static top-0 left-0 z-50 lg:z-auto h-screen shrink-0 flex flex-col transition-[width,transform] duration-200 ease-out will-change-[width,transform] motion-reduce:transition-none ${
+        className={`ds-rail ds-rail-float fixed lg:static top-0 left-0 z-50 lg:z-auto h-screen shrink-0 flex flex-col will-change-[width,transform] motion-reduce:transition-none transition-[width,transform,box-shadow] duration-[280ms] [transition-timing-function:cubic-bezier(.32,.72,0,1)] ${
           isCollapsed ? 'w-[var(--ds-rail-w-collapsed)]' : 'w-[var(--ds-rail-w)]'
         } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
@@ -211,16 +211,18 @@ export const Sidebar: React.FC = () => {
                 <Activity className="w-[18px] h-[18px]" />
               </span>
             )}
-            {!isCollapsed && (
-              <span className="truncate min-w-0">
-                <span className="ds-brand-name block truncate">
-                  {brandingSettings.appName || 'DENTAL LAB'}
-                </span>
-                <span className="ds-brand-tagline block truncate">
-                  {brandingSettings.tagline ? brandingSettings.tagline.split('•')[0] : 'Lab Workstation'}
-                </span>
+            <span
+              className={`ds-nav-fade min-w-0 text-left overflow-hidden whitespace-nowrap ${
+                isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'
+              }`}
+            >
+              <span className="ds-brand-name block truncate">
+                {brandingSettings.appName || 'DENTAL LAB'}
               </span>
-            )}
+              <span className="ds-brand-tagline block truncate">
+                {brandingSettings.tagline ? brandingSettings.tagline.split('•')[0] : 'Lab Workstation'}
+              </span>
+            </span>
           </button>
 
           <div className="flex items-center gap-1">
@@ -286,24 +288,36 @@ export const Sidebar: React.FC = () => {
                             isParentActive ? 'text-ds-accent' : 'text-ds-muted'
                           }`}
                         />
+                        <span
+                          className={`ds-nav-fade truncate flex-1 min-w-0 ${
+                            isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'
+                          }`}
+                        >
+                          {item.label}
+                        </span>
                         {!isCollapsed && (
-                          <>
-                            <span className="truncate flex-1">{item.label}</span>
-                            <ChevronDown
-                              className={`w-3.5 h-3.5 shrink-0 text-ds-muted transition-transform ${
-                                isExpanded ? 'rotate-180' : ''
-                              }`}
-                              aria-hidden="true"
-                            />
-                          </>
+                        <ChevronDown
+                          className={`ds-nav-fade w-3.5 shrink-0 transition-transform duration-[280ms] [transition-timing-function:cubic-bezier(.32,.72,0,1)] ${
+                            isExpanded ? 'rotate-180' : ''
+                          }`}
+                          aria-hidden="true"
+                        />
                         )}
-                        {!isCollapsed && item.badge && (
-                          <span className="ds-nav-badge" data-tone={item.tone ?? 'neutral'}>
-                            {item.badge}
-                          </span>
+                        {!isCollapsed && (
+                        <span
+                          className={`ds-nav-fade ds-nav-badge shrink min-w-0 ${
+                            !item.badge ? 'invisible' : ''
+                          } w-auto opacity-100 translate-x-0`}
+                          data-tone={item.tone ?? 'neutral'}
+                          aria-hidden={!item.badge}
+                        >
+                          {item.badge}
+                        </span>
                         )}
                       </button>
-                      {isExpanded && !isCollapsed && item.children!.map((child) => {
+                      <div className="ds-disc-grid" data-open={isExpanded && !isCollapsed}>
+                        <div className="min-h-0 overflow-hidden">
+                      {item.children!.map((child) => {
                         const ChildIcon = child.icon;
                         const childActive = currentView === child.id;
                         const childAction =
@@ -334,6 +348,8 @@ export const Sidebar: React.FC = () => {
                           </button>
                         );
                       })}
+                        </div>
+                      </div>
                     </div>
                   );
                 }
@@ -361,12 +377,22 @@ export const Sidebar: React.FC = () => {
                         isActive ? 'text-ds-accent' : 'text-ds-muted'
                       }`}
                     />
-                    {!isCollapsed && <span className="truncate">{item.label}</span>}
-                    {!isCollapsed && item.badge && (
-                      <span className="ds-nav-badge" data-tone={item.tone ?? 'neutral'}>
-                        {item.badge}
-                      </span>
-                    )}
+                    <span
+                      className={`ds-nav-fade truncate min-w-0 ${
+                        isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                    <span
+                      className={`ds-nav-fade ds-nav-badge min-w-0 ${
+                        !item.badge ? 'invisible' : ''
+                      } ${isCollapsed ? 'hidden' : 'w-auto opacity-100 translate-x-0'}`}
+                      data-tone={item.tone ?? 'neutral'}
+                      aria-hidden={isCollapsed || !item.badge}
+                    >
+                      {item.badge}
+                    </span>
                     {isCollapsed && item.badge && (
                       <span
                         className={`absolute top-2 right-2 w-2 h-2 rounded-full ring-2 ring-ds-sunken ${

@@ -6,6 +6,13 @@ import { SqliteEngine } from '../../src/db/engine';
 import { setDatabase } from '../../src/db/core';
 import { seedDatabase } from '../../src/db/seeds';
 import { AutoUpdatePanel } from '../../src/components/common/AutoUpdatePanel';
+
+vi.mock('../../src/context/AppContext', () => ({
+  // The panel now renders only for a role holding updates:install.
+  useApp: () => ({
+    user: { id: 'u-1', name: 'Mateen', role: 'Super Admin', isSuperAdmin: true },
+  }),
+}));
 import {
   applyStagedUpdate,
   discardStagedUpdate,

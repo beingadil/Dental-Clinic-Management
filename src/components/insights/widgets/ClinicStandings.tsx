@@ -8,7 +8,7 @@ interface Props {
 
 const MONO_TONES: [string, string][] = [
   ['#4338ca', '#0e7490'],
-  ['#6d28d9', '#4f46e5'],
+  ['#6d28d9', '#5e6ad2'],
   ['#0f766e', '#0369a1'],
   ['#9d174d', '#4c1d95'],
   ['#1e3a8a', '#7c3aed'],

@@ -2,7 +2,8 @@ import { buildMonthlyStatements, type MonthlyClinicRow, type MonthlyStatementBlo
 import { monthCloseRepo, auditRepo, type MonthCloseRow } from '../db/repos';
 import { roundMoney } from './financeDomain';
 import { formatMonthLabel } from './monthlyStatement';
-import type { DentalLab, Invoice, AdvancePayment, AccountAdjustment } from '../types';
+import { canPost, deniedTooltip } from './permissions';
+import type { DentalLab, Invoice, AdvancePayment, AccountAdjustment, UserProfile } from '../types';
 
 /**
  * Month-end closing: one clinic, one calendar month, one frozen totals row.
@@ -32,6 +33,18 @@ export interface MonthCloseInput {
   advancePayments?: AdvancePayment[] | null;
   accountAdjustments?: AccountAdjustment[] | null;
   labs?: Pick<DentalLab, 'id' | 'name' | 'opening_balance' | 'opening_balance_type' | 'created_at'>[] | null;
+}
+
+/**
+ * Optional identity for service-level authorization.
+ *
+ * Production call sites pass `user`; trusted tooling and the unit-test harness
+ * may omit it and are treated as system actors. When a user IS supplied the
+ * service enforces the same permission the UI does, so the money decision
+ * cannot ride past a hidden button.
+ */
+export interface AuthenticatedMonthCloseInput extends MonthCloseInput {
+  user?: UserProfile | null;
 }
 
 /** 'YYYY-MM' with a tolerance-free numeric equality for money. */
@@ -113,7 +126,7 @@ export const clinicMonthSnapshots = (
     .sort((a, b) => a.lab_name.localeCompare(b.lab_name));
 };
 
-export interface CloseMonthInput extends MonthCloseInput {
+export interface CloseMonthInput extends AuthenticatedMonthCloseInput {
   month: string;
   labId: string;
   labName?: string;
@@ -123,7 +136,21 @@ export interface CloseMonthInput extends MonthCloseInput {
 /** Close (or re-close) a clinic-month. Totals are recomputed from the live
  *  books every time, so a re-close always lands where the ledger stands. */
 export const closeMonth = (input: CloseMonthInput): MonthCloseRow => {
-  const { month, labId } = input;
+  const { month, labId, user } = input;
+  if (user && !canPost(user, 'billing:close')) {
+    try {
+      auditRepo.log({
+        actor: user.name,
+        action: 'rbac.denied',
+        entity_type: 'permission',
+        entity_id: 'billing:close',
+        entity_ref: `${month}:${labId}`,
+        reason: 'insufficient_permission',
+        notes: 'Denied: billing:close',
+      });
+    } catch { /* the denial must not hinge on the audit write */ }
+    throw new Error(deniedTooltip);
+  }
   if (!MONTH_RE.test(month)) throw new Error(`month must be 'YYYY-MM', got '${month}'`);
   const blocks = buildBlocks(input);
   const labs = input.labs ?? [];
@@ -161,7 +188,7 @@ export const closeMonth = (input: CloseMonthInput): MonthCloseRow => {
   return row;
 };
 
-export interface ReopenMonthInput extends MonthCloseInput {
+export interface ReopenMonthInput extends AuthenticatedMonthCloseInput {
   month: string;
   labId: string;
   labName?: string;
@@ -171,7 +198,21 @@ export interface ReopenMonthInput extends MonthCloseInput {
 
 /** Undo a close. A reason is mandatory and both events land in the audit log. */
 export const reopenMonth = (input: ReopenMonthInput): void => {
-  const { month, labId } = input;
+  const { month, labId, user } = input;
+  if (user && !canPost(user, 'billing:close')) {
+    try {
+      auditRepo.log({
+        actor: user.name,
+        action: 'rbac.denied',
+        entity_type: 'permission',
+        entity_id: 'billing:close',
+        entity_ref: `${month}:${labId}`,
+        reason: 'insufficient_permission',
+        notes: 'Denied: billing:close (reopen)',
+      });
+    } catch { /* the denial must not hinge on the audit write */ }
+    throw new Error(deniedTooltip);
+  }
   if (!MONTH_RE.test(month)) throw new Error(`month must be 'YYYY-MM', got '${month}'`);
   if (!(input.reason || '').trim()) {
     throw new Error('A reason is required to reopen a closed month.');

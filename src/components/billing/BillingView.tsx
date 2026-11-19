@@ -928,6 +928,8 @@ export const BillingView: React.FC = () => {
         onDeleteAdjustment={(adj) => setAdjustmentToDelete(adj)}
         onVoidInvoice={(inv) => setVoidTarget(inv)}
         canVoid={canPost(user, 'invoice:void')}
+        canEditAdjustments={canPost(user, 'credit:issue') || canPost(user, 'debit:issue') || canPost(user, 'refund:issue')}
+        canDeleteAdjustments={canPost(user, 'payment:edit')}
       />
 
       {/* Correcting a voucher: amount, method, date and reference. Saving

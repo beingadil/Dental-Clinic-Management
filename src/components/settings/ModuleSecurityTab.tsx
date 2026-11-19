@@ -297,6 +297,20 @@ export const ModuleSecurityTab: React.FC = () => {
             reset a forgotten module password — only a PBKDF2 hash is stored.
           </p>
         </div>
+
+        {/* Honest scope: these locks are doors per view, not walls around the money.
+            The same books render elsewhere. */}
+        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-relaxed text-amber-900">
+          <p className="font-bold text-amber-950">A module lock is a door, not a wall</p>
+          <p className="mt-1">
+            The same money and clinic figures appear in more than one module. Locking
+            <strong> Billing &amp; Invoices</strong> does not make them unreadable elsewhere:
+            the Dashboard and its charts, Insights and Reports, and the clinic list&apos;s
+            balance column all render them. To hold those books closed, lock
+            <strong> Analytics &amp; Reports</strong> and <strong> Labs</strong> too — and note
+            that anyone holding a module&apos;s password may open every view the password covers.
+          </p>
+        </div>
       </div>
 
       {/* Module picker + detail ---------------------------------------- */}

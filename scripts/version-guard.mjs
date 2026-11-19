@@ -46,10 +46,13 @@ function suspiciousVersions(v) {
 }
 const suspicious = suspiciousVersions(version);
 
-/** Historical constant allowed verbatim (migration 004 seeds fresh DBs). */
-const ALLOWED_EXACT = new Map([
+/** Historical constants allowed verbatim, keyed by FILE + literal. A
+ *  literal-only allow-list would let the same '2.0.0' string hide anywhere in
+ *  src/ (a copied constant in a new file would pass silently); file-keying
+ *  confines each exception to the one place it is documented for. */
+const ALLOWED_EXACT = new Set([
   // src/db/migrations.ts: fresh-install seed, intentionally the original version
-  ['2.0.0', 'src/db/migrations.ts (migration 004 seed stamps the original app version on fresh databases)'],
+  'src/db/migrations.ts::2.0.0',
 ]);
 
 const SEMVER_IN_STRING = /['"](\d)\.(\d{1,2})\.(\d{1,2})['"]/g;
@@ -64,7 +67,7 @@ function walk(dir) {
     const text = fs.readFileSync(full, 'utf8');
     for (const m of text.matchAll(SEMVER_IN_STRING)) {
       const lit = `${m[1]}.${m[2]}.${m[3]}`;
-      if (ALLOWED_EXACT.has(lit)) continue;
+      if (ALLOWED_EXACT.has(`${rel}::${lit}`)) continue;
       if (suspicious.has(lit)) offenders.push({ file: rel, line: text.slice(0, m.index).split('\n').length, lit });
     }
   }
@@ -83,6 +86,23 @@ if (tauriConf.version !== version) {
     line: 0,
     lit: `${tauriConf.version} (package.json says ${version})`,
   });
+}
+
+// The lockfile is what `npm ci` in CI installs from, and it carries the root
+// package's version in two places. It shipped at an older version while
+// everything else was bumped (v2.31.26 carried 2.31.25) because nothing read
+// it, and `npm ci` does not complain — the drift was invisible. Both spots
+// move with package.json or the guard fails.
+const packageLock = JSON.parse(
+  fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'),
+);
+for (const [where, v] of [
+  ['package-lock.json (top)', packageLock.version],
+  ['package-lock.json (packages[""])', packageLock.packages?.['']?.version],
+]) {
+  if (v !== version) {
+    offenders.push({ file: where, line: 0, lit: `${v ?? 'missing'} (package.json says ${version})` });
+  }
 }
 
 // Cargo's package version is compiled into the executable as

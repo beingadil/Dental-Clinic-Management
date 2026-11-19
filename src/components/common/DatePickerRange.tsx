@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { getTodayStr } from '../../utils/dateUtils';
 
@@ -177,6 +178,7 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const fromInputRef = useRef<HTMLInputElement>(null);
 
   const today = todayISO();
@@ -187,14 +189,41 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
   // Which endpoint the calendar edits next: 'from' first, then 'to'.
   const [picking, setPicking] = useState<'from' | 'to'>('from');
 
-  // Close on outside click
+  // Close on outside click. The popup is portalled to document.body, so the
+  // "inside" test spans TWO subtrees: the trigger wrapper and the portal
+  // panel. Checking only the trigger made every click inside the calendar
+  // read as "outside" and auto-closed the popup without picking anything.
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (containerRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
+
+  // The trigger pill sits in a toolbar with the table directly beneath it.
+  // The popup therefore floats to the RIGHT of the pill as a fixed panel —
+  // never over the invoice rows the operator is choosing for, and never
+  // clipping behind a scrolling sibling.
+  const [openPos, setOpenPos] = useState<{ top: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const PANEL_W = 316;
+      const left = Math.min(rect.right + 10, Math.max(8, window.innerWidth - PANEL_W - 8));
+      const top = Math.min(rect.top, Math.max(8, window.innerHeight - 380));
+      setOpenPos({ top, left });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [open]);
 
   // Escape closes the popup without touching the selected range.
   useEffect(() => {
@@ -326,12 +355,16 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
         )}
       </div>
 
-      {/* Popup */}
-      {open && (
+      {/* Popup — portalled to body so a transformed ancestor (entrance
+          animations, will-change layers) cannot re-originate its 'fixed'
+          positioning; here left/top are viewport coordinates, period. */}
+      {open && createPortal(
         <div
+          ref={panelRef}
           role="dialog"
           aria-label="Choose date range"
-          className="absolute left-0 top-full mt-2 z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5"
+          className="fixed z-[60] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 w-[300px] space-y-2.5 max-h-[calc(100vh-1rem)] overflow-y-auto"
+          style={openPos ?? undefined}
         >
           {/* Quick ranges — same list in every module. */}
           <div className="flex flex-wrap gap-1">
@@ -451,7 +484,8 @@ export const DatePickerRange: React.FC<DatePickerRangeProps> = ({
               Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -18,6 +18,13 @@ vi.mock('../../src/services/updateInstaller', () => ({
   },
 }));
 
+vi.mock('../../src/context/AppContext', () => ({
+  // The pill now renders only for a role holding updates:install.
+  useApp: () => ({
+    user: { id: 'u-1', name: 'Mateen', role: 'Super Admin', isSuperAdmin: true },
+  }),
+}));
+
 import { UpdatePill } from '../../src/components/dashboard/UpdatePill';
 
 /** Drives the pill into a phase, the way the real installer store would. */

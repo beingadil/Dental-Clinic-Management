@@ -58,7 +58,7 @@ describe('brand colour (D7)', () => {
     applyBrandColor('slate');
     applyBrandColor('not-a-colour');
 
-    expect(document.documentElement.style.getPropertyValue('--brand-600')).toBe('#4f46e5');
+    expect(document.documentElement.style.getPropertyValue('--brand-600')).toBe('#5e6ad2');
     expect(document.documentElement.getAttribute('data-brand')).toBe('indigo');
   });
 });

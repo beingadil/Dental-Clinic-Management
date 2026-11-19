@@ -16,7 +16,8 @@ export interface UpdateHistoryEntry {
     | 'available'      // a newer release was detected
     | 'installed'      // verified installer launched (app exits to apply)
     | 'failed'         // check, download, verification or install failure
-    | 'up_to_date';    // manual or automatic check found nothing newer
+    | 'up_to_date'     // manual or automatic check found nothing newer
+    | 'handed_off';    // download opened in the browser — manual install
   message?: string;    // failure detail or notes
   from_version?: string;
 }

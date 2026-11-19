@@ -65,6 +65,12 @@ export interface InvoiceAccountPosition {
   unallocatedAdvance: number;
   /** The window this position was measured over; null for a single invoice. */
   period?: { from: string; to: string } | null;
+  /**
+   * True when the invoiceAmount/advanceApplied figures were restricted to the
+   * caller's selected invoices. The print renderer uses it to footnote the
+   * block honestly (opening, cash and closing still cover the whole period).
+   */
+  selectionLimited?: boolean;
 }
 
 export interface InvoiceAccountInput {
@@ -233,13 +239,15 @@ const sumType = (
     ),
   );
 
-/** Every advance application dated before (or up to) a day, across all invoices. */
+/** Every advance application dated before (or up to) a day for ONE clinic. */
 const advanceApplications = (
+  labId: string,
   invoices: Invoice[] | null | undefined,
   keep: (day: string, payment: PaymentRecord) => boolean,
 ): number => {
   let total = 0;
   (invoices || []).forEach((invoice) => {
+    if (invoice.lab_id !== labId) return;
     (invoice.payments || []).forEach((payment) => {
       if (!isAllocation(payment)) return;
       if (keep(paymentDayOf(payment, invoice), payment)) total += payment.amount || 0;
@@ -267,7 +275,7 @@ const advanceWallet = (input: {
     if (through && day > through) return;
     received += advance.amount || 0;
   });
-  const applied = advanceApplications(invoices, (day) => {
+  const applied = advanceApplications(labId, invoices, (day) => {
     if (before && day >= before) return false;
     if (through && day > through) return false;
     return true;
@@ -327,6 +335,7 @@ export const buildInvoiceAccountPosition = ({
      the credit. The stored paid total is the invoice's truth, so only the
      advance slice is removed from cash. */
   const advanceApplied = advanceApplications(
+    invoice.lab_id,
     [invoice],
     () => true,
   );
@@ -461,6 +470,7 @@ export const buildStatementAccountPosition = ({
   /* Applications are 0/0 memos, but the reader still needs to know how much of
      the period's invoices was settled from an earlier deposit. */
   const advanceApplied = advanceApplications(
+    labId,
     selectedSet
       ? (invoices || []).filter((inv) => selectedSet.has(inv.id))
       : invoices,
@@ -498,5 +508,6 @@ export const buildStatementAccountPosition = ({
     closingBalance,
     unallocatedAdvance,
     period: { from, to },
+    selectionLimited: selectedSet !== null,
   };
 };

@@ -35,9 +35,12 @@ describe('dark theme error guards', () => {
   });
 
   // ── Guard 4: Card borders are quiet (not outlining everything) ─────────────
-  it('card border uses quiet line #2a3446, not loud control border (dashboard)', () => {
+  it('card border uses a quiet line, not a loud control border (dashboard)', () => {
     const line = (dashboardDarkCss.match(/--ds-line:\s*([^;]+)/i) || [])[1]?.trim();
-    expect(line).toBe('#2a3446');
+    /* 2.31.27's premium dark reskin warmed the whole ladder. The rule this
+       protects — a card edge far quieter than the 3:1 control boundary — is
+       unchanged; only the value moved (blue-grey #2a3446 → warm #25272f). */
+    expect(line).toBe('#25272f');
     // Card edges use the quieter rim, not the control border
     expect(dashboardDarkCss).toContain('--ds-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.08)');
   });

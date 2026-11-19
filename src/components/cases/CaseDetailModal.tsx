@@ -33,7 +33,6 @@ import {
   ExternalLink,
   ArrowRight,
   ArrowLeft,
-  CalendarDays
 } from 'lucide-react';
 import { PRIORITY_SLA_DAYS, prioritySlaLabel, computeSlaDueDate } from '../../services/prioritySla';
 import { resolveOverrideForCase } from '../../services/pricingOverride';
@@ -198,13 +197,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [department, setDepartment] = useState<string>(initialCase?.department || '');
   const [shade, setShade] = useState(initialCase?.shade || initialShade || 'A2');
 
-  /* Priority seed, in precedence order: an existing case keeps what it has, a
-   * template may carry its own default, and otherwise the LAB's default applies.
-   * `UserPreferences.default_priority` is a real Settings control that nothing
-   * read — every new case silently started at 'normal' regardless of it — so a
-   * lab that set "urgent" for a rush-only workflow got 'normal' instead. */
-  /* New cases always start at Medium ('normal'); an existing case keeps its
-     priority. */
+  /* Priority seed: an existing case keeps what it has. New cases start at
+     Medium ('normal'), matching the v2.31.26 behaviour — the Settings control
+     "Default Priority for New Cases" is inert on this build (it is hidden in
+     Settings) and is pending either full restoration or removal. */
   const seedPriority: PriorityLevel = initialCase?.priority || 'normal';
 
   const [priority, setPriority] = useState<PriorityLevel>(seedPriority);
@@ -706,6 +702,22 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   };
 
   /* ================================================================== */
+  /*  Keyboard flow: Enter moves between the basics in writing order —   */
+  /*  patient → doctor → clinic → procedure → Continue — so a returning  */
+  /*  operator never reaches for the mouse. Select triggers wire their    */
+  /*  Enter via GlassSelect's onEnterAdvance; the menu remains reachable  */
+  /*  with ArrowDown / Space / click.                                    */
+  /* ================================================================== */
+  const focusField = (id: string) => {
+    document.getElementById(id)?.focus();
+  };
+  const handleAdvanceKey = (e: React.KeyboardEvent<HTMLInputElement>, nextId: string) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    focusField(nextId);
+  };
+
+  /* ================================================================== */
   /*  Shared step content — used by the create wizard AND the edit form  */
   /* ================================================================== */
 
@@ -732,6 +744,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 type="text"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
+                onKeyDown={(e) => handleAdvanceKey(e, 'case-doctor-name')}
                 placeholder="e.g. Sarah Jenkins"
                 className={inputCls}
               />
@@ -746,6 +759,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   setDoctorName(e.target.value);
                   if (errors.doctorName) setErrors((prev) => ({ ...prev, doctorName: '' }));
                 }}
+                onKeyDown={(e) => handleAdvanceKey(e, 'case-lab-id')}
                 placeholder="e.g. Tariq Mahmood"
                 aria-invalid={!!errors.doctorName}
                 aria-describedby={errors.doctorName ? 'case-doctor-name-error' : undefined}
@@ -776,6 +790,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   setLabId(v);
                   if (errors.labId) setErrors((prev) => ({ ...prev, labId: '' }));
                 }}
+                onEnterAdvance={() => focusField('case-type-id')}
+                triggerId="case-lab-id"
                 ariaLabel="Laboratory"
                 searchable
                 className="w-full px-3.5 py-2.5 text-sm"
@@ -809,6 +825,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               <GlassSelect
                 value={caseTypeId}
                 onChange={setCaseTypeId}
+                onEnterAdvance={() => focusField('case-step-continue')}
+                triggerId="case-type-id"
                 ariaLabel="Case procedure / type"
                 searchable
                 className="w-full px-3.5 py-2.5 text-sm"
@@ -1090,18 +1108,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
             <div className="mt-5">
               <FieldLabel required htmlFor="case-delivery-date">Target Delivery Date</FieldLabel>
-              <div className="relative">
-                <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
-                <input
-                  id="case-delivery-date"
-                  type="date"
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                  aria-invalid={!!errors.deliveryDate}
-                  aria-describedby={errors.deliveryDate ? 'case-delivery-date-error' : undefined}
-                  className={`${inputCls} pl-10`}
-                />
-              </div>
+              <DatePickerSingle
+                id="case-delivery-date"
+                label="Target Delivery Date"
+                value={deliveryDate}
+                onChange={setDeliveryDate}
+                invalid={!!errors.deliveryDate}
+                describedBy={errors.deliveryDate ? 'case-delivery-date-error' : undefined}
+              />
               {(errors.deliveryDate || (attempted && stepError.schedule && stepError.schedule.includes('date'))) && (
                 <p
                   id="case-delivery-date-error"
@@ -1680,6 +1694,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 {step < STEPS.length - 1 ? (
                   <button
                     type="button"
+                    id="case-step-continue"
                     onClick={goNext}
                     className={`group inline-flex items-center gap-2 ds-glass-pill py-2.5 pl-5 pr-2.5 text-xs font-bold active:scale-[0.98] ${EASE}`}
                   >

@@ -3,6 +3,7 @@ import {
   compareVersions,
   parseOfflineUpdate,
   currentVersion,
+  isTrustedReleaseUrl,
 } from '../../src/services/updateService';
 import { sha256Hex } from '../../src/db/crypto';
 
@@ -30,6 +31,60 @@ describe('version comparison (semver)', () => {
     // parseOfflineUpdate rejects packages not newer than the installed version
     const installed = currentVersion();
     expect(compareVersions(installed, installed)).toBe(0); // equal → rejected by caller
+  });
+});
+
+// The same golden fixtures are pinned by the Rust unit tests in
+// src-tauri/src/lib.rs (parse_semver / semver_cmp) — the two parsers must
+// never drift apart.
+describe('version comparison (full semver, mirrors Rust)', () => {
+  it('a four-part core outranks its three-part prefix', () => {
+    expect(compareVersions('2.31.26.1', '2.31.26')).toBe(1);
+    expect(compareVersions('2.31.26', '2.31.26.1')).toBe(-1);
+  });
+
+  it('a prerelease sorts before its release', () => {
+    expect(compareVersions('2.31.27-rc.1', '2.31.27')).toBe(-1);
+    expect(compareVersions('2.31.27', '2.31.27-rc.1')).toBe(1);
+  });
+
+  it('prerelease identifiers compare numerically when all-numeric', () => {
+    expect(compareVersions('2.31.27-rc.2', '2.31.27-rc.10')).toBe(-1);
+    // Numeric identifiers sort below alphanumeric ones.
+    expect(compareVersions('2.31.27-1', '2.31.27-a')).toBe(-1);
+    // A shorter prerelease list sorts before a longer one that extends it.
+    expect(compareVersions('2.31.27-rc', '2.31.27-rc.1')).toBe(-1);
+  });
+
+  it('accepts a leading v and any component count', () => {
+    expect(compareVersions('v2.31.27', '2.31.27')).toBe(0);
+    expect(compareVersions('2.0', '2.0.0')).toBe(0);
+  });
+
+  it('an unparseable version never offers an update', () => {
+    expect(compareVersions('garbage', '2.31.26')).toBe(-1);
+    expect(compareVersions('2.31.26', 'garbage')).toBe(1);
+    expect(compareVersions('garbage', 'also-garbage')).toBe(0);
+  });
+});
+
+describe('isTrustedReleaseUrl', () => {
+  it('allows the GitHub release hosts', () => {
+    expect(isTrustedReleaseUrl('https://github.com/beingadil/Dental-Clinic-Management/releases/download/v2.31.29/x-setup.exe')).toBe(true);
+    expect(isTrustedReleaseUrl('https://objects.githubusercontent.com/x')).toBe(true);
+    expect(isTrustedReleaseUrl('https://release-assets.githubusercontent.com/x')).toBe(true);
+  });
+
+  it('rejects lookalike hosts, non-https and junk', () => {
+    expect(isTrustedReleaseUrl('https://github.com.evil.com/x')).toBe(false);
+    expect(isTrustedReleaseUrl('https://githubapp.com/x')).toBe(false);
+    expect(isTrustedReleaseUrl('http://github.com/x')).toBe(false);
+    expect(isTrustedReleaseUrl('javascript:alert(1)')).toBe(false);
+    expect(isTrustedReleaseUrl('https://raw.githubusercontent.com/x')).toBe(false); // not a release-asset host
+    expect(isTrustedReleaseUrl('')).toBe(false);
+    expect(isTrustedReleaseUrl(undefined)).toBe(false);
+    expect(isTrustedReleaseUrl(null)).toBe(false);
+    expect(isTrustedReleaseUrl('not a url')).toBe(false);
   });
 });
 

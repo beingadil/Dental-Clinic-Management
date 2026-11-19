@@ -30,7 +30,7 @@ export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
   tagline: '',
   logoUrl: '',
   logoUrl2: '',
-  primaryColor: '#4f46e5',
+  primaryColor: '#5e6ad2',
   phone: '',
   address: '',
   email: '',

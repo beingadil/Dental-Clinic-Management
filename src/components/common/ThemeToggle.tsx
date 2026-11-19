@@ -35,13 +35,18 @@ export function ThemeToggle() {
   const current = isThemeMode(userPreferences.theme_mode) ? userPreferences.theme_mode : 'system';
   const currentLabel = OPTIONS.find((o) => o.mode === current)?.label ?? 'System';
 
+  const idx = OPTIONS.findIndex((o) => o.mode === current);
+
   return (
     <div
       role="radiogroup"
       aria-label="Interface theme"
       title={`Theme: ${currentLabel}`}
-      className="ds-theme-toggle shrink-0 flex items-center gap-0.5 p-0.5 rounded-full bg-white/30 border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+      className="ds-theme-toggle relative shrink-0 flex items-center gap-0.5 p-0.5 rounded-full bg-white/30 border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
     >
+      {/* One thumb sliding beneath three peers, not three buttons swapping
+          fills — the switch itself is the motion you feel. */}
+      <span className="ds-toggle-thumb" aria-hidden="true" style={{ transform: `translateX(${Math.max(0, idx) * 100}%)` }} />
       {OPTIONS.map(({ mode, label, hint, Icon }) => {
         const active = mode === current;
         return (
@@ -53,13 +58,14 @@ export function ThemeToggle() {
             title={hint}
             onClick={() => updateUserPreferences({ theme_mode: mode })}
             className={[
-              'w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer',
+              'relative z-10 w-8 h-8 flex items-center justify-center rounded-full cursor-pointer',
+              'transition-[color,transform] duration-[220ms] [transition-timing-function:cubic-bezier(.32,.72,0,1)] active:scale-95',
               active
-                ? 'bg-white text-indigo-600 shadow-2xs ring-1 ring-slate-200/70'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-white/70',
+                ? 'text-indigo-600'
+                : 'text-slate-500 hover:text-slate-900',
             ].join(' ')}
           >
-            <Icon className="w-4 h-4" />
+            <Icon className={`w-4 h-4 transition-transform duration-[260ms] [transition-timing-function:cubic-bezier(.32,.72,0,1)] ${active ? 'scale-110' : 'scale-100'}`} />
             <span className="sr-only">{label}</span>
           </button>
         );

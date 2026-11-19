@@ -366,15 +366,18 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
         "objects.githubusercontent.com",
         "release-assets.githubusercontent.com",
     ];
-    if !url.starts_with("https://") {
+    // Parse once, properly — string-splitting the authority lets
+    // "https://github.com:@evil.example/" through with host "github.com".
+    let Ok(parsed) = reqwest::Url::parse(&url) else {
+        return Err("URL is not parseable".into());
+    };
+    if parsed.scheme() != "https" {
         return Err("Only https URLs can be opened".into());
     }
-    let host = url
-        .trim_start_matches("https://")
-        .split(&['/', '?', ':'][..])
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
+    let host = parsed
+        .host_str()
+        .map(|h| h.to_ascii_lowercase())
+        .ok_or_else(|| format!("URL host is not allowed: {url}"))?;
     if !ALLOWED_HOSTS.contains(&host.as_str()) {
         return Err(format!("URL host is not allowed: {host}"));
     }
@@ -413,6 +416,58 @@ async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String, Strin
 }
 
 /// The expected checksum must be confirmed by the release's published
+/// Parses the installer entry out of a release's SHA256SUMS.txt. Extracted so
+/// the parser is unit-testable offline (audit #26). First line containing
+/// `-setup.exe` whose hash field is 64 hex chars wins; anything else is
+/// ignored. Returns None when no such line exists.
+fn parse_sums_installer_hash(text: &str) -> Option<String> {
+    for line in text.lines() {
+        if !line.to_ascii_lowercase().contains("-setup.exe") {
+            continue;
+        }
+        let hash = line.trim().split_whitespace().next().unwrap_or("");
+        if hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Some(hash.to_ascii_lowercase());
+        }
+    }
+    None
+}
+
+/// Version strings land in the staged filename, so the staging gate rejects
+/// anything but digits, dots and the filename-legal prerelease characters
+/// (hyphen/dot/alphanumerics), capped at 32 bytes. The 'v' prefix is NOT
+/// accepted here — CI stamps the manifest with the bare tag, so a v here is
+/// always an error, not a variant to accommodate.
+fn is_valid_version_string(version: &str) -> bool {
+    if version.len() > 32 {
+        return false;
+    }
+    let (core, pre) = match version.split_once('-') {
+        Some((c, p)) => (c, Some(p)),
+        None => (version, None),
+    };
+    let mut part_count = 0usize;
+    for part in core.split('.') {
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return false;
+        }
+        part_count += 1;
+    }
+    if part_count == 0 {
+        return false;
+    }
+    if let Some(p) = pre {
+        if p.is_empty()
+            || !p
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+        {
+            return false;
+        }
+    }
+    true
+}
+
 /// SHA256SUMS.txt: when the manifest provides one, both sources have to agree
 /// exactly; the sums file is the authority either way. Any absence,
 /// unparsable entry, or disagreement fails closed — no install, ever.
@@ -433,18 +488,7 @@ async fn resolve_expected_checksum(
         "Checksum file (SHA256SUMS.txt) is unavailable for this release — refusing to auto-install."
             .to_string()
     })?;
-    let mut sums_hash: Option<String> = None;
-    for line in text.lines() {
-        if !line.to_ascii_lowercase().contains("-setup.exe") {
-            continue;
-        }
-        let hash = line.trim().split_whitespace().next().unwrap_or("");
-        if hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
-            sums_hash = Some(hash.to_ascii_lowercase());
-            break;
-        }
-    }
-    let sums = sums_hash.ok_or_else(|| {
+    let sums = parse_sums_installer_hash(&text).ok_or_else(|| {
         "Checksum file has no installer entry — refusing to auto-install.".to_string()
     })?;
     if let Some(c) = provided {
@@ -505,6 +549,33 @@ fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// The one directory the updater owns on disk. Everything the updater writes
+/// (staged installer, receipt, log) lives here, and nowhere else.
+fn staging_dir() -> PathBuf {
+    std::env::temp_dir().join("dental-solutions-update")
+}
+
+/// Canonicalize `candidate` and require it to live inside the staging dir.
+///
+/// update_apply EXECUTES (and update_discard DELETES) a path that arrives via
+/// a JSON file in %TEMP%. Without confinement, any process able to write that
+/// file can name an arbitrary executable and the updater would run it. The
+/// canonicalized prefix check closes the "different file, same receipt" path.
+fn confined_staged_path(candidate: &str) -> Result<PathBuf, String> {
+    let dir = staging_dir();
+    let dir_canon = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+    let canonical = PathBuf::from(candidate)
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve staged installer: {e}"))?;
+    if !canonical.starts_with(&dir_canon) {
+        return Err(
+            "Staged installer is outside the update staging directory — refusing to use it."
+                .into(),
+        );
+    }
+    Ok(canonical)
+}
+
 /// Stages an update on the native side — it does NOT install and does NOT exit:
 ///
 /// 1. streams the installer from a trusted GitHub release host to a temp file,
@@ -528,11 +599,7 @@ async fn update_install(
     expected_checksum: Option<String>,
 ) -> Result<serde_json::Value, String> {
     // The version lands in the staged filename — never allow path characters.
-    let version_ok = version.len() <= 32
-        && version
-            .split('.')
-            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
-    if !version_ok {
+    if !is_valid_version_string(&version) {
         return Err("Refusing to install: invalid version string".into());
     }
 
@@ -608,6 +675,17 @@ async fn update_install(
         ));
     }
 
+    /* #13 — when this build enforces Authenticode (a signed release channel),
+       the installer must also verify. Placed before the database backup so a
+       rejected file leaves nothing behind. When AUTHENTICODE_REQUIRED is
+       false (today), the update chain is protected by SHA256SUMS.txt alone. */
+    if AUTHENTICODE_REQUIRED {
+        if let Err(e) = verify_authenticode(&staged) {
+            let _ = fs::remove_file(&staged);
+            return Err(e);
+        }
+    }
+
     // Refuse to auto-install over a database save that never reached disk.
     if state.path.lock().unwrap().is_none() {
         return Err("Database not loaded — refusing to update now; try again after the app has saved its data.".into());
@@ -656,7 +734,13 @@ async fn update_install(
     );
     let receipt_path = dir.join("stage-receipt.json");
     if let Err(e) = fs::write(&receipt_path, serde_json::to_string_pretty(&receipt).unwrap_or_default()) {
-        eprintln!("[updater] FAILED to write stage receipt {:?}: {}", receipt_path, e);
+        // Returning here is the whole point: the UI must not offer "Restart &
+        // Apply" for a staged update whose receipt does not exist — boot
+        // would find no staged update and report failure, or worse, strand
+        // the installer silently.
+        return Err(format!(
+            "Update staged but its receipt could not be written to {receipt_path:?}: {e}. Check that the temp directory is writable, then try again."
+        ));
     }
 
     emit_progress(&app, &version, received, total, "ready");
@@ -777,49 +861,123 @@ fn spawn_install_waiter(
     Err("Silent auto-install is only implemented on Windows.".into())
 }
 
+/// Whether this build refuses installers that are not Authenticode-signed.
+///
+/// Deliberately a compile-time CONSTANT, not a runtime/env toggle: enforcement
+/// must be flipped in the same deliberate release that first signs the builds
+/// (paired with the CI "Sign the NSIS installer" step, which activates when the
+/// WINDOWS_PFX_BASE64/WINDOWS_PFX_PASSWORD repository secrets exist). Enabling
+/// this before a signed release would brick every client's auto-update — that
+/// is why signing activates with secrets and enforcement activates with this
+/// one-line flip, both in a release that says so in the changelog. While false,
+/// updates stay protected by the SHA256SUMS.txt chain exactly as before.
+const AUTHENTICODE_REQUIRED: bool = false;
+
+/// Verifies the Authenticode signature of `path` via PowerShell's
+/// Get-AuthenticodeSignature — the same check an administrator would run by
+/// hand. Fail closed: any error or any non-'Valid' status aborts the install.
+/// Only used when AUTHENTICODE_REQUIRED is compiled in.
+#[cfg(windows)]
+fn verify_authenticode(path: &std::path::Path) -> Result<(), String> {
+    let shell = powershell_exe().ok_or_else(|| {
+        "Windows PowerShell was not found on this machine, so the installer signature cannot be verified."
+            .to_string()
+    })?;
+    let script = format!(
+        "$s = Get-AuthenticodeSignature -FilePath '{}'; if ($s.Status -eq 'Valid') {{ exit 0 }} else {{ Write-Output $s.Status.ToString(); exit 1 }}",
+        ps_quote(path)
+    );
+    let out = Command::new(&shell)
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .map_err(|e| format!("Could not run the signature check: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let status = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Err(format!(
+        "Installer signature check failed{} — refusing to install an unsigned or tampered installer.",
+        if status.is_empty() { String::new() } else { format!(" ({status})") }
+    ))
+}
+
+#[cfg(not(windows))]
+fn verify_authenticode(_path: &std::path::Path) -> Result<(), String> {
+    Err("Signature verification is only implemented on Windows.".into())
+}
+
 /// Applies a staged update and closes the app — the ONLY path that exits.
 ///
 /// Called exclusively from the user's "Restart & Apply Updates" action: the
 /// updater must never decide by itself to close a clinic's running app. The
-/// staged file is re-hashed first — it was verified at download time, but it
-/// has been sitting on disk unattended ever since and must be proven intact
-/// immediately before an installer is executed with it.
+/// staged file is confined to the staging directory and re-verified against
+/// the release's published SHA256SUMS.txt — NOT against the hash stored in
+/// the receipt, which is self-referential (the receipt would be trusted to
+/// vouch for itself). Any absence or disagreement fails closed — no install,
+/// ever, including offline.
 #[tauri::command]
-fn update_apply(app: AppHandle) -> Result<bool, String> {
+async fn update_apply(app: AppHandle) -> Result<bool, String> {
     let mut receipt = read_stage_receipt();
+
+    // The version drives the SHA256SUMS.txt URL; validate it like the staging
+    // path does before it goes anywhere near a request.
+    let version = receipt
+        .get("version")
+        .and_then(|v| v.as_str())
+        .filter(|v| is_valid_version_string(v))
+        .ok_or_else(|| {
+            "The stage receipt carries an invalid version — check for updates again.".to_string()
+        })?
+        .to_string();
+
     let staged_path = receipt
         .get("staged_path")
         .and_then(|p| p.as_str())
         .ok_or_else(|| "No staged update found — check for updates again.".to_string())?;
-    let staged = PathBuf::from(staged_path);
-    if !staged.is_file() {
-        return Err("The staged installer is no longer on disk — check for updates again.".into());
-    }
-    let expected = receipt
-        .get("checksum")
-        .and_then(|c| c.as_str())
-        .unwrap_or_default()
-        .trim_start_matches("sha256:")
-        .to_ascii_lowercase();
+    let staged = confined_staged_path(staged_path)?;
+
+    // The hash authority is the release's published SHA256SUMS.txt, fetched
+    // over TLS from the trusted host — the same authority update_install
+    // used. The receipt's checksum field is diagnostic only now.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let expected = resolve_expected_checksum(&client, &version, None)
+        .await
+        .map_err(|e| {
+            format!(
+                "Could not re-verify the staged installer against the release checksums: {e} \
+                 If you are offline, reconnect and try again."
+            )
+        })?;
+
     let actual =
         hash_file(&staged).map_err(|e| format!("Could not re-verify the staged update: {e}"))?;
-    if expected.is_empty() || actual != expected {
+    if actual != expected {
         return Err(
-            "The staged installer no longer matches its verified checksum — update aborted, nothing was installed."
+            "The staged installer no longer matches the release checksum — update aborted, nothing was installed."
                 .into(),
         );
     }
-    let relaunch_target = receipt
-        .get("relaunch_target")
-        .and_then(|p| p.as_str())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::current_exe().unwrap_or_else(|_| PathBuf::from("dental-solutions.exe"))
-        });
+    // Re-derive the relaunch target instead of trusting the receipt: the
+    // waiter launches this path after the installer runs, so a doctored
+    // receipt must not be able to point it at an arbitrary executable.
+    // installed_relaunch_target reads the NSIS registry entry with the
+    // running exe as fallback — never a path from a JSON file.
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("cannot resolve app executable for relaunch: {e}"))?;
+    let relaunch_target = installed_relaunch_target(&current_exe);
 
-    // Record that the installer was launched BEFORE spawning it. If this
-    // process comes back on the old version, diagnostics must report a failed
-    // apply instead of offering the same installer again forever.
+    // Launch the waiter BEFORE the marker: if the launch itself fails, the
+    // receipt must not claim an apply was attempted when nothing was, or
+    // every boot reports "update interrupted" forever. Spawning first makes
+    // the failure honest and retryable from the UI.
+    spawn_install_waiter(&staged, &relaunch_target)?;
+
+    // Record that the installer was launched. If this process comes back on
+    // the old version, diagnostics must report a failed apply instead of
+    // offering the same installer again forever.
     let receipt_path = std::env::temp_dir()
         .join("dental-solutions-update")
         .join("stage-receipt.json");
@@ -833,9 +991,7 @@ fn update_apply(app: AppHandle) -> Result<bool, String> {
         &receipt_path,
         serde_json::to_string_pretty(&receipt).unwrap_or_default(),
     )
-    .map_err(|e| format!("Could not record the update attempt: {e}"))?;
-
-    spawn_install_waiter(&staged, &relaunch_target)?;
+    .map_err(|e| format!("Installer was launched, but its receipt could not be updated: {e}"))?;
 
     // Let the invoke response (Ok) reach the webview first, then exit. A hard
     // app.exit(0) raced the IPC reply on the download path and left the UI
@@ -853,12 +1009,89 @@ fn update_apply(app: AppHandle) -> Result<bool, String> {
 /// a multi-MB installer on disk or a receipt that nags on every boot.
 #[tauri::command]
 fn update_discard() -> Result<bool, String> {
-    let dir = std::env::temp_dir().join("dental-solutions-update");
+    let dir = staging_dir();
     let receipt = read_stage_receipt();
     if let Some(staged) = receipt.get("staged_path").and_then(|p| p.as_str()) {
-        let _ = fs::remove_file(staged);
+        // Only files inside the staging directory may be deleted.
+        if let Ok(canon) = confined_staged_path(staged) {
+            let _ = fs::remove_file(canon);
+        }
     }
     let _ = fs::remove_file(dir.join("stage-receipt.json"));
+    Ok(true)
+}
+
+/// Deletes the staged installer and receipt, and prunes stale `.pre-update-*`
+/// database backups (keeps the newest one as the safety net). Called on boot
+/// AFTER a settled receipt — the install landed, so nothing staged can still
+/// be applied and those files only waste disk. Best-effort throughout: cleanup
+/// must never block boot, and everything is confined to the staging dir and
+/// the database directory.
+///
+/// Race safety: the caller fires this asynchronously, so a fresh automatic
+/// check may have staged a NEWER update by the time this runs. If the receipt
+/// on disk now describes a version other than the running build, that is an
+/// in-flight stage — the staging dir and its backups are left fully alone.
+#[tauri::command]
+fn update_cleanup_settled(app: AppHandle, state: State<'_, DbState>) -> Result<bool, String> {
+    let running_version = app.package_info().version.to_string();
+    let receipt = read_stage_receipt();
+    let receipt_version = receipt
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    // A live receipt for a different version means a new update is staged or
+    // in flight — touch nothing out of the staging dir, and not the staged
+    // exe either. Backups are still pruned (the keep-newest rule cannot reach
+    // the backup the pending stage just wrote).
+    let pending = !receipt.is_null()
+        && !receipt_version.is_empty()
+        && receipt_version != running_version;
+
+    let dir = staging_dir();
+    if !pending {
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let removable = name == "stage-receipt.json"
+                    || name == "last-update.log"
+                    || (name.starts_with("Dental.Solutions_") && name.ends_with("_x64-setup.exe"));
+                if removable {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
+    if let Some(db_path) = state.path.lock().unwrap().clone() {
+        if let Some(db_dir) = db_path.parent() {
+            let mut backups: Vec<PathBuf> = fs::read_dir(db_dir)
+                .map(|rd| {
+                    rd.flatten()
+                        .map(|e| e.path())
+                        .filter(|p| {
+                            p.file_name()
+                                .map(|n| {
+                                    let n = n.to_string_lossy();
+                                    n.contains(".pre-update-") && n.ends_with(".bak")
+                                })
+                                .unwrap_or(false)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            backups.sort_by_key(|p| {
+                fs::metadata(p)
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+            });
+            // Keep the newest backup; everything older is disposable.
+            let stale = backups.len().saturating_sub(1);
+            for p in backups.into_iter().take(stale) {
+                let _ = fs::remove_file(p);
+            }
+        }
+    }
     Ok(true)
 }
 
@@ -890,13 +1123,102 @@ fn build_stage_receipt(
     })
 }
 
-fn version_tuple(raw: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = raw.split('.');
-    Some((
-        parts.next()?.parse().ok()?,
-        parts.next()?.parse().ok()?,
-        parts.next()?.parse().ok()?,
-    ))
+/// One identifier inside a prerelease tag: all-numeric identifiers compare
+/// numerically (and sort below alphanumerics); others compare in ASCII order.
+#[derive(PartialEq, Eq, Clone, Debug)]
+enum SemverId {
+    Num(u64),
+    Alpha(String),
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+struct ParsedVersion {
+    /// Dotted numeric core; compared component-wise, zero-padded — any length.
+    core: Vec<u64>,
+    pre: Vec<SemverId>,
+}
+
+/// Parses `v?X(.Y(.Z)…)?(-pre.…)?`. Mirror of `parseVersion` in
+/// src/services/updateService.ts — keep both in step; the golden fixtures in
+/// tests/services/updateService.test.ts and the Rust tests below pin the same
+/// cases. Returns None on anything else.
+fn parse_semver(raw: &str) -> Option<ParsedVersion> {
+    let trimmed = raw.trim();
+    let s = trimmed.strip_prefix('v').unwrap_or(trimmed);
+    let (core_s, pre_s) = match s.split_once('-') {
+        Some((c, p)) => (c, Some(p)),
+        None => (s, None),
+    };
+    let mut core = Vec::new();
+    for part in core_s.split('.') {
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        core.push(part.parse().ok()?);
+    }
+    if core.is_empty() {
+        return None;
+    }
+    let mut pre = Vec::new();
+    if let Some(p) = pre_s {
+        for id in p.split('.') {
+            if id.is_empty() {
+                return None;
+            }
+            if id.bytes().all(|b| b.is_ascii_digit()) {
+                pre.push(SemverId::Num(id.parse().ok()?));
+            } else {
+                pre.push(SemverId::Alpha(id.to_string()));
+            }
+        }
+    }
+    Some(ParsedVersion { core, pre })
+}
+
+/// Full-semver comparison. Rules (mirror of `compareVersions` in
+/// updateService.ts):
+/// - the numeric core is compared component-wise and zero-padded, so a
+///   four-part `2.31.26.1` outranks `2.31.26` instead of truncating to it;
+/// - a prerelease sorts BEFORE its release (`2.31.27-rc.1 < 2.31.27`);
+/// - prerelease identifiers compare numerically when all-numeric, otherwise in
+///   ASCII order; an all-numeric identifier sorts below an alphanumeric one;
+///   a shorter identifier list sorts below a longer one that extends it.
+fn semver_cmp(a: &ParsedVersion, b: &ParsedVersion) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let len = a.core.len().max(b.core.len());
+    for i in 0..len {
+        let ord = a
+            .core
+            .get(i)
+            .copied()
+            .unwrap_or(0)
+            .cmp(&b.core.get(i).copied().unwrap_or(0));
+        if ord != Ordering::Equal {
+            return ord;
+        }
+    }
+    match (a.pre.is_empty(), b.pre.is_empty()) {
+        (true, true) => return Ordering::Equal,
+        // A release outranks any of its own prereleases.
+        (true, false) => return Ordering::Greater,
+        (false, true) => return Ordering::Less,
+        (false, false) => {}
+    }
+    for i in 0..a.pre.len().max(b.pre.len()) {
+        let (Some(x), Some(y)) = (a.pre.get(i), b.pre.get(i)) else {
+            return a.pre.len().cmp(&b.pre.len());
+        };
+        let ord = match (x, y) {
+            (SemverId::Num(x), SemverId::Num(y)) => x.cmp(y),
+            (SemverId::Num(_), SemverId::Alpha(_)) => Ordering::Less,
+            (SemverId::Alpha(_), SemverId::Num(_)) => Ordering::Greater,
+            (SemverId::Alpha(x), SemverId::Alpha(y)) => x.cmp(y),
+        };
+        if ord != Ordering::Equal {
+            return ord;
+        }
+    }
+    Ordering::Equal
 }
 
 /// Classifies a stage receipt against the build that is actually running.
@@ -915,8 +1237,8 @@ fn receipt_status(receipt: &serde_json::Value, running_version: &str) -> &'stati
         return "settled";
     }
     if matches!(
-        (version_tuple(receipt_version), version_tuple(running_version)),
-        (Some(receipt), Some(running)) if running > receipt
+        (parse_semver(receipt_version), parse_semver(running_version)),
+        (Some(receipt), Some(running)) if semver_cmp(&running, &receipt) == std::cmp::Ordering::Greater
     ) {
         return "obsolete";
     }
@@ -985,6 +1307,7 @@ pub fn run() {
             update_install,
             update_apply,
             update_discard,
+            update_cleanup_settled,
             update_diagnostics,
             pdf_save::save_webview_as_pdf,
             file_export::save_file_bytes
@@ -1089,5 +1412,142 @@ mod tests {
     #[test]
     fn absent_receipt_is_none() {
         assert_eq!(receipt_status(&serde_json::Value::Null, "2.31.20"), "none");
+    }
+
+    // --- Version parser (mirrors the golden fixtures in tests/services/updateService.test.ts) ---
+    #[test]
+    fn parse_semver_handles_two_three_four_components_and_prerelease() {
+        let v = parse_semver("2.31.26").unwrap();
+        assert_eq!(v.core, vec![2, 31, 26]);
+        assert!(v.pre.is_empty());
+
+        let v4 = parse_semver("2.31.26.1").unwrap();
+        assert_eq!(v4.core, vec![2, 31, 26, 1]);
+
+        let pre = parse_semver("2.31.27-rc.1").unwrap();
+        assert_eq!(pre.pre, vec![SemverId::Alpha("rc".to_string()), SemverId::Num(1)]);
+
+        let vprefixed = parse_semver("v2.31.27").unwrap();
+        assert_eq!(vprefixed.core, vec![2, 31, 27]);
+
+        assert!(parse_semver("not a version").is_none());
+        assert!(parse_semver("2.31.").is_none());
+        assert!(parse_semver("2..31").is_none());
+    }
+
+    #[test]
+    fn four_part_version_outranks_three() {
+        // The old parser truncated “2.31.26.1” to 2.31.26 — it must NOT compare equal.
+        let a = parse_semver("2.31.26.1").unwrap();
+        let b = parse_semver("2.31.26").unwrap();
+        assert_eq!(semver_cmp(&a, &b), std::cmp::Ordering::Greater);
+        assert_eq!(semver_cmp(&b, &a), std::cmp::Ordering::Less);
+    }
+
+    #[test]
+    fn prerelease_sorts_before_release() {
+        let rc = parse_semver("2.31.27-rc.1").unwrap();
+        let rel = parse_semver("2.31.27").unwrap();
+        assert_eq!(semver_cmp(&rc, &rel), std::cmp::Ordering::Less);
+        assert_eq!(semver_cmp(&rel, &rc), std::cmp::Ordering::Greater);
+    }
+
+    #[test]
+    fn prerelease_numeric_identifiers_compare_numerically() {
+        let a = parse_semver("2.31.27-rc.2").unwrap();
+        let b = parse_semver("2.31.27-rc.10").unwrap();
+        assert_eq!(semver_cmp(&a, &b), std::cmp::Ordering::Less);
+        // Numeric < alphanumeric; shorter list < longer extension.
+        let num = parse_semver("2.31.27-1").unwrap();
+        let alpha = parse_semver("2.31.27-a").unwrap();
+        assert_eq!(semver_cmp(&num, &alpha), std::cmp::Ordering::Less);
+        let short = parse_semver("2.31.27-rc").unwrap();
+        let long = parse_semver("2.31.27-rc.1").unwrap();
+        assert_eq!(semver_cmp(&short, &long), std::cmp::Ordering::Less);
+    }
+
+    #[test]
+    fn staging_version_gate_rejects_garbage_and_allows_prerelease() {
+        assert!(is_valid_version_string("2.31.29"));
+        assert!(is_valid_version_string("2.31.29-rc.1"));
+        assert!(!is_valid_version_string(""));
+        assert!(!is_valid_version_string("v2.31.29"));   // CI stamps the bare tag
+        assert!(!is_valid_version_string("2.31.x"));
+        assert!(!is_valid_version_string("../../etc"));
+        assert!(!is_valid_version_string("2.31.29; rm -rf /"));
+        assert!(!is_valid_version_string(&"1".repeat(33)));
+    }
+
+    // --- SHA256SUMS.txt parser (audit #26) ---
+    #[test]
+    fn sums_parser_picks_the_setup_exe_entry() {
+        let text = "5a415e5ea264c7299d9129b3956114182d4cc0a3bff2a60e29b70c342f89e8f8  Dental.Solutions_2.31.28_x64-setup.exe\n";
+        assert_eq!(
+            parse_sums_installer_hash(text).as_deref(),
+            Some("5a415e5ea264c7299d9129b3956114182d4cc0a3bff2a60e29b70c342f89e8f8")
+        );
+        // Upper-case digests are normalised to lower case.
+        let upper = "5A415E5EA264C7299D9129B3956114182D4CC0A3BFF2A60E29B70C342F89E8F8  Dental.Solutions_2.31.28_x64-setup.exe\r\n";
+        assert_eq!(
+            parse_sums_installer_hash(upper).as_deref(),
+            Some("5a415e5ea264c7299d9129b3956114182d4cc0a3bff2a60e29b70c342f89e8f8")
+        );
+    }
+
+    #[test]
+    fn sums_parser_ignores_unrelated_lines_and_short_hashes() {
+        let text = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcded  checksum-sha256.txt\nabc123  Dental.Solutions_2.31.28_x64-setup.exe\nDEADC0DE  setup.exe\n";
+        assert!(parse_sums_installer_hash(text).is_none());
+
+        // A valid 64-hex upper-case digest is accepted and normalised.
+        let real = format!("{}{}", "DEADC0DE", "0".repeat(56)); // exactly 64 hex chars
+        let line = format!("{real}  Dental.Solutions_2.31.28_x64-setup.exe\n");
+        assert_eq!(parse_sums_installer_hash(&line).as_deref(), Some(real.to_ascii_lowercase().as_str()));
+    }
+
+    #[test]
+    fn sums_parser_returns_none_for_empty_input() {
+        assert!(parse_sums_installer_hash("").is_none());
+        assert!(parse_sums_installer_hash("no lines here\n").is_none());
+    }
+
+    // --- Path confinement for the apply/discard paths ---
+    #[test]
+    fn confined_staged_path_rejects_files_outside_staging_dir() {
+        let dir = staging_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let inside = dir.join("dental-test-confine-inside.exe");
+        fs::write(&inside, b"t").unwrap();
+
+        let outside = std::env::temp_dir().join("dental-confine-outside.exe");
+        fs::write(&outside, b"t").unwrap();
+
+        assert!(confined_staged_path(inside.to_str().unwrap()).is_ok());
+        assert!(confined_staged_path(outside.to_str().unwrap()).is_err());
+        // Traversal that CANONICALISES outside must be refused too.
+        let traversal = dir.join("..").join("dental-confine-outside.exe");
+        assert!(confined_staged_path(traversal.to_str().unwrap()).is_err());
+
+        let _ = fs::remove_file(&inside);
+        let _ = fs::remove_file(&outside);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unsigned_installer_fails_signature_check() {
+        let tmp = std::env::temp_dir().join("dental-solutions-test-unsigned.bin");
+        fs::write(&tmp, b"this is not a valid signed installer").unwrap();
+        let res = verify_authenticode(&tmp);
+        let _ = fs::remove_file(&tmp);
+        // Print the exact reason so a failure on a CI runner shows what the
+        // signature command actually reported (revocation checks, catalog
+        // view, PowerShell availability) rather than an opaque assert.
+        if let Err(ref e) = res {
+            eprintln!("verify_authenticode rejected the unsigned file with: {e}");
+        }
+        assert!(
+            res.is_err(),
+            "an unsigned file must not pass Authenticode verification"
+        );
     }
 }

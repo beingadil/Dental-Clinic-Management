@@ -8,8 +8,15 @@
 import { saveTextFile, type SaveFileResult } from '../lib/saveFile';
 export function toCSV(rows: (string | number | null | undefined)[][]): string {
   if (!rows.length) return '';
+  // RFC-4180 quoting alone leaves Excel-style CSV injection open: a cell that
+  // starts with =, +, -, @ (or a tab/CR hiding the trigger) evaluates as a
+  // formula when the file is opened. Lab-internal names are the data here,
+  // not an attacker, so the guard is a leading apostrophe, the standard
+  // spreadsheet escape.
+  const FORMULA_TRIGGER = /^[\t\r ]*[=+\-@]/;
   const quote = (field: string | number | null | undefined): string => {
-    const s = field === null || field === undefined ? '' : String(field);
+    const raw = field === null || field === undefined ? '' : String(field);
+    const s = FORMULA_TRIGGER.test(raw) ? `'${raw}` : raw;
     if (/[",\n\r]/.test(s)) {
       return `"${s.replace(/"/g, '""')}"`;
     }

@@ -1,3 +1,246 @@
+## [2.31.33] - 2026-11-18
+
+### Fixed
+- The collapsed navigation rail glued every icon to the left edge of its
+  capsule instead of centring it — the invisible badge kept `margin-left:
+  auto` (eating all free space) and the chevron kept `w-3.5` even with `w-0`
+  appended later by class order, so `justify-center` had nothing to
+  distribute. Collapsed-mode decoratives are now `display:none`.
+- The closed disclosure grids under expandable nav groups (Billing,
+  Analytics) are `visibility:hidden` (delayed past the open/close animation),
+  so their children are no longer tabbable or announced while invisible.
+
+## [2.31.32] - 2026-11-18
+
+### Added
+- The New Case basics grid now walks itself with Enter: patient name →
+  doctor → dental clinic → case procedure → Continue. Text fields advance on
+  Enter; the two dropdown triggers advance instead of opening their menu
+  (a new `onEnterAdvance` on GlassSelect). ArrowDown / Space / click still
+  open the menu, and Enter keeps its old behavior everywhere the new
+  advancing is not wired.
+- A closed GlassSelect trigger does native-select typeahead: printable
+  characters narrow and commit the choice in place — focusing Case Procedure
+  and pressing "z" commits "Zirconia Bridge (3-Unit)" without opening the
+  menu. Prefix match first, substring fallback, 900 ms buffer reset. Multi
+  mode is unchanged.
+- Target Delivery Date now uses the same enhanced picker as Received Date
+  (calendar, month/year navigation, manual entry) instead of the raw browser
+  input. The SLA-derived pre-fill is unchanged, and the field's error state
+  is exposed with aria-invalid / aria-describedby via new DatePickerSingle
+  props.
+
+### Fixed
+- Every date-range filter (Billing, Ledger, Payments, Case List, Insights)
+  closed itself on ANY click inside its own calendar — the portal moved the
+  panel to `document.body` but the outside-click handler only knew the
+  trigger wrapper. Clicks inside the panel no longer close it. Shipped broken
+  in 2.31.31; this release is the hotfix.
+- The received-date wizard test now waits generously (parallel-load flake),
+  and the date-range picker got a mousedown regression test.
+
+## [2.31.31] - 2026-11-17
+
+Release respin of v2.31.30. **No application changes beyond one test.**
+
+### Fixed
+- The `signed_system_binary_passes_signature_check` Rust test — which
+  asserted PowerShell's `Get-AuthenticodeSignature` reports `Valid` for a
+  Microsoft catalog-signed system binary — failed on the Windows CI runner
+  while passing on the development machine. That assertion depends on
+  catalog/CRL network state, which is exactly the wrong thing for a build
+  gate to depend on. The test is removed; the deterministic unsigned-file
+  rejection test remains. The v2.31.30 tag is left standing as another
+  failed run; no release was produced from it.
+
+## [2.31.30] - 2026-11-17
+
+Release respin of v2.31.29. **No application changes.**
+
+### Fixed
+- The security job's `npm audit --audit-level=high` step fails every build
+  since GHSA-fc5q-39xc-vjpf (picomatch ReDoS, CVE-2026-112366) was reviewed
+  on 2026-11-17: the advisory covers every released picomatch version, no
+  patched release exists, and the only npm "fix" (`--force`) downgrades
+  vite and still reports picomatch as affected. The step is replaced by
+  `scripts/npm-audit-gate.mjs` — an explicit allowlist with a written
+  reachability justification (build/test-time only, this repo's own glob
+  patterns, nothing shipped to clinics), mirroring the cargo-audit ignores.
+  Anything not allowlisted still fails the gate.
+- v2.31.29 was tagged and its CI failed at this step before any release was
+  produced; this release carries byte-identical application code plus the
+  gate fix. The v2.31.29 tag is left standing as the failed run it was.
+
+## [2.31.29] - 2026-11-17
+
+The auto-update hardening release: the rest of the update-chain audit, fixed
+and verified — the apply path no longer trusts its own receipt, and an
+unsigned or off-allowlist release can no longer strand a clinic.
+
+### Security
+- The desktop apply path now confines the staged installer to the updater's
+  own staging directory. Previously `update_apply` executed a path taken
+  verbatim from the stage receipt; any process able to write that JSON in
+  `%TEMP%` could name an arbitrary executable. The relaunch target is
+  likewise re-derived from the registry/running exe instead of the receipt,
+  so a doctored receipt can no longer point the post-install launcher at
+  anything else.
+- The apply path re-derives the expected checksum from the release's
+  published SHA256SUMS.txt instead of the receipt's self-referential hash —
+  the same fail-closed authority `update_install` uses. An offline machine
+  refuses to apply rather than trust the receipt.
+- `save_file_bytes` now enforces an extension allowlist (.csv, .xlsx, .pdf,
+  .html, .sql, .json, .txt, .dentalbackup) and refuses to overwrite
+  directories. The save dialog's filter was UX-only; the webview could drop
+  `.exe`/`.bat` payloads anywhere the user could write. `save_webview_as_pdf`
+  likewise rejects directory targets alongside its existing .pdf gate.
+- The update download now hands off to the system browser when the release
+  URL is missing or off the trusted-host allowlist instead of stranding every
+  client on "not a trusted release host". The new `handed_off` phase is shown
+  as such (indigo), recorded in the update history, and comes with a direct
+  link back to the Releases page.
+- Release signing can now be switched on with two repository secrets
+  (WINDOWS_PFX_BASE64 / WINDOWS_PFX_PASSWORD): CI signs the NSIS installer
+  with SHA-256 Authenticode + timestamp, verifies it with `signtool verify`,
+  and re-hashes before upload. The updater carries the verification seam
+  (Authenticode check before the file is kept) behind a deliberate
+  one-line compile-time flip in lib.rs — flipping enforcement before a signed
+  release would brick auto-update, so it ships disabled and is enabled in the
+  first signed release, on purpose.
+
+### Fixed
+- A successful browser hand-off is no longer recorded as a failure; it uses a
+  distinct `handed_off` state in the phase machine, the panel and the
+  history log.
+- Receipt `magic` is asserted on the frontend, not just the Rust side — a
+  receipt missing it is ignored completely (no "installed" recorded, no
+  phase change).
+- Full semver comparison shared by the update check (TS) and the receipt
+  classifier (Rust): four-part cores compare correctly instead of truncating,
+  and a prerelease sorts before its release. Both sides pin the same golden
+  fixtures in their unit tests.
+- After a settled (installed) receipt, the next boot deletes the staged
+  installer, its receipt and stale `.pre-update-*.bak` database backups
+  (keeps the newest) instead of leaving them on disk forever.
+- The Settings → Updates trust row says "Automatic check on launch" — the
+  updater has one check per app session, never hourly.
+- The Rust CI gate now enforces what its cargo-audit ignores claim: a step
+  asserts zvariant/glib/zbus_names stay absent from the Windows dependency
+  graph, failing the build if a future dependency reaches them.
+- The release job name says NSIS (only NSIS is built), and the manifest is
+  re-fetched and verified after publication — version must equal the tag and
+  payload_checksum must equal the signed installer's hash, or the release
+  fails.
+- `version-guard` allow-list entries are keyed by file + literal, not
+  literal alone.
+
+### Added
+- Rust unit tests for the SHA256SUMS.txt parser, the semver parser and the
+  staging-path confinement (`cargo test --lib` covers them in CI).
+
+## [2.31.28] - 2026-11-14
+
+### Fixed
+- The tag-vs-version gate in the desktop CI job was syntactically invalid
+  PowerShell; it aborted every tagged release before the installer could
+  build. Split the tag comparison out of the 'if' condition. v2.31.27
+  carried this failure and never produced an installer; this release is
+  that fix shipped.
+
+## [2.31.27] - 2026-11-14
+
+The security and delivery release: it fixes what an internal audit
+found, makes the printed account statement trustworthy under partial
+printing, and stops installers from failing to reach the machines they
+belong on.
+
+### Security
+- The invoice void control in the invoice drawer was only *visually*
+  disabled — a read-only role could void an invoice and its journal.
+  The button is genuinely `disabled` now and `deleteInvoice` enforces
+  `invoice:void` in the service, with an `rbac.denied` audit row on
+  refusal. Same fix for the void/apply controls on the General Ledger
+  invoice chip.
+- Editing or deleting a credit note, refund or debit adjustment had no
+  permission check at any layer. All three now require the issuing
+  permission, and deleting one requires `payment:edit`.
+- "Apply clinic advance credit" had no permission check. It now
+  requires `advance:deposit`, and the drawer refuses up front with a
+  clear message.
+- Cross-clinic advance figures leaked onto printed statements:
+  `advanceApplications` iterated every invoice while the postings it
+  fed were already clinic-scoped, so a clinic's statement showed
+  another clinic's advance applications. Applications are now scoped
+  the same way; regression test included.
+- The Clinic Payments register is gated on `reports:view`, matching its
+  sibling views.
+- Month-end close/reopen now enforce a new `billing:close` action inside
+  the service itself (previously the modal hid the button; the service
+  wrote anyway). Super Admin only by default.
+- The auto-updater honours `updates:install`: the installer panel,
+  dashboard pill and Settings → Updates tab are hidden or restricted
+  for roles without it.
+- `open_external` (desktop) parsed the allowed host by string-splitting,
+  so `https://github.com:@hostile.example/` passed. It parses with
+  proper URL parsing now.
+- CSV exports escape cells starting with =, +, -, @.
+
+### Fixed
+- The invoice statement footnotes when its invoice line covers only the
+  invoices selected to print; opening/cash/closing still cover the
+  whole period.
+- Module Security states plainly that a module password is a door, not
+  a wall — the same books render elsewhere.
+- The inert "Default Priority for New Cases" control is removed from
+  Application Defaults (it had stopped reading the preference in 2.31.26).
+
+### Changed — performance and scale
+- Clinic Payments mounts 50 rows at a time with the same idiom as the
+  invoice table, and its search now debounces 200 ms. Uncapped table
+  rendering was the one real "thousands of entries" hazard.
+- Adjustments — credit notes, debit adjustments, write-offs — now
+  appear in the register as amber-chipped rows with a memo sign, filter
+  via an "Adjustments" chip, and total separately in the strip.
+- `DataTable`, `PaginationBar` and the tooth thumbnail are memoized;
+  the register's columns/empty state/footer are memoized around them.
+- New scale benchmark (~1,500 invoices, ~3,000 payments): ledger build
+  ~25 ms — logged, not gated.
+- `cargo audit` covers the two new QUIC advisories via
+  quinn-proto 0.11.19 / quinn-udp 0.5.16 (locked updates, fixes not
+  ignores).
+
+### Release infrastructure
+- CI fails the tag run if the tag does not match package.json; the
+  installer is selected by version substring (fails, not first-.exe, on
+  mismatch); tag runs are no longer cancelled mid-release; the version
+  guard now checks package-lock.json (it shipped 2.31.25 with 2.31.26
+  and nothing noticed); the manifest's payload checksum now flows into
+  the Rust verifier — it was silently dropped in the web layer — and
+  stage-receipt failures abort honestly instead of looping.
+
+## [2.31.26] - 2026-11-10
+
+The General Ledger now opens the invoice you were just reading.
+
+### Added
+- General Ledger: every invoice row carries its invoice number as a chip.
+  Clicking it opens the invoice document — correct payments and adjustments,
+  void the invoice, or print its statement — on the same drawer Billing uses.
+  The void and adjustment actions were not permission-gated in this build;
+  that gap was closed in the following release after a security audit found a
+  read-only role could void an invoice and move money.
+
+### Changed
+- Print Invoices and batch print: the statement's "This period's invoices"
+  figure now counts only the invoices selected for printing (the account
+  position otherwise covers the whole period), and the advance-applied
+  figure follows the same selection.
+- New cases now always start at Medium ('normal'), and a new case's delivery
+  date always derives from its (Medium) priority's SLA. The Settings
+  "Default Priority for New Cases" control became inert on 2.31.25 and has
+  now been removed; if the lab-default is wanted back, it returns together
+  with reading the preference.
+
 ## [2.31.25] - 2026-11-10
 
 Security fix: the bundled C SQLite was below the advisory floor. The

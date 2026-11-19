@@ -1109,6 +1109,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         onDeleteAdjustment={(adj) => setAdjustmentToDelete(adj)}
         onVoidInvoice={(inv) => setVoidTarget(inv)}
         canVoid={canPost(user, 'invoice:void')}
+        canEditAdjustments={canPost(user, 'credit:issue') || canPost(user, 'debit:issue') || canPost(user, 'refund:issue')}
+        canDeleteAdjustments={canPost(user, 'payment:edit')}
       />
 
       {printModalInvoice && (

@@ -353,6 +353,13 @@ export function useTransactionCommands(deps: {
     amount: number;
     notes?: string;
   }): boolean => {
+    /* Applying clinic advance credit moves money against an invoice. It rides
+       the same authority as recording an advance deposit; without this check
+       a read-only role could draw a clinic's held advance down. */
+    if (user && !canPost(user, 'advance:deposit')) {
+      denyPermission('advance:deposit', command.invoiceId);
+      return false;
+    }
     if (command.amount <= 0 || isNaN(command.amount)) return false;
     const inv = invoices.find((i) => i.id === command.invoiceId);
     if (!inv) return false;

@@ -101,6 +101,28 @@ describe('DatePickerRange', () => {
     expect(screen.getByRole('dialog', { name: /choose date range/i })).toBeTruthy();
   });
 
+  it('keeps the popup open on mousedown inside the portalled panel (regression)', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /all time/i }));
+
+    const dialog = () => screen.queryByRole('dialog', { name: /choose date range/i });
+    expect(dialog()).toBeTruthy();
+
+    // The outside-click handler listens on mousedown; the panel lives in a
+    // portal, so clicks inside it used to read as "outside" and auto-close.
+    fireEvent.mouseDown(screen.getByRole('button', { name: '15' }));
+    expect(dialog()).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '15' }));
+    expect(screen.getByTestId('range').textContent).toContain('-15..');
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Previous month' }));
+    expect(dialog()).toBeTruthy();
+
+    // Outside the popup entirely — the only place a click should close it.
+    fireEvent.mouseDown(document.body);
+    expect(dialog()).toBeNull();
+  });
+
   it('keeps the calendar on the month being picked after choosing a start date', () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: /all time/i }));

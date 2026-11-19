@@ -73,6 +73,17 @@ export function readStoredTheme(): ThemeMode {
 export function applyTheme(resolved: ResolvedTheme): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
+  /* Premium flip: the app fades rather than pops. The class scopes the extra
+     transitions to this switch so hover states are not borrowed 340 ms of
+     their life; reduced-motion readers get the instant swap as before. */
+  const reduced =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduced) {
+    root.classList.add('ds-theme-anim');
+    window.setTimeout(() => root.classList.remove('ds-theme-anim'), 450);
+  }
   root.classList.toggle('dark', resolved === 'dark');
   root.style.colorScheme = resolved;
   // Must follow the class flip: `syncBrandColor` reads `root.classList` to
@@ -80,7 +91,7 @@ export function applyTheme(resolved: ResolvedTheme): void {
   syncBrandColor();
 
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) meta.content = resolved === 'dark' ? '#0b1220' : '#4f46e5';
+  if (meta) meta.content = resolved === 'dark' ? '#0e0f12' : '#5e6ad2';
 }
 
 /** Cache the preference and paint it. Called on every mode change. */

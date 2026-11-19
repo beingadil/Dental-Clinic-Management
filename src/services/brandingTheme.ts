@@ -71,8 +71,8 @@ export const BRAND_SWATCHES: readonly BrandSwatch[] = [
     id: 'indigo',
     name: 'Indigo',
     note: 'Product default — neutral, clinical.',
-    hex: '#4f46e5',
-    tokens: { '50': '#eef2ff', '100': '#e0e7ff', '200': '#c7d2fe', '600': '#4f46e5', '700': '#4338ca' },
+    hex: '#5e6ad2',
+    tokens: { '50': '#edeefe', '100': '#d8dbfb', '200': '#b9beee', '600': '#5e6ad2', '700': '#4950ad' },
     dark: { '50': '#202349', '100': '#2a2e5f', '200': '#303567' },
   },
   {
