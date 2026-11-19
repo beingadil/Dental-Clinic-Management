@@ -92,7 +92,7 @@ const extractClinicHint = (text: string): string => {
 };
 
 const isPayment = (t: string): boolean =>
-  /^(record|add|post)\s+(a\s+)?(payment|receipt|collection)\b/i.test(t.trim())
+  /^(record|add|post|take|receive|collect|accept)\s+(a\s+)?(payment|receipt|collection)\b/i.test(t.trim())
   || /^receive\s+(a\s+)?payment\b/i.test(t.trim());
 
 const isCreateClinic = (t: string): boolean =>

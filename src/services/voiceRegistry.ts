@@ -434,7 +434,7 @@ const tools: VoiceTool[] = [
   },
   {
     id: 'recordPayment', description: 'Record a payment (PKR amount, clinic)', risk: 'write',
-    match: /^(record|add|post)\s+(a\s+)?(payment|receipt|collection)\b/i,
+    match: /^(record|add|post|take|receive|collect|accept)\s+(a\s+)?(payment|receipt|collection)\b/i,
     run: (_ctx, q) => {
       const cmd = parseWriteCommand(q);
       if (!cmd || cmd.kind !== 'payment') return null;
@@ -466,12 +466,21 @@ const tools: VoiceTool[] = [
     },
   },
   {
-    id: 'setCaseStatus', description: 'Move a case to another workflow stage (ready/delivered/QC/…)', risk: 'write',
-    match: /^(mark|move|set|advance|change|cancel)\s+(the\s+)?case\s*(DS-\d+)?\s*(to|as)?\s*(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)\b|^cancel\s+(the\s+)?case\s*(DS-\d+)\b/i,
+    id: 'cancelCase', description: 'Cancel a case', risk: 'write',
+    match: /^cancel\s+(the\s+)?(case\s*)?(DS-\d+)\b/i,
     run: (_ctx, q) => {
-      const cancelOnly = q.match(/^cancel\s+(the\s+)?case\s*(DS-\d+)\b/i);
+      const m = q.match(/(DS-\d+)/i);
+      if (!m) return { kind: 'read', text: 'Say which case — e.g. “Cancel case DS-0393”.' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: m[1].toUpperCase(), caseNumber: m[1].toUpperCase(), targetStatus: 'cancelled', method: 'bank' }, summary: `Confirm: Cancel case ${m[1].toUpperCase()}` };
+    },
+  },
+  {
+    id: 'setCaseStatus', description: 'Move a case to another workflow stage (ready/delivered/QC/…)', risk: 'write',
+    match: /^(mark|move|set|advance|change|cancel|put|route|send|place|shift)\s+(the\s+)?(case\s*)?(DS-\d+)\s*(to|as|on|into)?\s*(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)\b.*$/i,
+    run: (_ctx, q) => {
+      const cancelOnly = q.match(/^cancel\s+(the\s+)?(case\s*)?(DS-\d+)\b/i);
       if (cancelOnly) {
-        const caseNumber = cancelOnly[2].toUpperCase();
+        const caseNumber = cancelOnly[3].toUpperCase();
         return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: 'cancelled', method: 'bank' }, summary: `Confirm: Cancel case ${caseNumber}` };
       }
       const m = q.match(/DS-\d+/i);
