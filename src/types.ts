@@ -162,6 +162,11 @@ export interface DentalCase {
   material?: string;
   /** Bench this case is routed to. See utils/labDepartments for the list. */
   department?: string | null;
+  /** Tray stages per arch for a Clear Aligners case (migration 031).
+      NULL on both for every other product; entered after the series is
+      produced, billed per stage. */
+  aligner_upper_count?: number | null;
+  aligner_lower_count?: number | null;
   delivery_date: string;
   /** Day the lab received the job. Optional; slips print this instead of the delivery date. */
   received_date?: string | null;

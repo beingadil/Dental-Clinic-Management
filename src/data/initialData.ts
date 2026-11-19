@@ -78,6 +78,18 @@ export const INITIAL_CASE_TYPES: CaseType[] = [
     created_at: '2026-01-01',
   },
   {
+    id: 'ct-aligners', name: 'Clear Aligners (per stage)', base_price: 500, category: 'orthodontic',
+    lead_time_days: 2, warranty_months: 0,
+    unit_basis: 'per tray stage (billed per stage, e.g. 20 upper + 20 lower trays)',
+    description: 'Vacuum-formed clear aligner series, billed per tray stage produced',
+    material_system: 'Clear thermoforming resin (PETG / uRomance-type), pressure-formed over printed stage models',
+    shade_guide: 'N/A — translucent appliance',
+    indications: 'Full treatment series delivered at once (standard 10–20 stages, express 5–10, full 20–40+).',
+    contraindications: 'Cases without a digital setup approved by the prescribing dentist; severe skeletal discrepancy (surgical case).',
+    needs_teeth: false,
+    created_at: '2026-01-01',
+  },
+  {
     id: 'ct-7', name: 'Zirconia Bridge (3-Unit)', base_price: 42000, category: 'crown_bridge',
     lead_time_days: 6, warranty_months: 60,
     description: '3-unit posterior multi-layered zirconia bridge',

@@ -123,6 +123,21 @@ export const JobSlipCard: React.FC<JobSlipCardProps> = ({ caseData: c, labName, 
         )}
       </div>
 
+      {/* Aligner series — compact stage ranges for the tray pile. Always
+          printed when present; aligner cases carry no teeth, so the tray
+          list IS the work order. */}
+      {(!!c.aligner_upper_count || !!c.aligner_lower_count) && (
+        <div className="js-aligner">
+          <span className="js-aligner-k">ALIGNER</span>
+          {!!c.aligner_upper_count && (
+            <span className="js-aligner-v">UPPER U1&ndash;U{c.aligner_upper_count}</span>
+          )}
+          {!!c.aligner_lower_count && (
+            <span className="js-aligner-v">LOWER L1&ndash;L{c.aligner_lower_count}</span>
+          )}
+        </div>
+      )}
+
       {/* Received-date band — second-most-visible line */}
       <div className="js-due">
         <span className="js-due-k">RECEIVED</span>
