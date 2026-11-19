@@ -115,7 +115,7 @@ export const VoiceShell: React.FC = () => {
     const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}`
       : cmd.kind === 'createCase' ? `create case for ${cmd.patientName || 'patient'} — ${cmd.caseTypeName} at ${cmd.clinicHint}`
       : cmd.kind === 'applyAdvance' ? `apply advance to ${cmd.invoiceNumber}`
-      : cmd.kind === 'markPaid' ? `mark ${cmd.invoiceNumber} paid`
+      : cmd.kind === 'markPaid' ? `mark ${(cmd.invoiceNumbers || []).join(', ')} paid`
       : 'advance deposit';
     setAnswer(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
     speak(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
@@ -511,13 +511,14 @@ export const VoiceShell: React.FC = () => {
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not apply the advance.'); }
       return;
     }
-    if (pending.kind === 'markPaid' && pending.invoiceNumber) {
+    if (pending.kind === 'markPaid' && pending.invoiceNumbers?.length) {
       if (user && !canPost(user, 'payment:bulk')) { setStatus('error'); setAnswer('Requires the “bulk settle” permission.'); return; }
-      const inv = (invoices || []).find((i) => i.invoice_number.toUpperCase() === pending.invoiceNumber!.toUpperCase());
-      if (!inv) { setStatus('error'); setAnswer(`No invoice ${pending.invoiceNumber} found.`); return; }
+      const nums = new Set(pending.invoiceNumbers.map((n) => n.toUpperCase()));
+      const ids = (invoices || []).filter((i) => nums.has(i.invoice_number.toUpperCase())).map((i) => i.id);
+      if (!ids.length) { setStatus('error'); setAnswer('No matching invoices remained.'); return; }
       try {
-        bulkMarkPaid([inv.id]);
-        setAnswer(`${inv.invoice_number} marked paid — payments journalled for PKR ${pending.amount.toLocaleString()}.`);
+        bulkMarkPaid(ids);
+        setAnswer(`${ids.length} invoice${ids.length > 1 ? 's' : ''} marked paid — payments journalled for PKR ${pending.amount.toLocaleString()}.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not mark paid.'); }
       return;

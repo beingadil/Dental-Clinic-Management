@@ -58,6 +58,8 @@ export interface WriteCommand {
   /** Guided case creation */
   patientName?: string;
   deliveryDate?: string;
+  /** One or more invoice numbers for bulk settlement. */
+  invoiceNumbers?: string[];
 }
 
 const AMOUNT = /(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]{0,12})/i;

@@ -215,14 +215,20 @@ const tools: VoiceTool[] = [
     },
   },
   {
-    id: 'markInvoicePaid', description: 'Mark an invoice as paid in full', risk: 'write',
-    match: /^(mark|settle|clear)\s+(invoice\s+)?(INV-\d+)\s+(as\s+)?paid\b/i,
+    id: 'markInvoicePaid', description: 'Mark one or more invoices as paid in full', risk: 'write',
+    match: /^(mark|settle|clear)\s+(invoices?\s+)?(INV-\d+(?:\s*(?:,|and)\s*)*INV-\d+)?\s*(as\s+)?paid\b/i,
     run: (ctx, q) => {
-      const num = q.match(/INV-\d+/i)?.[0]?.toUpperCase();
-      const inv = (ctx.invoices || []).find((i) => i.invoice_number.toUpperCase() === num);
-      if (!inv) return { kind: 'read', text: `No invoice ${num} found.` };
-      const due = invoiceBalanceDue(inv);
-      return { kind: 'action', risk: 'write', pending: { kind: 'markPaid', amount: due, clinicHint: inv.lab_name, invoiceNumber: inv.invoice_number, method: 'bank' }, summary: `Mark ${inv.invoice_number} paid — PKR ${due.toLocaleString()} PKR outstanding` };
+      const found = (q.match(/INV-\d+/gi) || []).map((n) => n.toUpperCase());
+      const unique = Array.from(new Set(found));
+      if (!unique.length) return { kind: 'read', text: 'Say e.g. “Mark INV-0042 paid” or “Mark INV-0042, INV-0043 paid”.' };
+      const invoices = ctx.invoices || [];
+      const missing = unique.filter((n) => !invoices.find((i) => i.invoice_number.toUpperCase() === n));
+      if (missing.length) return { kind: 'read', text: `No invoice ${missing.join(', ')} found.` };
+      const total = unique.reduce((sum, n) => {
+        const inv = invoices.find((i) => i.invoice_number.toUpperCase() === n)!;
+        return sum + invoiceBalanceDue(inv);
+      }, 0);
+      return { kind: 'action', risk: 'write', pending: { kind: 'markPaid', amount: total, clinicHint: invoices[0].lab_name, invoiceNumbers: unique, method: 'bank' }, summary: `Mark ${unique.join(', ')} paid — PKR ${total.toLocaleString()} outstanding` };
     },
   },
   {
@@ -547,7 +553,7 @@ const tools: VoiceTool[] = [
         '• Export: “Export invoices”, “Export transactions”',
         '• Clinics: add contacts, addresses, pricing overrides',
         '• Settings/print: “Invoice sections only brand, lineItems, totals”, “Print settings A4”, “Set notifications 1 day before”',
-        '• Billing: “Record payment of PKR 5,000 for Mir Dental”, “Apply advance PKR 25,000 to INV-0042”, “Mark INV-0042 paid”',
+        '• Billing: “Record payment of PKR 5,000 for Mir Dental”, “Apply advance PKR 25,000 to INV-0042”, “Mark INV-0042 paid”, “Mark INV-0042, INV-0043 paid”',
         '• Write (amber confirmation): “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',
