@@ -1,3 +1,28 @@
+## [2.31.34] - 2026-11-20
+
+### Added
+- **Clear Aligners as a catalog job type** — every install now has a
+  "Clear Aligners (per stage)" line in the price list (rate: 500 PKR per
+  stage; editable like any product). This is for aligner deliveries entered
+  into the app after the series is made: the lab records the arch series and
+  it all flows through the existing case, slip and invoice machinery.
+
+### Changed
+- **The case-entry layout is clinic-first**: Dental Clinic sits in the first
+  slot, Doctor Name below it, then the procedure. Selecting a clinic
+  automatically writes that clinic's named doctor into the doctor field when
+  it is empty or still holds the previous auto-fill — repeated typing of the
+  same referent per case is gone. Manual edits are never overwritten, and the
+  preselected-clinic doctor prefills on mount.
+- **Aligner series panel**: for the Clear Aligners product, the Arch stage
+  panel (Upper/Lower counts, live `stages × rate` math, slot validation) now
+  sits on the Teeth step where the FDI chart would go. Choosing the
+  aligner type also seeds a +30-day delivery date (an aligner cycle runs
+  scan → print → trim → collect, well past the 10-day SLA).
+- **Job slip** prints `ALIGNER  UPPER U1–U20  LOWER L1–L15`-style ranges on
+  the slips for aligner cases; price math (`stages × catalog rate`) feeds the
+  existing invoices and reprice machinery unchanged.
+
 ## [2.31.33] - 2026-11-18
 
 ### Fixed
