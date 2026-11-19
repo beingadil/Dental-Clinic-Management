@@ -6,7 +6,7 @@ import { useApp } from '../../context/AppContext';
 import { moduleForView, isViewProtected, isModuleUnlocked } from '../../services/moduleSecurity';
 import { speak, cancelSpeech } from '../../services/voiceUtterance';
 import { askAssistant } from '../../services/voiceAssistant';
-import { canPost } from '../../services/permissions';
+import { can, canPost } from '../../services/permissions';
 import { savePrintSettings, saveDocumentSections, setStatementBankExcluded, setInvoiceSummaryExcluded } from '../../services/printSettings';
 import { saveNotificationConfig, announceNotificationConfigChanged } from '../../services/notificationSettings';
 import { closeMonth } from '../../services/monthClose';
@@ -300,6 +300,12 @@ export const VoiceShell: React.FC = () => {
     return { candidates: ranked.map((r) => r.lab.name).slice(0, 4) };
   };
 
+  /** Voice-layer permission re-check before any confirm executes. */
+  const deny = (action: string) => {
+    if (!user) return 'Sign in required.';
+    return can(user, action) ? null : `Requires the “${action}” permission.`;
+  };
+
   const cancelPending = () => { setPending(null); setPendingNote(''); setStatus('idle'); setAnswer(''); cancelSpeech(); };
 
   const confirmPending = () => {
@@ -329,6 +335,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'setCaseStatus' && pending.caseNumber && pending.targetStatus) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
       if (!target) {
         setStatus('error');
@@ -348,6 +356,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'updateClinicDoctor' && pending.doctorName) {
+      const blocked = deny('clinic:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const ranked = rankCandidates(labs || [], pending.clinicHint);
       const exact = (labs || []).find((l) => l.name.toLowerCase() === pending.clinicHint.toLowerCase());
       const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
@@ -369,6 +379,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'addCaseNote' && pending.caseNumber && pending.noteText) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
       if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
       try {
@@ -380,6 +392,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'recordQc' && pending.caseNumber && pending.qcResult) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
       if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
       try {
@@ -398,6 +412,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'archiveCase' && pending.caseNumber) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
       if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
       if (target.status !== 'delivered') { setStatus('error'); setAnswer(`Case ${pending.caseNumber} is "${target.status}" — archive works on delivered cases only.`); setPending(null); setPendingNote(''); return; }
@@ -410,6 +426,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'updateClinicField' && pending.field && pending.value) {
+      const blocked = deny('clinic:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const ranked = rankCandidates(labs || [], pending.clinicHint);
       const norm = (s: string) => (s || '').toLowerCase();
       const exact = (labs || []).find((l) => norm(l.name) === norm(pending.clinicHint!));
@@ -431,6 +449,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'createCase' && pending.patientName && pending.clinicHint && pending.caseTypeName) {
+      const blocked = deny('case:create');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const exact = (labs || []).find((l) => l.name.toLowerCase() === pending.clinicHint!.toLowerCase());
       const ranked = rankCandidates(labs || [], pending.clinicHint!);
       const clinic = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
@@ -451,6 +471,9 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'addClinicContact' || pending.kind === 'addClinicAddress' || pending.kind === 'addPricingOverride') {
+      const action = pending.kind === 'addPricingOverride' ? 'pricing:edit' : 'contacts:edit';
+      const blocked = deny(action);
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const exact = (labs || []).find((l) => (l.name || '').toLowerCase() === (pending.clinicHint || '').toLowerCase());
       const ranked = rankCandidates(labs || [], pending.clinicHint || '');
       const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
@@ -471,6 +494,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'printSettingsSave') {
+      const blocked = deny('print:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       try {
         savePrintSettings(pending.printSettings as never);
         setAnswer('Print settings saved.');
@@ -480,6 +505,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'printSectionsSave' && pending.docKind && pending.sections) {
+      const blocked = deny('print:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       try {
         saveDocumentSections(pending.docKind, pending.sections);
         if (pending.docKind === 'statement') setStatementBankExcluded(!pending.sections.includes('bank'));
@@ -491,6 +518,8 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (pending.kind === 'notificationConfigSave') {
+      const blocked = deny('notifications:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       try {
         saveNotificationConfig(pending.notification as never);
         announceNotificationConfigChanged();

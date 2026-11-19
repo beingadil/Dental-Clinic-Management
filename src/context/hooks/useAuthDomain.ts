@@ -684,6 +684,10 @@ export function useAuthDomain(deps: {
         for (const table of WIPE_EXPLICIT_TABLES) {
           try { db.run(`DELETE FROM ${table}`); } catch { /* table absent in this profile */ }
         }
+        /* A factory reset means a clean slate: audit history is wiped too.
+           (The voice/database merge keeps direct log rows across routine syncs;
+           a reset is the one deliberate exception.) */
+        try { auditRepo.clear(); } catch { /* no such table in this profile */ }
       });
     }
 

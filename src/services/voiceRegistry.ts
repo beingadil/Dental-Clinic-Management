@@ -90,14 +90,15 @@ const needClinic = (ctx: VoiceToolContext, q: string): ClinicNeed => {
   return { clinic: hit };
 };
 
+import { REPORTS_ENTRY_ID, REPORTS_TABS } from '../components/common/financeTabs';
 const NAV: Record<string, string> = {
   dashboard: 'dashboard', home: 'dashboard', overview: 'dashboard',
   case: 'cases', cases: 'cases', workstation: 'cases', 'dental workstation': 'cases', records: 'cases',
   labs: 'labs', lab: 'labs', clinics: 'labs', clinic: 'labs', 'dental clinics': 'labs',
   billing: 'billing', payments: 'billing', finance: 'billing', 'payment receive': 'billing',
-  ledger: 'general_ledger', 'general ledger': 'general_ledger', books: 'general_ledger',
-  statement: 'statements', statements: 'statements', monthly: 'statements', 'monthly statement': 'statements', vouchers: 'statements',
-  insights: 'insights', insight: 'insights', analytics: 'insights', reports: 'analytics',
+  ledger: REPORTS_TABS[0].id, 'general ledger': REPORTS_TABS[0].id, books: REPORTS_TABS[0].id,
+  statement: REPORTS_TABS[1].id, statements: REPORTS_TABS[1].id, monthly: REPORTS_TABS[1].id, 'monthly statement': REPORTS_TABS[1].id, vouchers: REPORTS_TABS[1].id,
+  insights: REPORTS_TABS[2].id, insight: REPORTS_TABS[2].id, analytics: REPORTS_TABS[2].id, reports: REPORTS_ENTRY_ID,
   catalog: 'catalog', catalogue: 'catalog', pricing: 'catalog', price: 'catalog',
   notifications: 'notifications', alerts: 'notifications', inbox: 'notifications',
   settings: 'settings', preferences: 'settings',

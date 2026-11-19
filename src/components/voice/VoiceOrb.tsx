@@ -38,7 +38,7 @@ export const VoiceOrb: React.FC<{ state: VoiceOrbState; locked?: boolean; onClic
         </>
       )}
 
-      <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white" style={{ animation: 'voice-breathe 3s ease-in-out infinite' }}>
+      <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-900/80 text-white" style={{ animation: 'voice-breathe 3s ease-in-out infinite' }}>
         {locked ? <Lock className="h-4 w-4" /> : <Mic className="h-5 w-5" />}
       </span>
       {state === 'thinking' && !locked && (

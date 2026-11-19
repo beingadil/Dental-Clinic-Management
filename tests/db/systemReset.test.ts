@@ -239,6 +239,9 @@ describe('system reset on a populated database', () => {
       for (const table of WIPE_EXPLICIT_TABLES) {
         try { tx.run(`DELETE FROM ${table}`); } catch { /* absent in this profile */ }
       }
+      /* A factory reset is the one deliberate exception to the merge: audit
+         history is wiped with everything else so the books start clean. */
+      try { tx.run('DELETE FROM audit_events'); } catch { /* absent in this profile */ }
     });
     syncNow(emptyCollections());
 
