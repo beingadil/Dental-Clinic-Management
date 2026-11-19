@@ -412,7 +412,7 @@ const tools: VoiceTool[] = [
   },
   {
     id: 'advanceWallet', description: 'Advance wallet for a clinic', risk: 'read',
-    match: /advance|wallet/,
+    match: /advance\s*(wallet|credit)|credits?\s*applied\s*to\s*us/i,
     run: (ctx, q) => {
       const need = needClinic(ctx, q);
       if (need.error !== undefined) return { kind: 'read', text: need.error };
@@ -467,8 +467,13 @@ const tools: VoiceTool[] = [
   },
   {
     id: 'setCaseStatus', description: 'Move a case to another workflow stage (ready/delivered/QC/…)', risk: 'write',
-    match: /^(mark|move|set|advance|change)\s+(the\s+)?case\s*(DS-\d+)?\s*(to|as)?\s*(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)\b/i,
+    match: /^(mark|move|set|advance|change|cancel)\s+(the\s+)?case\s*(DS-\d+)?\s*(to|as)?\s*(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)\b|^cancel\s+(the\s+)?case\s*(DS-\d+)\b/i,
     run: (_ctx, q) => {
+      const cancelOnly = q.match(/^cancel\s+(the\s+)?case\s*(DS-\d+)\b/i);
+      if (cancelOnly) {
+        const caseNumber = cancelOnly[2].toUpperCase();
+        return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: 'cancelled', method: 'bank' }, summary: `Confirm: Cancel case ${caseNumber}` };
+      }
       const m = q.match(/DS-\d+/i);
       const statusWord = q.match(/(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)/i)?.[1]?.toLowerCase();
       const map: Record<string, string> = {
@@ -479,7 +484,7 @@ const tools: VoiceTool[] = [
       const target = map[statusWord || ''];
       if (!m || !target) return { kind: 'read', text: 'Say which case and which stage, e.g. “Mark case DS-0393 ready”.' };
       const caseNumber = m[0].toUpperCase();
-      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: target, method: 'bank' }, summary: `Move case ${caseNumber} to “${target}”` };
+      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: target, method: 'bank' }, summary: `Confirm: Move case ${caseNumber} to “${target}”` };
     },
   },
   {

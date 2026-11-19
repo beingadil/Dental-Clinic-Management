@@ -11,6 +11,7 @@
     "rag:build": "node scripts/build-rag-index.mjs",
     "rag:verify": "node scripts/build-rag-index.mjs --check",
     "test": "node scripts/verify-binaries.mjs && vitest run",
+    "test:live": "node scripts/verify-binaries.mjs && vitest run tests/voice/live.groq.test.ts",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
