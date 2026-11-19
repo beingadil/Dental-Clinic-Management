@@ -11,6 +11,8 @@ use tauri_plugin_opener::OpenerExt;
 #[cfg(windows)]
 pub mod pdf_save;
 pub mod file_export;
+mod app_patch;
+pub use app_patch::apply_app_patch;
 #[cfg(windows)]
 use winreg::enums::HKEY_CURRENT_USER;
 #[cfg(windows)]
@@ -386,13 +388,19 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-const TRUSTED_UPDATE_HOSTS: [&str; 3] = [
+/// Raw-githubhost names. Every entry here can be used to download — you'd
+/// review any new host carefully.
+const TRUSTED_UPDATE_HOSTS: [&str; 4] = [
     "github.com",
     "objects.githubusercontent.com",
     "release-assets.githubusercontent.com",
+    // gh-pages via the raw host is how `update-patch.json` and other metadata
+    // live; the individual gh-pages branch cannot be fetched from here (Tauri
+    // has no Pages URL knowledge), so the raw mirror is the canonical route.
+    "raw.githubusercontent.com",
 ];
 
-fn is_trusted_download_url(raw: &str) -> bool {
+pub(crate) fn is_trusted_download_url(raw: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(raw) else { return false };
     if url.scheme() != "https" {
         return false;
@@ -403,7 +411,8 @@ fn is_trusted_download_url(raw: &str) -> bool {
     }
 }
 
-async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
+/// Fetch raw text — shared with app_patch (hot patches).
+pub(crate) async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
     let res = client
         .get(url)
         .send()
@@ -770,6 +779,38 @@ fn installed_relaunch_target(current_exe: &std::path::Path) -> PathBuf {
 #[cfg(not(windows))]
 fn installed_relaunch_target(current_exe: &std::path::Path) -> PathBuf {
     current_exe.to_path_buf()
+}
+
+/// App directory of the running install — the dir whose `dist/` is served to
+/// the webview. Source of truth is the NSIS InstallLocation (the authoritative
+/// dir the uninstaller knows); fallback is the running exe's dir (portable and
+/// dev builds).
+pub(crate) fn app_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    #[cfg(windows)]
+    {
+        let reg = RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Dental Solutions")
+            .ok()
+            .and_then(|k| k.get_value::<String, _>("InstallLocation").ok())
+            .map(PathBuf::from)
+            .filter(|dir| dir.is_dir());
+        if let Some(dir) = reg {
+            return Ok(dir);
+        }
+    }
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("cannot resolve app directory: {e}"))?;
+    Ok(exe
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| "cannot resolve app directory".to_string())?)
+}
+
+/// sha256 hex digest of `bytes` — used by hot-patch verification and tests.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
 }
 
 /// Absolute path to Windows PowerShell, or `None` if it is not installed.
@@ -1309,6 +1350,7 @@ pub fn run() {
             update_discard,
             update_cleanup_settled,
             update_diagnostics,
+            apply_app_patch,
             pdf_save::save_webview_as_pdf,
             file_export::save_file_bytes
         ])
