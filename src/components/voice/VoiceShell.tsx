@@ -70,7 +70,7 @@ export const VoiceShell: React.FC = () => {
   const [pendingNote, setPendingNote] = useState('');
   type SlotMode =
     | { kind: 'createClinic'; step: 'name' | 'doctor' | 'phone'; name?: string; doctor?: string; phone?: string }
-    | { kind: 'createCase'; step: 'patient' | 'clinic' | 'caseType' | 'price' | 'delivery' | 'doctor'; patient?: string; clinic?: string; caseType?: string; doctor?: string; price?: number; delivery?: string };
+    | { kind: 'createCase'; step: 'patient' | 'clinic' | 'caseType' | 'teeth' | 'price' | 'priority' | 'shade' | 'delivery' | 'doctor'; patient?: string; clinic?: string; caseType?: string; teeth?: number[]; doctor?: string; price?: number; priority?: string; shade?: string; delivery?: string };
   const [slotMode, setSlotMode] = useState<SlotMode | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -101,6 +101,11 @@ export const VoiceShell: React.FC = () => {
       speak(`Confirm: create clinic ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
       return;
     }
+    if (cmd.kind === 'createCase') {
+      setAnswer(`${destructiveBanner}Confirm: create case for ${cmd.patientName ?? 'patient'} — ${cmd.caseTypeName ?? 'case'} at ${cmd.clinicHint} — PKR ${cmd.amount.toLocaleString()}?`);
+      speak(`Confirm: create case for ${cmd.patientName ?? 'patient'} at ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
+      return;
+    }
     if (cmd.amount === 0) {
       const label = cmd.kind === 'printSettingsSave' ? 'apply the print settings'
         : cmd.kind === 'printSectionsSave' ? `set ${cmd.docKind} print sections`
@@ -113,7 +118,6 @@ export const VoiceShell: React.FC = () => {
     }
     const amount = `PKR ${cmd.amount.toLocaleString()}`;
     const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}`
-      : cmd.kind === 'createCase' ? `create case for ${cmd.patientName || 'patient'} — ${cmd.caseTypeName} at ${cmd.clinicHint}`
       : cmd.kind === 'applyAdvance' ? `apply advance to ${cmd.invoiceNumber}`
       : cmd.kind === 'markPaid' ? `mark ${(cmd.invoiceNumbers || []).join(', ')} paid`
       : 'advance deposit';
@@ -146,11 +150,15 @@ export const VoiceShell: React.FC = () => {
           return;
         }
         const phone = skip ? undefined : val;
-        const detail = { name: slotMode.name!, doctor: slotMode.doctor, phone };
         setCurrentView('labs');
-        try {
-          window.dispatchEvent(new CustomEvent('voice:create-clinic', { detail }));
-        } catch { /* prefill is best effort; the operator can always type it */ }
+        // LabListView mounts AFTER the view flips; if we fire the prefill
+        // event synchronously it lands before the listener exists and is lost.
+        const detail = { name: slotMode.name!, doctor: slotMode.doctor, phone };
+        window.setTimeout(() => {
+          try {
+            window.dispatchEvent(new CustomEvent('voice:create-clinic', { detail }));
+          } catch { /* prefill is best effort */ }
+        }, 350);
         setSlotMode(null);
         setAnswer(`Opening Labs → New Clinic pre-filled with “${detail.name}”${detail.doctor ? `, doctor ${detail.doctor}` : ''}. Review the form and press “Add clinic” to finish.`);
         speak('Opening the new clinic form with your details — review and press add clinic.', {
@@ -191,14 +199,54 @@ export const VoiceShell: React.FC = () => {
           setAnswer(`Which case type — ${partial.slice(0, 5).map((c) => c.name).join(', ')}?`);
           return;
         }
-        setSlotMode({ ...slotMode, caseType: chosen.name, step: 'price' });
-        setAnswer(`Got ${chosen.name}. Price, PKR?`);
+        const needsTeeth = chosen.needs_teeth !== false;
+        setSlotMode({ ...slotMode, caseType: chosen.name, step: needsTeeth ? 'teeth' : 'price' });
+        setAnswer(needsTeeth
+          ? `Got ${chosen.name} — which teeth? Say FDI numbers (e.g. “26 27”). Say “skip” if this case has no teeth.`
+          : `Got ${chosen.name}. Price, PKR?`);
+        return;
+      }
+      if (slotMode.step === 'teeth') {
+        if (skip) {
+          setSlotMode({ ...slotMode, teeth: [], step: 'price' });
+          setAnswer('No teeth — price PKR?');
+          return;
+        }
+        const fdi = /\b(1[1-8]|2[1-8]|3[1-8]|4[1-8])\b/g;
+        const found: number[] = Array.from(new Set((val.match(fdi) || []).map(Number)));
+        if (!found.length) {
+          setAnswer('Say FDI numbers (e.g. “26 27”), or “skip” for no teeth.');
+          return;
+        }
+        const ct = (caseTypes || []).find((c) => c.name.toLowerCase() === (slotMode.caseType || '').toLowerCase());
+        const unit = ct?.base_price ?? 0;
+        const proposed = unit * found.length;
+        setSlotMode({ ...slotMode, teeth: found, price: proposed, step: 'price' });
+        setAnswer(`${found.length} tooth${found.length === 1 ? '' : ' teeth'} × PKR ${unit.toLocaleString()} = PKR ${proposed.toLocaleString()}. Say a number to override, or “skip” to accept.`);
         return;
       }
       if (slotMode.step === 'price') {
         const n = Number(val.replace(/[^\d.]/g, ''));
-        if (!Number.isFinite(n) || n <= 0) { setAnswer('Give a positive amount, e.g. “8500”.'); return; }
-        setSlotMode({ ...slotMode, price: n, step: 'delivery' });
+        const nValid = Number.isFinite(n) && n > 0;
+        if (slotMode.price !== undefined) {
+          setSlotMode({ ...slotMode, price: skip ? slotMode.price : (nValid ? n : slotMode.price), step: 'priority' });
+          setAnswer('Priority? Say “low”, “normal”, “high” or “urgent” (default normal), or “skip”.');
+          return;
+        }
+        if (!nValid) { setAnswer('Give a positive amount, e.g. “8500”.'); return; }
+        setSlotMode({ ...slotMode, price: n, step: 'priority' });
+        setAnswer('Priority? Say “low”, “normal”, “high” or “urgent” (default normal), or “skip”.');
+        return;
+      }
+      if (slotMode.step === 'priority') {
+        const map: Record<string, string> = { low: 'low', normal: 'normal', high: 'high', urgent: 'urgent', rush: 'urgent', critical: 'urgent' };
+        const chosen = skip ? 'normal' : (map[val.toLowerCase()] || 'normal');
+        setSlotMode({ ...slotMode, priority: chosen, step: 'shade' });
+        setAnswer(`Priority ${chosen}. Shade? (e.g. “A2”) Say “skip”.`);
+        return;
+      }
+      if (slotMode.step === 'shade') {
+        setSlotMode({ ...slotMode, shade: skip ? undefined : val.toUpperCase(), step: 'delivery' });
         setAnswer('Delivery date? (YYYY-MM-DD, or “tomorrow”)');
         return;
       }
@@ -227,6 +275,7 @@ export const VoiceShell: React.FC = () => {
           kind: 'createCase', amount: slotMode.price!, clinicHint: slotMode.clinic!,
           caseTypeId: ct?.id, caseTypeName: slotMode.caseType, doctorName: doctor,
           patientName: slotMode.patient, deliveryDate: slotMode.delivery, method: 'bank',
+          teeth: slotMode.teeth, priority: slotMode.priority, shade: slotMode.shade,
         },
         'voice:createCase',
         'write',
@@ -465,8 +514,9 @@ export const VoiceShell: React.FC = () => {
           lab_id: clinic.id, lab_name: clinic.name,
           case_type_id: ct.id, case_type_name: ct.name,
           doctor_name: pending.doctorName || 'Voice',
-          selected_teeth: [], delivery_date: pending.deliveryDate!,
-          priority: 'normal', price: pending.amount, discount: 0, final_price: pending.amount,
+          selected_teeth: pending.teeth ?? [], shade: pending.shade,
+          delivery_date: pending.deliveryDate!,
+          priority: (pending.priority as never) ?? 'normal', price: pending.amount, discount: 0, final_price: pending.amount,
           status: 'received', patient_name: pending.patientName,
         } as never);
         setAnswer(`Case created for ${pending.patientName} at ${clinic.name} — ${ct.name}, PKR ${pending.amount.toLocaleString()}. Case number: ${created.case_number}.`);
@@ -692,11 +742,17 @@ export const VoiceShell: React.FC = () => {
   useEffect(() => {
     if (!voiceEnabled) { setOnline(true); return; }
     let alive = true;
-    const check = async () => { const ok = await probeGroq(); if (alive) setOnline(ok); };
+    // Probe once on mount; if offline, retry every 5s until we come back.
+    let isOnline = true;
+    const check = async () => {
+      const ok = await probeGroq();
+      isOnline = ok;
+      if (alive) setOnline(ok);
+    };
     void check();
-    const timer = window.setInterval(check, 15000);
-    const onOnline = () => { void check(); };
-    const onOffline = () => { setOnline(false); cancelSpeech(); setOpen(false); };
+    const timer = window.setInterval(() => { if (!isOnline) void check(); }, 5000);
+    const onOnline = () => { isOnline = true; void check(); };
+    const onOffline = () => { isOnline = false; setOnline(false); cancelSpeech(); setOpen(false); };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     return () => {

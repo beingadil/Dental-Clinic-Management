@@ -58,6 +58,12 @@ export interface WriteCommand {
   /** Guided case creation */
   patientName?: string;
   deliveryDate?: string;
+  /** Guided case creation — charted teeth (FDI). */
+  teeth?: number[];
+  /** Guided case creation — priority level. */
+  priority?: string;
+  /** Guided case creation — VITA shade. */
+  shade?: string;
   /** One or more invoice numbers for bulk settlement. */
   invoiceNumbers?: string[];
 }
