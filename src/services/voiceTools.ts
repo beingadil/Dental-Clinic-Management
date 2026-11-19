@@ -147,6 +147,15 @@ export const searchInvoicesInContext = (ctx: VoiceContext, q: string) => {
   return `Found ${hits.length} invoice${hits.length === 1 ? '' : 's'}: ${hits.slice(0, 5).map((i) => `${i.invoice_number}${ctx.allowClinicalDetail && i.patient_name ? ` (${i.patient_name})` : ''}`).join(', ')}`;
 };
 
+/** One-line summary of the open workstation cases (max 8), or 'No open cases.' */
+export const openCasesSummary = (ctx: VoiceContext) => {
+  const open = (ctx.cases || [])
+    .filter((c) => c.status !== 'delivered' && c.status !== 'cancelled' && !c.archived_at)
+    .slice(0, 8);
+  if (!open.length) return 'No open cases.';
+  return open.map((c) => `${c.case_number} — ${c.patient_name || 'Patient'} · ${c.case_type_name || 'Case'} — ${c.status}`).join('; ');
+};
+
 export const getTodayBriefing = (ctx: VoiceContext) => {
   const today = new Date().toISOString().slice(0, 10);
   const cash = getCashCollected(ctx, today, today);

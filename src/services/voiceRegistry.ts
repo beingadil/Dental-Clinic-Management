@@ -12,7 +12,7 @@ import type { VoiceContext } from './voiceTools';
 import {
   getAdvanceWallet, getCashCollected, getClinicBalance, getLedgerAnswer, getMonthCloseStatus,
   getOverdueCases, getStandings, getStatementAnswer, getUnpaid, monthFromQuery, periodFromQuery,
-  searchInvoicesInContext, getCodeAnswer, clinicCandidates, narrateStatement, getTodayBriefing,
+  searchInvoicesInContext, getCodeAnswer, clinicCandidates, narrateStatement, getTodayBriefing, openCasesSummary,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { parseWriteCommand, type WriteCommand } from './voiceWrite';
@@ -381,6 +381,11 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'openCases', description: 'List the open (active, non-delivered, non-cancelled) cases', risk: 'read',
+    match: /^(show|list)\s+(open\s+|current\s+|all\s+)?cases\b|^cases$/i,
+    run: (ctx) => ({ kind: 'read', text: openCasesSummary(ctx) }),
+  },
+  {
     id: 'statement', description: 'Monthly/All Time statement for a clinic', risk: 'read',
     match: /statement|monthly/,
     run: (ctx, q) => {
@@ -568,6 +573,7 @@ const tools: VoiceTool[] = [
         '• Clinics: add contacts, addresses, pricing overrides',
         '• Settings/print: “Invoice sections only brand, lineItems, totals”, “Print settings A4”, “Set notifications 1 day before”',
         '• Billing: “Record payment of PKR 5,000 for Mir Dental”, “Apply advance PKR 25,000 to INV-0042”, “Mark INV-0042 paid”, “Mark INV-0042, INV-0043 paid”',
+        '• Cases: “show cases”, “DS-0001” (then just “ready” / “delivered” / “QC pass” / “archive”), “Mark case DS-0393 ready”',
         '• Write (amber confirmation): “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',

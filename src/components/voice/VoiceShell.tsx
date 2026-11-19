@@ -14,6 +14,7 @@ import { closeMonth } from '../../services/monthClose';
 import { groqEnabled } from '../../services/voiceGroq';
 import { recordClip, transcribeWithGroq } from '../../services/voiceGroqStt';
 import type { WriteCommand } from '../../services/voiceWrite';
+import { openCasesSummary } from '../../services/voiceTools';
 import { getTodayStr } from '../../utils/dateUtils';
 import { invoiceBalanceDue } from '../../services/financeDomain';
 
@@ -49,6 +50,19 @@ const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
     .sort((a, b) => b.score - a.score);
 };
 
+const STAGE_TOKEN_MAP: Record<string, string> = {
+  ready: 'ready', delivered: 'delivered', received: 'received',
+  'in progress': 'in_progress', inprogress: 'in_progress',
+  qc: 'qc', quality: 'qc', revision: 'revision', rework: 'revision',
+  cancel: 'cancelled', cancelled: 'cancelled', archive: 'archive',
+};
+const detectStageWord = (raw: string): string | null => {
+  const t = raw.toLowerCase();
+  const tokens = Object.keys(STAGE_TOKEN_MAP).sort((a, b) => b.length - a.length);
+  const hit = tokens.find((w) => new RegExp(`\\b${w}\\b`).test(t));
+  return hit ? STAGE_TOKEN_MAP[hit] : null;
+};
+
 /** Push-to-talk + offline answers. Write actions require explicit confirmation. */
 export const VoiceShell: React.FC = () => {
   const {
@@ -72,6 +86,7 @@ export const VoiceShell: React.FC = () => {
     | { kind: 'createClinic'; step: 'name' | 'doctor' | 'phone'; name?: string; doctor?: string; phone?: string }
     | { kind: 'createCase'; step: 'patient' | 'clinic' | 'caseType' | 'teeth' | 'price' | 'priority' | 'shade' | 'delivery' | 'doctor'; patient?: string; clinic?: string; caseType?: string; teeth?: number[]; doctor?: string; price?: number; priority?: string; shade?: string; delivery?: string };
   const [slotMode, setSlotMode] = useState<SlotMode | null>(null);
+  const [caseContext, setCaseContext] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const cloudStop = useRef<null | (() => void)>(null);
@@ -144,6 +159,40 @@ export const VoiceShell: React.FC = () => {
   const submit = async (raw?: string) => {
     const text = (raw ?? query).trim();
     if (!text || busy) return;
+
+    /* Case-aware conversation: remember the case the operator means, and act on a
+       bare stage word without them repeating the number. */
+    const caseRefMatch = text.match(/\bDS-\d+\b/i);
+    const stage = detectStageWord(text);
+    if (caseRefMatch) {
+      const cn = caseRefMatch[0].toUpperCase();
+      setCaseContext(cn);
+      if (stage) {
+        if (stage === 'archive') {
+          queueWrite({ kind: 'archiveCase', amount: 0, clinicHint: cn, caseNumber: cn, method: 'bank' }, 'voice:archiveCase');
+          return;
+        }
+        queueWrite({ kind: 'setCaseStatus', amount: 0, clinicHint: cn, caseNumber: cn, targetStatus: stage, method: 'bank' }, 'voice:setCaseStatus');
+        return;
+      }
+      const found = (cases || []).find((c) => c.case_number === cn);
+      setAnswer(`Case ${cn}${found ? ` — ${found.patient_name || 'Patient'} · ${found.case_type_name || 'Case'} · currently “${found.status}”` : ''}. What now? Say “ready”, “delivered”, “QC pass”, “add note …”, “archive”, or “show cases”.`);
+      speak(`Case ${cn}. What would you like to do with it?`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
+      return;
+    }
+    if (stage && caseContext) {
+      if (stage === 'archive') {
+        queueWrite({ kind: 'archiveCase', amount: 0, clinicHint: caseContext, caseNumber: caseContext, method: 'bank' }, 'voice:archiveCase');
+        return;
+      }
+      queueWrite({ kind: 'setCaseStatus', amount: 0, clinicHint: caseContext, caseNumber: caseContext, targetStatus: stage, method: 'bank' }, 'voice:setCaseStatus');
+      return;
+    }
+    if (stage && !caseContext) {
+      setAnswer(`Which case? Available open cases: ${openCasesSummary({ labs, invoices, advancePayments, accountAdjustments, cases: cases || [], caseTypes, labContacts, labAddresses, pricingOverrides, user })}. Say one — e.g. “DS-0001 ready”.`);
+      speak('Which case would you like to update?', { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
+      return;
+    }
 
     /* Guided entry interview: “Add clinic” asks for the name, doctor, phone one
        at a time, mirrors the New Clinic form, then opens the form pre-filled. */
