@@ -107,13 +107,26 @@ export const VoiceShell: React.FC = () => {
       return;
     }
     if (cmd.amount === 0) {
-      const label = cmd.kind === 'printSettingsSave' ? 'apply the print settings'
-        : cmd.kind === 'printSectionsSave' ? `set ${cmd.docKind} print sections`
-        : cmd.kind === 'notificationConfigSave' ? 'save the notification configuration'
-        : cmd.kind === 'closeMonth' ? `close ${cmd.month || ''} for ${cmd.labName || cmd.clinicHint}`
-        : 'continue';
+      const label = (() => {
+        switch (cmd.kind) {
+          case 'printSettingsSave': return 'apply the print settings';
+          case 'printSectionsSave': return `set ${cmd.docKind} print sections`;
+          case 'notificationConfigSave': return 'save the notification configuration';
+          case 'closeMonth': return `close ${cmd.month || ''} for ${cmd.labName || cmd.clinicHint}`;
+          case 'setCaseStatus': return `move case ${cmd.caseNumber} to “${cmd.targetStatus}”`;
+          case 'addCaseNote': return `add a note to ${cmd.caseNumber}`;
+          case 'recordQc': return `record QC ${cmd.qcResult?.toUpperCase()} for ${cmd.caseNumber}`;
+          case 'archiveCase': return `archive ${cmd.caseNumber}`;
+          case 'updateClinicField': return `update ${cmd.field} for ${cmd.clinicHint} to “${cmd.value}”`;
+          case 'updateClinicDoctor': return `set doctor for ${cmd.clinicHint} to ${cmd.doctorName}`;
+          case 'addClinicContact': return `add contact “${cmd.contactName}” to ${cmd.clinicHint}`;
+          case 'addClinicAddress': return `add a ${cmd.addressType} address for ${cmd.clinicHint}`;
+          case 'addPricingOverride': return `set pricing override for ${cmd.caseTypeName} at ${cmd.clinicHint}`;
+          default: return 'continue';
+        }
+      })();
       setAnswer(`${destructiveBanner}Confirm: ${label}.`);
-      speak(`Confirm ${label}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
+      speak(`Confirm: ${label}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
       return;
     }
     const amount = `PKR ${cmd.amount.toLocaleString()}`;
