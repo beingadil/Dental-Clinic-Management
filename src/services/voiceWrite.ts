@@ -3,7 +3,7 @@
  * record a payment and record an advance deposit. Anything else is not writable.
  */
 export interface WriteCommand {
-  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth' | 'addClinicContact' | 'addClinicAddress' | 'addPricingOverride' | 'createCase';
+  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth' | 'addClinicContact' | 'addClinicAddress' | 'addPricingOverride' | 'createCase' | 'applyAdvance' | 'markPaid';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;

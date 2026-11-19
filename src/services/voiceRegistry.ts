@@ -203,6 +203,29 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'applyAdvance', description: 'Apply advance credit to an invoice', risk: 'write',
+    match: /^(apply|use)\s+(an?|the)?\s*(advance|credit)\b.*(to|on|against)/i,
+    run: (ctx, q) => {
+      const inv = (ctx.invoices || []).find((i) => q.toUpperCase().includes(i.invoice_number.toUpperCase()));
+      const amountMatch = q.match(/(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]{0,12})/i);
+      const amount = amountMatch ? Number(amountMatch[1].replace(/,/g, '')) : 0;
+      if (!inv) return { kind: 'read', text: 'Which invoice? Say e.g. “Apply advance PKR 25,000 to INV-0042”.' };
+      if (!amount || amount <= 0) return { kind: 'read', text: 'How much? Say e.g. “Apply advance PKR 25,000 to INV-0042”.' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'applyAdvance', amount, clinicHint: inv.lab_name, invoiceNumber: inv.invoice_number, method: 'bank' }, summary: `Apply advance PKR ${amount.toLocaleString()} to ${inv.invoice_number}` };
+    },
+  },
+  {
+    id: 'markInvoicePaid', description: 'Mark an invoice as paid in full', risk: 'write',
+    match: /^(mark|settle|clear)\s+(invoice\s+)?(INV-\d+)\s+(as\s+)?paid\b/i,
+    run: (ctx, q) => {
+      const num = q.match(/INV-\d+/i)?.[0]?.toUpperCase();
+      const inv = (ctx.invoices || []).find((i) => i.invoice_number.toUpperCase() === num);
+      if (!inv) return { kind: 'read', text: `No invoice ${num} found.` };
+      const due = invoiceBalanceDue(inv);
+      return { kind: 'action', risk: 'write', pending: { kind: 'markPaid', amount: due, clinicHint: inv.lab_name, invoiceNumber: inv.invoice_number, method: 'bank' }, summary: `Mark ${inv.invoice_number} paid — PKR ${due.toLocaleString()} PKR outstanding` };
+    },
+  },
+  {
     id: 'printSettingsSave', description: 'Save the global print layout (paper, margins, font, logo, job-slip style)', risk: 'write',
     match: /^(set|change|update|use)\b.*\b(paper|a4|letter|margin|font|logo|job slip)/i,
     run: (ctx, q) => {
@@ -524,7 +547,8 @@ const tools: VoiceTool[] = [
         '• Export: “Export invoices”, “Export transactions”',
         '• Clinics: add contacts, addresses, pricing overrides',
         '• Settings/print: “Invoice sections only brand, lineItems, totals”, “Print settings A4”, “Set notifications 1 day before”',
-        '• Write (amber confirmation): “Record payment of PKR 5,000 for Mir Dental”, “Record advance deposit of PKR 2,000”, “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
+        '• Billing: “Record payment of PKR 5,000 for Mir Dental”, “Apply advance PKR 25,000 to INV-0042”, “Mark INV-0042 paid”',
+        '• Write (amber confirmation): “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',
       ].join('\n'),

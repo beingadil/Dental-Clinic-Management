@@ -54,7 +54,7 @@ export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
     caseTypes, labContacts, labAddresses, pricingOverrides,
-    addLabContact, addLabAddress, addPricingOverride, addCase,
+    addLabContact, addLabAddress, addPricingOverride, addCase, applyAdvanceCreditV2, bulkMarkPaid,
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
   } = useApp();
   const [open, setOpen] = useState(false);
@@ -114,6 +114,8 @@ export const VoiceShell: React.FC = () => {
     const amount = `PKR ${cmd.amount.toLocaleString()}`;
     const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}`
       : cmd.kind === 'createCase' ? `create case for ${cmd.patientName || 'patient'} — ${cmd.caseTypeName} at ${cmd.clinicHint}`
+      : cmd.kind === 'applyAdvance' ? `apply advance to ${cmd.invoiceNumber}`
+      : cmd.kind === 'markPaid' ? `mark ${cmd.invoiceNumber} paid`
       : 'advance deposit';
     setAnswer(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
     speak(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
@@ -493,6 +495,31 @@ export const VoiceShell: React.FC = () => {
         }
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save.'); }
+      return;
+    }
+    if (pending.kind === 'applyAdvance' && pending.invoiceNumber) {
+      const blocked = deny('payment:record');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const inv = (invoices || []).find((i) => i.invoice_number.toUpperCase() === pending.invoiceNumber!.toUpperCase());
+      if (!inv) { setStatus('error'); setAnswer(`No invoice ${pending.invoiceNumber} found.`); return; }
+      try {
+        const ok = applyAdvanceCreditV2({ clinicId: inv.lab_id, invoiceId: inv.id, amount: pending.amount, notes: 'Voice-applied advance' });
+        setAnswer(ok
+          ? `Advance of PKR ${pending.amount.toLocaleString()} applied to ${inv.invoice_number} — receipt issued.`
+          : `Could not apply — the wallet balance or the invoice balance may have changed.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not apply the advance.'); }
+      return;
+    }
+    if (pending.kind === 'markPaid' && pending.invoiceNumber) {
+      if (user && !canPost(user, 'payment:bulk')) { setStatus('error'); setAnswer('Requires the “bulk settle” permission.'); return; }
+      const inv = (invoices || []).find((i) => i.invoice_number.toUpperCase() === pending.invoiceNumber!.toUpperCase());
+      if (!inv) { setStatus('error'); setAnswer(`No invoice ${pending.invoiceNumber} found.`); return; }
+      try {
+        bulkMarkPaid([inv.id]);
+        setAnswer(`${inv.invoice_number} marked paid — payments journalled for PKR ${pending.amount.toLocaleString()}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not mark paid.'); }
       return;
     }
     if (pending.kind === 'printSettingsSave') {
