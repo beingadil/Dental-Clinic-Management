@@ -5,11 +5,12 @@
 import { invoiceBalanceDue, roundMoney } from './financeDomain';
 import { buildMonthlyStatements, windowMonthlyStatements, filterMonthlyStatements } from './monthlyStatement';
 import { availableAdvanceCredit } from './transactionDomain';
-import { buildLedgerEntries } from './ledgerDomain';
+import { buildLedgerEntries, collectAllPayments } from './ledgerDomain';
 import { invoiceMatchesSearch } from './invoiceSearch';
 import { searchRag } from './ragQuery';
 import type { Invoice, AdvancePayment, AccountAdjustment, DentalLab, DentalCase, UserProfile } from '../types';
-import { collectAllPayments } from './ledgerDomain';
+import { selectCasesToAutoArchive } from '../context/hooks/autoArchive';
+import { getTodayStr } from '../utils/dateUtils';
 import { listMonthCloses } from './monthClose';
 
 export interface VoiceContext {
@@ -167,6 +168,39 @@ export const getTodayBriefing = (ctx: VoiceContext) => {
     ? `Delivering today: ${delivering.slice(0, 5).map((c) => `${c.case_number}${patient(c)}`).join(', ')}${delivering.length > 5 ? '…' : ''}.`
     : 'Nothing due for delivery today.';
   return `${cash} ${overdueInvoices} invoice(s) still outstanding. ${deliverLine} ${overdue.length} case(s) overdue.`;
+};
+
+const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+/** Cases due today (by delivery_date), SLA-first, and the overdue list — spoken-friendly. */
+export const getDueTodayBriefing = (ctx: VoiceContext): string => {
+  const today = getTodayStr();
+  const open = (ctx.cases || []).filter((c) => c.status !== 'delivered' && c.status !== 'cancelled' && !c.archived_at);
+  const overdue = open.filter((c) => c.delivery_date && String(c.delivery_date).slice(0, 10) < today)
+    .sort((a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)));
+  const dueToday = open.filter((c) => String(c.delivery_date).slice(0, 10) === today)
+    .sort((a, b) => (PRIORITY_RANK[a.priority ?? 'normal'] ?? 2) - (PRIORITY_RANK[b.priority ?? 'normal'] ?? 2));
+  const patient = (c: DentalCase) => (ctx.allowClinicalDetail ? ` (${c.patient_name ?? 'Patient'})` : '');
+  const line = (c: DentalCase) => `${c.case_number}${patient(c)} — ${c.case_type_name ?? 'Case'} — ${c.priority ?? 'normal'} priority — ${String(c.delivery_date).slice(0, 10)}`;
+  const briefing = [
+    overdue.length ? `Overdue (${overdue.length}): ${overdue.slice(0, 3).map((c) => `${c.case_number}${patient(c)} — due ${String(c.delivery_date).slice(0, 10)}`).join('; ')}.` : 'No overdue cases.',
+    dueToday.length ? `Due today (${dueToday.length}): ${dueToday.map(line).join('; ')}.` : 'Nothing due today.',
+    dueToday.length === 0 && overdue.length === 0 ? `${open.length} open case(s) in total.` : '',
+  ].filter(Boolean).join(' ');
+  return briefing || `${open.length} open case(s) in total.`;
+};
+
+/** The 30-day auto-archive predicate, applied on demand with a spoken confirm. */
+export const bulkArchivePreview = (ctx: VoiceContext) => {
+  const due = selectCasesToAutoArchive(ctx.cases || [], new Date(`${getTodayStr()}T00:00:00`));
+  const list = due.slice(0, 8).map((c) => c.case_number).join(', ');
+  return {
+    count: due.length,
+    ids: due.map((c) => c.id),
+    preview: due.length
+      ? `Archive ${due.length} delivered case(s) whose delivery is 30+ days old${due.length > 8 ? `: ${list}…` : `: ${list}`}?`
+      : 'No delivered cases are more than 30 days past delivery.',
+  };
 };
 
 export const narrateStatement = (ctx: VoiceContext, labId: string, from?: string, to?: string) => {

@@ -15,6 +15,7 @@ import { groqEnabled } from '../../services/voiceGroq';
 import { recordClip, transcribeWithGroq } from '../../services/voiceGroqStt';
 import type { WriteCommand } from '../../services/voiceWrite';
 import { openCasesSummary } from '../../services/voiceTools';
+import { selectCasesToAutoArchive } from '../../context/hooks/autoArchive';
 import { getTodayStr } from '../../utils/dateUtils';
 import { invoiceBalanceDue } from '../../services/financeDomain';
 
@@ -132,6 +133,7 @@ export const VoiceShell: React.FC = () => {
           case 'addCaseNote': return `add a note to ${cmd.caseNumber}`;
           case 'recordQc': return `record QC ${cmd.qcResult?.toUpperCase()} for ${cmd.caseNumber}`;
           case 'archiveCase': return `archive ${cmd.caseNumber}`;
+          case 'bulkArchive': return `archive ${cmd.amount || ''} delivered case(s) older than 30 days`;
           case 'updateClinicField': return `update ${cmd.field} for ${cmd.clinicHint} to “${cmd.value}”`;
           case 'updateClinicDoctor': return `set doctor for ${cmd.clinicHint} to ${cmd.doctorName}`;
           case 'addClinicContact': return `add contact “${cmd.contactName}” to ${cmd.clinicHint}`;
@@ -161,9 +163,11 @@ export const VoiceShell: React.FC = () => {
     if (!text || busy) return;
 
     /* Case-aware conversation: remember the case the operator means, and act on a
-       bare stage word without them repeating the number. */
-    const caseRefMatch = text.match(/\bDS-\d+\b/i);
-    const stage = detectStageWord(text);
+       bare stage word without them repeating the number. Bulk-archive is a batch
+       action, not a per-case action, so detect and skip straight to the registry. */
+    const wantsBulk = /archive\b.*\b(all|bulk|every|older|30\s*days)\b|bulk archive/i.test(text);
+    const caseRefMatch = wantsBulk ? null : text.match(/\bDS-\d+\b/i);
+    const stage = wantsBulk ? null : detectStageWord(text);
     if (caseRefMatch) {
       const cn = caseRefMatch[0].toUpperCase();
       setCaseContext(cn);
@@ -524,6 +528,19 @@ export const VoiceShell: React.FC = () => {
         setStatus('done');
         setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not record the QC result.'); }
+      return;
+    }
+    if (pending.kind === 'bulkArchive') {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const due = selectCasesToAutoArchive(cases || [], new Date(`${getTodayStr()}T00:00:00`));
+      if (!due.length) { setStatus('error'); setAnswer('Nothing to archive now — no delivered case is more than 30 days past delivery.'); return; }
+      let archived = 0;
+      for (const c of due) {
+        try { archiveCase(c.id); archived += 1; } catch { /* keep going */ }
+      }
+      setAnswer(`Archived ${archived} delivered case${archived === 1 ? '' : 's'} from more than 30 days ago.`);
+      setStatus('done'); setPending(null); setPendingNote('');
       return;
     }
     if (pending.kind === 'archiveCase' && pending.caseNumber) {

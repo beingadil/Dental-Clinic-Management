@@ -13,6 +13,7 @@ import {
   getAdvanceWallet, getCashCollected, getClinicBalance, getLedgerAnswer, getMonthCloseStatus,
   getOverdueCases, getStandings, getStatementAnswer, getUnpaid, monthFromQuery, periodFromQuery,
   searchInvoicesInContext, getCodeAnswer, clinicCandidates, narrateStatement, getTodayBriefing, openCasesSummary,
+  getDueTodayBriefing, bulkArchivePreview,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { parseWriteCommand, type WriteCommand } from './voiceWrite';
@@ -129,6 +130,20 @@ const tools: VoiceTool[] = [
     id: 'overdueCases', description: 'Overdue cases', risk: 'read',
     match: /overdue case|cases overdue|pending cases/,
     run: (ctx) => ({ kind: 'read', text: getOverdueCases(ctx) }),
+  },
+  {
+    id: 'dueToday', description: 'Cases due today (priority-sorted) and overdue', risk: 'read',
+    match: /due today|what(?:'| is) (?:due|owed|delivered|delivering)|what(?:'s| is) due/i,
+    run: (ctx) => ({ kind: 'read', text: getDueTodayBriefing(ctx) }),
+  },
+  {
+    id: 'bulkArchive', description: 'Archive delivered cases whose delivery is 30+ days old', risk: 'write',
+    match: /^archive (all delivered|delivered (cases )?older|bulk archive|all delivered)/i,
+    run: (ctx) => {
+      const preview = bulkArchivePreview(ctx);
+      if (!preview.count) return { kind: 'read', text: preview.preview };
+      return { kind: 'action', risk: 'write', pending: { kind: 'bulkArchive', amount: preview.count, clinicHint: 'All clinics', method: 'bank' }, summary: preview.preview };
+    },
   },
   {
     id: 'standings', description: 'Clinic standings by receivable', risk: 'read',
@@ -568,7 +583,7 @@ const tools: VoiceTool[] = [
       text: [
         'Everything voice can do right now:',
         '• Open any screen: “Open dashboard”, “Open general ledger”, “Open statements”, “Open settings”',
-        '• Read: morning briefing (“morning briefing”), walk me through a statement (“walk me through Mir Dental statement last month”), cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
+        '• Read: due-today (“what is due today?”), morning briefing, walk me through a statement, cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
         '• Export: “Export invoices”, “Export transactions”',
         '• Clinics: add contacts, addresses, pricing overrides',
         '• Settings/print: “Invoice sections only brand, lineItems, totals”, “Print settings A4”, “Set notifications 1 day before”',
