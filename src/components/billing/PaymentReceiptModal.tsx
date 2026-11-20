@@ -126,6 +126,31 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             )}
           </div>
 
+          {/* Adjusted Invoices — what THIS payment was applied to, when the
+              allocation trail is on the record. A cashier who typed 25,000
+              wants to see the invoices it touched and the amounts each
+              absorbed, not the payment's summary number alone. */}
+          {(payment.allocations?.length ?? 0) > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-xs">
+              <p className="font-bold text-slate-800 mb-2">Adjusted Invoices</p>
+              <div className="space-y-1">
+                {payment.allocations!.map((alloc) => (
+                  <div key={alloc.id} className="flex items-center justify-between gap-3">
+                    <span className="font-mono font-bold text-slate-800">{alloc.invoice_number}</span>
+                    <span className="font-mono tabular-nums text-ink-success">
+                      {formatPKR(alloc.amount || 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {payment.unapplied_amount && payment.unapplied_amount > 0 && (
+                <p className="mt-2 text-slate-500">
+                  Plus PKR {formatPKR(payment.unapplied_amount)} held on the clinic credit wallet.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Invoice Summary Context if Available */}
           {invoice && (
             <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 text-xs">

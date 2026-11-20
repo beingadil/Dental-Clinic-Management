@@ -2,7 +2,7 @@ import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { compareInvoiceEntryOrder, invoiceEntryDate } from '../../services/invoiceOrder';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { PaymentAttachment } from '../../types';
+import { PaymentAttachment, PaymentRecord } from '../../types';
 ;
 import { validateFile } from '../../services/fileValidation';
 import { canPost } from '../../services/permissions';
@@ -38,7 +38,7 @@ interface RecordTransactionModalProps {
   initialClinicId?: string;
   initialLabId?: string;
   initialInvoiceId?: string;
-  onSuccess?: (result: { receiptNumber?: string }) => void;
+  onSuccess?: (result: { receiptNumber?: string; payment?: PaymentRecord }) => void;
 }
 
 export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
@@ -332,7 +332,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         });
 
         onClose();
-        if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
+        if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber, payment: result.payment });
       } else if (mode === 'advance') {
         const result = recordAdvanceDepositV2({
           clinicId,

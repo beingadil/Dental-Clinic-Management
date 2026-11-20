@@ -37,11 +37,13 @@ describe('invoices table columns', () => {
     expect(invoiceTableHeaders()).not.toContain('Due Date & Terms');
   });
 
-  it('keeps the columns an operator actually reconciles against', () => {
-    // Removing for width must not remove the money. These three are the table's
-    // reason to exist: what was billed, what came in, what is still owed.
-    for (const heading of ['Final Amount', 'Amount Paid', 'Remaining Due']) {
-      expect(invoiceTableHeaders()).toContain(heading);
+  it('drops the noisy columns the operator no longer reconciles against', () => {
+    // The row is an invoice voucher now: number, case, patient, clinic and the
+    // money documents that still matter (adjustments, credits). Money came in
+    // via the receipt the user confirms during "Receive Payment".
+    const headers = invoiceTableHeaders();
+    for (const heading of ['Final Amount', 'Amount Paid', 'Remaining Due', 'Payment Status', 'Doctor']) {
+      expect(headers, `expected no ${heading} column`).not.toContain(heading);
     }
   });
 
@@ -71,9 +73,10 @@ describe('invoices table columns', () => {
     expect(source).not.toContain('TransactionRegister');
   });
 
-  it('lists adjustments in the same Vouchers cell as payments, with their own serial', () => {
-    // Adjustments are money documents too. They belong beside the payment
-    // vouchers on the invoice row — CR-/DR-/REF- serials, not a second panel.
+  it('lists adjustments in the same Vouchers cell with their own serial', () => {
+    // Adjustments are money documents too. They belong in the Vouchers cell —
+    // CR-/DR-/REF- serials, not a second panel. Payment chips moved to the
+    // receipt modal, so the cell now shows adjustments and unallocated credits.
     expect(source).toMatch(/adjustmentsByInvoice\.get\(inv\.id\)/);
     expect(source).toMatch(/adj\.adjustment_number/);
     expect(source).not.toContain('Adjustments &amp; Credit Notes');

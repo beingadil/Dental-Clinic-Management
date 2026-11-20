@@ -33,7 +33,10 @@ interface InvoiceDetailDrawerProps {
   onOpenPaymentModal: (invoice: Invoice) => void;
   onOpenJournalModal: (referenceId: string) => void;
   onPrintInvoice: (invoice: Invoice) => void;
+  /** View the official receipt for a payment. */
   onViewReceipt: (payment: PaymentRecord) => void;
+  /** Correct a payment entry in place (the receipt edits its amount/notes). */
+  onEditPayment?: (payment: PaymentRecord) => void;
   /** Delete a payment entry (its whole receipt). Never the invoice itself. */
   onDeletePayment: (payment: PaymentRecord) => void;
   /** Correct an adjustment (credit note, surcharge, refund) in place. */
@@ -60,6 +63,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   onOpenJournalModal,
   onPrintInvoice,
   onViewReceipt,
+  onEditPayment,
   onDeletePayment,
   onEditAdjustment,
   onDeleteAdjustment,
@@ -450,15 +454,25 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                         <button
                           type="button"
                           onClick={() => onViewReceipt(pmt)}
-                          className="p-1.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
                           title="View Official Receipt" aria-label="View official receipt"
                         >
                           <Receipt className="w-4 h-4" />
                         </button>
+                        {onEditPayment && (
+                          <button
+                            type="button"
+                            onClick={() => onEditPayment(pmt)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
+                            title="Edit Payment Entry" aria-label={`Edit payment ${pmt.payment_number || ''}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onDeletePayment(pmt)}
-                          className="p-1.5 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                           title="Delete Payment Entry" aria-label={`Delete payment ${pmt.payment_number || ''}`}
                         >
                           <Trash2 className="w-4 h-4" />

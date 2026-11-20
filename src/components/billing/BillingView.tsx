@@ -29,21 +29,7 @@ import { BILLING_TABS, labelOf } from '../common/financeTabs';
 import { getTodayStr } from '../../utils/dateUtils';
 import { formatDoctorName } from '../../utils/doctorName';
 import { findCaseForInvoice } from '../../services/ledgerCaseDetail';
-import { invoiceBadge } from '../../services/invoiceBadge';
-import { 
-  Wallet,
-  Printer,
-  Search, 
-  Download, 
-  Trash2,
-  Pencil,
-  CheckCircle2, 
-  AlertTriangle,
-  Clock,
-  ArrowDownLeft,
-  Eye,
-  FileSpreadsheet
-} from 'lucide-react';
+import { Wallet, Search, Download, Trash2, Pencil, CheckCircle2, FileSpreadsheet, ArrowDownLeft } from 'lucide-react';
 
 
 export const BillingView: React.FC = () => {
@@ -75,11 +61,12 @@ export const BillingView: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Business date for bulk settlements — user-picked, defaults to today.
   const [bulkPayDate, setBulkPayDate] = useState<string>(getTodayStr());
-  // Invoice history window: defaults to TODAY, like every other billing tab —
-  // yesterday's and older invoices are reached by rewinding the date picker
-  // (clearing it = All Time). Dates compare on the billing day.
-  const [invFromDate, setInvFromDate] = useState<string>('');
-  const [invToDate, setInvToDate] = useState<string>('');
+  // Invoice history window: the date picker sits on TODAY by default (it is the
+  // range every cashier means when they open this screen). Yesterday's and older
+  // invoices are reached by rewinding the picker; selecting All Time lists them
+  // oldest first, like a ledger page.
+  const [invFromDate, setInvFromDate] = useState<string>(getTodayStr());
+  const [invToDate, setInvToDate] = useState<string>(getTodayStr());
 
   // Finance 2.0 Unified & Inspection Modals
   const [selectedDrawerInvoice, setSelectedDrawerInvoice] = useState<Invoice | null>(null);
@@ -197,6 +184,16 @@ export const BillingView: React.FC = () => {
     });
   }, [invoices, clinicFilter, searchTerm, invFromDate, invToDate, adjustmentsByInvoice]);
 
+  /* All Time is read like a ledger page: oldest first, newest last. Any picked
+     window (today, this month…) keeps the store's natural order. The sort runs
+     on the fresh filter array, never on the store itself. */
+  const sortedFilteredInvoices = useMemo(() => {
+    if (invFromDate || invToDate) return filteredInvoices;
+    return [...filteredInvoices].sort((a, b) =>
+      String(a.created_at || '').localeCompare(String(b.created_at || '')),
+    );
+  }, [filteredInvoices, invFromDate, invToDate]);
+
   /* Whether the clinic has ANY paid invoice at all, ignoring every filter. The
      empty state needs it to tell "nothing paid yet" apart from "your filters
      hid everything" — two problems with opposite fixes. */
@@ -212,7 +209,7 @@ export const BillingView: React.FC = () => {
   const {
     pageItems: visibleInvoices,
     pagination: invoicesPagination,
-  } = usePagination(filteredInvoices, {
+  } = usePagination(sortedFilteredInvoices, {
     initialPageSize: 50,
     resetKey: `${clinicFilter}|${searchTerm}|${invFromDate}|${invToDate}`,
   });
@@ -242,10 +239,10 @@ export const BillingView: React.FC = () => {
   }, [allPayments, advancePayments, accountAdjustments, invoices, searchTerm, invFromDate, invToDate, clinicFilter]);
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === filteredInvoices.length) {
+    if (selectedIds.length === sortedFilteredInvoices.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredInvoices.map((i) => i.id));
+      setSelectedIds(sortedFilteredInvoices.map((i) => i.id));
     }
   };
 
@@ -273,7 +270,7 @@ export const BillingView: React.FC = () => {
   // used to break rows under the old hand-rolled joiner)
   const handleExportInvoicesCSV = () => {
     const headers = ['Invoice #', 'Case #', 'Dental Clinic', 'Doctor', 'Material / Type', 'Final Amount (PKR)', 'Amount Paid (PKR)', 'Remaining (PKR)', 'Status', 'Due Date'];
-    const rows = filteredInvoices.map(inv => [
+    const rows = sortedFilteredInvoices.map(inv => [
       inv.invoice_number,
       inv.case_number,
       inv.lab_name,
@@ -294,55 +291,6 @@ export const BillingView: React.FC = () => {
     downloadCSV(
       `Dental_Solutions_Transactions_${getTodayStr()}`,
       transactionCsvRows(registerTransactions),
-    );
-  };
-
-/* Pill + subtext for one invoice. The DECISION lives in services/invoiceBadge
-   (derived from the balance, never from the stored payment_status, and never
-   sharing the overdue danger treatment); this only paints it. */
-  const getStatusBadge = (inv: Invoice) => {
-    const badge = invoiceBadge(inv);
-    const PAINT = {
-      paid: {
-        pill: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        sub: 'text-slate-500',
-        Icon: CheckCircle2,
-        ink: 'text-ink-success',
-      },
-      overdue: {
-        pill: 'bg-rose-100 text-rose-800 border-rose-200',
-        sub: 'text-ink-danger font-bold',
-        Icon: AlertTriangle,
-        ink: 'text-ink-danger',
-      },
-      /* Partial and Pending are both 'fine for now' - amber, deliberately not
-         rose, so only Overdue reads as chase-me. */
-      partial: {
-        pill: 'bg-amber-50 text-amber-800 border-amber-200',
-        sub: 'text-amber-700 font-semibold',
-        Icon: Clock,
-        ink: 'text-ink-warning',
-      },
-      pending: {
-        pill: 'bg-amber-50 text-amber-800 border-amber-200',
-        sub: 'text-amber-700 font-semibold',
-        Icon: Clock,
-        ink: 'text-ink-warning',
-      },
-    }[badge.tone];
-
-    return (
-      <div className="inline-flex flex-col items-center">
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${PAINT.pill}`}>
-          <PAINT.Icon className={`w-3 h-3 ${PAINT.ink}`} />
-          <span>{badge.label}</span>
-        </span>
-        {/* An empty detail renders nothing — an invoice inside its terms has
-            no second fact worth the width. */}
-        {badge.detail && (
-          <span className={`text-[11px] mt-0.5 whitespace-nowrap ${PAINT.sub}`}>{badge.detail}</span>
-        )}
-      </div>
     );
   };
 
@@ -493,7 +441,7 @@ export const BillingView: React.FC = () => {
             }}
             selection={{
               selectedIds,
-              allSelected: selectedIds.length === filteredInvoices.length,
+              allSelected: selectedIds.length === sortedFilteredInvoices.length,
               onToggle: toggleSelect,
               onToggleAll: toggleSelectAll,
             }}
@@ -609,54 +557,13 @@ export const BillingView: React.FC = () => {
                 },
               },
               {
-                header: 'Doctor',
-                className: 'text-slate-600 whitespace-nowrap',
-                render: (inv: Invoice) => formatDoctorName(inv.doctor_name),
-              },
-              {
-                header: 'Final Amount',
-                align: 'right',
-                className: 'font-mono font-bold text-slate-900 whitespace-nowrap tabular-nums',
-                render: (inv: Invoice) => formatPKR(inv.final_amount || 0),
-              },
-              {
-                header: 'Amount Paid',
-                align: 'right',
-                className: 'font-mono font-semibold text-ink-success whitespace-nowrap tabular-nums',
-                render: (inv: Invoice) => formatPKR(inv.amount_paid || 0),
-              },
-              {
-                header: 'Remaining Due',
-                align: 'right',
-                className: 'whitespace-nowrap',
-                render: (inv: Invoice) => {
-                  const remaining = invoiceBalanceDue(inv);
-                  const { isOverdue } = isInvoiceOverdue(inv);
-                  return (
-                    <span className={`font-mono font-bold tabular-nums ${
-                      remaining > 0 ? (isOverdue ? 'text-ink-danger font-bold' : 'text-ink-warning') : 'text-ink-muted'
-                    }`}>
-                      {formatPKR(remaining)}
-                    </span>
-                  );
-                },
-              },
-              {
-                header: 'Payment Status',
-                align: 'center',
-                className: 'whitespace-nowrap',
-                render: (inv: Invoice) => getStatusBadge(inv),
-              },
-              {
+                /* Clean voucher row: number, case, patient, clinic. Payments are
+                   receipts — opened from the receipt modal, not this row — so the
+                   row reads as the voucher itself. This column shows only the
+                   adjustment documents and the unallocated credit note. */
                 header: 'Vouchers',
                 className: 'whitespace-nowrap',
-                /* The voucher IS the record on this screen, so each payment is
-                   shown here with the three things an operator needs to do to it:
-                   read it, correct it, delete it. Deleting removes the payment
-                   and restores the invoice's balance — the invoice itself is
-                   never touched. */
                 render: (inv: Invoice) => {
-                  const vouchers = inv.payments || [];
                   const attributed = adjustmentsByInvoice.get(inv.id) || [];
                   const creditsOnInvoice = inv.credit_notes_total || 0;
                   const attributedCredits = attributed.reduce(
@@ -668,56 +575,11 @@ export const BillingView: React.FC = () => {
                      reverse its allocation. Show the money; there is nothing to
                      edit, but nothing is hidden either. */
                   const residualCredit = Math.max(0, creditsOnInvoice - attributedCredits);
-                  if (
-                    vouchers.length === 0 &&
-                    attributed.length === 0 &&
-                    creditsOnInvoice <= 0
-                  ) {
+                  if (attributed.length === 0 && residualCredit <= 0) {
                     return <span className="text-slate-400">-</span>;
                   }
                   return (
                     <div className="space-y-1">
-                      {vouchers.map((pay) => (
-                        <div
-                          key={pay.id}
-                          className="flex items-center gap-1.5 text-[11px] bg-emerald-50/70 border border-emerald-200 rounded-md px-2 py-1"
-                        >
-                          <span className="font-mono font-bold text-emerald-800">
-                            {pay.payment_number || 'PAY'}
-                          </span>
-                          <span className="font-mono tabular-nums text-slate-700">
-                            {formatPKR(pay.amount || 0)}
-                          </span>
-                          <span className="text-slate-500">{pay.payment_date}</span>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedReceiptPayment({ payment: pay, invoice: inv })}
-                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
-                            title={`View voucher ${pay.payment_number || ''}`}
-                            aria-label={`View voucher ${pay.payment_number || ''}`}
-                          >
-                            <Eye className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setVoucherToEdit(pay)}
-                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
-                            title={`Edit voucher ${pay.payment_number || ''}`}
-                            aria-label={`Edit voucher ${pay.payment_number || ''}`}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPaymentToDelete(pay)}
-                            className="p-0.5 text-slate-400 hover:text-ink-danger hover:bg-rose-50 rounded cursor-pointer"
-                            title={`Delete voucher ${pay.payment_number || ''}`}
-                            aria-label={`Delete voucher ${pay.payment_number || ''}`}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
                       {attributed.map(({ adjustment: adj, amount, clinicLevel }, idx) => (
                         <div
                           key={`${adj.id}-${idx}`}
@@ -781,14 +643,12 @@ export const BillingView: React.FC = () => {
                   const remaining = invoiceBalanceDue(inv);
                   const isPaid = inv.payment_status === 'paid' || remaining <= 0;
                   const clinicSummary = getLabFinancialSummary(inv.lab_id);
+                  /* Edit + Delete live in the Actions cell — the row is a
+                     voucher and its money documents (payments) are edited and
+                     deleted here, one row per invoice. No chip on the row. */
+                  const primary = (inv.payments || [])[0] || null;
                   return (
                     <div className="flex items-center justify-end gap-1.5">
-                      {/* No per-row Receive button. A payment is recorded from
-                          the payments register below the table, or from the
-                          invoice breakdown drawer — one place to look, and two
-                          fewer controls in a row that has to fit a small
-                          screen. The settled/credit state still reads here so a
-                          scan of the column tells you where each invoice stands. */}
                       {isPaid ? (
                         clinicSummary.outstanding_balance === 0 && clinicSummary.advance_balance > 0 ? (
                           /* A clinic holding advance credit has it drawn down by later
@@ -807,21 +667,25 @@ export const BillingView: React.FC = () => {
                           </span>
                         )
                       ) : null}
-
                       <button
-                        onClick={() => setSelectedDrawerInvoice(inv)}
-                        className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                        title="Inspect Invoice Breakdown, Case Items & Settlement History" aria-label="Inspect invoice breakdown, case items and settlement history"
+                        type="button"
+                        onClick={() => primary && setVoucherToEdit(primary)}
+                        disabled={!primary}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 active:scale-[0.96] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={`Edit payment ${primary?.payment_number || ''}`}
+                        aria-label={`Edit payment ${primary?.payment_number || ''}`}
                       >
-                        <Eye className="w-4 h-4" />
+                        <Pencil className="w-4 h-4" />
                       </button>
-
                       <button
-                        onClick={() => setPrintModalInvoice(inv)}
-                        className="p-1.5 text-ink-muted hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                        title="Print Invoice Statement" aria-label="Print invoice statement"
+                        type="button"
+                        onClick={() => primary && setPaymentToDelete(primary)}
+                        disabled={!primary}
+                        className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 active:scale-[0.96] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={`Delete payment ${primary?.payment_number || ''}`}
+                        aria-label={`Delete payment ${primary?.payment_number || ''}`}
                       >
-                        <Printer className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   );
@@ -893,6 +757,12 @@ export const BillingView: React.FC = () => {
           initialMode={unifiedModalMode}
           initialLabId={unifiedModalLabId}
           initialInvoiceId={unifiedModalInvoiceId}
+          /* The user adds money and wants to SEE the complete payment: open
+             the official receipt immediately, which names every invoice the
+             payment was adjusted against and its amount. */
+          onSuccess={(result) => {
+            if (result.payment) setSelectedReceiptPayment({ payment: result.payment });
+          }}
         />
       )}
 
