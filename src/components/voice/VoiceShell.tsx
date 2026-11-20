@@ -68,7 +68,7 @@ const detectStageWord = (raw: string): string | null => {
 export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
-    caseTypes, labContacts, labAddresses, pricingOverrides,
+    caseTypes, labContacts, labAddresses, pricingOverrides, qcInspections, caseNotes, caseAttachments,
     addLabContact, addLabAddress, addPricingOverride, addCase, applyAdvanceCreditV2, bulkMarkPaid,
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
   } = useApp();
@@ -375,7 +375,8 @@ export const VoiceShell: React.FC = () => {
       setStatus('thinking');
       const result = await askAssistant(text, {
         labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], cases: cases || [],
-        caseTypes: caseTypes || [], labContacts: labContacts || [], labAddresses: labAddresses || [], pricingOverrides: pricingOverrides || [], user,
+        caseTypes: caseTypes || [], labContacts: labContacts || [], labAddresses: labAddresses || [], pricingOverrides: pricingOverrides || [],
+        qcInspections: qcInspections || [], caseNotes: caseNotes || {}, caseAttachments: caseAttachments || {}, user,
         allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
         api: {
           labs: labs || [],

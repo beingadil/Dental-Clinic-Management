@@ -14,6 +14,8 @@ import {
   getOverdueCases, getStandings, getStatementAnswer, getUnpaid, monthFromQuery, periodFromQuery,
   searchInvoicesInContext, getCodeAnswer, clinicCandidates, narrateStatement, getTodayBriefing, openCasesSummary,
   getDueTodayBriefing, bulkArchivePreview,
+  getQcCaseState, getQcInspectionLog, getQcSummary, getQcGateCheck, getQcReworkList, qcReasonCodeList,
+  getCaseDetail, getCaseSearch, getCaseTimeline, getCaseNotes, getCaseAttachments,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { parseWriteCommand, type WriteCommand } from './voiceWrite';
@@ -181,6 +183,78 @@ const tools: VoiceTool[] = [
     id: 'briefing', description: 'Morning briefing: cash, deliveries, outstanding, overdue', risk: 'read',
     match: /briefing|what needs me today|what is due today/,
     run: (ctx) => ({ kind: 'read', text: getTodayBriefing(ctx) }),
+  },
+  {
+    id: 'qc_state', description: 'DS-XXXX QC pass/fail/attempt count and open gate', risk: 'read',
+    match: /^(qc\s+)?(case\s+)?DS-\d+\s+qc\b|qc\s+status\s+of\s+DS-\d+/i,
+    run: (ctx, q) => {
+      const num = q.match(/DS-\d+/i)?.[0]?.toUpperCase() ?? null;
+      return { kind: 'read', text: getQcCaseState(ctx, num) };
+    },
+  },
+  {
+    id: 'qc_gate_check', description: 'DS-XXXX: may it ship (passed QC)?', risk: 'read',
+    match: /can\s+DS-\d+\s+ship|can\s+case\s+DS-\d+\s+ship|passed\s+qc\s+gate|qc\s+gate/i,
+    run: (ctx, q) => {
+      const num = q.match(/DS-\d+/i)?.[0]?.toUpperCase() ?? null;
+      if (!num) return { kind: 'read', text: 'Say e.g. “Can DS-0393 ship?”' };
+      return { kind: 'read', text: getQcGateCheck(ctx, num) };
+    },
+  },
+  {
+    id: 'qc_inspection_log', description: 'QC history for DS-XXXX (attempts, corrections, inspectors)', risk: 'read',
+    match: /qc (history|log|inspections?)( of| for)? (the\s+)?case\s+DS-\d+/i,
+    run: (ctx, q) => {
+      const num = q.match(/DS-\d+/i)?.[0]?.toUpperCase() ?? null;
+      return { kind: 'read', text: getQcInspectionLog(ctx, num) };
+    },
+  },
+  {
+    id: 'qc_metrics_summary', description: 'Lab-wide QC summary: first-pass, rework, failure reasons', risk: 'read',
+    match: /qc\s+(summary|status|rate)\b|first.pass rate|rework/i,
+    run: (ctx) => ({ kind: 'read', text: getQcSummary(ctx) }),
+  },
+  {
+    id: 'qc_rework', description: 'Cases currently in rework', risk: 'read',
+    match: /cases in rework|rework cases|cases that failed qc/i,
+    run: (ctx) => ({ kind: 'read', text: getQcReworkList(ctx) }),
+  },
+  {
+    id: 'qc_reasons', description: 'Why are cases failing? (top reason codes)', risk: 'read',
+    match: /why are cases failing|qc reasons|top reasons|failure reasons|top failure reasons/i,
+    run: (_ctx) => ({ kind: 'read', text: `Top QC reason codes: ${qcReasonCodeList()} — use “Show why DS-XXXX failed” for a case.` }),
+  },
+  {
+    id: 'case_detail', description: 'DS-XXXX material, teeth, shade, procedure, prep, dates, status', risk: 'read',
+    match: /(which|tell me)\s+(material|type|shade|teeth|prep|procedure)\b.*DS-\d+|show\s+me\s+(the\s+)?case\s+(detail|info|me)|case (detail|info)|DS-\d+\s+(detail|info)/i,
+    run: (ctx, q) => {
+      const num = q.match(/DS-\d+/i)?.[0]?.toUpperCase();
+      if (!num) return { kind: 'read', text: 'Say: “Show me case DS-0001 detail” or “Which material is DS-0001?”' };
+      return { kind: 'read', text: getCaseDetail(ctx, num) };
+    },
+  },
+  {
+    id: 'case_search', description: 'Find cases by patient/type/clinic/teeth', risk: 'read',
+    match: /(find|search|look up)\b[^\n]*?(case[s]?|DS-\d+|patient|teeth)/i,
+    run: (ctx, q) => {
+      const q2 = q.replace(/^(find|search|look up|list)\s+/i, '');
+      return { kind: 'read', text: getCaseSearch(ctx, q2) };
+    },
+  },
+  {
+    id: 'case_timeline', description: 'DS-XXXX status history in plain words', risk: 'read',
+    match: /(walk me through|show me)\s+(the\s+)?(history of|when did)\s+DS-\d+/i,
+    run: (ctx, q) => ({ kind: 'read', text: getCaseTimeline(ctx, q.match(/DS-\d+/i)?.[0]?.toUpperCase()) }),
+  },
+  {
+    id: 'case_notes_list', description: 'Notes for a case (author, time, text)', risk: 'read',
+    match: /notes?( on\s+)?DS-\d+|DS-\d+.*notes?/i,
+    run: (ctx, q) => ({ kind: 'read', text: getCaseNotes(ctx, q.match(/DS-\d+/i)?.[0]?.toUpperCase()) }),
+  },
+  {
+    id: 'case_attachments', description: 'Files on a case (categorised by CBCT/photo/etc.)', risk: 'read',
+    match: /attachments?.*DS-\d+|files.*DS-\d+|does DS-\d+ have/i,
+    run: (ctx, q) => ({ kind: 'read', text: getCaseAttachments(ctx, q.match(/DS-\d+/i)?.[0]?.toUpperCase()) }),
   },
   {
     id: 'exportInvoicesCsv', description: 'Export the invoice list as a CSV file', risk: 'read',
