@@ -222,15 +222,6 @@ export const BillingView: React.FC = () => {
    * the moment either changed: filtering to one clinic left the register listing
    * every other clinic's receipts. One band, one query, one export.
    */
-  const filteredAdjustments = useMemo(() => {
-    return (accountAdjustments || []).filter((adj) => {
-      const day = (adj.date || '').slice(0, 10);
-      if (invFromDate && day < invFromDate) return false;
-      if (invToDate && day > invToDate) return false;
-      if (clinicFilter !== 'all' && adj.lab_id !== clinicFilter) return false;
-      return true;
-    });
-  }, [accountAdjustments, invFromDate, invToDate, clinicFilter]);
   const registerTransactions = useMemo<UnifiedTransaction[]>(() => {
     return filterUnifiedTransactions(
       buildUnifiedTransactions({ allPayments, advancePayments, accountAdjustments, invoices }),
@@ -557,11 +548,10 @@ export const BillingView: React.FC = () => {
                 },
               },
               {
-                /* Clean voucher row: number, case, patient, clinic. Payments are
-                   receipts — opened from the receipt modal, not this row — so the
-                   row reads as the voucher itself. This column shows only the
-                   adjustment documents and the unallocated credit note. */
-                header: 'Vouchers',
+                /* Money documents on this invoice: adjustments and credit
+                   notes, each with the invoice number it belongs to. No
+                   separate Adjustments register below the table. */
+                header: 'Adjustments',
                 className: 'whitespace-nowrap',
                 render: (inv: Invoice) => {
                   const attributed = adjustmentsByInvoice.get(inv.id) || [];
@@ -590,6 +580,9 @@ export const BillingView: React.FC = () => {
                         >
                           <span className="font-mono font-bold text-amber-800">
                             {adj.adjustment_number}
+                          </span>
+                          <span className="font-mono text-slate-600" title={`Invoice ${adj.invoice_number || inv.invoice_number}`}>
+                            {adj.invoice_number || inv.invoice_number}
                           </span>
                           <span className="font-mono tabular-nums text-slate-700">
                             {formatPKR(amount || 0)}
@@ -695,55 +688,19 @@ export const BillingView: React.FC = () => {
           />
           </div>
 
-          {/* Adjustments register — clinic-level credit notes, surcharges and
-              refunds. Listed on their own so they stay editable/deletable even
-              when no invoice row is in scope (or the clinic has none). */}
-          <div className="ds-glass-card rounded-2xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-ds-line/40 flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">
-                Adjustments
-              </span>
-              <span className="text-[10px] font-semibold text-ink-muted">
-                {filteredAdjustments.length} entr{filteredAdjustments.length === 1 ? 'y' : 'ies'}
-              </span>
-            </div>
-            {filteredAdjustments.length === 0 ? (
-              <p className="px-4 py-6 text-center text-xs font-semibold text-ink-muted">
-                No adjustments recorded yet.
-              </p>
-            ) : (
-              <ul className="divide-y divide-ds-line/40">
-                {filteredAdjustments.map((adj) => (
-                  <li key={adj.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <span className="font-mono font-bold text-amber-800 text-xs">{adj.adjustment_number}</span>
-                      <span className="ml-2 text-[11px] text-slate-600">{adj.lab_name}</span>
-                      <span className="ml-2 text-[11px] text-slate-500">{adj.date}</span>
-                      <span className="ml-2 text-[11px] text-slate-500">{adj.reason}</span>
-                    </div>
-                    <span className="font-mono font-bold text-slate-900 text-xs">{formatPKR(adj.amount)}</span>
-                    <button type="button" onClick={() => setAdjustmentToEdit(adj)} className="p-1 text-slate-400 hover:text-indigo-600 rounded cursor-pointer" aria-label="Edit adjustment">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button type="button" onClick={() => setAdjustmentToDelete(adj)} className="p-1 text-slate-400 hover:text-ink-danger rounded cursor-pointer" aria-label="Delete adjustment">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {/* Adjustments no longer get their own register. They show on the
+              invoice rows they affect — with their invoice number — exactly
+              like every other money document on this screen. */}
 
         </div>
 
-      {/* No payments register. It used to sit directly under the invoice table,
-          repeating every payment the Vouchers column already showed - two
+      {/* No payments register and no adjustments register. They used to sit
+          under the invoice table, repeating facts the rows already carry — two
           surfaces for one fact, and the operator had to learn which one to edit
-          a mistyped amount in. The vouchers on the invoice row are now the only
-          place a payment lives: read it, correct it, delete it, all from the row
-          it belongs to. Adjustments follow the same rule: they sit in the same
-          column with their own serials (CR-/DR-/REF-), attributed to the rows
-          they affect. `registerTransactions` still feeds the vouchers CSV. */}
+          a mistyped amount in. Payments live on the row's Actions (read via the
+          receipt, correct, delete); adjustments live in the Adjustments column
+          with their serial and invoice number. `registerTransactions` still
+          feeds the vouchers CSV. */}
 
       {/* Unified Transaction Recording Modal (Finance 2.0 Engine) */}
       {isUnifiedRecordModalOpen && (
