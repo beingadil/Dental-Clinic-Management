@@ -768,7 +768,7 @@ export const VOICE_TOOLS = tools;
 
 const matchTools = (q: string): VoiceTool[] => {
   const f = folded(q);
-  return tools.filter((t) => (t.match ? t.match.test(t.id === 'navigate' ? f : q) : true));
+  return tools.filter((t) => (t.match ? (t.match.test(q) || t.match.test(f)) : true));
 };
 
 export const toolDescriptions = () => tools.map((t) => `• ${t.description}`).join('\n');

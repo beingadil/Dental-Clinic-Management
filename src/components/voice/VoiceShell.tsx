@@ -184,9 +184,13 @@ export const VoiceShell: React.FC = () => {
 
     /* Case-aware conversation: remember the case the operator means, and act on a
        bare stage word without them repeating the number. Bulk-archive is a batch
-       action, not a per-case action, so detect and skip straight to the registry. */
+       action, not a per-case action, so detect and skip straight to the registry.
+       Write-intent phrases (update/set/mark/delete/…) go straight to the
+       registry — their tools own those phrases; only bare case references get
+       the interactive case flow. */
     const wantsBulk = /archive\b.*\b(all|bulk|every|older|30\s*days)\b|bulk archive/i.test(text);
-    const caseRefMatch = wantsBulk ? null : text.match(/\bDS-\d+\b/i);
+    const WRITE_PHRASE = /\b(?:update|set|change|mark|move|route|send|put|place|shift|restore|save|add|record|delete|purge|bulk)\b/i;
+    const caseRefMatch = wantsBulk || WRITE_PHRASE.test(text) ? null : text.match(/\bDS-\d+\b/i);
     const stage = wantsBulk ? null : detectStageWord(text);
     if (caseRefMatch) {
       const cn = caseRefMatch[0].toUpperCase();
@@ -385,10 +389,7 @@ export const VoiceShell: React.FC = () => {
     // require typing the expected token; spoken "yes" does not auto-mutate.
     if (pending) {
       if (pendingRisk === 'destructive') {
-        const typed = typedConfirm.replace(/\s+/g, '').toUpperCase();
-        const want = (expectTyped || '').replace(/\s+/g, '').toUpperCase();
-        if (want && typed === want) { confirmPending(); return; }
-        setAnswer(`Type “${expectTyped}” to confirm — this cannot be undone.`);
+        confirmPendingIfAllowed();
         return;
       }
       if (/^(confirm|yes|do it|go ahead|ok)$/i.test(text)) { confirmPending(); return; }
@@ -456,6 +457,23 @@ export const VoiceShell: React.FC = () => {
 
   const cancelPending = () => { setPending(null); setPendingNote(''); setExpectTyped(null); setStatus('idle'); setAnswer(''); cancelSpeech(); };
   const findCaseByNumber = (num: string): DentalCase | null => (cases || []).find((c) => c.case_number === num) || null;
+
+  /* Destructive confirm: require typing the token shown in the red banner
+     (accepted from the typed-confirm input or the main input). Spoken
+     "confirm" is intentionally rejected for destructive actions. */
+  const typedMatch = (): boolean => {
+    if (!pending) return false;
+    const want = (expectTyped || '').replace(/\s+/g, '').toUpperCase();
+    const typed = ((typedConfirm || query) || '').replace(/\s+/g, '').toUpperCase();
+    return !!want && typed === want;
+  };
+  const confirmPendingIfAllowed = () => {
+    if (pending && pendingRisk === 'destructive' && !typedMatch()) {
+      setAnswer(`Type “${expectTyped}” to confirm — this cannot be undone.`);
+      return;
+    }
+    confirmPending();
+  };
 
   const confirmPending = () => {
     if (!pending) return;
