@@ -272,11 +272,10 @@ export const getQcReworkList = (ctx: VoiceContext, limit = 8) => {
   const states = new Map((ctx.cases || []).map((c) => [c.id, deriveQcCaseState(ctx.qcInspections || [], c.id)]));
   const reworkCases = (ctx.cases || []).filter((c) => (states.get(c.id)?.failed_attempts ?? 0) > 0 && c.status !== 'delivered');
   if (!reworkCases.length) return 'No cases are currently in rework.';
-  const list = reworkCases.slice(0, limit).map(caseLineSubr).join('; ');
-  return `In rework (${reworkCases.length}): ${list}${reworkCases.length > limit ? '…' : ''}`;
-  function caseLineSubr(c: DentalCase) {
-    return `${c.case_number} ${states.get(c.id)?.failed_attempts ?? 0} prior failure${(states.get(c.id)?.failed_attempts ?? 0) === 1 ? '' : 's'}`;
-  }
+  return reworkCases.slice(0, limit).map((c) => {
+    const n = states.get(c.id)?.failed_attempts ?? 0;
+    return `${c.case_number}: ${n === 1 ? '1 failed attempt' : `${n} failed attempts`}`;
+  }).join('; ');
 };
 
 /** Export the list of QC codes so voice can explain them. */
