@@ -4,8 +4,8 @@
  * Every tool declares its risk level and confirmation contract up front:
  *   read        → runs silently (deterministic engine output)
  *   write       → amber confirmation panel, operator says "confirm"/taps Confirm
- *   destructive → same panel wording but with the destructive consequence text
- *                 (void / delete / edit money / month reopen). Verbal "yes" confirms.
+ *   destructive → typed confirmation: the operator must type the token shown
+ *                 (e.g. "DELETE DS-0393"); spoken "confirm" never mutates.
  * Permission re-checks happen inside each command's own service layer (canPost etc.).
  */
 import type { VoiceContext } from './voiceTools';
@@ -18,7 +18,7 @@ import {
   getCaseDetail, getCaseSearch, getCaseTimeline, getCaseNotes, getCaseAttachments,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
-import { parseWriteCommand, type WriteCommand } from './voiceWrite';
+import { parseWriteCommand, type WriteCommand, type CaseUpdateFields } from './voiceWrite';
 import type { Invoice, DentalCase, DentalLab, AdvancePayment } from '../types';
 import {
   loadPrintSettings, loadDocumentSections,
@@ -638,6 +638,98 @@ const tools: VoiceTool[] = [
     },
   },
   {
+    id: 'caseUpdateFields', description: 'Update a case: priority, shade, material, instructions, teeth, delivery date', risk: 'write',
+    match: /^(?:update|edit|change|set)\s+(?:the\s+)?(?:case\s+)?(DS-\d+)\s+(?!.*\b(?:ready|delivered|qc|revision|cancelled|received|in progress|draft|quality|rework)\b)(.+)$/i,
+    run: (_ctx, q) => {
+      const m = q.match(/^(?:update|edit|change|set)\s+(?:the\s+)?(?:case\s+)?(DS-\d+)\s+(.+)$/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      const fields: CaseUpdateFields = {};
+      const text = (m?.[2] || '').trim().toLowerCase();
+      const prio = text.match(/priority\s+(?:of\s+)?(low|normal|high|urgent|rush|critical)/i)?.[1];
+      if (prio) fields.priority = prio.toLowerCase() === 'critical' ? 'urgent' : prio.toLowerCase();
+      const shade = text.match(/shade\s+([a-z]?\d{1,2}\s*[a-z]?\d?)/i)?.[1];
+      if (shade) fields.shade = shade.toUpperCase().replace(/\s+/g, '');
+      const material = text.match(/material\s+([a-z]{3,})/i)?.[1];
+      if (material) fields.material = material;
+      const teeth = text.match(/teeth?\s+([\d][\d\s,/]*)/);
+      if (teeth) fields.teeth = teeth[1].split(/[\s,/]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
+      const ins = text.match(/instructions?\s+(.+)/);
+      if (ins) fields.instructions = ins[1].trim().slice(0, 500);
+      const deliv = text.match(/(?:delivery|due)\s+date?\s+([\d-]{6,10})/i);
+      if (deliv) fields.delivery_date = deliv[1].trim();
+      if (!caseNumber) return { kind: 'read', text: 'Say: “Update case DS-0393 — set priority urgent”.' };
+      if (!Object.keys(fields).length) return { kind: 'read', text: 'Say which fields: priority, shade, material, instructions, delivery date or teeth.' };
+      const summary = Object.entries(fields).map(([k, v]) => `${k} = ${v}`).join(', ');
+      return { kind: 'action', risk: 'write', pending: { kind: 'caseUpdateFields', amount: 0, clinicHint: caseNumber, caseNumber, updateFields: fields, method: 'bank' }, summary: `Update ${caseNumber}: ${summary}` };
+    },
+  },
+  {
+    id: 'casePriority', description: 'Set the priority of one case: low|normal|high|urgent', risk: 'write',
+    match: /^(?:(?:set|change|update|mark|put)\s+)?(?:the\s+)?(?:priority\s+)?(?:of\s+)?(?:case\s+)?(DS-\d+)\s*(?:priority\s*)?(?:to\s+|as\s+)?(low|normal|high|urgent|rush|critical)\b/i,
+    run: (_ctx, q) => {
+      const m = q.match(/^(?:(?:set|change|update|mark|put)\s+)?(?:the\s+)?(?:priority\s+)?(?:of\s+)?(?:case\s+)?(DS-\d+)\s*(?:priority\s*)?(?:to\s+|as\s+)?(low|normal|high|urgent|rush|critical)\b/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      const raw = m?.[2]?.toLowerCase();
+      const priority = raw === 'critical' ? 'urgent' : raw || 'normal';
+      if (!caseNumber) return { kind: 'read', text: 'Say: “Set priority of DS-0001 to high.”' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'casePriority', amount: 0, clinicHint: caseNumber, caseNumber, priority, method: 'bank' }, summary: `Set priority of ${caseNumber} to “${priority}”` };
+    },
+  },
+  {
+    id: 'bulkCaseStatus', description: 'Move several case numbers to one stage at once', risk: 'write',
+    match: /^(?:move|mark|set|change|advance|put|place|route|send|shift)\s+(?:case\s+)?(?:\s*DS-\d+[\s,]*)+(?:to|as|on|into\s+)?(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework|cancelled)\b/i,
+    run: (_ctx, q) => {
+      const nums = Array.from(new Set((q.match(/DS-\d+/gi) || []).map((n) => n.toUpperCase())));
+      const stage = q.match(/(?:to|as|on|into)?\s*(draft|received|in progress|in_progress|qc|quality|ready|delivered|revision|rework)\b/i)?.[1];
+      const mapped: Record<string, string> = { draft: 'draft', received: 'received', 'in progress': 'in_progress', in_progress: 'in_progress', qc: 'qc', quality: 'qc', ready: 'ready', delivered: 'delivered', revision: 'revision', rework: 'revision' };
+      const targetStatus = stage ? mapped[stage.toLowerCase()] : undefined;
+      if (!nums.length || !targetStatus) return { kind: 'read', text: 'Say: “Mark DS-0001, DS-0002 ready”.' };
+      const summary = `Move ${nums.length} case(s) (${nums.slice(0, 4).join(', ')}) to “${targetStatus}”`;
+      return { kind: 'action', risk: 'write', pending: { kind: 'bulkCaseStatus', amount: 0, clinicHint: nums.join(', '), bulkCaseNumbers: nums, targetStatus, method: 'bank' }, summary };
+    },
+  },
+  {
+    id: 'restoreCase', description: 'Restore an archived case (unarchive it)', risk: 'write',
+    match: /^(?:restore|unarchive|bring back)\s+(?:the\s+)?(?:case\s+)?(DS-\d+)\b/i,
+    run: (_ctx, q) => {
+      const m = q.match(/(DS-\d+)/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      if (!caseNumber) return { kind: 'read', text: 'Say: “Restore DS-0001.”' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'restoreCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Restore ${caseNumber} (unarchive)` };
+    },
+  },
+  {
+    id: 'caseTemplateSave', description: 'Save a case as a reusable case template', risk: 'write',
+    match: /^(?:save|store|create)\s+(?:case\s+)?(DS-\d+)\s+(?:as\s+)?(?:template|preset)\b/i,
+    run: (_ctx, q) => {
+      const m = q.match(/^(?:save|store|create)\s+(?:case\s+)?(DS-\d+)\s+(?:as\s+)?(?:template|preset)\s*(?:named\s+)?["']?([A-Za-z0-9 ()&-]{2,60}?)["']?\s*$/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      const templateName = (m?.[2] || '').replace(/["']/g, '').trim();
+      if (!caseNumber || !templateName) return { kind: 'read', text: 'Say: “Save case DS-0393 as template ‘Retraced Zirconia Bridge’.”' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'caseTemplateSave', amount: 0, clinicHint: caseNumber, caseNumber, templateName, method: 'bank' }, summary: `Save template “${templateName}” from ${caseNumber}` };
+    },
+  },
+  {
+    id: 'deleteCase', description: 'Delete a case permanently (amber confirm)', risk: 'destructive',
+    match: /^(?:delete|remove)\s+(?:the\s+)?(?:case\s+)?(DS-\d+)\b/i,
+    run: (_ctx, q) => {
+      const m = q.match(/(DS-\d+)/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      if (!caseNumber) return { kind: 'read', text: 'Say: “Delete case DS-0393.”' };
+      return { kind: 'action', risk: 'destructive', pending: { kind: 'deleteCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Delete ${caseNumber} permanently` };
+    },
+  },
+  {
+    id: 'purgeCase', description: 'Permanently delete a case and purge its data (red typed confirm)', risk: 'destructive',
+    match: /^(?:purge|hard[ -]?delete)\s+(?:the\s+)?(?:case\s+)?(DS-\d+)\b/i,
+    run: (_ctx, q) => {
+      const m = q.match(/(DS-\d+)/i);
+      const caseNumber = m?.[1]?.toUpperCase();
+      if (!caseNumber) return { kind: 'read', text: 'Say: “Purge case DS-0393.”' };
+      return { kind: 'action', risk: 'destructive', pending: { kind: 'purgeCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Purge ${caseNumber} — case, notes, attachments, QC data erased` };
+    },
+  },
+  {
     id: 'updateClinicField', description: 'Edit a clinic field by voice (name, phone, email, address, city, doctor)', risk: 'write',
     match: /^(update|set|change|edit)\s+(?:the\s+)?(phone|email|address|doctor|name|city)\s+(?:for|of|at)\s+([A-Za-z0-9 ()&-]{2,40})\s+(?:to|as)\s+(.+)$/i,
     run: (_ctx, q) => {
@@ -662,7 +754,8 @@ const tools: VoiceTool[] = [
         '• Clinics: add contacts, addresses, pricing overrides',
         '• Settings/print: “Invoice sections only brand, lineItems, totals”, “Print settings A4”, “Set notifications 1 day before”',
         '• Billing: “Record payment of PKR 5,000 for Mir Dental”, “Apply advance PKR 25,000 to INV-0042”, “Mark INV-0042 paid”, “Mark INV-0042, INV-0043 paid”',
-        '• Cases: “show cases”, “DS-0001” (then just “ready” / “delivered” / “QC pass” / “archive”), “Mark case DS-0393 ready”',
+        '• Cases: “show cases”, “DS-0001” (then just “ready” / “delivered” / “QC pass” / “archive”), “Mark case DS-0393 ready”, “update DS-0001 — shade A2, priority urgent”, “set DS-0001 priority high”, “mark DS-0001, DS-0002 ready”, “restore DS-0001”, “save DS-0001 as template “Follow-up””',
+        '• Delete (typed confirm): “delete DS-0001”, “purge DS-0001”',
         '• Write (amber confirmation): “Add clinic Mir Dental”, “Mark case DS-0393 ready”, “Update doctor for Mir Dental to Dr Tariq”, “Update phone for Mir Dental to 0300-1234567”, “Add note on case DS-0393”, “QC pass/fail case DS-0393”, “Archive case DS-0393”',
         '• Code/docs: “How does the monthly statement compute closing balance?”',
         'Destructive actions (void, delete, wipe) stay behind the app confirmation.',

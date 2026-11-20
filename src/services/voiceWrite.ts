@@ -2,8 +2,18 @@
  * Strict, allow-listed parser for the two write actions voice may issue:
  * record a payment and record an advance deposit. Anything else is not writable.
  */
+export interface CaseUpdateFields {
+  priority?: string;
+  shade?: string;
+  material?: string;
+  instructions?: string;
+  delivery_date?: string;
+  teeth?: number[];
+}
+
 export interface WriteCommand {
-  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth' | 'addClinicContact' | 'addClinicAddress' | 'addPricingOverride' | 'createCase' | 'applyAdvance' | 'markPaid' | 'bulkArchive';
+  kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicDoctor' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicField' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth' | 'addClinicContact' | 'addClinicAddress' | 'addPricingOverride' | 'createCase' | 'applyAdvance' | 'markPaid' | 'bulkArchive'
+  | 'caseUpdateFields' | 'casePriority' | 'bulkCaseStatus' | 'restoreCase' | 'caseTemplateSave' | 'deleteCase' | 'purgeCase';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
@@ -66,6 +76,12 @@ export interface WriteCommand {
   shade?: string;
   /** One or more invoice numbers for bulk settlement. */
   invoiceNumbers?: string[];
+  /** Fields to update — setCaseStatus's sibling write (update case fields). */
+  updateFields?: CaseUpdateFields;
+  /** Bulk status: several case numbers to move to a stage. */
+  bulkCaseNumbers?: string[];
+  /** Template name — saveAsTemplate. */
+  templateName?: string;
 }
 
 const AMOUNT = /(?:pkr|rs\.?|rupees?)?\s*(\d[\d,]{0,12})/i;

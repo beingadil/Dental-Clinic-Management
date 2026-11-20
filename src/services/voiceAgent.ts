@@ -48,6 +48,13 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   addCaseNote: { required: ['caseNumber', 'note'], optional: [], describe: 'Add a note on a case' },
   recordQc: { required: ['caseNumber', 'result'], optional: ['reason'], describe: 'Record QC pass/fail. fail requires reason' },
   archiveCase: { required: ['caseNumber'], optional: [], describe: 'Archive a delivered case' },
+  caseUpdateFields: { required: ['caseNumber'], optional: [], describe: 'Update DS-XXXX fields — set fields "priority", "shade", "material", "instructions", "delivery_date", "teeth" with values; e.g. update DS-0001 — shade A2, priority urgent' },
+  casePriority: { required: ['caseNumber', 'priority'], optional: [], describe: 'Set a case priority (low|normal|high|urgent)' },
+  bulkCaseStatus: { required: ['bulkCaseNumbers', 'targetStatus'], optional: [], describe: 'Move several case numbers to a stage (e.g. ready, delivered)' },
+  restoreCase: { required: ['caseNumber'], optional: [], describe: 'Restore an archived case' },
+  caseTemplateSave: { required: ['caseNumber', 'templateName'], optional: [], describe: 'Save a case as a template' },
+  deleteCase: { required: ['caseNumber'], optional: [], describe: 'Delete a case permanently (app-confirmed)' },
+  purgeCase: { required: ['caseNumber'], optional: [], describe: 'Permanently delete a case + data (app-confirmed)' },
   cancelCase: { required: ['caseNumber'], optional: [], describe: 'Cancel a case' },
   addNote: { required: ['caseNumber', 'note'], optional: [], describe: 'Add a note on a case' },
 };
@@ -78,7 +85,7 @@ const toolsForApi = () =>
 const systemPrompt = () => `You are the assistant for Dental Solutions, a dental-lab billing app.
 You may ONLY answer by calling tools — never invent figures, clinics, cases, invoices or case numbers.
 If a required argument is missing or the request is ambiguous, ask for it as a short question instead of guessing.
-Never call a tool for destructive actions (void/delete/wipe/refund). Those are handled by the app's own confirmation flows.
+Void/wipe/refund are never tools. Delete/purge of a case goes through deleteCase/purgeCase — the app gates those behind its own confirmation.
 The user may speak with loose wording ("DS-0001", "Mir Dental", "the books"). Map it to the closest tool; ask if you can't.
 Clinics and case numbers must exactly match what the user said or what exists; never fabricate.
 Known tools:

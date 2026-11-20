@@ -9,6 +9,7 @@ import { askAssistant } from '../../services/voiceAssistant';
 import { probeGroq } from '../../services/voiceGate';
 import { can, canPost } from '../../services/permissions';
 import { savePrintSettings, saveDocumentSections, setStatementBankExcluded, setInvoiceSummaryExcluded } from '../../services/printSettings';
+import { type DentalCase } from '../../types';
 import { saveNotificationConfig, announceNotificationConfigChanged } from '../../services/notificationSettings';
 import { closeMonth } from '../../services/monthClose';
 import { groqEnabled } from '../../services/voiceGroq';
@@ -71,6 +72,7 @@ export const VoiceShell: React.FC = () => {
     caseTypes, labContacts, labAddresses, pricingOverrides, qcInspections, caseNotes, caseAttachments,
     addLabContact, addLabAddress, addPricingOverride, addCase, applyAdvanceCreditV2, bulkMarkPaid,
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
+    restoreCase, deleteCasePermanently, saveAsTemplate,
   } = useApp();
   const [open, setOpen] = useState(false);
   const [online, setOnline] = useState(true);
@@ -79,6 +81,8 @@ export const VoiceShell: React.FC = () => {
   const [status, setStatus] = useState<ShellStatus>('idle');
   const [query, setQuery] = useState('');
   const [answer, setAnswer] = useState('');
+  const [typedConfirm, setTypedConfirm] = useState('');
+  const [expectTyped, setExpectTyped] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<WriteCommand | null>(null);
   const [pendingRisk, setPendingRisk] = useState<'write' | 'destructive'>('write');
@@ -111,14 +115,23 @@ export const VoiceShell: React.FC = () => {
     setPendingRisk(risk);
     setPendingNote(note);
     setStatus('done');
-    const destructiveBanner = risk === 'destructive' ? 'DESTRUCTIVE — this cannot be undone: ' : '';
+    if (risk === 'destructive') {
+      const want = cmd.kind === 'purgeCase' ? `PURGE ${cmd.caseNumber}` : `DELETE ${cmd.caseNumber}`;
+      setExpectTyped(want);
+      setPending(cmd);
+      setPendingRisk(risk);
+      setPendingNote(note);
+      setStatus('done');
+      setAnswer(`DESTRUCTIVE — type “${want}” to confirm. This cannot be undone.`);
+      return;
+    }
     if (cmd.kind === 'createClinic') {
-      setAnswer(`${destructiveBanner}Confirm: create clinic “${cmd.clinicHint}”?`);
+      setAnswer(`Confirm: create clinic “${cmd.clinicHint}”?`);
       speak(`Confirm: create clinic ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
       return;
     }
     if (cmd.kind === 'createCase') {
-      setAnswer(`${destructiveBanner}Confirm: create case for ${cmd.patientName ?? 'patient'} — ${cmd.caseTypeName ?? 'case'} at ${cmd.clinicHint} — PKR ${cmd.amount.toLocaleString()}?`);
+      setAnswer(`Confirm: create case for ${cmd.patientName ?? 'patient'} — ${cmd.caseTypeName ?? 'case'} at ${cmd.clinicHint} — PKR ${cmd.amount.toLocaleString()}?`);
       speak(`Confirm: create case for ${cmd.patientName ?? 'patient'} at ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
       return;
     }
@@ -130,6 +143,13 @@ export const VoiceShell: React.FC = () => {
           case 'notificationConfigSave': return 'save the notification configuration';
           case 'closeMonth': return `close ${cmd.month || ''} for ${cmd.labName || cmd.clinicHint}`;
           case 'setCaseStatus': return `move case ${cmd.caseNumber} to “${cmd.targetStatus}”`;
+          case 'caseUpdateFields': return `update ${cmd.caseNumber} — ${Object.entries(cmd.updateFields || {}).map(([k, v]) => `${k}: ${v}`).join(', ')}`;
+          case 'casePriority': return `set ${cmd.caseNumber} priority to “${cmd.priority}”`;
+          case 'bulkCaseStatus': return `move ${cmd.bulkCaseNumbers?.length ?? 0} case(s) to “${cmd.targetStatus}”`;
+          case 'restoreCase': return `restore ${cmd.caseNumber} (unarchive)`;
+          case 'caseTemplateSave': return `save template “${cmd.templateName}” from ${cmd.caseNumber}`;
+          case 'deleteCase': return `delete ${cmd.caseNumber} permanently`;
+          case 'purgeCase': return `purge ${cmd.caseNumber} — case + notes + attachments + QC data`;
           case 'addCaseNote': return `add a note to ${cmd.caseNumber}`;
           case 'recordQc': return `record QC ${cmd.qcResult?.toUpperCase()} for ${cmd.caseNumber}`;
           case 'archiveCase': return `archive ${cmd.caseNumber}`;
@@ -142,7 +162,7 @@ export const VoiceShell: React.FC = () => {
           default: return 'continue';
         }
       })();
-      setAnswer(`${destructiveBanner}Confirm: ${label}.`);
+      setAnswer(`Confirm: ${label}.`);
       speak(`Confirm: ${label}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
       return;
     }
@@ -151,8 +171,8 @@ export const VoiceShell: React.FC = () => {
       : cmd.kind === 'applyAdvance' ? `apply advance to ${cmd.invoiceNumber}`
       : cmd.kind === 'markPaid' ? `mark ${(cmd.invoiceNumbers || []).join(', ')} paid`
       : 'advance deposit';
-    setAnswer(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
-    speak(`${destructiveBanner}Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
+    setAnswer(`Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
+    speak(`Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
       rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
       locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false,
     });
@@ -361,11 +381,19 @@ export const VoiceShell: React.FC = () => {
       return;
     }
 
-    // Spoken confirmation path: an action is pending — a spoken yes confirms.
+    // Spoken confirmation path: an action is pending — destructive actions
+    // require typing the expected token; spoken "yes" does not auto-mutate.
     if (pending) {
+      if (pendingRisk === 'destructive') {
+        const typed = typedConfirm.replace(/\s+/g, '').toUpperCase();
+        const want = (expectTyped || '').replace(/\s+/g, '').toUpperCase();
+        if (want && typed === want) { confirmPending(); return; }
+        setAnswer(`Type “${expectTyped}” to confirm — this cannot be undone.`);
+        return;
+      }
       if (/^(confirm|yes|do it|go ahead|ok)$/i.test(text)) { confirmPending(); return; }
       if (/^(cancel|no|stop|abort)$/i.test(text)) { cancelPending(); return; }
-      setAnswer(pendingRisk === 'destructive' ? 'Say “confirm” to proceed or “cancel” to abort. This action cannot be undone.' : 'Say “confirm” to post it or “cancel”.');
+      setAnswer('Say “confirm” to post it or “cancel”.');
       return;
     }
 
@@ -426,7 +454,8 @@ export const VoiceShell: React.FC = () => {
     return can(user, action) ? null : `Requires the “${action}” permission.`;
   };
 
-  const cancelPending = () => { setPending(null); setPendingNote(''); setStatus('idle'); setAnswer(''); cancelSpeech(); };
+  const cancelPending = () => { setPending(null); setPendingNote(''); setExpectTyped(null); setStatus('idle'); setAnswer(''); cancelSpeech(); };
+  const findCaseByNumber = (num: string): DentalCase | null => (cases || []).find((c) => c.case_number === num) || null;
 
   const confirmPending = () => {
     if (!pending) return;
@@ -473,6 +502,100 @@ export const VoiceShell: React.FC = () => {
         setStatus('error');
         setAnswer(err instanceof Error ? err.message : 'Could not move the case.');
       }
+      return;
+    }
+    if (pending.kind === 'caseUpdateFields' && pending.caseNumber) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        const fields = (pending.updateFields || {}) as never;
+        updateCase(target.id, fields, `Voice: updated case fields`);
+        const parts = Object.entries(pending.updateFields || {}).map(([k, v]) => `${k} = ${v}`).join(', ');
+        setAnswer(`Case ${pending.caseNumber} updated — ${parts}.`);
+        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the case.'); }
+      return;
+    }
+    if (pending.kind === 'casePriority' && pending.caseNumber && pending.priority) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        updateCase(target.id, { priority: pending.priority } as never, `Voice: priority ${pending.priority}`);
+        setAnswer(`Priority of ${pending.caseNumber} set to “${pending.priority}”.`);
+        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not set the priority.'); }
+      return;
+    }
+    if (pending.kind === 'bulkCaseStatus' && pending.bulkCaseNumbers?.length && pending.targetStatus) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const moved: string[] = [];
+      const missing: string[] = [];
+      for (const num of pending.bulkCaseNumbers) {
+        const target = findCaseByNumber(num);
+        if (!target) { missing.push(num); continue; }
+        updateCase(target.id, { status: pending.targetStatus } as never, `Voice: bulk move to ${pending.targetStatus}`);
+        moved.push(num);
+      }
+      if (!moved.length) {
+        setStatus('error');
+        setAnswer(missing.length ? `No case(s) found: ${missing.join(', ')}.` : 'Nothing matched those case numbers.');
+        return;
+      }
+      setAnswer(`Moved ${moved.length} case(s) to “${pending.targetStatus}”${missing.length ? ` — not found: ${missing.join(', ')}` : ''}.`);
+      setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
+      return;
+    }
+    if (pending.kind === 'restoreCase' && pending.caseNumber) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        restoreCase(target.id);
+        setAnswer(`Case ${pending.caseNumber} restored to the workstation.`);
+        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not restore the case.'); }
+      return;
+    }
+    if (pending.kind === 'caseTemplateSave' && pending.caseNumber && pending.templateName) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        saveAsTemplate(pending.templateName, target);
+        setAnswer(`Template “${pending.templateName}” saved from ${pending.caseNumber}.`);
+        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save the template.'); }
+      return;
+    }
+    if (pending.kind === 'deleteCase' && pending.caseNumber) {
+      const blocked = deny('case:delete');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        deleteCasePermanently(target.id);
+        setAnswer(`Case ${pending.caseNumber} deleted permanently.`);
+        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the case.'); }
+      return;
+    }
+    if (pending.kind === 'purgeCase' && pending.caseNumber) {
+      const blocked = deny('case:delete');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(pending.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      try {
+        deleteCasePermanently(target.id);
+        setAnswer(`Case ${pending.caseNumber} purged — case, notes, attachments and QC data removed.`);
+        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not purge the case.'); }
       return;
     }
     if (pending.kind === 'updateClinicDoctor' && pending.doctorName) {
@@ -897,9 +1020,23 @@ export const VoiceShell: React.FC = () => {
             <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
               <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : 'Confirm the action below'}</div>
               <p className="mt-1.5">{answer}</p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-500">Or say “confirm” / “cancel”.</p>
+              {pendingRisk === 'destructive' ? (
+                <p className="mt-1 text-[10px] font-semibold text-rose-600">Type the confirmation above, then press “Confirm destructive”. Spoken “confirm” is not accepted.</p>
+              ) : (
+                <p className="mt-1 text-[10px] font-semibold text-slate-500">Or say “confirm” / “cancel”.</p>
+              )}
               <div className="mt-2 flex gap-2">
-                <button type="button" onClick={confirmPending} className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white ${pendingRisk === 'destructive' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{pendingRisk === 'destructive' ? 'Confirm destructive' : 'Confirm & post'}</button>
+                {pendingRisk === 'destructive' ? (
+                  <input
+                    type="text"
+                    value={typedConfirm}
+                    onChange={(e) => setTypedConfirm(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+                    aria-label="Type to confirm"
+                    className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-xs font-bold text-rose-900"
+                  />
+                ) : null}
+                <button type="button" onClick={pendingRisk === 'destructive' ? () => void submit() : confirmPending} className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white ${pendingRisk === 'destructive' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{pendingRisk === 'destructive' ? 'Confirm destructive' : 'Confirm & post'}</button>
                 <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
               </div>
             </div>

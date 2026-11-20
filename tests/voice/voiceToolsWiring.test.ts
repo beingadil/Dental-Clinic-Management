@@ -55,6 +55,13 @@ const REGISTRY_TOOL_IDS = [
   'addClinicAddress',
   'addPricingOverride',
   'help',
+  'caseUpdateFields',
+  'casePriority',
+  'bulkCaseStatus',
+  'restoreCase',
+  'caseTemplateSave',
+  'deleteCase',
+  'purgeCase',
 ];
 
 /**
@@ -85,6 +92,13 @@ const SHELL_BRANCH_KINDS = [
   'createCase',
   'payment',
   'advance',
+  'caseUpdateFields',
+  'casePriority',
+  'bulkCaseStatus',
+  'restoreCase',
+  'caseTemplateSave',
+  'deleteCase',
+  'purgeCase',
 ];
 
 /** Distinct capabilities the help tool should mention (case-insensitive substrings). */
