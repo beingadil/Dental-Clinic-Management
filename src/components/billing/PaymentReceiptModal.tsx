@@ -96,8 +96,17 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
               )}
             </div>
             <div className="text-right">
-              <p className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">Applied To Invoice</p>
-              <p className="font-bold text-slate-900 text-sm mt-0.5">{payment.allocations?.length && payment.allocations.length > 1 ? `${payment.allocations.length} invoices (see Adjusted Invoices)` : (payment.invoice_number || invoice?.invoice_number)}</p>
+              {(payment.allocations?.length ?? 0) === 0 && (
+                <>
+                  <p className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">Applied To Invoice</p>
+                  <p className="font-bold text-slate-900 text-sm mt-0.5">{payment.invoice_number || invoice?.invoice_number}</p>
+                </>
+              )}
+              {(payment.allocations?.length ?? 0) > 0 && (
+                <p className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">
+                  Applied To {payment.allocations!.length} Invoice{payment.allocations!.length === 1 ? '' : 's'}
+                </p>
+              )}
               <p className="text-slate-500 mt-0.5">
                 Payment Method: <span className="font-bold text-indigo-700 uppercase">{payment.payment_method}</span>
               </p>
