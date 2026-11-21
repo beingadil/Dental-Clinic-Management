@@ -433,6 +433,8 @@ export function buildLedgerPdf(
     return {
       e,
       h: Math.max(rowBase, narrLines.length * lineH + 6),
+      debit: e.debit,
+      credit: e.credit,
       cells: [
         { text: e.date, size: 7 },
         { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.25 : 0, size: 7 },
@@ -473,20 +475,26 @@ export function buildLedgerPdf(
   /* First page: title block + account facts box. Kept tight so transactions
      start high; branding never crowds the ledger. */
   const drawHeader = (ops: PdfOp[]) => {
+    const infoLeft = right - 268; // must match drawStatementInfoBox default width
+    const titleW = infoLeft - g.MARGIN - 14;
     ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 20, w: g.CONTENT_W, h: 2.5, grey: 0.12 });
     ops.push({
       kind: 'text', x: g.MARGIN, y: g.H - 34, size: 10, bold: true, grey: 0.15,
-      text: fitShrink(meta.labName, g.CONTENT_W * 0.55, 10).text,
+      text: fitShrink(meta.labName, titleW, 10).text,
     });
     ops.push({
       kind: 'text', x: g.MARGIN, y: g.H - 54, size: 21, bold: true, grey: 0.08,
-      text: 'GENERAL LEDGER',
+      text: fitShrink('GENERAL LEDGER', titleW, 21).text,
     });
     ops.push({
       kind: 'text', x: g.MARGIN, y: g.H - 65, size: 7, grey: 0.4,
-      text: meta.caseFilterLabel
-        ? `Filtered to cases matching “${meta.caseFilterLabel}”`
-        : 'Account statement and transaction details',
+      text: fitShrink(
+        meta.caseFilterLabel
+          ? `Filtered to cases matching “${meta.caseFilterLabel}”`
+          : 'Account statement and transaction details',
+        titleW,
+        7,
+      ).text,
     });
     drawStatementInfoBox(ops, g, infoRows, infoTop);
     ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.35, width: 0.9 });
@@ -517,15 +525,13 @@ export function buildLedgerPdf(
 
   const section: TableSection = {
     cols: planned.cols,
-    rows: rows.map((r) => ({ cells: r.cells, height: r.h })),
+    rows: rows.map((r) => ({ cells: r.cells, height: r.h, debit: r.debit, credit: r.credit })),
     top: firstRowY,
     /* Continuation pages start higher because they carry a compact header. */
     continuationTop: compactFirstRowY,
-    /* Room for the totals row, the account summary, the closing line and the
-       note on the last page — they are part of the document, so the table has
-       to leave them their paper instead of running into the footer. Intermediate
-       pages fill to the footer (CONTENT_BOTTOM + 26) so no space is wasted. */
-    bottom: g.CONTENT_BOTTOM + 26,
+    /* Room for the per-page subtotal strip (~22) on every page, plus the
+       totals + account summary + note (~64) on the last page. */
+    bottom: g.CONTENT_BOTTOM + 48,
     heading: (ops, geo, _y, continued) => {
       if (!continued) {
         ops.push({
@@ -538,16 +544,42 @@ export function buildLedgerPdf(
          label — go straight to the column headings, higher up the page. */
       return compactTableHeadY;
     },
+    /* Per-page subtotal strip: this page's debit/credit and closing balance. */
+    pageStrip: (ops, geo, X, cols, y, pageRows) => {
+      const end = geo.MARGIN + geo.CONTENT_W;
+      const dr = pageRows.reduce((s, r) => s + (r.debit || 0), 0);
+      const cr = pageRows.reduce((s, r) => s + (r.credit || 0), 0);
+      const top = y + 2;
+      const bottom = y - 14;
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.955 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: end, y2: top, grey: 0.5, width: 0.6 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: end, y2: bottom, grey: 0.5, width: 0.6 });
+      ops.push({
+        kind: 'text', x: geo.MARGIN + 6, y: bottom + 4, size: 6.5, bold: true, grey: 0.15,
+        text: `PAGE TOTAL  (${pageRows.length} ${pageRows.length === 1 ? 'ENTRY' : 'ENTRIES'})`,
+      });
+      const figure = (key: string, text: string) => {
+        const col = cols.find((c) => c.key === key);
+        if (!col) return;
+        ops.push({
+          kind: 'text', x: X[key] + col.w - textW(text, 6.5) - 2, y: bottom + 4,
+          size: 6.5, bold: true, grey: 0.15, text,
+        });
+      };
+      figure('debit', dr ? num(dr) : '\u2013');
+      figure('credit', cr ? num(cr) : '\u2013');
+      figure('close', '');
+    },
     totals: (ops, geo, X, cols, rowEndY, rowCount) => {
       const y = rowEndY - 8;
       const end = geo.MARGIN + geo.CONTENT_W;
-      /* TOTALS is a single cell across the first four columns, as a ledger's
-         closing line has always been set. */
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 20, grey: 0.945 });
-      drawGridLines(ops, geo, cols, X, y - 8, y + 12);
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 11, x2: end, y2: y + 11, grey: 0.25, width: 1.2 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 9.4, x2: end, y2: y + 9.4, grey: 0.7, width: 0.4 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: end, y2: y - 8, grey: 0.25, width: 1 });
+      /* One clean band for the grand totals — no stacked rules, no per-cell
+         boxes. The single table frame already provides the vertical rules. */
+      const top = y + 12;
+      const bottom = y - 8;
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.93 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: end, y2: top, grey: 0.45, width: 0.8 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: end, y2: bottom, grey: 0.45, width: 0.8 });
 
       const label = `TOTALS (${num(rowCount || meta.transactionCount)} TRANSACTION${(rowCount || meta.transactionCount) === 1 ? '' : 'S'})`;
       ops.push({ kind: 'text', x: geo.MARGIN + 6, y: y + 1, size: 6.5, bold: true, grey: 0.1, text: label });
@@ -983,18 +1015,24 @@ function drawStatementInfoBox(
   g: Geo,
   rows: DocMetaLine[],
   top: number,
-  width = 212,
+  width = 268,
 ): number {
   const right = g.W - g.MARGIN;
   const left = right - width;
   const bottom = top - rows.length * INFO_ROW_H;
-  const split = left + width * 0.46;
-  ops.push({ kind: 'rectStroke', x: left, y: bottom, w: width, h: rows.length * INFO_ROW_H, grey: 0.5, width: 0.6 });
-  ops.push({ kind: 'line', x1: split, y1: bottom, x2: split, y2: top, grey: 0.78, width: 0.4 });
+  /* Labels take 34% — "REPORT PERIOD" fits — values get 66% so long clinic
+     and account names never push past the right edge of the box. */
+  const split = left + width * 0.34;
+  /* One consistent thin frame — no doubled strokes. */
+  ops.push({ kind: 'line', x1: left, y1: bottom, x2: left, y2: top, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: right, y1: bottom, x2: right, y2: top, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: left, y1: top, x2: right, y2: top, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: left, y1: bottom, x2: right, y2: bottom, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: split, y1: bottom, x2: split, y2: top, grey: 0.8, width: 0.35 });
   rows.forEach((row, i) => {
     const rowTop = top - i * INFO_ROW_H;
     const base = rowTop - 10.5;
-    if (i > 0) ops.push({ kind: 'line', x1: left, y1: rowTop, x2: right, y2: rowTop, grey: 0.78, width: 0.4 });
+    if (i > 0) ops.push({ kind: 'line', x1: left, y1: rowTop, x2: right, y2: rowTop, grey: 0.8, width: 0.35 });
     ops.push({
       kind: 'text', x: left + 6, y: base, size: 6, bold: true, grey: 0.25,
       text: fitShrink(row.label.toUpperCase(), split - left - 10, 6).text,
@@ -1027,12 +1065,16 @@ function drawAccountSummary(ops: PdfOp[], g: Geo, meta: LedgerPdfMeta, y: number
   ops.push({ kind: 'text', x: g.MARGIN, y, size: 7.5, bold: true, grey: 0.2, text: 'ACCOUNT SUMMARY' });
   const headTop = y - 8;
   const tableBottom = headTop - rowH * 2;
-  ops.push({ kind: 'rect', x: g.MARGIN, y: headTop - rowH, w: g.CONTENT_W, h: rowH, grey: 0.945 });
-  ops.push({ kind: 'rectStroke', x: g.MARGIN, y: tableBottom, w: g.CONTENT_W, h: rowH * 2, grey: 0.4, width: 0.6 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop, x2: right, y2: headTop, grey: 0.25, width: 1 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop - rowH, x2: right, y2: headTop - rowH, grey: 0.25, width: 1 });
+  /* One header band, one outer frame, one rule between the two rows — no
+     stacked strokes. Matches the clean single-rule table frame above. */
+  ops.push({ kind: 'rect', x: g.MARGIN, y: headTop - rowH, w: g.CONTENT_W, h: rowH, grey: 0.93 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop, x2: right, y2: headTop, grey: 0.45, width: 0.6 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop - rowH, x2: right, y2: headTop - rowH, grey: 0.75, width: 0.4 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: tableBottom, x2: right, y2: tableBottom, grey: 0.45, width: 0.6 });
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: tableBottom, x2: g.MARGIN, y2: headTop, grey: 0.45, width: 0.6 });
+  ops.push({ kind: 'line', x1: right, y1: tableBottom, x2: right, y2: headTop, grey: 0.45, width: 0.6 });
   for (let i = 1; i < labels.length; i++) {
-    ops.push({ kind: 'line', x1: g.MARGIN + i * colW, y1: tableBottom, x2: g.MARGIN + i * colW, y2: headTop, grey: 0.65, width: 0.4 });
+    ops.push({ kind: 'line', x1: g.MARGIN + i * colW, y1: tableBottom, x2: g.MARGIN + i * colW, y2: headTop, grey: 0.85, width: 0.35 });
   }
   labels.forEach((label, i) => {
     ops.push({
@@ -1123,6 +1165,9 @@ export interface TableRow {
   cells: TableCell[];
   /** Row height in points. Defaults to a single line. */
   height?: number;
+  /** Numeric debit/credit for per-page subtotal strips (ledger statements). */
+  debit?: number;
+  credit?: number;
 }
 
 export interface TableSection {
@@ -1152,6 +1197,18 @@ export interface TableSection {
     cols: TableCol[],
     y: number,
     rowCount: number,
+  ) => void;
+  /**
+   * Drawn after the rows on EVERY page — a per-page debit/credit subtotal
+   * strip. Receives that page's rows so each sheet carries its own totals.
+   */
+  pageStrip?: (
+    ops: PdfOp[],
+    g: Geo,
+    X: Record<string, number>,
+    cols: TableCol[],
+    y: number,
+    pageRows: TableRow[],
   ) => void;
   /** Where the first row starts. */
   top: number;
@@ -1222,6 +1279,28 @@ function drawGridLines(
 }
 
 /**
+ * Vertical column rules for a whole table, drawn ONCE spanning the entire
+ * table height (header + rows + strip). Consistent single-weight rules give a
+ * clean accounting-table look — unlike per-row boxes, which read as a grid of
+ * unrelated cells.
+ */
+function drawTableVerticals(
+  ops: PdfOp[],
+  g: Geo,
+  cols: TableCol[],
+  X: Record<string, number>,
+  top: number,
+  bottom: number,
+): void {
+  const right = g.MARGIN + g.CONTENT_W;
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: bottom, x2: g.MARGIN, y2: top, grey: 0.45, width: 0.6 });
+  ops.push({ kind: 'line', x1: right, y1: bottom, x2: right, y2: top, grey: 0.45, width: 0.6 });
+  for (const c of cols.slice(1)) {
+    ops.push({ kind: 'line', x1: X[c.key], y1: bottom, x2: X[c.key], y2: top, grey: 0.85, width: 0.35 });
+  }
+}
+
+/**
  * Draw the column headings, shrunk to their column rather than clipped.
  *
  * A heading sits on the SAME right edge as its figures (`- 2`), because a
@@ -1236,7 +1315,6 @@ function drawColumnHeadings(
   y: number,
 ): void {
   ops.push({ kind: 'rect', x: g.MARGIN, y: y - 4, w: g.CONTENT_W, h: 16, grey: 0.93 });
-  drawGridLines(ops, g, cols, X, y - 4, y + 12);
   for (const c of cols) {
     const fit = fitShrink(c.label.toUpperCase(), c.w - 4, 6.5);
     ops.push({
@@ -1249,10 +1327,8 @@ function drawColumnHeadings(
       text: fit.text,
     });
   }
-  /* Heavy rule under the heading, and a hairline over it: the heading band is
-     the table's lid, not another row. */
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4, x2: g.MARGIN + g.CONTENT_W, y2: y - 4, grey: 0.25, width: 1 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: y + 12, x2: g.MARGIN + g.CONTENT_W, y2: y + 12, grey: 0.55, width: 0.5 });
+  /* One clean rule under the heading band — the table's lid. */
+  ops.push({ kind: 'line', x1: g.MARGIN, y1: y - 4, x2: g.MARGIN + g.CONTENT_W, y2: y - 4, grey: 0.45, width: 0.7 });
 }
 
 /** The height of one wrapped line inside a row. */
@@ -1274,15 +1350,15 @@ function drawRow(
   y: number,
   index = 0,
 ): void {
-  /* A row's bottom edge depends on how many lines it carries: a wrapped
-     narration hangs BELOW its first baseline, so a fixed rule would be drawn
-     through the second line and the banding would paint over the row above. */
   const lineCount = Math.max(1, ...row.cells.map((c) => c.lines?.length ?? 1));
   const ruleY = y - (lineCount - 1) * LINE_H - 4.5;
+  /* Clean accounting table: a whisper of banding on alternate rows and ONE
+     hairline under each row. Vertical rules are drawn once for the whole table
+     (drawTableVerticals), not repeated per row — repeated per-row boxes are
+     what make a statement look like a spreadsheet grid. */
   if (index % 2 === 1) {
     ops.push({ kind: 'rect', x: g.MARGIN, y: ruleY, w: g.CONTENT_W, h: y + 7 - ruleY, grey: 0.977 });
   }
-  drawGridLines(ops, g, cols, X, ruleY, y + 7);
   row.cells.forEach((cell, i) => {
     const col = cols[i];
     if (!col) return;
@@ -1368,7 +1444,7 @@ function renderTableSections(
         i === 0 ? section.top : (section.continuationTop ?? section.top);
       let lastY = chunkTop(chunks.length - 1);
       for (const row of lastChunk) lastY -= (row.height ?? ROW_H) + ROW_GAP;
-      while (lastY < g.CONTENT_BOTTOM + 86 && lastChunk.length > 1) {
+      while (lastY < g.CONTENT_BOTTOM + 112 && lastChunk.length > 1) {
         const movedRow = lastChunk.pop()!;
         chunks.push([movedRow]);
         lastChunk = chunks[chunks.length - 1];
@@ -1397,8 +1473,19 @@ function renderTableSections(
         rowY -= (row.height ?? ROW_H) + ROW_GAP;
       });
 
+      /* Per-page subtotal strip on EVERY page, then a single clean table frame
+         around the whole thing (header + rows + strip) — not a box per row. */
+      let frameBottom = rowY;
+      if (section.pageStrip) {
+        section.pageStrip(ops, g, X, cols, frameBottom, rows);
+        frameBottom -= 22; // strip height
+      }
+      drawTableVerticals(ops, g, cols, X, headY - 4, frameBottom);
+
       if (pageInSection === chunks.length - 1 && section.totals) {
-        section.totals(ops, g, X, cols, rowY, section.rows.length);
+        /* On the final page the grand totals sit just below the page strip. */
+        const stripOffset = section.pageStrip ? 26 : 0;
+        section.totals(ops, g, X, cols, rowY - stripOffset, section.rows.length);
       }
 
       pages.push({ ops, geo: g });
