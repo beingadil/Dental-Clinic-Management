@@ -330,6 +330,38 @@ const fitShrink = (s: string, maxW: number, size: number): { text: string; size:
   return { text: out + '\u2026', size };
 };
 
+/**
+ * Lay a ledger narration out as compact accounting lines.
+ *
+ * The source narration is one long " • "-joined string (heading, then facts).
+ * Wrapping it as one stream breaks facts mid-value and runs to 3–4 lines.
+ * Instead: heading on its own line, then pack facts with " | " separators,
+ * keeping each fact intact. This yields a clean 2–3 line arrangement with no
+ * clinical or financial detail lost — every part of the source is preserved.
+ */
+function formatNarrationLines(narration: string, maxW: number, size: number): string[] {
+  const parts = String(narration || '')
+    .split('\u2022')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return wrapText(narration, maxW, size);
+
+  const lines: string[] = [parts[0]];
+  let cur = '';
+  for (const fact of parts.slice(1)) {
+    const candidate = cur ? `${cur} | ${fact}` : fact;
+    if (textW(candidate, size) <= maxW) {
+      cur = candidate;
+    } else {
+      if (cur) lines.push(cur);
+      // A single fact wider than the column is wrapped on its own lines.
+      cur = textW(fact, size) <= maxW ? fact : wrapText(fact, maxW, size).pop() || '';
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
 /** Auto-orientation: user asked for portrait clean PDF. */
 export const chooseOrientation = (meta: LedgerPdfMeta): Orientation => {
   if (meta.orientation) return meta.orientation;
@@ -385,8 +417,9 @@ export function buildLedgerPdf(
   const planned = planColumns(g);
   const colByKey = Object.fromEntries(planned.cols.map((c) => [c.key, c]));
   const narrW = colByKey.narr.w - 4;
-  const lineH = 9.5;
-  const rowBase = 15; // min row height (single line + rule)
+  /* Compact accounting typography — readable, restrained, professional. */
+  const lineH = 10;
+  const rowBase = 16;
 
   /* Pre-wrap every row once, so a page break never splits a row and the
      narration is never clipped. The row's height accounts for the wrap. */
@@ -394,23 +427,24 @@ export function buildLedgerPdf(
     /* No typeLabel prefix here. It was rendered into the description as
        "Case Invoice - " while ALSO being the TYPE column, so every row opened
        by naming its own column. The type belongs in the column; the
-       description should describe the work. */
-    const narrLines = wrapText(e.narration || '', narrW, 7);
+       description should describe the work.
+       Compact 2–3 line layout: heading, then facts packed with " | ". */
+    const narrLines = formatNarrationLines(e.narration || '', narrW, 7);
     return {
       e,
       h: Math.max(rowBase, narrLines.length * lineH + 6),
       cells: [
-        { text: e.date },
-        { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.25 : 0 },
-        { text: e.typeLabel },
-        { text: '', lines: narrLines },
+        { text: e.date, size: 7 },
+        { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.25 : 0, size: 7 },
+        { text: e.typeLabel, size: 7 },
+        { text: '', lines: narrLines, size: 7 },
         /* A money column with nothing in it says so with a dash, the way a
            ledger has always been ruled: an empty cell reads as a missing value. */
-        { text: e.debit ? num(e.debit) : '\u2013' },
-        { text: e.credit ? num(e.credit) : '\u2013' },
+        { text: e.debit ? num(e.debit) : '\u2013', size: 7 },
+        { text: e.credit ? num(e.credit) : '\u2013', size: 7 },
         /* The running balance is the column a reader follows down the page:
            one step heavier than the money beside it. */
-        { text: num(e.closing), bold: true, size: 7 },
+        { text: num(e.closing), bold: true, size: 7.5 },
       ] as TableCell[],
     };
   });
@@ -436,18 +470,20 @@ export function buildLedgerPdf(
   const tableHeadY = ruleY - 38;
   const firstRowY = tableHeadY - 18;
 
+  /* First page: title block + account facts box. Kept tight so transactions
+     start high; branding never crowds the ledger. */
   const drawHeader = (ops: PdfOp[]) => {
-    ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 22, w: g.CONTENT_W, h: 2.5, grey: 0.12 });
+    ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 20, w: g.CONTENT_W, h: 2.5, grey: 0.12 });
     ops.push({
-      kind: 'text', x: g.MARGIN, y: g.H - 38, size: 10.5, bold: true, grey: 0.15,
-      text: fitShrink(meta.labName, g.CONTENT_W * 0.55, 10.5).text,
+      kind: 'text', x: g.MARGIN, y: g.H - 34, size: 10, bold: true, grey: 0.15,
+      text: fitShrink(meta.labName, g.CONTENT_W * 0.55, 10).text,
     });
     ops.push({
-      kind: 'text', x: g.MARGIN, y: g.H - 58, size: 19, bold: true, grey: 0.08,
+      kind: 'text', x: g.MARGIN, y: g.H - 54, size: 21, bold: true, grey: 0.08,
       text: 'GENERAL LEDGER',
     });
     ops.push({
-      kind: 'text', x: g.MARGIN, y: g.H - 69, size: 7, grey: 0.4,
+      kind: 'text', x: g.MARGIN, y: g.H - 65, size: 7, grey: 0.4,
       text: meta.caseFilterLabel
         ? `Filtered to cases matching “${meta.caseFilterLabel}”`
         : 'Account statement and transaction details',
@@ -456,21 +492,51 @@ export function buildLedgerPdf(
     ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.35, width: 0.9 });
   };
 
+  /* Continuation pages: a single compact identity line — no repeated letterhead
+     box, no oversized title. Frees ~75pt per continuation page for rows. */
+  const drawCompactHeader = (ops: PdfOp[]) => {
+    ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 16, w: g.CONTENT_W, h: 2, grey: 0.12 });
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 30, size: 11, bold: true, grey: 0.1,
+      text: 'GENERAL LEDGER',
+    });
+    ops.push({
+      kind: 'text', x: g.MARGIN + 105, y: g.H - 30, size: 7.5, grey: 0.35,
+      text: fitShrink(
+        `${meta.clinicLabel}  ·  ${meta.accountName || 'Accounts Receivable'}  ·  ${meta.periodLabel}`,
+        g.CONTENT_W - 110,
+        7.5,
+      ).text,
+    });
+    ops.push({ kind: 'line', x1: g.MARGIN, y1: g.H - 38, x2: right, y2: g.H - 38, grey: 0.3, width: 0.8 });
+  };
+
+  /* On continuation pages the table sits higher because the header is compact. */
+  const compactTableHeadY = g.H - 62;
+  const compactFirstRowY = compactTableHeadY - 18;
+
   const section: TableSection = {
     cols: planned.cols,
     rows: rows.map((r) => ({ cells: r.cells, height: r.h })),
     top: firstRowY,
+    /* Continuation pages start higher because they carry a compact header. */
+    continuationTop: compactFirstRowY,
     /* Room for the totals row, the account summary, the closing line and the
        note on the last page — they are part of the document, so the table has
        to leave them their paper instead of running into the footer. Intermediate
        pages fill to the footer (CONTENT_BOTTOM + 26) so no space is wasted. */
     bottom: g.CONTENT_BOTTOM + 26,
     heading: (ops, geo, _y, continued) => {
-      ops.push({
-        kind: 'text', x: geo.MARGIN, y: sectionLabelY, size: 7.5, bold: true, grey: 0.2,
-        text: continued ? 'TRANSACTION DETAILS (CONTINUED)' : 'TRANSACTION DETAILS',
-      });
-      return tableHeadY;
+      if (!continued) {
+        ops.push({
+          kind: 'text', x: geo.MARGIN, y: sectionLabelY, size: 8, bold: true, grey: 0.2,
+          text: 'TRANSACTION DETAILS',
+        });
+        return tableHeadY;
+      }
+      /* Compact header already identifies the document; no repeated section
+         label — go straight to the column headings, higher up the page. */
+      return compactTableHeadY;
     },
     totals: (ops, geo, X, cols, rowEndY, rowCount) => {
       const y = rowEndY - 8;
@@ -504,7 +570,11 @@ export function buildLedgerPdf(
   const pages = renderTableSections(
     g,
     [section],
-    (ops) => drawHeader(ops),
+    (ops, _sectionIndex, pageInSection) => {
+      /* Full letterhead on the first page, compact identity bar thereafter. */
+      if (pageInSection === 0) drawHeader(ops);
+      else drawCompactHeader(ops);
+    },
     (ops, i, total) => {
       ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 13, x2: right, y2: g.FOOTER_Y + 13, grey: 0.7, width: 0.4 });
       ops.push({
@@ -975,17 +1045,11 @@ function drawAccountSummary(ops: PdfOp[], g: Geo, meta: LedgerPdfMeta, y: number
     });
   });
 
-  /* The closing line, stated in words: the one sentence a clinic reads first. */
-  const closeTop = tableBottom - 12;
-  ops.push({ kind: 'rectStroke', x: g.MARGIN, y: closeTop - 18, w: g.CONTENT_W, h: 18, grey: 0.4, width: 0.6 });
-  const line = `Closing balance due from ${meta.clinicLabel}: ${pk(meta.closingBalance)}`;
-  const fit = fitShrink(line, g.CONTENT_W - 24, 7.5);
+  /* Closing balance is already the 4th column of the summary table, shown
+     prominently — a separate repeated sentence would only restate it. */
+  const noteY = tableBottom - 18;
   ops.push({
-    kind: 'text', x: right - 12 - textW(fit.text, fit.size), y: closeTop - 12, size: fit.size, bold: true, grey: 0.1, text: fit.text,
-  });
-
-  ops.push({
-    kind: 'text', x: g.MARGIN, y: closeTop - 30, size: 6.5, grey: 0.45,
+    kind: 'text', x: g.MARGIN, y: noteY, size: 6.5, grey: 0.45,
     text: fitShrink(
       'Note: This is a computer-generated account statement. Please verify the entries against the clinic\u2019s records.',
       g.CONTENT_W,
@@ -1271,70 +1335,45 @@ function renderTableSections(
     if (section.skipIfEmpty && !section.rows.length && !section.preRows?.length) return;
     const { cols, X } = layoutCols(g, section.cols);
 
-    /* Pack the rows into pages by MEASURED height. A row is never split
-       across a page break, and a page never runs into the footer. */
-    const maxRowNeed = Math.max(
-      ROW_H + ROW_GAP,
-      ...section.rows.map((r) => (r.height ?? ROW_H) + ROW_GAP),
-    );
-    const capacity = Math.max(1, Math.floor((section.top - section.bottom) / maxRowNeed));
-    const pagesNeeded = Math.max(1, Math.ceil(section.rows.length / capacity));
-    const target = Math.max(1, Math.ceil(section.rows.length / pagesNeeded));
+    /* Pack rows into pages purely by MEASURED HEIGHT — fill each page to the
+       footer before breaking. A row is never split and a page never runs into
+       the footer. (The old even row-count split used the TALLEST row to pick a
+       uniform count, so pages with short rows ended ~40% empty — the wasted
+       space seen in multi-page ledgers.) */
     const nextTop = section.continuationTop ?? section.top;
     const chunks: TableRow[][] = [];
     let current: TableRow[] = [];
     let y = section.top;
-    if (nextTop !== section.top) {
-      /* A section with a summary block on its first page has a different
-         capacity on every page after it, so the rows are packed greedily by
-         the room actually available rather than split evenly. */
-      for (const row of section.rows) {
-        const need = (row.height ?? ROW_H) + ROW_GAP;
-        if (y - need < section.bottom && current.length) {
-          chunks.push(current);
-          current = [];
-          y = nextTop;
-        }
-        current.push(row);
-        y -= need;
+    for (const row of section.rows) {
+      const need = (row.height ?? ROW_H) + ROW_GAP;
+      if (y - need < section.bottom && current.length) {
+        chunks.push(current);
+        current = [];
+        y = nextTop;
       }
-      if (current.length) chunks.push(current);
-      if (!chunks.length) chunks.push([]);
-    } else {
-      for (const row of section.rows) {
-        const need = (row.height ?? ROW_H) + ROW_GAP;
-        if (current.length >= target && current.length) {
-          chunks.push(current);
-          current = [];
-          y = section.top;
-        }
-        if (y - need < section.bottom && current.length) {
-          chunks.push(current);
-          current = [];
-          y = section.top;
-        }
-        current.push(row);
-        y -= need;
-      }
-      if (current.length) chunks.push(current);
-      if (!chunks.length) chunks.push([]);
+      current.push(row);
+      y -= need;
     }
+    if (current.length) chunks.push(current);
+    if (!chunks.length) chunks.push([]);
 
-    /* Reserve space on the last page for totals + account summary + note
-       (≈118 units). Intermediate pages fill to the footer, so no space is
-       wasted; only the last page carries the reserve. */
-    if (section.totals && chunks.length > 1) {
-      const lastChunk = chunks[chunks.length - 1];
-      // Estimate where the last row on the last page ends
-      let lastY = section.top;
+    /* Reserve space on the last page for the totals row and the compact
+       account summary + note (≈86 units). Intermediate pages fill to the
+       footer; only the last page carries the reserve. Move whole rows from
+       the last page to a fresh page until the reserve fits. */
+    if (section.totals && chunks.length) {
+      let lastChunk = chunks[chunks.length - 1];
+      // Continuation pages start at continuationTop, not the first-page top.
+      const chunkTop = (i: number) =>
+        i === 0 ? section.top : (section.continuationTop ?? section.top);
+      let lastY = chunkTop(chunks.length - 1);
       for (const row of lastChunk) lastY -= (row.height ?? ROW_H) + ROW_GAP;
-      // Need at least 118 units below the last row for totals + summary + note
-      if (lastY < g.CONTENT_BOTTOM + 118) {
-        // Move the last row to a new page so totals have room
-        if (lastChunk.length > 1) {
-          const movedRow = lastChunk.pop()!;
-          chunks.push([movedRow]);
-        }
+      while (lastY < g.CONTENT_BOTTOM + 86 && lastChunk.length > 1) {
+        const movedRow = lastChunk.pop()!;
+        chunks.push([movedRow]);
+        lastChunk = chunks[chunks.length - 1];
+        lastY = chunkTop(chunks.length - 1);
+        for (const row of lastChunk) lastY -= (row.height ?? ROW_H) + ROW_GAP;
       }
     }
     chunks.forEach((rows, pageInSection) => {
