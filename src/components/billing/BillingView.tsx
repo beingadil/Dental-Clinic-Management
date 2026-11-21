@@ -401,10 +401,27 @@ export const BillingView: React.FC = () => {
             data={visibleVouchers}
             rowKey={(v) => v.id}
             onRowClick={(v) => {
-              const primary = v.slices[0];
-              setSelectedReceiptPayment({
-                payment: { ...primary, payment_number: v.number, amount: v.amount } as PaymentRecord,
-              });
+              /* Reconstruct the adjustment trail from the slices — DB-loaded
+                 slices are stored without the canonical payment's allocations,
+                 but each slice knows its invoice + amount. */
+              const allocations = v.slices.map((s) => ({
+                id: s.id,
+                source_type: 'payment',
+                source_id: s.id,
+                source_ref: v.number,
+                invoice_id: s.invoice_id || '',
+                invoice_number: s.invoice_number || 'INV',
+                amount: s.amount || 0,
+                allocated_at: s.created_at || '',
+                allocated_by: s.recorded_by || '',
+              }));
+              const canonical = {
+                ...v.slices[0],
+                payment_number: v.number,
+                amount: v.amount,
+                allocations,
+              } as PaymentRecord;
+              setSelectedReceiptPayment({ payment: canonical });
             }}
             emptyState={
               <div className="p-6">
@@ -474,7 +491,26 @@ export const BillingView: React.FC = () => {
                   <div className="flex items-center justify-end gap-1">
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setVoucherToEdit(v.slices[0]); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const primary = v.slices[0];
+                        setVoucherToEdit({
+                          ...primary,
+                          payment_number: v.number,
+                          amount: v.amount,
+                          allocations: v.slices.map((s) => ({
+                            id: s.id,
+                            source_type: 'payment',
+                            source_id: s.id,
+                            source_ref: v.number,
+                            invoice_id: s.invoice_id || '',
+                            invoice_number: s.invoice_number || 'INV',
+                            amount: s.amount || 0,
+                            allocated_at: s.created_at || '',
+                            allocated_by: s.recorded_by || '',
+                          })),
+                        } as PaymentRecord);
+                      }}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 active:scale-[0.96] transition-colors cursor-pointer"
                       title={`Edit voucher ${v.number}`}
                       aria-label={`Edit voucher ${v.number}`}
