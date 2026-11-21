@@ -64,7 +64,7 @@ export async function scanDir(dir) {
  * Build the manifest object from a `dist/` directory. `buildPatchManifest`
  * is the pure testable surface; `main()` is the CLI (below).
  */
-export async function buildPatchManifest({ baseVersion, distDir, displayVersion, notes }) {
+export async function buildPatchManifest({ baseVersion, distDir, displayVersion, notes } = {}) {
   if (!baseVersion) throw new Error('base_version is required');
   if (!distDir) throw new Error('distDir is required');
   const files = await scanDir(distDir);

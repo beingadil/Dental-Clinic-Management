@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, posix } from 'node:path';
+import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { buildPatchManifest } from '../../scripts/make-app-patch.mjs';
 
