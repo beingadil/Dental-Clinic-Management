@@ -12,10 +12,10 @@ import { AutoUpdatePanel } from '../common/AutoUpdatePanel';
 import {
   ArrowUpCircle,
   CheckCircle2,
-  TriangleAlert,
   Clock,
-  ShieldCheck,
   History,
+  ShieldCheck,
+  TriangleAlert,
 } from 'lucide-react';
 
 /**
@@ -38,24 +38,54 @@ export const UpdatesTab: React.FC = () => {
   const isDownloading = phase.state === 'downloading';
   const isFailed = phase.state === 'failed';
   const isHandedOff = phase.state === 'handed_off';
+  const isPatchAvailable = phase.state === 'patch_available';
+  const isPatchApplying = phase.state === 'patch_applying';
+  const isPatched = phase.state === 'patched';
+  const isPatchFailed = phase.state === 'patch_failed';
 
-  const statusTone = isFailed
+  const statusTone = isPatchFailed
     ? 'bg-rose-50 border-rose-200 text-rose-900'
-    : isAvailable || isHandedOff
-    ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
-    : 'bg-emerald-50 border-emerald-200 text-emerald-900';
+    : isPatchAvailable || isPatchApplying
+      ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+      : isPatched
+        ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+        : isFailed
+          ? 'bg-rose-50 border-rose-200 text-rose-900'
+          : isAvailable || isHandedOff
+            ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+            : 'bg-emerald-50 border-emerald-200 text-emerald-900';
 
-  const statusLabel = isFailed
-    ? 'Update failed'
-    : isAvailable
-    ? 'Update available'
-    : isDownloading
-    ? 'Downloading…'
-    : isHandedOff
-    ? 'Installer opened in browser'
-    : 'Up to date';
+  const statusLabel = isPatchFailed
+    ? 'Hot patch failed'
+    : isPatchAvailable
+      ? 'Hot patch available'
+      : isPatchApplying
+        ? 'Applying hot patch…'
+        : isPatched
+          ? 'Patch applied'
+          : isFailed
+            ? 'Update failed'
+            : isAvailable
+              ? 'Update available'
+              : isDownloading
+                ? 'Downloading…'
+                : isHandedOff
+                  ? 'Installer opened in browser'
+                  : 'Up to date';
 
-  const StatusIcon = isFailed ? TriangleAlert : isAvailable || isHandedOff ? ArrowUpCircle : CheckCircle2;
+  const StatusIcon = isPatchFailed || isFailed
+    ? TriangleAlert
+    : isPatchAvailable || isPatchApplying || isPatched || isAvailable || isHandedOff
+      ? ArrowUpCircle
+      : CheckCircle2;
+
+  const iconBg = isPatchFailed || isFailed
+    ? 'bg-rose-100 text-rose-700'
+    : isPatchAvailable || isPatchApplying
+      ? 'bg-indigo-100 text-indigo-700'
+      : isPatched || isAvailable
+        ? 'bg-emerald-100 text-emerald-700'
+        : 'bg-emerald-100 text-emerald-700';
 
   return (
     <div className="space-y-6">
@@ -63,21 +93,27 @@ export const UpdatesTab: React.FC = () => {
       <div className={`rounded-2xl border p-6 ${statusTone}`}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-              isFailed ? 'bg-rose-100 text-rose-700' : isAvailable ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
-            }`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${iconBg}`}>
               <StatusIcon className="w-6 h-6" />
             </div>
             <div>
               <h2 className="text-base font-bold">{statusLabel}</h2>
               <p className="text-xs mt-0.5 opacity-80">
-                {isFailed
-                  ? (phase.state === 'failed' ? phase.message : 'The last update attempt did not complete. Try again below.')
-                  : isHandedOff
-                  ? (phase.state === 'handed_off' ? phase.message : '')
-                  : isAvailable
-                  ? 'A new version is ready to download and install.'
-                  : 'Dental Solutions is running the latest version.'}
+                {isPatchAvailable
+                  ? 'A hot patch targets your current version — one click, no reinstall.'
+                  : isPatchApplying
+                    ? 'Applying the hot patch — the app reloads when it is done.'
+                    : isPatched
+                      ? 'Hot patch applied — the app reloaded to the new version.'
+                      : isPatchFailed
+                        ? (phase.state === 'patch_failed' ? phase.message : 'The last hot-patch attempt did not complete. Try again in Settings → Software Updates.')
+                        : isFailed
+                          ? (phase.state === 'failed' ? phase.message : 'The last update attempt did not complete. Try again below.')
+                          : isHandedOff
+                            ? (phase.state === 'handed_off' ? phase.message : '')
+                            : isAvailable
+                              ? 'A new version is ready to download and install.'
+                              : 'Dental Solutions is running the latest version.'}
               </p>
             </div>
           </div>
@@ -138,6 +174,10 @@ export const UpdatesTab: React.FC = () => {
           Database backed up before install
         </span>
         <span className="flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+          Hot patch — SHA-256 verified writes under dist/ only
+        </span>
+        <span className="flex items-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
           Per-user install, no admin rights
         </span>
@@ -157,11 +197,13 @@ export const UpdatesTab: React.FC = () => {
                   className={`absolute -left-1.5 mt-1 w-3 h-3 rounded-full border-2 border-white ${
                     h.state === 'installed'
                       ? 'bg-emerald-500'
-                      : h.state === 'available' || h.state === 'handed_off'
-                      ? 'bg-indigo-500'
-                      : h.state === 'up_to_date'
-                      ? 'bg-slate-300'
-                      : 'bg-rose-500'
+                      : h.state === 'patch_applied'
+                        ? 'bg-emerald-500'
+                        : h.state === 'available' || h.state === 'handed_off' || h.state === 'patch_available'
+                          ? 'bg-indigo-500'
+                          : h.state === 'up_to_date'
+                            ? 'bg-slate-300'
+                            : 'bg-rose-500'
                   }`}
                 />
                 <div className="flex items-baseline gap-2 flex-wrap">
@@ -171,6 +213,9 @@ export const UpdatesTab: React.FC = () => {
                     {h.state === 'handed_off' && `v${h.version} installer opened in browser`}
                     {h.state === 'failed' && `Update failed${h.version !== currentVersion() ? ` (v${h.version})` : ''}`}
                     {h.state === 'up_to_date' && 'Checked — up to date'}
+                    {h.state === 'patch_available' && `Hot patch available — v${h.version}`}
+                    {h.state === 'patch_applied' && `Hot patch applied — v${h.version}`}
+                    {h.state === 'patch_failed' && `Hot patch failed${h.message ? ` — ${h.message}` : ''}`}
                   </span>
                   <span className="text-[11px] text-slate-400">{new Date(h.at).toLocaleString()}</span>
                 </div>

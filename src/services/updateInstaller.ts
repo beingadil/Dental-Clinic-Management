@@ -13,7 +13,7 @@
  * Downloading and verifying is automatic; closing the app is always a click.
  */
 import { settingsRepo } from '../db/repos';
-import { checkForUpdates, downloadUpdate, UpdateStatus, currentVersion, isTrustedReleaseUrl, GITHUB_RELEASES_PAGE } from './updateService';
+import { checkForUpdates, checkPatch, downloadUpdate, UpdateStatus, currentVersion, isTrustedReleaseUrl, GITHUB_RELEASES_PAGE } from './updateService';
 import { recordUpdateHistory, getUpdateHistory } from './updateHistory';
 import { listen } from '@tauri-apps/api/event';
 import { flushNow } from '../db/persistence';
@@ -39,6 +39,19 @@ export type AutoUpdatePhase =
   /** Installer downloaded, checksum-verified and on disk; nothing has run yet. */
   | { state: 'ready_to_apply'; version: string; bytes: number; staged_path?: string; checksum?: string }
   | { state: 'applying'; version: string }
+  | {
+      /** A hot patch targets the running JS version — one-click apply.
+       *  Rust writes the new dist/ files + reloads the webview. */
+      state: 'patch_available';
+      base_version: string;
+      display_version: string;
+      notes?: string;
+      released_at?: string;
+    }
+  | { state: 'patch_applying'; base_version: string }
+  | { state: 'patched'; display_version: string }
+  /** Hot patch failed — Rust refused, or the invoke threw. */
+  | { state: 'patch_failed'; base_version: string; message: string }
   /**
    * The installer could not be applied by this build (web build, or the
    * release URL is missing/off the trusted-host allowlist), so the download
@@ -93,7 +106,8 @@ export function isAutoUpdateBusy(phase: AutoUpdatePhase): boolean {
     phase.state === 'downloading' ||
     phase.state === 'verifying' ||
     phase.state === 'backing_up' ||
-    phase.state === 'applying'
+    phase.state === 'applying' ||
+    phase.state === 'patch_applying'
   );
 }
 
@@ -240,13 +254,42 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
   // Never let a routine check clobber a staged update that is waiting for the
   // user's explicit "Restart & Apply Updates" click. The install is already
   // on disk and verified; re-checking would only reset the phase to
-  // "up_to_date" and strand the installer.
+  // "up_to_date" and strand the installer. The same rule applies while a
+  // patch is applying; while `patch_available` we re-run the check — it is
+  // idempotent and lets a changed manifest refresh the offer.
   const currentPhase = getAutoUpdatePhase();
-  if (currentPhase.state === 'ready_to_apply' || currentPhase.state === 'applying') {
+  if (
+    currentPhase.state === 'ready_to_apply' ||
+    currentPhase.state === 'applying' ||
+    currentPhase.state === 'patch_applying'
+  ) {
     return Promise.resolve(currentPhase);
   }
   inflight = (async (): Promise<AutoUpdatePhase> => {
     setPhase({ state: 'checking' });
+
+    /* Hot-patch channel (Phase C): when the manifest's base version equals
+       the running JS version, offer the patch instead of the installer path.
+       Nothing is applied until the user clicks Apply Patch. */
+    const patch = await checkPatch();
+    if (patch.state === 'available') {
+      setLastUpdateCheck(currentVersion(), 'patch_available');
+      recordUpdateHistory({
+        version: patch.display_version,
+        state: 'patch_available',
+        message: `Hot patch v${patch.display_version} available — no reinstall needed.`,
+      });
+      const phase: AutoUpdatePhase = {
+        state: 'patch_available',
+        base_version: patch.base_version,
+        display_version: patch.display_version,
+        notes: patch.notes,
+        released_at: patch.released_at,
+      };
+      setPhase(phase);
+      return phase;
+    }
+
     const status: UpdateStatus = await checkForUpdates();
 
     // The check can finish after the user has staged or applied an update.
@@ -398,6 +441,35 @@ export function runAutoUpdate(): Promise<AutoUpdatePhase> {
   })();
   inflight.finally(() => { inflight = null; });
   return inflight;
+}
+
+/**
+ * Hot-patch apply (Phase C) — the user's one-click "Apply Patch" on the
+ * `patch_available` card. Rust downloads + verifies every file + writes
+ * under `dist/` + reloads the webview. No database flush needed — the app
+ * reloads from disk like any other page load; unflushed writes settle into
+ * the sync debounce as usual (we just don't exit the process here).
+ */
+export async function applyPatch(): Promise<AutoUpdatePhase> {
+  const phase = getAutoUpdatePhase();
+  if (phase.state !== 'patch_available') return phase;
+  setPhase({ state: 'patch_applying', base_version: phase.base_version });
+  try {
+    await tauri()!.invoke('apply_app_patch');
+    const patched: AutoUpdatePhase = { state: 'patched', display_version: phase.display_version };
+    setPhase(patched);
+    recordUpdateHistory({
+      version: phase.display_version,
+      state: 'patch_applied',
+      message: `Hot patch v${phase.display_version} applied — the app reloaded to the new version.`,
+    });
+    return patched;
+  } catch (e: any) {
+    const failed: AutoUpdatePhase = { state: 'patch_failed', base_version: phase.base_version, message: e?.message || String(e) };
+    recordUpdateHistory({ version: phase.base_version, state: 'patch_failed', message: failed.message });
+    setPhase(failed);
+    return failed;
+  }
 }
 
 /**

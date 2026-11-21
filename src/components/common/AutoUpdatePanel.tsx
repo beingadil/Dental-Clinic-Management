@@ -8,10 +8,12 @@ import {
   Power,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   TriangleAlert,
   X,
 } from 'lucide-react';
 import {
+  applyPatch,
   applyStagedUpdate,
   AutoUpdatePhase,
   discardStagedUpdate,
@@ -21,6 +23,8 @@ import {
   runAutoUpdate,
 } from '../../services/updateInstaller';
 import { downloadUpdate, GITHUB_RELEASES_PAGE } from '../../services/updateService';
+
+/* Sparkles is only used by the hot-patch card's Apply button. */
 
 /**
  * The auto-installer UI — the app's ONLY update surface.
@@ -104,13 +108,25 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
   const version =
     phase.state === 'idle' || phase.state === 'checking' || phase.state === 'up_to_date'
       ? null
-      : (phase as { version: string }).version;
+      : phase.state === 'patch_available' || phase.state === 'patched'
+        ? phase.display_version
+        : phase.state === 'patch_applying' || phase.state === 'patch_failed'
+          ? phase.base_version
+          : (phase as { version: string }).version;
 
   const busy = isAutoUpdateBusy(phase);
   const ready = phase.state === 'ready_to_apply';
   const applying = phase.state === 'applying';
-  const failed = phase.state === 'failed';
+  const patchAvailable = phase.state === 'patch_available';
+  const patchApplying = phase.state === 'patch_applying';
+  const patched = phase.state === 'patched';
+  const failed = phase.state === 'failed' || phase.state === 'patch_failed';
   const handedOff = phase.state === 'handed_off';
+  /* indigo family = work in flight; emerald = the gentle one-click change;
+     rose = needs attention. */
+  const brightCard = ready || applying || handedOff || patchApplying;
+  const gentleCard = patchAvailable || patched;
+  const patchLabel = patchAvailable ? phase.display_version : null;
   const steps = buildSteps(phase, version);
   const progress =
     phase.state === 'downloading' && phase.total > 0
@@ -149,6 +165,10 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
     backing_up: 'Backing up your data',
     ready_to_apply: 'Update ready to install',
     applying: 'Restarting and applying the update',
+    patch_available: 'Hot patch available',
+    patch_applying: 'Applying hot patch…',
+    patched: 'Patch applied',
+    patch_failed: 'Patch failed — needs attention',
     handed_off: 'Installer opened in your browser',
     failed: 'Update needs attention',
   };
@@ -159,26 +179,32 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
     <div className={shell} role="status" aria-live="polite">
       <div
         className={`bg-white rounded-2xl border shadow-lg overflow-hidden ${
-          ready || applying || handedOff
+          brightCard
             ? 'border-indigo-300'
-            : failed
-              ? 'border-rose-200'
-              : 'border-slate-200'
+            : gentleCard
+              ? 'border-emerald-300'
+              : failed
+                ? 'border-rose-200'
+                : 'border-slate-200'
         }`}
       >
         {/* Header */}
         <div
           className={`px-4 py-3 flex items-center gap-2.5 ${
-            ready || applying || handedOff
+            brightCard
               ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white'
-              : failed
-                ? 'bg-rose-50 border-b border-rose-100'
-                : 'bg-slate-50 border-b border-slate-100'
+              : gentleCard
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white'
+                : failed
+                  ? 'bg-rose-50 border-b border-rose-100'
+                  : 'bg-slate-50 border-b border-slate-100'
           }`}
         >
-          <div className={`p-2 rounded-xl ${ready || applying || handedOff ? 'bg-white/15' : 'bg-indigo-50 text-indigo-600'}`}>
-            {ready || applying || handedOff ? (
+          <div className={`p-2 rounded-xl ${brightCard ? 'bg-white/15' : gentleCard ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-50 text-indigo-600'}`}>
+            {brightCard ? (
               <ArrowUpCircle className="w-4 h-4" />
+            ) : gentleCard ? (
+              patched ? <CheckCircle2 className="w-4 h-4 text-ink-success" /> : <ArrowUpCircle className="w-4 h-4" />
             ) : failed ? (
               <TriangleAlert className="w-4 h-4 text-ink-danger" />
             ) : floating ? (
@@ -188,10 +214,10 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className={`text-xs font-bold truncate ${ready || applying || handedOff ? '' : failed ? 'text-rose-900' : 'text-slate-900'}`}>
+            <p className={`text-xs font-bold truncate ${brightCard || gentleCard ? '' : failed ? 'text-rose-900' : 'text-slate-900'}`}>
               {title}
             </p>
-            <p className={`text-[11px] truncate ${ready || applying || handedOff ? 'text-indigo-100' : failed ? 'text-rose-700' : 'text-slate-500'}`}>
+            <p className={`text-[11px] truncate ${brightCard ? 'text-indigo-100' : gentleCard ? '' : failed ? 'text-rose-700' : 'text-slate-500'}`}>
               {version
                 ? `Dental Solutions v${version}${phase.state === 'ready_to_apply' ? ' — verified and on disk' : ''}`
                 : 'Dental Solutions'}
@@ -233,7 +259,7 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
           )}
 
           {/* Step list — inline layout only, so the floating card stays compact */}
-          {!floating && phase.state !== 'checking' && phase.state !== 'handed_off' && (
+          {!floating && phase.state !== 'checking' && phase.state !== 'handed_off' && !patchAvailable && !patchApplying && !patched && (
             <ul className="space-y-1.5">
               {steps.map((s) => (
                 <li key={s.key} className="flex items-center gap-2 text-[11px]">
@@ -269,6 +295,32 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
               Dental Solutions on the new version. This takes a few seconds.
             </p>
           )}
+          {/* Hot-patch body — one-click cards */}
+          {patchAvailable && patchLabel !== null && (
+            <div className="flex items-start gap-2.5 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <ArrowUpCircle className="w-4 h-4 text-ink-success shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-emerald-900">
+                  Hot patch {patchLabel} — no reinstall needed
+                </p>
+                {phase.notes && (
+                  <p className="text-[11px] text-emerald-800 mt-0.5">{phase.notes}</p>
+                )}
+              </div>
+            </div>
+          )}
+          {patchApplying && (
+            <p className="text-[11px] text-indigo-800 font-bold flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              Applying the hot patch — the new files are written, then the app reloads.
+            </p>
+          )}
+          {patched && (
+            <p className="text-[11px] text-emerald-900 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              Hot patch applied — reloading to the new version…
+            </p>
+          )}
           {handedOff && (
             <div className="flex items-start gap-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl">
               <ArrowUpCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
@@ -279,6 +331,15 @@ export function AutoUpdatePanel({ variant = 'floating' }: { variant?: 'floating'
 
           {/* Actions */}
           <div className="flex flex-wrap items-center gap-2">
+            {patchAvailable && (
+              <button
+                onClick={() => void applyPatch()}
+                className="px-3.5 py-2 ds-glass-pill text-[11px] font-bold cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Apply Patch
+              </button>
+            )}
             {ready && (
               <>
                 <button

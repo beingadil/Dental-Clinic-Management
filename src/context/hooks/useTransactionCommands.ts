@@ -51,6 +51,7 @@ import {
   recomputeInvoiceFromPayments,
   buildReconciliationUpdate,
 } from '../../services/transactionDomain';
+import { receiptNumberOf } from '../../services/ledgerDomain';
 import { buildPaymentReceivedNotification, buildAdvanceDepositV2Notification } from '../../services/notificationDomain';
 import { canPost, deniedTooltip } from '../../services/permissions';
 
@@ -61,20 +62,6 @@ import { canPost, deniedTooltip } from '../../services/permissions';
  * (pure) and the journal builders in financeDomain; this hook only sequences
  * state updates in the same order the inline AppContext implementations used.
  */
-
-/**
- * The receipt a stored payment number belongs to: `PAY-2026-0007-2` is the
- * second slice of `PAY-2026-0007`, and a base number is returned unchanged.
- *
- * One cash receipt paid across several invoices is stored as one payment row
- * per invoice (see prepareTransaction), so "this entry" and "this receipt" are
- * only the same thing for the common single-invoice case — every correction
- * below has to decide which one it means.
- */
-const receiptNumberOf = (paymentNumber?: string): string => {
-  const parts = (paymentNumber || '').split('-');
-  return parts.length > 3 ? parts.slice(0, -1).join('-') : (paymentNumber || '');
-};
 export function useTransactionCommands(deps: {
   labs: { id: string; name: string }[];
   invoices: Invoice[];

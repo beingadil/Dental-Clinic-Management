@@ -28,6 +28,7 @@ import { caseDetailLines, ledgerPrintDescription, findCaseForEntry } from '../..
 import { attributeAdjustmentsToInvoices } from '../../services/adjustmentAttribution';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
+import { receiptNumberOf } from '../../services/ledgerDomain';
 import { InvoiceStatementModal } from './InvoiceStatementModal';
 import { EditAdjustmentModal } from './EditAdjustmentModal';
 import { RecordTransactionModal } from './RecordTransactionModal';
@@ -89,10 +90,6 @@ interface LedgerVoucherPart {
  * totals and closing balance do not move.
  */
 type DisplayLedgerEntry = LedgerEntry & { voucherParts?: LedgerVoucherPart[] };
-
-/** `PAY-2026-0001-2` → `PAY-2026-0001`; an unsliced number is unchanged. */
-const receiptNumberOf = (reference: string | undefined): string =>
-  (reference || '').replace(/-\d+$/, '');
 
 /**
  * Collapse one payment receipt's per-invoice slices into a single display row.

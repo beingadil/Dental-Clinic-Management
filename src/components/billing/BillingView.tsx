@@ -18,6 +18,7 @@ import {
   transactionCsvRows,
   type UnifiedTransaction,
 } from '../../services/transactionRegister';
+import { receiptNumberOf } from '../../services/ledgerDomain';
 import { RecordTransactionModal } from './RecordTransactionModal';
 import { JournalEntryModal } from './JournalEntryModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
@@ -190,7 +191,12 @@ export const BillingView: React.FC = () => {
     const groups = new Map<string, PaymentRecord[]>();
     for (const inv of invoices) {
       for (const p of inv.payments || []) {
-        const base = (p.payment_number || p.id).replace(/-\d+$/, '');
+        const base = receiptNumberOf(p.payment_number || p.id);
+        /* One payment record = one voucher. Group by the receipt/base number
+           so a multi-invoice payment's slices (PAY-2026-0001-1, -2) collapse
+           into one voucher, while independently entered receipts
+           (PAY-2026-0110, PAY-2026-0107) stay separate — they only share the
+           year prefix, not a voucher identity. */
         if (!groups.has(base)) groups.set(base, []);
         groups.get(base)!.push(p);
       }

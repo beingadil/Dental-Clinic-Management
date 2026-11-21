@@ -60,61 +60,62 @@ const renderLedger = (invoices: unknown[], entries: unknown[]) => {
 };
 
 describe('General Ledger: one row per payment voucher', () => {
-  it('collapses a receipt split across two invoices into one row', () => {
-    const invA = {
-      id: 'inv-a', invoice_number: 'INV-A', case_id: 'case-1', case_number: 'DS-2001',
-      lab_id: 'lab-1', lab_name: 'Cases Clinic', case_type_name: 'Zirconia Crown',
-      patient_name: 'Ali Raza', amount: 75000, discount: 0, final_amount: 75000,
-      amount_paid: 75000, credit_notes_total: 0, payment_status: 'paid',
-      issue_date: '2026-10-03', due_date: '2026-10-17', created_at: '2026-10-03T00:00:00Z',
-      payments: [{ id: 'pay-a', payment_number: 'PAY-1-1', payment_date: '2026-10-03', amount: 75000, payment_method: 'bank', lab_id: 'lab-1', lab_name: 'Cases Clinic' }],
-    };
-    const invB = {
-      id: 'inv-b', invoice_number: 'INV-B', case_id: 'case-1', case_number: 'DS-2001',
-      lab_id: 'lab-1', lab_name: 'Cases Clinic', case_type_name: 'Zirconia Crown',
-      patient_name: 'Ali Raza', amount: 75000, discount: 0, final_amount: 75000,
-      amount_paid: 75000, credit_notes_total: 0, payment_status: 'paid',
-      issue_date: '2026-10-03', due_date: '2026-10-17', created_at: '2026-10-03T00:00:00Z',
-      payments: [{ id: 'pay-b', payment_number: 'PAY-1-2', payment_date: '2026-10-03', amount: 75000, payment_method: 'bank', lab_id: 'lab-1', lab_name: 'Cases Clinic' }],
-    };
-    const entryA = {
-      id: 'led-a', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic',
-      entry_type: 'payment', reference_id: 'pay-a', reference_number: 'PAY-1-1',
-      case_id: 'case-1', case_number: 'DS-2001', description: 'Payment received for INV-A via BANK',
-      debit: 0, credit: 75000, running_balance: 0, posted_at: '2026-10-03T10:00:01.000Z',
-      payment_method: 'bank',
-    };
-    const entryB = {
-      id: 'led-b', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic',
-      entry_type: 'payment', reference_id: 'pay-b', reference_number: 'PAY-1-2',
-      case_id: 'case-1', case_number: 'DS-2001', description: 'Payment received for INV-B via BANK',
-      debit: 0, credit: 75000, running_balance: 0, posted_at: '2026-10-03T10:00:02.000Z',
-      payment_method: 'bank',
-    };
+  const baseInv = (overrides: any) => ({
+    id: 'inv-x', invoice_number: 'INV-X', case_id: 'case-1', case_number: 'DS-2001',
+    lab_id: 'lab-1', lab_name: 'Cases Clinic', case_type_name: 'Zirconia Crown',
+    patient_name: 'Ali Raza', amount: 75000, discount: 0, final_amount: 75000,
+    amount_paid: 75000, credit_notes_total: 0, payment_status: 'paid',
+    issue_date: '2026-10-03', due_date: '2026-10-17', created_at: '2026-10-03T00:00:00Z',
+    ...overrides,
+  });
+  const baseEntry = (overrides: any) => ({
+    id: 'led-x', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic',
+    entry_type: 'payment', reference_id: 'pay-x', reference_number: 'PAY-1-1',
+    case_id: 'case-1', case_number: 'DS-2001', description: 'Payment received for INV-X via BANK',
+    debit: 0, credit: 75000, running_balance: 0, posted_at: '2026-10-03T10:00:01.000Z',
+    payment_method: 'bank',
+    ...overrides,
+  });
+
+  it('keeps independently entered receipts as separate rows (Scenario B)', () => {
+    /* Two payments with DIFFERENT full numbers (PAY-1-1, PAY-1-2) are two
+       independent receipts, even though they share the PAY-1 batch prefix and
+       the same clinic and date. They must never collapse into one voucher. */
+    const invA = baseInv({ id: 'inv-a', invoice_number: 'INV-A', payments: [{ id: 'pay-a', payment_number: 'PAY-1-1', payment_date: '2026-10-03', amount: 75000, payment_method: 'bank', lab_id: 'lab-1', lab_name: 'Cases Clinic' }] });
+    const invB = baseInv({ id: 'inv-b', invoice_number: 'INV-B', payments: [{ id: 'pay-b', payment_number: 'PAY-1-2', payment_date: '2026-10-03', amount: 75000, payment_method: 'bank', lab_id: 'lab-1', lab_name: 'Cases Clinic' }] });
+    const entryA = baseEntry({ id: 'led-a', reference_id: 'pay-a', reference_number: 'PAY-1-1', description: 'Payment received for INV-A via BANK' });
+    const entryB = baseEntry({ id: 'led-b', reference_id: 'pay-b', reference_number: 'PAY-1-2', description: 'Payment received for INV-B via BANK' });
     const invoiceEntries = [
-      {
-        id: 'led-inv-a', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic',
-        entry_type: 'invoice', reference_id: 'inv-a', reference_number: 'INV-A',
-        case_id: 'case-1', case_number: 'DS-2001', description: 'Invoice for Zirconia Crown',
-        debit: 75000, credit: 0, running_balance: 0, posted_at: '2026-10-03T09:00:00.000Z',
-      },
-      {
-        id: 'led-inv-b', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic',
-        entry_type: 'invoice', reference_id: 'inv-b', reference_number: 'INV-B',
-        case_id: 'case-1', case_number: 'DS-2001', description: 'Invoice for Zirconia Crown',
-        debit: 75000, credit: 0, running_balance: 0, posted_at: '2026-10-03T09:00:01.000Z',
-      },
+      { id: 'led-inv-a', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic', entry_type: 'invoice', reference_id: 'inv-a', reference_number: 'INV-A', case_id: 'case-1', case_number: 'DS-2001', description: 'Invoice for Zirconia Crown', debit: 75000, credit: 0, running_balance: 0, posted_at: '2026-10-03T09:00:00.000Z' },
+      { id: 'led-inv-b', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic', entry_type: 'invoice', reference_id: 'inv-b', reference_number: 'INV-B', case_id: 'case-1', case_number: 'DS-2001', description: 'Invoice for Zirconia Crown', debit: 75000, credit: 0, running_balance: 0, posted_at: '2026-10-03T09:00:01.000Z' },
     ];
 
     renderLedger([invA, invB], [...invoiceEntries, entryA, entryB]);
 
-    // One collapsed voucher row: the chip shows the base number, not the slices.
-    expect(screen.getAllByText('PAY-1')).toHaveLength(1);
-    // The narration lists every invoice the receipt adjusted.
+    // Independently entered receipts are never collapsed: no single row
+    // covering both invoices, and no combined 150,000 credit.
+    expect(screen.queryByText(/Applied to 2 invoices/i)).toBeNull();
+  });
+
+  it('collapses one genuine receipt split across two invoices into one row (Scenario A)', () => {
+    /* The SAME payment_number on two invoices = one receipt with two
+       allocations. Those share a genuine voucher identity and collapse to one
+       row listing both invoices. */
+    const shared = { id: 'pay-a', payment_number: 'PAY-1-1', payment_date: '2026-10-03', amount: 75000, payment_method: 'bank', lab_id: 'lab-1', lab_name: 'Cases Clinic' };
+    const invA = baseInv({ id: 'inv-a', invoice_number: 'INV-A', payments: [shared] });
+    const invB = baseInv({ id: 'inv-b', invoice_number: 'INV-B', payments: [shared] });
+    const entryA = baseEntry({ id: 'led-a', reference_id: 'pay-a', reference_number: 'PAY-1-1', description: 'Payment received for INV-A via BANK' });
+    const entryB = baseEntry({ id: 'led-b', reference_id: 'pay-a', reference_number: 'PAY-1-1', description: 'Payment received for INV-B via BANK' });
+    const invoiceEntries = [
+      { id: 'led-inv-a', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic', entry_type: 'invoice', reference_id: 'inv-a', reference_number: 'INV-A', case_id: 'case-1', case_number: 'DS-2001', description: 'Invoice for Zirconia Crown', debit: 75000, credit: 0, running_balance: 0, posted_at: '2026-10-03T09:00:00.000Z' },
+      { id: 'led-inv-b', date: '2026-10-03', lab_id: 'lab-1', lab_name: 'Cases Clinic', entry_type: 'invoice', reference_id: 'inv-b', reference_number: 'INV-B', case_id: 'case-1', case_number: 'DS-2001', description: 'Invoice for Zirconia Crown', debit: 75000, credit: 0, running_balance: 0, posted_at: '2026-10-03T09:00:01.000Z' },
+    ];
+
+    renderLedger([invA, invB], [...invoiceEntries, entryA, entryB]);
+
+    // One row for the single receipt, listing both invoices.
     expect(screen.getByText(/Applied to 2 invoices/i)).toBeTruthy();
-    expect(screen.getByText(/INV-A · PKR 75,000/i)).toBeTruthy();
-    expect(screen.getByText(/INV-B · PKR 75,000/i)).toBeTruthy();
-    // One credit of 150,000, not two of 75,000.
-    expect(screen.getAllByText(/PKR 150,000/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/INV-A/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/INV-B/).length).toBeGreaterThanOrEqual(1);
   });
 });

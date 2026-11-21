@@ -251,6 +251,78 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
   }
 }
 
+/* ============================ hot-patch channel (Phase C) ================== */
+
+/** gh-pages copy of the hot-patch manifest. Mirrors `PATCH_MANIFEST_URL_DEFAULT` in app_patch.rs. */
+export const PATCH_MANIFEST_URL_DEFAULT =
+  'https://raw.githubusercontent.com/beingadil/Dental-Clinic-Management/gh-pages/update-patch.json';
+
+/** One file in the patch manifest (same shape Rust validates). */
+export interface PatchFileEntry {
+  path: string; // relative to the app dir (e.g. "assets/index-xyz.js")
+  sha256: string; // 64-char hex; Rust re-verifies after writing
+  size: number;
+}
+
+/** `update-patch.json` as the TS side reads it. */
+export interface PatchManifest {
+  magic: 'DENTALUPDATE-PATCH';
+  base_version: string; // app JS version the patch targets (TS gate)
+  display_version: string; // shown by the panel on success
+  released_at: string;
+  notes?: string;
+  files: PatchFileEntry[];
+  deleted?: string[];
+}
+
+export type PatchStatus =
+  | { state: 'none' }
+  | { state: 'available'; base_version: string; display_version: string; notes?: string; released_at?: string }
+  | { state: 'failed'; message: string };
+
+function validatePatchManifest(m: any): PatchManifest | null {
+  if (m?.magic !== 'DENTALUPDATE-PATCH') return null;
+  if (!m.base_version || !Array.isArray(m.files) || m.files.length === 0) return null;
+  const filesOk = m.files.every(
+    (f: any) => f && typeof f.path === 'string' && typeof f.sha256 === 'string' && typeof f.size === 'number'
+  );
+  if (!filesOk) return null;
+  return m as PatchManifest;
+}
+
+/** Fetch + validate update-patch.json from gh-pages (quietFetch; null = no patch / unreachable). */
+export async function fetchPatchManifest(): Promise<PatchManifest | null> {
+  const res = await quietFetch(PATCH_MANIFEST_URL_DEFAULT);
+  if (!res) return null;
+  try {
+    return validatePatchManifest((await res.json()) as any);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Discovery for the patch channel. The patch applies only while the running
+ * JS app version equals the manifest's `base_version` — once the app moves on
+ * (or via installer), the manifest is ignored.
+ */
+export async function checkPatch(): Promise<PatchStatus> {
+  try {
+    const m = await fetchPatchManifest();
+    if (!m) return { state: 'none' };
+    if (m.base_version !== APP_VERSION) return { state: 'none' };
+    return {
+      state: 'available',
+      base_version: m.base_version,
+      display_version: m.display_version,
+      notes: m.notes,
+      released_at: m.released_at,
+    };
+  } catch {
+    return { state: 'none' };
+  }
+}
+
 /**
  * Opens the newest installer download in the system browser (works in both
  * the Tauri desktop shell and a normal browser tab). Falls back to the

@@ -85,6 +85,23 @@ export const nextPaymentNumber = (invoices: Invoice[]): string => {
   return `PAY-${String(maxDocumentSeq(flat, 'PAY') + 1).padStart(4, '0')}`;
 };
 
+/**
+ * Returns the receipt/voucher base number for a stored payment number:
+ * `PAY-2026-0007-2` → `PAY-2026-0007` (slice suffix stripped).
+ * An unsliced independent payment like `PAY-2026-0110` is returned unchanged.
+ *
+ * Only strips when there are 4+ dash-parts (a slice suffix), never the
+ * year/sequence from an independent payment.
+ *
+ * Payment Receive and the General Ledger must agree on what counts as
+ * "the same payment voucher", so this single shared function is used by
+ * both instead of a duplicated local copy.
+ */
+export const receiptNumberOf = (paymentNumber?: string): string => {
+  const parts = (paymentNumber || '').split('-');
+  return parts.length > 3 ? parts.slice(0, -1).join('-') : (paymentNumber || '');
+};
+
 /** Next advance number ADV-0001. */
 export const nextAdvanceNumber = (advances: AdvancePayment[]): string => {
   const maxNum = maxMatch((advances || []).map((a) => a?.payment_number), /ADV-(\d+)/);
