@@ -767,6 +767,8 @@ export const BillingView: React.FC = () => {
       <EditPaymentModal
         isOpen={!!voucherToEdit}
         payment={voucherToEdit}
+        invoices={invoices}
+        labId={voucherToEdit?.lab_id}
         onSave={(id, patch) => updatePaymentV2(id, patch)}
         onDelete={(pay) => setPaymentToDelete(pay)}
         onClose={() => setVoucherToEdit(null)}

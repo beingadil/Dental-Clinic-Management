@@ -73,12 +73,13 @@ describe('invoices table columns', () => {
     expect(source).not.toContain('TransactionRegister');
   });
 
-  it('lists adjustments in the same Vouchers cell with their own serial', () => {
-    // Adjustments are money documents too. They belong in the Vouchers cell —
-    // CR-/DR-/REF- serials, not a second panel. Payment chips moved to the
-    // receipt modal, so the cell now shows adjustments and unallocated credits.
+  it('lists adjustments in the same cell as their invoice number', () => {
+    // Adjustments are money documents too. They belong on the invoice row —
+    // CR-/DR-/REF- serials WITH the invoice number they affect, not in a
+    // separate register below the table.
     expect(source).toMatch(/adjustmentsByInvoice\.get\(inv\.id\)/);
     expect(source).toMatch(/adj\.adjustment_number/);
+    expect(source).toMatch(/adj\.invoice_number\s*\|\|\s*inv\.invoice_number/);
     expect(source).not.toContain('Adjustments &amp; Credit Notes');
     expect(source).not.toMatch(/header:\s*'Adjustment #'/);
   });
