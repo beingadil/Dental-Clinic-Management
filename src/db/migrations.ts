@@ -1722,6 +1722,40 @@ export const MIGRATION_030_MONTH_CLOSES: Migration = {
   ],
 };
 
+/**
+ * Migration 031 — clear aligners as a catalog job type.
+ *
+ * The lab enters an aligner case AFTER the series is designed, printed and
+ * trimmed — the software records the delivery, not the manufacturing. Only
+ * two nullable columns are added: the stage count per arch. NULL on both =
+ * not an aligner case.
+ *
+ * The catalog line bills per tray stage and needs no charting
+ * (needs_teeth = 0) so the wizard skips the FDI step for it. It is seeded
+ * here ONLY into an already-stocked catalog (an upgrade). A fresh database
+ * gets it from seedDatabase() via INITIAL_CASE_TYPES instead, which makes
+ * sealing against that path unnecessary — and a byte-identical duplicate
+ * of the row once there, in the fresh install, would silently win the
+ * INSERT OR IGNORE anyway. The 500 PKR default is a placeholder the
+ * operator adjusts in the price list.
+ */
+export const MIGRATION_031_CLEAR_ALIGNERS: Migration = {
+  version: 31,
+  name: 'clear_aligners',
+  statements: [
+    `ALTER TABLE cases ADD COLUMN aligner_upper_count INTEGER`,
+    `ALTER TABLE cases ADD COLUMN aligner_lower_count INTEGER`,
+    // Catalog line ships only into a populated catalog — a FRESH database
+    // receives the same row, with full specs, from seedDatabase().
+    `INSERT OR IGNORE INTO case_types (id, name, base_price, category, needs_teeth, description, created_at)
+     SELECT 'ct-aligners', 'Clear Aligners (per stage)', 500, 'orthodontic', 0,
+            'Vacuum-formed clear aligner series, billed per tray stage produced.',
+            '2026-01-01'
+     WHERE EXISTS (SELECT 1 FROM case_types)`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '31')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1753,6 +1787,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_028_CUSTOM_ROLES,
   MIGRATION_029_INVOICE_BUSINESS_DAY,
   MIGRATION_030_MONTH_CLOSES,
+  MIGRATION_031_CLEAR_ALIGNERS,
 ];
 
 /**

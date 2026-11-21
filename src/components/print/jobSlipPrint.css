@@ -169,6 +169,25 @@
 }
 
 /* Workstation notes — wrap inside the remaining space, never overlap */
+/* Clear aligner series — compact stage ranges, mono so U1–U20 scans like a
+   case number. Only printed when the case carries an arch's stage count. */
+.js-aligner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 1mm 3mm;
+  border-top: 0.2mm dotted #555;
+  padding-top: 0.9mm;
+  font-size: 7.8pt;
+  font-weight: 800;
+  font-family: 'Courier New', monospace;
+}
+.js-aligner-k {
+  font-size: 6.8pt;
+  letter-spacing: 0.4mm;
+  font-family: inherit;
+}
+
 .js-notes {
   font-size: 6.8pt;
   line-height: 1.25;

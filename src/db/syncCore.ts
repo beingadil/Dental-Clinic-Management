@@ -309,15 +309,18 @@ function syncNow(c: SyncCollections): void {
         // by casesRepo, but this rebuild omitted it: the bench-department panel
         // grouped cases under "Unassigned" after one debounce window, with no
         // error anywhere. Same trap as needs_teeth — omitted here means erased.
+        // The aligner stage counts joined it in migration 031: every rebuild
+        // must carry them or the aligner series silently loses its trays.
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
-                            selected_teeth, tooth_details, shade, material, department, delivery_date, received_date, priority, price, discount, final_price,
+                            selected_teeth, tooth_details, shade, material, department, delivery_date, received_date, aligner_upper_count, aligner_lower_count, priority, price, discount, final_price,
                             instructions, photo_url, status, archived_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [cse.id, caseNumber, cse.patient_name ?? null, cse.lab_id, cse.lab_name,
          cse.case_type_id ?? null, cse.case_type_name ?? null, cse.units_count ?? null, cse.doctor_name ?? '',
          JSON.stringify(cse.selected_teeth ?? []), cse.tooth_details ? JSON.stringify(cse.tooth_details) : null,
          cse.shade ?? null, cse.material ?? null, cse.department ?? null,
-         cse.delivery_date, cse.received_date ?? null, cse.priority ?? 'normal',
+         cse.delivery_date, cse.received_date ?? null,
+         cse.aligner_upper_count ?? null, cse.aligner_lower_count ?? null, cse.priority ?? 'normal',
          cse.price ?? 0, cse.discount ?? 0, cse.final_price ?? 0, cse.instructions ?? null,
          cse.photo_url ?? null, cse.status ?? 'received', cse.archived_at ?? null, cse.created_at ?? now, cse.updated_at ?? now]
       );

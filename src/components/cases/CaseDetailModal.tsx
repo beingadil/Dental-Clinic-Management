@@ -37,7 +37,7 @@ import {
 import { PRIORITY_SLA_DAYS, prioritySlaLabel, computeSlaDueDate } from '../../services/prioritySla';
 import { resolveOverrideForCase } from '../../services/pricingOverride';
 import { DatePickerSingle } from '../common/DatePickerSingle';
-import { todayISO } from '../common/DatePickerRange';
+import { addDaysISO, todayISO } from '../common/DatePickerRange';
 
 /* ------------------------------------------------------------------ */
 /*  Design system — Soft Structuralism                                 */
@@ -218,6 +218,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const [receivedDate, setReceivedDate] = useState(
     initialCase?.received_date || todayISO()
   );
+  /* Clear Aligners job type (migration 031). Entered AFTER the series is
+     produced and packed; counts drive the printed tray list and the price. */
+  const [alignerUpper, setAlignerUpper] = useState<number>(
+    initialCase?.aligner_upper_count ?? 0
+  );
+  const [alignerLower, setAlignerLower] = useState<number>(
+    initialCase?.aligner_lower_count ?? 0
+  );
   /* Both are transient notices owned by the hook now, so the timer is cleared on
      unmount and re-armed per trigger. They previously used bare setTimeouts —
      changing priority twice inside 2.5s stacked two timers and cleared the
@@ -273,9 +281,17 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
      back to a per-tooth product does not silently discard a charted case. */
   const needsTeeth = catalogNeedsTeeth(caseTypes.find((ct) => ct.id === caseTypeId));
 
+  /* Clear Aligners (migration 031). Detection reads the TYPE NAME so a renamed
+     catalog row stays recognisable to the wizard; the rate comes from the
+     catalog base price (the operator edits it in the price list). */
+  const selectedType = caseTypes.find((ct) => ct.id === caseTypeId);
+  const isAlignerType = !!selectedType && /aligner/i.test(selectedType.name);
+  const stageRate = isAlignerType ? Number(selectedType?.base_price) || 0 : 0;
+  const alignerStages = alignerUpper + alignerLower;
+
   const stepValid: Record<StepKey, boolean> = {
     basics: !!(labId && caseTypeId && doctorName.trim().length >= 2 && doctorName.trim().length <= 100),
-    chart: needsTeeth ? selectedTeeth.length > 0 : true,
+    chart: needsTeeth ? selectedTeeth.length > 0 : (isAlignerType ? alignerStages > 0 : true),
     schedule:
       !!deliveryDate &&
       !isNaN(new Date(deliveryDate).getTime()) &&
@@ -297,7 +313,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       : !caseTypeId
       ? 'Please select a case procedure / type'
       : null,
-    chart: needsTeeth && selectedTeeth.length === 0 ? 'At least one tooth must be selected on the FDI chart' : null,
+    chart: needsTeeth && selectedTeeth.length === 0
+      ? 'At least one tooth must be selected on the FDI chart'
+      : isAlignerType && alignerStages === 0
+      ? 'Enter stages for at least one arch'
+      : null,
     schedule: !deliveryDate || isNaN(new Date(deliveryDate).getTime())
       ? 'Delivery date is required'
       : new Date(deliveryDate).getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000
@@ -448,8 +468,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     /* The unit count at the moment the product is chosen is whatever is already
        charted — normally zero on a fresh case, since charting starts empty. The
        separate effect below re-prices as teeth come in, so multiplying here too
-       would count the same teeth twice. */
-    setPrice(unitPrice * Math.max(1, billableUnits({ selected_teeth: selectedTeeth })));
+       would count the same teeth twice. An aligner case bills per TRAY STAGE
+       instead of per tooth, so its unit count is the stage total — including
+       zero (an aligner case with no stages committed yet is a zero-value job). */
+    const unitsHere = isAlignerType ? alignerStages : Math.max(1, billableUnits({ selected_teeth: selectedTeeth }));
+    setPrice(unitPrice * unitsHere);
     // `selectedTeeth` is intentionally NOT a dependency: it is read only as the
     // starting value. The effect that watches charting owns every later update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -466,8 +489,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     const override = resolveOverrideForCase(pricingOverrides, labId, caseTypeId);
     const unitPrice = override ? override.custom_price : selectedCT.base_price;
 
-    setPrice(unitPrice * billableUnits({ selected_teeth: selectedTeeth }));
-  }, [selectedTeeth, caseTypeId, labId, isEdit, caseTypes, pricingOverrides]);
+    /* Aligner tracks the stage total instead of tooth units — same formula the
+       product-select effect uses, so the two never drift apart. */
+    const unitsHere = isAlignerType ? alignerStages : billableUnits({ selected_teeth: selectedTeeth });
+    setPrice(unitPrice * unitsHere);
+  }, [selectedTeeth, caseTypeId, labId, isEdit, caseTypes, pricingOverrides, alignerStages, isAlignerType]);
 
   const handleApplyPreferredLab = () => {
     if (preferredLab) {
@@ -588,6 +614,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           department: department || null,
           delivery_date: deliveryDate,
           received_date: receivedDate || null,
+          aligner_upper_count: isAlignerType ? alignerUpper : null,
+          aligner_lower_count: isAlignerType ? alignerLower : null,
           priority,
           price,
           discount,
@@ -613,6 +641,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         department: department || null,
         delivery_date: deliveryDate,
         received_date: receivedDate || null,
+        aligner_upper_count: isAlignerType ? alignerUpper : null,
+        aligner_lower_count: isAlignerType ? alignerLower : null,
         priority,
         price,
         discount,
@@ -701,13 +731,28 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     urgent: 'bg-rose-400/10 text-rose-300 ring-1 ring-rose-400/30',
   };
 
-  /* ================================================================== */
-  /*  Keyboard flow: Enter moves between the basics in writing order —   */
-  /*  patient → doctor → clinic → procedure → Continue — so a returning  */
-  /*  operator never reaches for the mouse. Select triggers wire their    */
-  /*  Enter via GlassSelect's onEnterAdvance; the menu remains reachable  */
-  /*  with ArrowDown / Space / click.                                    */
-  /* ================================================================== */
+  /* The Enter chain: patient → dental clinic → doctor → procedure →
+     Continue. Clinic comes first because picking it auto-fills the doctor
+     from the lab record — the operator never retypes it. Select triggers
+     wire their Enter via GlassSelect's onEnterAdvance; the menu remains
+     reachable with ArrowDown / Space / click. */
+  /* Holds the last doctor value this wizard wrote by auto-fill — so a
+     clinic switch can refresh it without ever touching a manual edit. ''
+     is the sentinel: real names are ≥ 2 chars, so it never matches. */
+  const lastAutoDoctorRef = useRef('');
+  /* A new case opens with the first clinic preselected (long-standing
+     behaviour) — carry that clinic's doctor straight into the doctor
+     field on mount, so the operator's thumb never leaves the keys. */
+  useEffect(() => {
+    if (isEdit || doctorName.trim()) return;
+    const clinic = labs.find((l) => l.id === labId);
+    if (clinic?.doctor_name) {
+      setDoctorName(clinic.doctor_name);
+      lastAutoDoctorRef.current = clinic.doctor_name;
+    }
+    // Mount-only: neither labId nor doctorName triggers an auto-fill after boot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const focusField = (id: string) => {
     document.getElementById(id)?.focus();
   };
@@ -744,32 +789,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 type="text"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
-                onKeyDown={(e) => handleAdvanceKey(e, 'case-doctor-name')}
+                onKeyDown={(e) => handleAdvanceKey(e, 'case-lab-id')}
                 placeholder="e.g. Sarah Jenkins"
                 className={inputCls}
               />
-            </div>
-            <div>
-              <FieldLabel required htmlFor="case-doctor-name">Doctor Name</FieldLabel>
-              <input
-                id="case-doctor-name"
-                type="text"
-                value={doctorName}
-                onChange={(e) => {
-                  setDoctorName(e.target.value);
-                  if (errors.doctorName) setErrors((prev) => ({ ...prev, doctorName: '' }));
-                }}
-                onKeyDown={(e) => handleAdvanceKey(e, 'case-lab-id')}
-                placeholder="e.g. Tariq Mahmood"
-                aria-invalid={!!errors.doctorName}
-                aria-describedby={errors.doctorName ? 'case-doctor-name-error' : undefined}
-                className={inputCls}
-              />
-              {errors.doctorName && (
-                <p id="case-doctor-name-error" className="mt-1 text-[11px] font-medium text-ink-danger">
-                  {errors.doctorName}
-                </p>
-              )}
             </div>
             <div>
               <div className="flex items-end justify-between">
@@ -789,8 +812,21 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 onChange={(v) => {
                   setLabId(v);
                   if (errors.labId) setErrors((prev) => ({ ...prev, labId: '' }));
+                  /* Clinics name their referring doctor in the lab record — the
+                     operator should not retype it per case. Only fills when
+                     the field is empty or still holds the previous
+                     auto-filled value; never a manually edited name. */
+                  const clinic = labs.find((l) => l.id === v);
+                  if (
+                    clinic?.doctor_name &&
+                    (doctorName.trim() === '' || doctorName === lastAutoDoctorRef.current)
+                  ) {
+                    setDoctorName(clinic.doctor_name);
+                    lastAutoDoctorRef.current = clinic.doctor_name;
+                    if (errors.doctorName) setErrors((prev) => ({ ...prev, doctorName: '' }));
+                  }
                 }}
-                onEnterAdvance={() => focusField('case-type-id')}
+                onEnterAdvance={() => focusField('case-doctor-name')}
                 triggerId="case-lab-id"
                 ariaLabel="Laboratory"
                 searchable
@@ -821,10 +857,42 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               )}
             </div>
             <div>
+              <FieldLabel required htmlFor="case-doctor-name">Doctor Name</FieldLabel>
+              <input
+                id="case-doctor-name"
+                type="text"
+                value={doctorName}
+                onChange={(e) => {
+                  setDoctorName(e.target.value);
+                  lastAutoDoctorRef.current = '';
+                  if (errors.doctorName) setErrors((prev) => ({ ...prev, doctorName: '' }));
+                }}
+                onKeyDown={(e) => handleAdvanceKey(e, 'case-type-id')}
+                placeholder="e.g. Tariq Mahmood"
+                aria-invalid={!!errors.doctorName}
+                aria-describedby={errors.doctorName ? 'case-doctor-name-error' : undefined}
+                className={inputCls}
+              />
+              {errors.doctorName && (
+                <p id="case-doctor-name-error" className="mt-1 text-[11px] font-medium text-ink-danger">
+                  {errors.doctorName}
+                </p>
+              )}
+            </div>
+            <div>
               <FieldLabel required htmlFor="case-type-id">Case Procedure / Type</FieldLabel>
               <GlassSelect
                 value={caseTypeId}
-                onChange={setCaseTypeId}
+                onChange={(v) => {
+                  setCaseTypeId(v);
+                  const ct = caseTypes.find((x) => x.id === v);
+                  /* An aligner series runs scan → print → trim → collect — far
+                     past the 10-day SLA. When the operator picks the aligner
+                     product, seed a 30-day delivery date (still editable). */
+                  if (ct && /aligner/i.test(ct.name)) {
+                    setDeliveryDate(addDaysISO(todayISO(), 30));
+                  }
+                }}
                 onEnterAdvance={() => focusField('case-step-continue')}
                 triggerId="case-type-id"
                 ariaLabel="Case procedure / type"
@@ -834,7 +902,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               />
             </div>
           </div>
-    </div>
+        </div>
   );
 
   /* Odontogram is the single most expensive subtree on this surface — one
@@ -907,14 +975,76 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       <div className={bezelCard}>
         <div className={bezelCardInner}>
           {!needsTeeth && (
-            <div className="mb-5">
-              <Eyebrow>FDI Charting</Eyebrow>
-              <p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
-                <span className="font-bold text-slate-800">Not applicable to this product.</span>{' '}
-                {caseTypes.find((ct) => ct.id === caseTypeId)?.name} is not per-tooth work, so no
-                teeth or shade are recorded, and neither appears on the job slip or invoice.
-              </p>
-            </div>
+            isAlignerType ? (
+              <div className="mb-5">
+                <Eyebrow>Aligner Series</Eyebrow>
+                <p className="mt-2 text-[11.5px] text-ink-muted">
+                  Stage counts per arch — entered after the series is produced and packed. Price is
+                  computed stages × catalog rate, and can still be adjusted manually.
+                </p>
+                <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-4">
+                  {([
+                    { key: 'U', label: 'Upper', value: alignerUpper, set: setAlignerUpper },
+                    { key: 'L', label: 'Lower', value: alignerLower, set: setAlignerLower },
+                  ] as const).map(({ key, label, value, set }) => (
+                    <div key={key}>
+                      <FieldLabel htmlFor={`case-aligner-${key.toLowerCase()}`}>{label} stages</FieldLabel>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Decrease ${label.toLowerCase()} stages`}
+                          onClick={() => set(Math.max(0, value - 1))}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 cursor-pointer text-base font-bold leading-none"
+                        >
+                          −
+                        </button>
+                        <input
+                          id={`case-aligner-${key.toLowerCase()}`}
+                          type="number"
+                          min={0}
+                          max={99}
+                          inputMode="numeric"
+                          value={value}
+                          onChange={(e) => set(Math.max(0, Math.min(99, Number(e.target.value) || 0)))}
+                          className={`${inputCls} w-20 text-center tabular-nums`}
+                          aria-label={`${label} tray stages`}
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Increase ${label.toLowerCase()} stages`}
+                          onClick={() => set(Math.min(99, value + 1))}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 cursor-pointer text-base font-bold leading-none"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-[12px] font-medium text-slate-600">
+                    <p className="font-mono tabular-nums text-slate-700">
+                      {alignerStages} stages × {formatPKR(stageRate)}
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold font-mono tabular-nums text-slate-900">
+                      {formatPKR(alignerStages * stageRate)}
+                    </p>
+                  </div>
+                  {attempted && isAlignerType && alignerStages === 0 && (
+                    <p className="w-full text-[11px] font-medium text-ink-danger">
+                      Enter stages for at least one arch
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mb-5">
+                <Eyebrow>FDI Charting</Eyebrow>
+                <p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+                  <span className="font-bold text-slate-800">Not applicable to this product.</span>{' '}
+                  {caseTypes.find((ct) => ct.id === caseTypeId)?.name} is not per-tooth work, so no
+                  teeth or shade are recorded, and neither appears on the job slip or invoice.
+                </p>
+              </div>
+            )
           )}
           {needsTeeth && (
             <>

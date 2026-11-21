@@ -812,6 +812,9 @@ export interface CaseRow {
   delivery_date: string;
   /** Day the lab received the job (migration 019). NULL for pre-019 rows. */
   received_date?: string | null;
+  /** Tray stages per arch (migration 031). NULL on both for non-aligner products. */
+  aligner_upper_count?: number | null;
+  aligner_lower_count?: number | null;
   priority: string;
   price: number;
   discount: number;
@@ -844,6 +847,8 @@ function caseToDomain(row: CaseRow, db: Db): any {
     tooth_details: row.tooth_details ? JSON.parse(row.tooth_details) : undefined,
     shade: row.shade ?? undefined,
     material: row.material ?? undefined,
+    aligner_upper_count: row.aligner_upper_count ?? null,
+    aligner_lower_count: row.aligner_lower_count ?? null,
     delivery_date: row.delivery_date,
     received_date: row.received_date ?? null,
     priority: row.priority,
@@ -881,12 +886,13 @@ export const casesRepo = {
       const id = c.id || genId('case');
       tx.run(
         `INSERT INTO cases (id, case_number, patient_name, lab_id, lab_name, case_type_id, case_type_name, units_count, doctor_name,
-                            selected_teeth, tooth_details, shade, material, department, delivery_date, received_date, priority, price, discount, final_price,
+                            selected_teeth, tooth_details, shade, material, department, delivery_date, received_date, aligner_upper_count, aligner_lower_count, priority, price, discount, final_price,
                             instructions, photo_url, status, archived_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, c.case_number, c.patient_name ?? null, c.lab_id, c.lab_name, c.case_type_id ?? null, c.case_type_name ?? null,
          c.units_count ?? null, bareDoctor(c.doctor_name), JSON.stringify(c.selected_teeth ?? []), c.tooth_details ? JSON.stringify(c.tooth_details) : null,
-         c.shade ?? null, c.material ?? null, c.department ?? null, c.delivery_date, c.received_date ?? null, c.priority ?? 'normal', c.price ?? 0, c.discount ?? 0, c.final_price ?? 0,
+         c.shade ?? null, c.material ?? null, c.department ?? null, c.delivery_date, c.received_date ?? null,
+         c.aligner_upper_count ?? null, c.aligner_lower_count ?? null, c.priority ?? 'normal', c.price ?? 0, c.discount ?? 0, c.final_price ?? 0,
          c.instructions ?? null, c.photo_url ?? null, c.status ?? 'received', c.archived_at ?? null, c.created_at ?? now(), now()]
       );
       // normalize teeth
@@ -912,7 +918,7 @@ export const casesRepo = {
     const db = requireEngine();
     return db.withTransaction((tx) => {
       const allowed = ['patient_name', 'lab_id', 'lab_name', 'case_type_id', 'case_type_name', 'units_count', 'doctor_name',
-        'shade', 'material', 'department', 'delivery_date', 'received_date', 'priority', 'price', 'discount', 'final_price', 'instructions', 'photo_url', 'status', 'archived_at'] as const;
+        'shade', 'material', 'department', 'delivery_date', 'received_date', 'aligner_upper_count', 'aligner_lower_count', 'priority', 'price', 'discount', 'final_price', 'instructions', 'photo_url', 'status', 'archived_at'] as const;
       const sets: string[] = [];
       const params: any[] = [];
       for (const key of allowed) {
