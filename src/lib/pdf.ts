@@ -462,8 +462,9 @@ export function buildLedgerPdf(
     top: firstRowY,
     /* Room for the totals row, the account summary, the closing line and the
        note on the last page — they are part of the document, so the table has
-       to leave them their paper instead of running into the footer. */
-    bottom: g.CONTENT_BOTTOM + 150,
+       to leave them their paper instead of running into the footer. Intermediate
+       pages fill to the footer (CONTENT_BOTTOM + 26) so no space is wasted. */
+    bottom: g.CONTENT_BOTTOM + 26,
     heading: (ops, geo, _y, continued) => {
       ops.push({
         kind: 'text', x: geo.MARGIN, y: sectionLabelY, size: 7.5, bold: true, grey: 0.2,
@@ -1319,6 +1320,23 @@ function renderTableSections(
       if (!chunks.length) chunks.push([]);
     }
 
+    /* Reserve space on the last page for totals + account summary + note
+       (≈118 units). Intermediate pages fill to the footer, so no space is
+       wasted; only the last page carries the reserve. */
+    if (section.totals && chunks.length > 1) {
+      const lastChunk = chunks[chunks.length - 1];
+      // Estimate where the last row on the last page ends
+      let lastY = section.top;
+      for (const row of lastChunk) lastY -= (row.height ?? ROW_H) + ROW_GAP;
+      // Need at least 118 units below the last row for totals + summary + note
+      if (lastY < g.CONTENT_BOTTOM + 118) {
+        // Move the last row to a new page so totals have room
+        if (lastChunk.length > 1) {
+          const movedRow = lastChunk.pop()!;
+          chunks.push([movedRow]);
+        }
+      }
+    }
     chunks.forEach((rows, pageInSection) => {
       const ops: PdfOp[] = [];
       drawPageHeader(ops, sectionIndex, pageInSection);
