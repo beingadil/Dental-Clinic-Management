@@ -75,6 +75,7 @@ export const BillingView: React.FC = () => {
      explain itself that voiding an invoice gets — the invoice balance and the
      ledger both move. */
   const [paymentToDelete, setPaymentToDelete] = useState<PaymentRecord | null>(null);
+  const [paymentGroupToDelete, setPaymentGroupToDelete] = useState<PaymentRecord[] | null>(null);
   /* The voucher being corrected. Reading one opens the receipt modal, which is a
      different intent from changing it. */
   const [voucherToEdit, setVoucherToEdit] = useState<PaymentRecord | null>(null);
@@ -751,6 +752,7 @@ export const BillingView: React.FC = () => {
         onPrintInvoice={(inv) => setPrintModalInvoice(inv)}
         onViewReceipt={(pay) => setSelectedReceiptPayment({ payment: pay })}
         onDeletePayment={(pay) => setPaymentToDelete(pay)}
+        onDeletePaymentGroup={(pays) => setPaymentGroupToDelete(pays)}
         onEditAdjustment={(adj) => setAdjustmentToEdit(adj)}
         onDeleteAdjustment={(adj) => setAdjustmentToDelete(adj)}
         onVoidInvoice={(inv) => setVoidTarget(inv)}
@@ -859,6 +861,24 @@ export const BillingView: React.FC = () => {
         onConfirm={() => {
           if (paymentToDelete) deletePaymentV2(paymentToDelete.id);
           setPaymentToDelete(null);
+        }}
+      />
+
+      {/* Deleting a grouped (multi-invoice) payment removes every slice of it. */}
+      <ConfirmDialog
+        open={!!paymentGroupToDelete}
+        title={`Delete payment ${paymentGroupToDelete?.[0]?.payment_number?.replace(/-\d+$/, '') || ''}`}
+        consequences={[
+          `The receipt, its journal entry and all bank-reconciliation items raised for it are removed; ${(paymentGroupToDelete?.length || 1)} invoice slice(s) revert.`,
+          'A PAYMENT_DELETED audit entry records who deleted it.',
+        ]}
+        confirmLabel="Delete Payment"
+        onCancel={() => setPaymentGroupToDelete(null)}
+        onConfirm={() => {
+          if (paymentGroupToDelete) {
+            for (const p of paymentGroupToDelete) deletePaymentV2(p.id);
+          }
+          setPaymentGroupToDelete(null);
         }}
       />
 

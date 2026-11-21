@@ -39,6 +39,8 @@ interface InvoiceDetailDrawerProps {
   onEditPayment?: (payment: PaymentRecord) => void;
   /** Delete a payment entry (its whole receipt). Never the invoice itself. */
   onDeletePayment: (payment: PaymentRecord) => void;
+  /** Delete every slice of a grouped (multi-invoice) payment at once. */
+  onDeletePaymentGroup?: (payments: PaymentRecord[]) => void;
   /** Correct an adjustment (credit note, surcharge, refund) in place. */
   onEditAdjustment?: (adjustment: AccountAdjustment) => void;
   /** Remove an adjustment and undo its invoice effect. */
@@ -65,6 +67,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
   onViewReceipt,
   onEditPayment,
   onDeletePayment,
+  onDeletePaymentGroup,
   onEditAdjustment,
   onDeleteAdjustment,
   attributedAdjustments,
@@ -75,6 +78,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
 }) => {
   const { cases, accountAdjustments, journalEntries, advancePayments, applyAdvanceCreditV2, user } = useApp();
   const [jvOpen, setJvOpen] = useState(false);
+  const [deleteGroupConfirm, setDeleteGroupConfirm] = useState<PaymentRecord[] | null>(null);
 
   /* B7: quick-apply of unallocated clinic advance credit (folded in from the
      retired AccountsFinancialHome). Inline errors + synchronous latch, same
@@ -427,60 +431,113 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
               </div>
             ) : (
               <div className="space-y-2">
-                {invoice.payments.map((pmt) => (
-                  <div
-                    key={pmt.id}
-                    className="p-3 rounded-lg border text-xs flex items-center justify-between bg-white border-slate-200"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-slate-900">{pmt.payment_number}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 uppercase">
-                          {pmt.payment_method}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                        <span>{pmt.payment_date}</span>
-                        {pmt.reference_number && <span>• Ref: {pmt.reference_number}</span>}
-                        <span>• Recorded by: {pmt.recorded_by}</span>
-                      </div>
-                    </div>
+                {(() => {
+                  // A single payment that spans several invoices is stored as one
+                  // canonical row per invoice slice (PAY-2026-0001-1, -2, ...).
+                  // Group them back into ONE voucher entry per payment so the
+                  // operator sees one receipt, not two of the same entry.
+                  const groups = new Map<string, PaymentRecord[]>();
+                  for (const p of invoice.payments) {
+                    const base = (p.payment_number || p.id).replace(/-\d+$/, '');
+                    if (!groups.has(base)) groups.set(base, []);
+                    groups.get(base)!.push(p);
+                  }
+                  return Array.from(groups.entries()).map(([base, slices]) => {
+                    const total = slices.reduce((s, p) => s + (p.amount || 0), 0);
+                    const primary = slices[0];
+                    // The canonical voucher number is the payment number without
+                    // the per-invoice slice suffix.
+                    const canonical = { ...primary, payment_number: base, amount: total };
+                    return (
+                      <div
+                        key={base}
+                        className="p-3 rounded-lg border text-xs bg-white border-slate-200"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-slate-900">{base}</span>
+                              <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 uppercase">
+                                {primary.payment_method}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                              <span>{primary.payment_date}</span>
+                              {primary.reference_number && <span>• Ref: {primary.reference_number}</span>}
+                              <span>• Recorded by: {primary.recorded_by}</span>
+                            </div>
+                            {slices.length > 1 && (
+                              <div className="text-[11px] text-slate-500">
+                                Adjusted {slices.length} invoice{slices.length === 1 ? '' : 's'} of this voucher.
+                              </div>
+                            )}
+                          </div>
 
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono font-bold text-sm text-emerald-700">
-                        {formatPKR(pmt.amount)}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onViewReceipt(pmt)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
-                          title="View Official Receipt" aria-label="View official receipt"
-                        >
-                          <Receipt className="w-4 h-4" />
-                        </button>
-                        {onEditPayment && (
-                          <button
-                            type="button"
-                            onClick={() => onEditPayment(pmt)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
-                            title="Edit Payment Entry" aria-label={`Edit payment ${pmt.payment_number || ''}`}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono font-bold text-sm text-emerald-700">
+                              {formatPKR(total)}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => onViewReceipt(canonical)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
+                                title="View Official Receipt" aria-label="View official receipt"
+                              >
+                                <Receipt className="w-4 h-4" />
+                              </button>
+                              {onEditPayment && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEditPayment(primary)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
+                                  title="Edit Payment Entry" aria-label={`Edit payment ${base}`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setDeleteGroupConfirm(slices)}
+                                className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                                title="Delete Payment Entry" aria-label={`Delete payment ${base}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {deleteGroupConfirm === slices && (
+                          <div className="mt-2 pt-2 border-t border-rose-200 flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-semibold text-rose-700">
+                              Delete {base} ({slices.length} slice{slices.length === 1 ? '' : 's'})? Balances restore.
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => { setDeleteGroupConfirm(null); }}
+                                className="px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 rounded"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (onDeletePaymentGroup) onDeletePaymentGroup(slices);
+                                  else slices.forEach((p) => onDeletePayment(p));
+                                  setDeleteGroupConfirm(null);
+                                }}
+                                className="px-2 py-1 text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => onDeletePayment(pmt)}
-                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
-                          title="Delete Payment Entry" aria-label={`Delete payment ${pmt.payment_number || ''}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>
