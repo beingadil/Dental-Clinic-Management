@@ -192,5 +192,6 @@ export const INITIAL_USER_PREFERENCES: UserPreferences = {
   unsubscribed_all: false,
   auto_archive_completed_cases: true,
   theme_mode: 'system',
+  voice_enabled: false,
 };
 

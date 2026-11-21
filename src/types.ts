@@ -597,6 +597,20 @@ export interface UserPreferences {
    *  'roomy' expands padding for readability.
    */
   dashboard_density?: 'default' | 'compact' | 'roomy';
+  /** Voice assistant — OFF by default. See docs/VOICE_ASSISTANT.md. */
+  voice_enabled?: boolean;
+  /** Preferred speech-output locale/voice URI ('' falls back to en-PK/en-US). */
+  voice_locale?: string;
+  voice_tts_voice_uri?: string;
+  voice_tts_rate?: number;
+  /** When the assistant asks for spoken confirmation. */
+  voice_confirmation_mode?: 'always' | 'writes-only' | 'off';
+  /** Super-Admin-only: read clinical detail (teeth/shade/procedure) aloud. */
+  voice_read_clinical_detail?: boolean;
+  /** Opt-in Groq LLM narration channel (key stored securely, never here). */
+  voice_groq_enabled?: boolean;
+  /** Opt-in Groq Whisper transcription for desktop speech input. */
+  voice_cloud_transcription?: boolean;
 }
 
 export interface UserProfile {

@@ -2041,6 +2041,7 @@ export const clinicalSpecsRepo = {
         [g.id, g.name, g.system, JSON.stringify(g.shades || [])]
       ),
     deleteAll: () => requireEngine().run('DELETE FROM shade_guides'),
+    delete: (id: string) => requireEngine().run('DELETE FROM shade_guides WHERE id = ?', [id]),
   },
   implantBrands: {
     all: () =>

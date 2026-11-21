@@ -90,3 +90,6 @@ brag.mp4
 # of binaries that a reviewer never needs to clone.
 hackathon-assets/
 /freebuff-sites-build/
+
+# Generated RAG build artifact
+public/rag/

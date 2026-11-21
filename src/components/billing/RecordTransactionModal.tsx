@@ -2,7 +2,7 @@ import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
 import { compareInvoiceEntryOrder, invoiceEntryDate } from '../../services/invoiceOrder';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { PaymentAttachment } from '../../types';
+import { PaymentAttachment, PaymentRecord } from '../../types';
 ;
 import { validateFile } from '../../services/fileValidation';
 import { canPost } from '../../services/permissions';
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../common/ui';
 import { GlassSelect } from '../common/ui/GlassSelect';
+import { DatePickerSingle } from '../common/DatePickerSingle';
 import ClinicPicker from '../common/ui/ClinicPicker';
 import { getTodayStr, getNowStamp } from '../../utils/dateUtils';
 
@@ -38,7 +39,7 @@ interface RecordTransactionModalProps {
   initialClinicId?: string;
   initialLabId?: string;
   initialInvoiceId?: string;
-  onSuccess?: (result: { receiptNumber?: string }) => void;
+  onSuccess?: (result: { receiptNumber?: string; payment?: PaymentRecord }) => void;
 }
 
 export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
@@ -332,7 +333,7 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
         });
 
         onClose();
-        if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber });
+        if (onSuccess) onSuccess({ receiptNumber: result.receiptNumber, payment: result.payment });
       } else if (mode === 'advance') {
         const result = recordAdvanceDepositV2({
           clinicId,
@@ -451,12 +452,11 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Transaction Date *
               </label>
-              <input
-                type="date"
+              <DatePickerSingle
+                label="Transaction Date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full text-xs px-3 py-2 ds-glass-select rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-                required
+                onChange={setDate}
+                className="w-full"
               />
             </div>
 

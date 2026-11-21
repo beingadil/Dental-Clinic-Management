@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DentalCase, DentalLab } from '../../types';
 import { LabDetailModal } from './LabDetailModal';
@@ -29,6 +29,21 @@ export const LabListView: React.FC = () => {
 
   const [selectedLab, setSelectedLab] = useState<DentalLab | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  /* Voice assistant hands us a pre-filled clinic: open the New Clinic form with
+     the values the operator already gave, so editing happens in the app's own
+     form and saving goes through its validation — nothing bypassed. */
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ name?: string; doctor?: string; phone?: string }>).detail || {};
+      if (detail.name) setName(detail.name);
+      if (detail.doctor) setContactPerson(detail.doctor);
+      if (detail.phone) setPhone(detail.phone);
+      setShowCreateModal(true);
+    };
+    window.addEventListener('voice:create-clinic', handler);
+    return () => window.removeEventListener('voice:create-clinic', handler);
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'cases'>('cases');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');

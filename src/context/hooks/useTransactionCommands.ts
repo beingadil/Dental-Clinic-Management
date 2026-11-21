@@ -34,6 +34,8 @@ export interface PaymentPatch {
   payment_date?: string;
   reference_number?: string;
   notes?: string;
+  /** Re-allocate across invoices. Reverses the old allocations and applies these. */
+  allocations?: { invoiceId: string; amount: number }[];
 }
 import {
   buildAuditEvent,
@@ -610,29 +612,106 @@ export function useTransactionCommands(deps: {
       .filter((p) => p.id !== edited.id)
       .reduce((sum, p) => sum + p.amount, 0);
     const invoiceCeiling = Math.max(0, invoice.final_amount - (invoice.credit_notes_total || 0));
-    if (amountOf + settledByOthers > invoiceCeiling + 0.001) return false;
+    /* When re-allocating, validate per invoice instead (handled below); skip
+       the single-invoice ceiling check. */
+    if (!patch.allocations) {
+      if (amountOf + settledByOthers > invoiceCeiling + 0.001) return false;
+    } else {
+      // validate total + per-invoice
+      const totalNew = patch.allocations.reduce((s, a) => s + (a.amount || 0), 0);
+      if (totalNew > amountOf + 0.001) return false;
+      const baseNumber = (target.payment_number || '').replace(/-\d+$/, '');
+      const oldSlices = invoices.flatMap((inv) =>
+        (inv.payments || []).filter((p) => (p.payment_number || '').replace(/-\d+$/, '') === baseNumber),
+      );
+      for (const alloc of patch.allocations) {
+        if ((alloc.amount || 0) <= 0) continue;
+        const inv = invoices.find((i) => i.id === alloc.invoiceId);
+        if (!inv) return false;
+        const oldAllocForInv = oldSlices.find((s) => s.invoice_id === inv.id)?.amount || 0;
+        const maxAlloc = invoiceBalanceDue(inv) + oldAllocForInv;
+        if ((alloc.amount || 0) > maxAlloc + 0.001) return false;
+      }
+    }
 
     const nowStr = getNowStamp();
     const actor = actorName || 'Cashier';
     const receiptNumber = receiptNumberOf(edited.payment_number);
 
-    setInvoices((prev) =>
-      prev.map((inv) => {
-        const payments = inv.payments || [];
-        if (!payments.some((p) => p.id === edited.id)) return inv;
-        return recomputeInvoiceFromPayments(
-          inv,
-          payments.map((p) => (p.id === edited.id ? { ...p, ...applied, amount: amountOf } : p)),
-        );
-      }),
-    );
+    const baseNumber = (target.payment_number || '').replace(/-\d+$/, '');
+
+    setInvoices((prev) => {
+      if (patch.allocations !== undefined) {
+        // Reverse old slices
+      let next = prev.map((inv) => {
+        const slices = (inv.payments || []).filter((p) => (p.payment_number || '').replace(/-\d+$/, '') === baseNumber);
+        if (slices.length === 0) return inv;
+        const remaining = (inv.payments || []).filter((p) => (p.payment_number || '').replace(/-\d+$/, '') !== baseNumber);
+        return recomputeInvoiceFromPayments(inv, remaining);
+      });
+      // Apply new allocations
+      const allocsToApply = patch.allocations.filter((a) => (a.amount || 0) > 0);
+      for (const alloc of allocsToApply) {
+        const inv = next.find((i) => i.id === alloc.invoiceId);
+        if (!inv) continue;
+        const idx = allocsToApply.indexOf(alloc);
+        const sliceNumber = allocsToApply.length > 1 ? `${baseNumber}-${idx + 1}` : baseNumber;
+        const newSlice = {
+          ...target,
+          id: `pay-slice-${Date.now()}-${alloc.invoiceId}`,
+          payment_number: sliceNumber,
+          invoice_id: alloc.invoiceId,
+          invoice_number: inv.invoice_number,
+          amount: alloc.amount,
+          payment_method: applied.payment_method ?? target.payment_method,
+          payment_date: applied.payment_date ?? target.payment_date,
+          reference_number: applied.reference_number ?? target.reference_number,
+          notes: applied.notes ?? target.notes,
+          allocations: undefined,
+        } as PaymentRecord;
+        next = next.map((i) => (i.id === inv.id ? recomputeInvoiceFromPayments(i, [...(i.payments || []), newSlice]) : i));
+      }
+      return next;
+    }
+
+    // Single-slice edit (amount/method/date/ref) — existing behavior.
+    return prev.map((inv) => {
+      const payments = inv.payments || [];
+      if (!payments.some((p) => p.id === edited.id)) return inv;
+      return recomputeInvoiceFromPayments(
+        inv,
+        payments.map((p) => (p.id === edited.id ? { ...p, amount: amountOf, payment_method: applied.payment_method ?? p.payment_method, payment_date: applied.payment_date ?? p.payment_date, reference_number: applied.reference_number ?? p.reference_number, notes: applied.notes ?? p.notes } : p)),
+      );
+    });
+    });
 
     const journal = journalEntries.find((j) => j.id === edited.journal_id);
     if (journal) {
-      const liveRows = invoices
-        .flatMap((inv) => inv.payments || [])
-        .filter((p) => receiptNumberOf(p.payment_number) === receiptNumber)
-        .map((p) => (p.id === edited.id ? { ...p, ...applied, amount: amountOf } : p));
+      let liveRows: PaymentRecord[];
+      if (patch.allocations !== undefined) {
+        const allocsToApply = patch.allocations.filter((a) => (a.amount || 0) > 0);
+        liveRows = allocsToApply.map((alloc, idx) => {
+          const inv = invoices.find((i) => i.id === alloc.invoiceId);
+          return {
+            ...target,
+            id: `pay-slice-${Date.now()}-${alloc.invoiceId}`,
+            payment_number: allocsToApply.length > 1 ? `${baseNumber}-${idx + 1}` : baseNumber,
+            invoice_id: alloc.invoiceId,
+            invoice_number: inv?.invoice_number || 'INV',
+            amount: alloc.amount,
+            payment_method: applied.payment_method ?? target.payment_method,
+            payment_date: applied.payment_date ?? target.payment_date,
+            reference_number: applied.reference_number ?? target.reference_number,
+            notes: applied.notes ?? target.notes,
+            allocations: undefined,
+          } as PaymentRecord;
+        });
+      } else {
+        liveRows = invoices
+          .flatMap((inv) => inv.payments || [])
+          .filter((p) => receiptNumberOf(p.payment_number) === receiptNumber)
+          .map((p) => (p.id === edited.id ? { ...p, amount: amountOf, payment_method: applied.payment_method ?? p.payment_method, payment_date: applied.payment_date ?? p.payment_date, reference_number: applied.reference_number ?? p.reference_number, notes: applied.notes ?? p.notes } : p));
+      }
       const unapplied = Math.max(0, roundMoney(edited.unapplied_amount || 0));
       const allocations: PaymentAllocation[] = liveRows.map((p) => {
         const prior = (edited.allocations || []).find((a) => a.invoice_id === p.invoice_id);
@@ -655,7 +734,7 @@ export function useTransactionCommands(deps: {
          decoration, and a corrected voucher that still posted to the old account
          would make the ledger disagree with the register. */
       const rebuilt = buildPaymentJournal(
-        { ...edited, ...applied, amount: total },
+        { ...edited, amount: total, payment_method: applied.payment_method ?? edited.payment_method, payment_date: applied.payment_date ?? edited.payment_date, reference_number: applied.reference_number ?? edited.reference_number, notes: applied.notes ?? edited.notes },
         allocations,
         unapplied,
         actor,
@@ -676,9 +755,10 @@ export function useTransactionCommands(deps: {
       payment_date: 'payment_date',
       reference_number: 'reference_number',
       notes: 'notes',
+      allocations: 'allocations',
     };
     const changes = (Object.keys(applied) as (keyof PaymentPatch)[]).filter(
-      (k) => applied[k] !== undefined && applied[k] !== (edited as never)[fieldNames[k]],
+      (k) => k !== 'allocations' && applied[k] !== undefined && applied[k] !== (edited as never)[fieldNames[k]],
     );
 
     setAuditEvents((prev) => [

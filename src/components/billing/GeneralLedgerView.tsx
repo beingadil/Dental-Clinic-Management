@@ -32,6 +32,7 @@ import { InvoiceStatementModal } from './InvoiceStatementModal';
 import { EditAdjustmentModal } from './EditAdjustmentModal';
 import { RecordTransactionModal } from './RecordTransactionModal';
 import EditPaymentModal from './EditPaymentModal';
+import { PaymentReceiptModal } from './PaymentReceiptModal';
 import { ConfirmDialog, DataTable } from '../common/ui';
 import { DentalCase, PaymentRecord, Invoice, AccountAdjustment } from '../../types';
 
@@ -73,6 +74,83 @@ const NEEDS_CLINIC: ExportNotice = {
   text: 'Choose a clinic first — the ledger statement is prepared per clinic.',
 };
 
+/** The invoice + embedded payment behind ONE ledger slice. */
+interface LedgerVoucherPart {
+  entry: LedgerEntry;
+  invoice?: Invoice;
+  payment?: PaymentRecord;
+}
+
+/**
+ * A ledger row as drawn. Payment entries that belong to the SAME receipt
+ * (`PAY-2026-0001-1`, `-2`, …) collapse into one row carrying every slice,
+ * exactly like the billing register's one-row-per-voucher table. Amounts are
+ * summed; the running balance is recomputed afterwards, so the statement's
+ * totals and closing balance do not move.
+ */
+type DisplayLedgerEntry = LedgerEntry & { voucherParts?: LedgerVoucherPart[] };
+
+/** `PAY-2026-0001-2` → `PAY-2026-0001`; an unsliced number is unchanged. */
+const receiptNumberOf = (reference: string | undefined): string =>
+  (reference || '').replace(/-\d+$/, '');
+
+/**
+ * Collapse one payment receipt's per-invoice slices into a single display row.
+ * The FIRST slice's position and metadata win (same date, same method, same
+ * clinic); every slice is kept in `voucherParts` so the row can list the
+ * invoices it adjusted and can open/edit/delete the whole voucher.
+ */
+const groupReceiptSlices = (entries: LedgerEntry[], invoices: Invoice[]): DisplayLedgerEntry[] => {
+  const rows: DisplayLedgerEntry[] = [];
+  const byReceipt = new Map<string, DisplayLedgerEntry>();
+
+  for (const entry of entries) {
+    if (entry.entry_type !== 'payment') {
+      rows.push(entry);
+      continue;
+    }
+    const base = receiptNumberOf(entry.reference_number || entry.reference_id);
+    if (!base) {
+      rows.push(entry);
+      continue;
+    }
+    const key = `${entry.lab_id || ''}::${base}`;
+
+    let invoice: Invoice | undefined;
+    let payment: PaymentRecord | undefined;
+    for (const inv of invoices) {
+      const hit = (inv.payments || []).find(
+        (p) => p.id === entry.reference_id || p.payment_number === entry.reference_number,
+      );
+      if (hit) {
+        invoice = inv;
+        payment = hit;
+        break;
+      }
+    }
+
+    const part: LedgerVoucherPart = { entry, invoice, payment };
+    const existing = byReceipt.get(key);
+    if (existing) {
+      existing.debit += entry.debit || 0;
+      existing.credit += entry.credit || 0;
+      existing.voucherParts!.push(part);
+      continue;
+    }
+
+    const row: DisplayLedgerEntry = {
+      ...entry,
+      debit: entry.debit || 0,
+      credit: entry.credit || 0,
+      voucherParts: [part],
+    };
+    byReceipt.set(key, row);
+    rows.push(row);
+  }
+
+  return rows;
+};
+
 export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClinicId }) => {
   const { labs, getLedgerEntries, brandingSettings, cases, invoices, user, accountAdjustments, updatePaymentV2, deletePaymentV2, deleteInvoice, updateAccountAdjustment, deleteAccountAdjustment } = useApp();
 
@@ -84,6 +162,10 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
      invoice it was posted against. */
   const [voucherToEdit, setVoucherToEdit] = useState<{ payment: PaymentRecord; invoice?: Invoice } | null>(null);
   const [voucherToDelete, setVoucherToDelete] = useState<PaymentRecord | null>(null);
+  /* Clicking a payment row opens its receipt — the adjusted invoices behind the
+     one voucher, same as the billing register. The voucher chip stays the
+     edit affordance, so reading and correcting stay separate intents. */
+  const [receiptPayment, setReceiptPayment] = useState<PaymentRecord | null>(null);
 
   /* Invoice drill-down from a ledger row: opening the invoice document lets
      the operator void it (delete) or correct its payments/adjustments. */
@@ -108,6 +190,45 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
       if (hit) return { payment: hit, invoice: inv };
     }
     return null;
+  };
+
+  /* The voucher a DISPLAY row carries. A row that collapsed several slices
+     returns ONE canonical receipt — the first slice's record plus the
+     allocation trail rebuilt from every slice — so Edit, Delete and the
+     receipt all act on the whole voucher, never just the slice that happened
+     to come first. */
+  const voucherForRow = (entry: LedgerEntry): { payment: PaymentRecord; invoice?: Invoice } | null => {
+    const parts = (entry as DisplayLedgerEntry).voucherParts;
+    if (!parts || parts.length <= 1) return findVoucher(entry);
+
+    const primary = parts.find((p) => p.payment)?.payment;
+    if (!primary) return findVoucher(entry);
+
+    const base = receiptNumberOf(entry.reference_number || entry.reference_id);
+    const allocations = parts.map((part, index) => {
+      const fallbackId = `${entry.reference_id || entry.id}-${index + 1}`;
+      return {
+        id: part.payment?.id || fallbackId,
+        source_type: 'payment' as const,
+        source_id: part.payment?.id || fallbackId,
+        source_ref: base,
+        invoice_id: part.invoice?.id || part.payment?.invoice_id || '',
+        invoice_number: part.invoice?.invoice_number || part.payment?.invoice_number || '',
+        amount: part.payment?.amount ?? (part.entry.credit || part.entry.debit || 0),
+        allocated_at: part.payment?.payment_date || part.entry.date || '',
+        allocated_by: part.payment?.recorded_by || '',
+      };
+    });
+
+    return {
+      payment: {
+        ...primary,
+        payment_number: base || primary.payment_number,
+        amount: allocations.reduce((sum, a) => sum + a.amount, 0),
+        allocations,
+      },
+      invoice: parts[0].invoice,
+    };
   };
 
   // Clinic selection: starts empty - the user must actively pick a clinic;
@@ -228,17 +349,22 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
   // Recompute running balance + totals over the case-filtered set so the
   // statement stays self-consistent when narrowed to one case.
   const caseScope = useMemo(() => {
+    /* Collapse each receipt's per-invoice slices into ONE line before the
+       running balance is computed. The sums are identical, so period totals
+       and the closing balance do not move — the statement just stops showing
+       the same 150,000 receipt twice because it paid two invoices. */
+    const displayEntries = groupReceiptSlices(caseFilteredItems, invoices || []);
     let running = openingBalance;
     let debitsSum = 0;
     let creditsSum = 0;
-    const items = caseFilteredItems.map((entry) => {
+    const items = displayEntries.map((entry) => {
       debitsSum += entry.debit || 0;
       creditsSum += entry.credit || 0;
       running += (entry.debit || 0) - (entry.credit || 0);
       return { ...entry, closing_balance: running };
     });
     return { items, debitsSum, creditsSum, closing: running };
-  }, [caseFilteredItems, openingBalance]);
+  }, [caseFilteredItems, openingBalance, invoices]);
 
   /* Render cap: computing totals over the full set stays correct (above memo),
      but the table only mounts the newest LEDGER_CAP_STEP rows — building+mounting
@@ -381,6 +507,27 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         : 'bg-purple-50 text-purple-700 border-purple-200';
 
       const icon = isCash ? Banknote : isBank ? CreditCard : Receipt;
+
+      /* One voucher that settled several invoices reads as one line here and
+         lists what it paid, instead of repeating the receipt per slice. */
+      const parts = (entry as DisplayLedgerEntry).voucherParts;
+      if (parts && parts.length > 1) {
+        const breakdown = parts
+          .map((part) => {
+            const number = part.invoice?.invoice_number || part.payment?.invoice_number || 'Invoice';
+            const amount = part.payment?.amount ?? (part.entry.credit || part.entry.debit || 0);
+            return `${number} · ${formatPKR(amount)}`;
+          })
+          .join('   •   ');
+        return {
+          typeLabel,
+          typeBadgeBg,
+          icon,
+          narration: `${typeLabel} #${receiptNumberOf(entry.reference_number || entry.reference_id)} • Applied to ${parts.length} invoices`,
+          subText: breakdown,
+          caseDetail: []
+        };
+      }
 
       return {
         typeLabel,
@@ -752,6 +899,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
             <DataTable<LedgerRow>
               data={ledgerRows}
               rowKey={(row) => (row.kind === 'opening' ? '__opening' : row.entry.id || `row-${row.idx}`)}
+              onRowClick={(row) => {
+                if (row.kind !== 'entry') return;
+                /* One voucher row → its receipt, listing every invoice it
+                   adjusted. Chips inside the row stop propagation, so reading
+                   and editing stay separate clicks. */
+                const voucher = voucherForRow(row.entry);
+                if (voucher) setReceiptPayment(voucher.payment);
+              }}
               rowClassName={(row) => (row.kind === 'opening' ? 'bg-amber-50/40 text-slate-700 font-semibold italic' : '')}
               emptyState={
                 <div className="py-12 text-center text-slate-500">
@@ -851,14 +1006,15 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                         amount, method, date, reference — and edit or delete it
                         without hunting the invoice. The DS chip stays for the
                         case itself. */
-                     const voucher = findVoucher(entry);
+                     const voucher = voucherForRow(entry);
+                     const adjustedCount = ((entry as DisplayLedgerEntry).voucherParts || []).length;
                      const inv = entry.entry_type === 'invoice'
                        ? (invoices || []).find((i) => i.id === entry.reference_id || i.invoice_number === entry.reference_number)
                        : null;
                      const invoiceChip = inv ? (
                        <button
                          type="button"
-                         onClick={() => setSelectedDrawerInvoice(inv)}
+                         onClick={(e) => { e.stopPropagation(); setSelectedDrawerInvoice(inv); }}
                          title="Open invoice — view, edit payments/adjustments, or void it"
                          aria-label={`Open invoice ${inv.invoice_number}`}
                          className="inline-block font-mono text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-indigo-100 transition-colors cursor-pointer"
@@ -869,7 +1025,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                      const dsChip = entry.case_number ? (
                        <button
                          type="button"
-                         onClick={() => {
+                         onClick={(e) => {
+                           e.stopPropagation();
                            const c = cases.find((x) => x.id === entry.case_id)
                              || cases.find((x) => x.case_number === entry.case_number);
                            if (c) setSelectedCaseForModalLocal(c);
@@ -893,13 +1050,18 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                          {voucher && (
                            <button
                              type="button"
-                             onClick={() => setVoucherToEdit(voucher)}
+                             onClick={(e) => { e.stopPropagation(); setVoucherToEdit(voucher); }}
                              title="Open this payment voucher — amount, method, date, reference — edit or delete it"
                              aria-label={`Open ${voucher.payment.payment_number || 'payment'} voucher`}
                              className="inline-block font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-emerald-100 transition-colors cursor-pointer"
                            >
                              {voucher.payment.payment_number || 'PAY'}
                            </button>
+                         )}
+                         {adjustedCount > 1 && (
+                           <span className="text-[10px] font-semibold text-slate-500 whitespace-nowrap">
+                             {adjustedCount} invoices
+                           </span>
                          )}
                          {invoiceChip}
                          {dsChip}
@@ -1053,6 +1215,15 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         />
       )}
 
+      {/* Reading a voucher is a click on its row; this is that receipt. It
+          lists every invoice the one payment adjusted. */}
+      {receiptPayment && (
+        <PaymentReceiptModal
+          payment={receiptPayment}
+          onClose={() => setReceiptPayment(null)}
+        />
+      )}
+
       {/* The voucher a payment row carries: read, correct or delete it in place.
           Saving rebuilds the receipt's journal so the register, the general
           ledger and the printed invoice all move together. */}
@@ -1060,6 +1231,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         <EditPaymentModal
           isOpen={!!voucherToEdit}
           payment={voucherToEdit.payment}
+          invoices={invoices}
+          labId={voucherToEdit.payment.lab_id}
           onSave={(id, patch) => updatePaymentV2(id, patch)}
           onDelete={(payment) => setVoucherToDelete(payment)}
           onClose={() => setVoucherToEdit(null)}

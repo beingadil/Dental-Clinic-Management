@@ -96,8 +96,17 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
               )}
             </div>
             <div className="text-right">
-              <p className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">Applied To Invoice</p>
-              <p className="font-bold text-slate-900 text-sm mt-0.5">{payment.invoice_number || invoice?.invoice_number}</p>
+              {(payment.allocations?.length ?? 0) === 0 && (
+                <>
+                  <p className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">Applied To Invoice</p>
+                  <p className="font-bold text-slate-900 text-sm mt-0.5">{payment.invoice_number || invoice?.invoice_number}</p>
+                </>
+              )}
+              {(payment.allocations?.length ?? 0) > 0 && (
+                <p className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">
+                  Applied To {payment.allocations!.length} Invoice{payment.allocations!.length === 1 ? '' : 's'}
+                </p>
+              )}
               <p className="text-slate-500 mt-0.5">
                 Payment Method: <span className="font-bold text-indigo-700 uppercase">{payment.payment_method}</span>
               </p>
@@ -125,6 +134,31 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Adjusted Invoices — what THIS payment was applied to, when the
+              allocation trail is on the record. A cashier who typed 25,000
+              wants to see the invoices it touched and the amounts each
+              absorbed, not the payment's summary number alone. */}
+          {(payment.allocations?.length ?? 0) > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-xs">
+              <p className="font-bold text-slate-800 mb-2">Adjusted Invoices</p>
+              <div className="space-y-1">
+                {payment.allocations!.map((alloc) => (
+                  <div key={alloc.id} className="flex items-center justify-between gap-3">
+                    <span className="font-mono font-bold text-slate-800">{alloc.invoice_number}</span>
+                    <span className="font-mono tabular-nums text-ink-success">
+                      {formatPKR(alloc.amount || 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {payment.unapplied_amount && payment.unapplied_amount > 0 && (
+                <p className="mt-2 text-slate-500">
+                  Plus PKR {formatPKR(payment.unapplied_amount)} held on the clinic credit wallet.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Invoice Summary Context if Available */}
           {invoice && (

@@ -37,18 +37,21 @@ describe('invoices table columns', () => {
     expect(invoiceTableHeaders()).not.toContain('Due Date & Terms');
   });
 
-  it('keeps the columns an operator actually reconciles against', () => {
-    // Removing for width must not remove the money. These three are the table's
-    // reason to exist: what was billed, what came in, what is still owed.
-    for (const heading of ['Final Amount', 'Amount Paid', 'Remaining Due']) {
-      expect(invoiceTableHeaders()).toContain(heading);
+  it('drops the noisy columns the operator no longer reconciles against', () => {
+    // The row is an invoice voucher now: number, case, patient, clinic and the
+    // money documents that still matter (adjustments, credits). Money came in
+    // via the receipt the user confirms during "Receive Payment".
+    const headers = invoiceTableHeaders();
+    for (const heading of ['Final Amount', 'Amount Paid', 'Remaining Due', 'Payment Status', 'Doctor']) {
+      expect(headers, `expected no ${heading} column`).not.toContain(heading);
     }
   });
 
-  it('still names the clinic and the patient, so a search resolves to a row', () => {
+  it('names the clinic and the adjusted invoices on each voucher row', () => {
     const headers = invoiceTableHeaders();
     expect(headers).toContain('Dental Clinic');
-    expect(headers).toContain('Patient');
+    expect(headers).toContain('Adjusted Invoices');
+    expect(headers).toContain('Voucher #');
   });
 
   it('has no per-row Receive button', () => {
@@ -71,13 +74,13 @@ describe('invoices table columns', () => {
     expect(source).not.toContain('TransactionRegister');
   });
 
-  it('lists adjustments in the same Vouchers cell as payments, with their own serial', () => {
-    // Adjustments are money documents too. They belong beside the payment
-    // vouchers on the invoice row — CR-/DR-/REF- serials, not a second panel.
-    expect(source).toMatch(/adjustmentsByInvoice\.get\(inv\.id\)/);
-    expect(source).toMatch(/adj\.adjustment_number/);
-    expect(source).not.toContain('Adjustments &amp; Credit Notes');
-    expect(source).not.toMatch(/header:\s*'Adjustment #'/);
+  it('lists each adjusted invoice on its voucher row', () => {
+    // One voucher row lists every invoice the payment adjusted, with the
+    // amount applied to each. No separate register, no duplicate rows.
+    expect(source).toMatch(/header: 'Adjusted Invoices'/);
+    expect(source).toMatch(/i\.number/);
+    expect(source).toMatch(/formatPKR\(i\.amount\)/);
+    expect(source).toMatch(/interface BillingVoucher/);
   });
 
   it('reads no payment-terms countdown off any invoice row', () => {

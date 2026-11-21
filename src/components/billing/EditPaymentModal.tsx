@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Trash2, CheckCircle2 } from 'lucide-react';
 import { Modal } from '../common/ui';
 import { GlassSelect } from '../common/ui/GlassSelect';
-import { formatPKR } from '../../services/financeDomain';
-import type { PaymentRecord, PaymentMethod } from '../../types';
+import { DatePickerSingle } from '../common/DatePickerSingle';
+import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import type { PaymentRecord, PaymentMethod, Invoice } from '../../types';
 import type { PaymentPatch } from '../../context/hooks/useTransactionCommands';
 
 /**
@@ -26,6 +27,10 @@ const METHODS: { value: PaymentMethod; label: string }[] = [
 export interface EditPaymentModalProps {
   isOpen: boolean;
   payment: PaymentRecord | null;
+  /** Open invoices for the clinic — used to show/edit the allocation trail. */
+  invoices?: Invoice[];
+  /** The clinic the payment belongs to. */
+  labId?: string;
   /** False when the caller refuses the change (e.g. it would overpay). */
   onSave: (paymentId: string, patch: PaymentPatch) => boolean;
   onDelete: (payment: PaymentRecord) => void;
@@ -35,6 +40,7 @@ export interface EditPaymentModalProps {
 export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
   isOpen,
   payment,
+  invoices = [],
   onSave,
   onDelete,
   onClose,
@@ -44,6 +50,7 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
   const [date, setDate] = useState('');
   const [reference, setReference] = useState('');
   const [error, setError] = useState('');
+  const [allocations, setAllocations] = useState<{ invoiceId: string; amount: string }[]>([]);
 
   /* Re-seed from the voucher each time it opens. Reading into state on open
      rather than mutating the record means Cancel genuinely cancels, and two
@@ -55,6 +62,17 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
     setDate(payment.payment_date || '');
     setReference(payment.reference_number || '');
     setError('');
+    // Seed the allocation trail (the invoices this payment was adjusted
+    // against). The payment carries its own allocations; fall back to the
+    // single invoice_id when the trail is missing.
+    const seed = (payment.allocations || []).map((a) => ({
+      invoiceId: a.invoice_id,
+      amount: String(a.amount ?? ''),
+    }));
+    if (seed.length === 0 && payment.invoice_id) {
+      seed.push({ invoiceId: payment.invoice_id, amount: String(payment.amount ?? '') });
+    }
+    setAllocations(seed);
   }, [isOpen, payment]);
 
   if (!isOpen || !payment) return null;
@@ -69,11 +87,22 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
       setError('Enter the date this payment was received.');
       return;
     }
+    const parsedAllocs = allocations
+      .map((a) => ({ invoiceId: a.invoiceId, amount: Number(a.amount) }))
+      .filter((a) => a.amount > 0);
+    const totalAllocated = parsedAllocs.reduce((s, a) => s + a.amount, 0);
+    if (totalAllocated > parsed + 0.001) {
+      setError(
+        `Allocated ${formatPKR(totalAllocated)} is more than the ${formatPKR(parsed)} received. Reduce the allocations first.`,
+      );
+      return;
+    }
     const ok = onSave(payment.id, {
       amount: parsed,
       payment_method: method,
       payment_date: date.trim(),
       reference_number: reference.trim(),
+      allocations: parsedAllocs.length > 0 ? parsedAllocs : undefined,
     });
     if (!ok) {
       // The command refuses an amount that would take the invoice past settled.
@@ -153,12 +182,11 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
             <label htmlFor="edit-pay-date" className="block text-xs font-semibold text-slate-700 mb-1">
               Payment Date *
             </label>
-            <input
-              id="edit-pay-date"
-              type="date"
+            <DatePickerSingle
+              label="Payment Date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full text-sm px-3 py-2 ds-glass-select rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onChange={setDate}
+              className="w-full"
             />
           </div>
 
@@ -189,6 +217,44 @@ export const EditPaymentModal: React.FC<EditPaymentModalProps> = ({
             />
           </div>
         </div>
+
+        {allocations.length > 0 && (
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700">
+                Adjusted Invoices (allocations)
+              </label>
+              <div className="space-y-1.5">
+                {allocations.map((a, idx) => {
+                  const inv = (invoices || []).find((i) => i.id === a.invoiceId);
+                  return (
+                    <div key={a.invoiceId} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono font-bold text-slate-800 w-24 truncate">
+                        {inv?.invoice_number || a.invoiceId}
+                      </span>
+                      <span className="text-slate-500 flex-1">
+                        {inv ? `balance ${formatPKR(invoiceBalanceDue(inv))}` : ''}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={a.amount}
+                        onChange={(e) =>
+                          setAllocations((prev) =>
+                            prev.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)),
+                          )
+                        }
+                        className="w-28 text-sm px-2 py-1 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 tabular-nums"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Allocated: {formatPKR(allocations.reduce((s, a) => s + (Number(a.amount) || 0), 0))}
+              </p>
+            </div>
+          )}
 
         {error && (
           <p role="alert" className="text-xs text-ink-danger bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">

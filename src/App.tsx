@@ -8,6 +8,7 @@ import { Sidebar } from './components/common/Sidebar';
 import { LockScreen } from './components/common/LockScreen';
 import { LoginPage } from './components/auth/LoginPage';
 import { GlobalToast } from './components/common/GlobalToast';
+import { VoiceShell } from './components/voice/VoiceShell';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { reportsTabForView } from './components/common/financeTabs';
 import { ModuleAccessGate } from './components/common/ModuleAccessGate';
@@ -286,6 +287,7 @@ const MainAppContent: React.FC = () => {
 
       {/* Global In-App Toast & Confirmation Modal */}
       <GlobalToast />
+      <VoiceShell />
     </div>
   );
 };

@@ -28,6 +28,7 @@ import {
   type ClinicalShadeGuide,
 } from '../../services/clinicalSpecsService';
 import { Modal } from '../common/ui';
+import { SHADE_COLORS } from '../cases/Odontogram';
 import { GlassSelect } from '../common/ui/GlassSelect';
 import { SavePdfButton } from '../print/SavePdfButton';
 import { getTodayStr } from '../../utils/dateUtils';
@@ -119,12 +120,28 @@ export const CatalogView: React.FC = () => {
   const [newShadeCode, setNewShadeCode] = useState('');
   const [shadeError, setShadeError] = useState<string | null>(null);
   const [armedRemove, setArmedRemove] = useState<{ guideId: string; shade: string } | null>(null);
+  const [armedDeleteGuide, setArmedDeleteGuide] = useState<string | null>(null);
   const [newGuideOpen, setNewGuideOpen] = useState(false);
   const [newGuide, setNewGuide] = useState({ name: '', system: 'vita_classical', shades: '' });
   const [guideError, setGuideError] = useState<string | null>(null);
 
   const saveGuide = (guide: ClinicalShadeGuide) => {
     clinicalSpecsRepo.shadeGuides.insert(guide);
+    refreshShadeGuides();
+    notifySpecsChanged();
+  };
+
+  const handleDeleteGuide = (guideId: string) => {
+    if (armedDeleteGuide !== guideId) {
+      setArmedDeleteGuide(guideId);
+      return;
+    }
+    setArmedDeleteGuide(null);
+    try {
+      clinicalSpecsRepo.shadeGuides.delete(guideId);
+    } catch {
+      // tolerate missing method on older engines
+    }
     refreshShadeGuides();
     notifySpecsChanged();
   };
@@ -991,6 +1008,19 @@ export const CatalogView: React.FC = () => {
                         : 'Custom'} · {guide.shades.length} shade{guide.shades.length === 1 ? '' : 's'}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteGuide(guide.id)}
+                    aria-label={armedDeleteGuide === guide.id ? `Confirm delete ${guide.name}` : `Delete ${guide.name}`}
+                    title={armedDeleteGuide === guide.id ? 'Click again to confirm deletion' : 'Delete guide'}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                      armedDeleteGuide === guide.id
+                        ? 'text-rose-600 bg-rose-50 hover:bg-rose-100'
+                        : 'text-slate-300 hover:text-rose-600 hover:bg-rose-50'
+                    }`}
+                  >
+                    {armedDeleteGuide === guide.id ? <Check className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
 
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -1000,12 +1030,17 @@ export const CatalogView: React.FC = () => {
                     return (
                       <span
                         key={shade}
-                        className={`group inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-mono font-bold transition-colors ${
+                        className={`group inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-mono font-bold transition-colors ${
                           armed
                             ? 'border-rose-500 bg-rose-50 text-rose-700'
                             : 'border-slate-200 bg-white text-slate-700'
                         }`}
                       >
+                        <span
+                          aria-hidden="true"
+                          className="inline-block h-3 w-3 rounded-sm border border-slate-300"
+                          style={{ backgroundColor: SHADE_COLORS[shade] || '#f1f5f9' }}
+                        />
                         {shade}
                         <button
                           type="button"
