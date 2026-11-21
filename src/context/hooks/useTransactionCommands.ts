@@ -607,9 +607,9 @@ export function useTransactionCommands(deps: {
       // validate total + per-invoice
       const totalNew = patch.allocations.reduce((s, a) => s + (a.amount || 0), 0);
       if (totalNew > amountOf + 0.001) return false;
-      const baseNumber = (target.payment_number || '').replace(/-\d+$/, '');
+      const baseNumber = receiptNumberOf(target.payment_number);
       const oldSlices = invoices.flatMap((inv) =>
-        (inv.payments || []).filter((p) => (p.payment_number || '').replace(/-\d+$/, '') === baseNumber),
+        (inv.payments || []).filter((p) => receiptNumberOf(p.payment_number) === baseNumber),
       );
       for (const alloc of patch.allocations) {
         if ((alloc.amount || 0) <= 0) continue;
@@ -625,15 +625,15 @@ export function useTransactionCommands(deps: {
     const actor = actorName || 'Cashier';
     const receiptNumber = receiptNumberOf(edited.payment_number);
 
-    const baseNumber = (target.payment_number || '').replace(/-\d+$/, '');
+    const baseNumber = receiptNumberOf(target.payment_number);
 
     setInvoices((prev) => {
       if (patch.allocations !== undefined) {
         // Reverse old slices
       let next = prev.map((inv) => {
-        const slices = (inv.payments || []).filter((p) => (p.payment_number || '').replace(/-\d+$/, '') === baseNumber);
+        const slices = (inv.payments || []).filter((p) => receiptNumberOf(p.payment_number) === baseNumber);
         if (slices.length === 0) return inv;
-        const remaining = (inv.payments || []).filter((p) => (p.payment_number || '').replace(/-\d+$/, '') !== baseNumber);
+        const remaining = (inv.payments || []).filter((p) => receiptNumberOf(p.payment_number) !== baseNumber);
         return recomputeInvoiceFromPayments(inv, remaining);
       });
       // Apply new allocations

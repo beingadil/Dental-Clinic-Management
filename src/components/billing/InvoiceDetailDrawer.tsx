@@ -9,6 +9,7 @@ import { caseDetailLines } from '../../services/ledgerCaseDetail';
 import { availableAdvanceCredit } from '../../services/transactionDomain';
 import type { AttributedAdjustment } from '../../services/adjustmentAttribution';
 import { invoiceEntryDate } from '../../services/invoiceOrder';
+import { receiptNumberOf } from '../../services/ledgerDomain';
 import { 
   X, 
   FileText, 
@@ -438,7 +439,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                   // operator sees one receipt, not two of the same entry.
                   const groups = new Map<string, PaymentRecord[]>();
                   for (const p of invoice.payments) {
-                    const base = (p.payment_number || p.id).replace(/-\d+$/, '');
+                    const base = receiptNumberOf(p.payment_number || p.id);
                     if (!groups.has(base)) groups.set(base, []);
                     groups.get(base)!.push(p);
                   }

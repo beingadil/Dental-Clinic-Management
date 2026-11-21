@@ -719,7 +719,7 @@ export const BillingView: React.FC = () => {
       {/* Deleting a grouped (multi-invoice) payment removes every slice of it. */}
       <ConfirmDialog
         open={!!paymentGroupToDelete}
-        title={`Delete payment ${paymentGroupToDelete?.[0]?.payment_number?.replace(/-\d+$/, '') || ''}`}
+        title={`Delete payment ${receiptNumberOf(paymentGroupToDelete?.[0]?.payment_number) || ''}`}
         consequences={[
           `The receipt, its journal entry and all bank-reconciliation items raised for it are removed; ${(paymentGroupToDelete?.length || 1)} invoice slice(s) revert.`,
           'A PAYMENT_DELETED audit entry records who deleted it.',
