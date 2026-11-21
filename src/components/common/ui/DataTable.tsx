@@ -23,6 +23,8 @@ interface DataTableProps<T> {
   columns: DataTableColumn<T>[];
   data: T[];
   rowKey: (row: T) => string;
+  /** Click anywhere on a row (e.g. open the voucher receipt). */
+  onRowClick?: (row: T) => void;
   /** Extra row classes (status tint, reversal highlight, ...). */
   rowClassName?: (row: T) => string;
   selection?: DataTableSelection;
@@ -92,6 +94,7 @@ function DataTableInner<T>({
   columns,
   data,
   rowKey,
+  onRowClick,
   rowClassName,
   selection,
   emptyState,
@@ -143,7 +146,8 @@ function DataTableInner<T>({
               return (
                 <tr
                   key={id}
-                  className={`hover:bg-slate-50/80 transition-colors ${rowClassName?.(row) ?? ''} ${
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  className={`${onRowClick ? 'cursor-pointer' : ''} hover:bg-slate-50/80 transition-colors ${rowClassName?.(row) ?? ''} ${
                     isSelected ? 'bg-indigo-50/40' : ''
                   }`}
                 >

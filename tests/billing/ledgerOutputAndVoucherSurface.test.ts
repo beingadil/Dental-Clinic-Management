@@ -125,16 +125,17 @@ describe('no second payments surface', () => {
     ).toThrow();
   });
 
-  it('keeps the money-document controls on the invoice row, which is the only place now', () => {
+  it('keeps the money-document controls on the voucher row, which is the only place now', () => {
     const billing = readFileSync(
       resolve(process.cwd(), 'src/components/billing/BillingView.tsx'),
       'utf8',
     );
-    // Adjustments render in their own column on the row; payments are edited
-    // and deleted from the Actions cell. No chip, no separate register.
-    expect(billing).toMatch(/header: 'Adjustments'/);
+    // One voucher row per receipt: click anywhere to open its receipt, and
+    // edit/delete it from the Actions cell. No duplicate invoice rows.
+    expect(billing).toMatch(/header: 'Voucher #'/);
+    expect(billing).toMatch(/onRowClick/);
     expect(billing).toMatch(/setVoucherToEdit/);
-    expect(billing).toMatch(/setPaymentToDelete/);
+    expect(billing).toMatch(/setPaymentGroupToDelete/);
     expect(billing).not.toMatch(/header: 'Vouchers'/);
   });
 });

@@ -47,10 +47,11 @@ describe('invoices table columns', () => {
     }
   });
 
-  it('still names the clinic and the patient, so a search resolves to a row', () => {
+  it('names the clinic and the adjusted invoices on each voucher row', () => {
     const headers = invoiceTableHeaders();
     expect(headers).toContain('Dental Clinic');
-    expect(headers).toContain('Patient');
+    expect(headers).toContain('Adjusted Invoices');
+    expect(headers).toContain('Voucher #');
   });
 
   it('has no per-row Receive button', () => {
@@ -73,15 +74,13 @@ describe('invoices table columns', () => {
     expect(source).not.toContain('TransactionRegister');
   });
 
-  it('lists adjustments in the same cell as their invoice number', () => {
-    // Adjustments are money documents too. They belong on the invoice row —
-    // CR-/DR-/REF- serials WITH the invoice number they affect, not in a
-    // separate register below the table.
-    expect(source).toMatch(/adjustmentsByInvoice\.get\(inv\.id\)/);
-    expect(source).toMatch(/adj\.adjustment_number/);
-    expect(source).toMatch(/adj\.invoice_number\s*\|\|\s*inv\.invoice_number/);
-    expect(source).not.toContain('Adjustments &amp; Credit Notes');
-    expect(source).not.toMatch(/header:\s*'Adjustment #'/);
+  it('lists each adjusted invoice on its voucher row', () => {
+    // One voucher row lists every invoice the payment adjusted, with the
+    // amount applied to each. No separate register, no duplicate rows.
+    expect(source).toMatch(/header: 'Adjusted Invoices'/);
+    expect(source).toMatch(/i\.number/);
+    expect(source).toMatch(/formatPKR\(i\.amount\)/);
+    expect(source).toMatch(/interface BillingVoucher/);
   });
 
   it('reads no payment-terms countdown off any invoice row', () => {
