@@ -544,16 +544,15 @@ export const PreferencesTab: React.FC = () => {
             />
           )}
           <GroqKeyControl />
-          <GlassSelect
-            value={userPreferences?.voice_cloud_transcription ? 'true' : 'false'}
-            onChange={(v) => updateUserPreferences({ voice_cloud_transcription: v === 'true' })}
-            ariaLabel="Cloud microphone (Groq Whisper)"
-            className="w-full p-2 text-xs font-bold border border-dashed border-indigo-200"
-            options={[
-              { value: 'false', label: 'Built-in mic (Chrome/Edge online) — default' },
-              { value: 'true', label: 'Cloud microphone — Groq Whisper (audio is sent to Groq; needs key; off by default)' },
-            ]}
-          />
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Cloud microphone (Groq Whisper)</label>
+              <p className="text-[10px] text-slate-500 mt-0.5">Active when a Groq API key is saved. Audio is sent to Groq for transcription.</p>
+            </div>
+            <span className={`text-[10px] font-bold ${groqEnabled() ? 'text-emerald-600' : 'text-slate-400'}`}>
+              {groqEnabled() ? 'Cloud mic ON' : 'Cloud mic OFF — save a Groq key'}
+            </span>
+          </div>
           <VoiceExtras voiceUri={userPreferences?.voice_tts_voice_uri} onVoiceUri={(v) => updateUserPreferences({ voice_tts_voice_uri: v || undefined })} />
         </div>
 
