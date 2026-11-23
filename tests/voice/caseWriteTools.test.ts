@@ -95,9 +95,10 @@ describe('Tier 3 — destructive tools', () => {
     expect(r.pending.caseNumber).toBe('DS-0002');
   });
 
-  it('returns a clarify message when no case number is given', async () => {
+  it('returns a natural question when no case number is given', async () => {
     const r: any = await run('deleteCase', {});
     expect(r.kind).toBe('read');
-    expect(r.text).toContain('Say:');
+    expect(r.text).toContain('Which case');
+    expect(r.text).not.toContain('Say:');
   });
 });

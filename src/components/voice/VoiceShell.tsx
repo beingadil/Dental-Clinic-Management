@@ -15,12 +15,11 @@ import { closeMonth } from '../../services/monthClose';
 import { groqEnabled } from '../../services/voiceGroq';
 import { recordClip, transcribeWithGroq, type RecordingHandle } from '../../services/voiceGroqStt';
 import type { WriteCommand } from '../../services/voiceWrite';
-import { openCasesSummary } from '../../services/voiceTools';
 import { selectCasesToAutoArchive } from '../../context/hooks/autoArchive';
 import { getTodayStr } from '../../utils/dateUtils';
 import { invoiceBalanceDue } from '../../services/financeDomain';
 
-type ShellStatus = 'idle' | 'listening' | 'thinking' | 'locked' | 'error' | 'done';
+type ShellStatus = 'idle' | 'listening' | 'thinking' | 'typing' | 'locked' | 'error' | 'done';
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -44,28 +43,19 @@ const getRecognition = (): SpeechRecognitionLike | null => {
   return rec;
 };
 
-const rankCandidates = (labs: { id: string; name: string }[], hint: string) => {
-  const f = hint.toLowerCase();
-  return labs
-    .map((lab) => ({ lab, score: f.split(' ').filter((tok) => tok.length >= 3).reduce((acc, tok) => acc + (lab.name.toLowerCase().includes(tok) ? tok.length : 0), 0) }))
-    .filter((x) => x.score > 0 || x.lab.name.toLowerCase().includes(f))
-    .sort((a, b) => b.score - a.score);
+/** AI-executed write commands come from the agentic loop — the shell runs
+    them immediately through executeWrite. Only destructive actions keep a
+    typed-token gate (the red flow in queueWrite). */
+const findLabByHint = (labs: { id: string; name: string }[], hint?: string): { id: string; name: string } | null => {
+  const h = (hint || '').trim().toLowerCase();
+  if (!h) return null;
+  const exact = labs.find((l) => l.name.toLowerCase() === h);
+  if (exact) return exact;
+  const contains = labs.filter((l) => l.name.toLowerCase().includes(h));
+  return contains.length === 1 ? contains[0] : (contains[0] && contains.length > 1 ? contains[0] : null);
 };
 
-const STAGE_TOKEN_MAP: Record<string, string> = {
-  ready: 'ready', delivered: 'delivered', received: 'received',
-  'in progress': 'in_progress', inprogress: 'in_progress',
-  qc: 'qc', quality: 'qc', revision: 'revision', rework: 'revision',
-  cancel: 'cancelled', cancelled: 'cancelled', archive: 'archive',
-};
-const detectStageWord = (raw: string): string | null => {
-  const t = raw.toLowerCase();
-  const tokens = Object.keys(STAGE_TOKEN_MAP).sort((a, b) => b.length - a.length);
-  const hit = tokens.find((w) => new RegExp(`\\b${w}\\b`).test(t));
-  return hit ? STAGE_TOKEN_MAP[hit] : null;
-};
-
-/** Push-to-talk + offline answers. Write actions require explicit confirmation. */
+/** Push-to-talk + offline answers. Writes execute immediately through the AI. */
 export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
@@ -84,14 +74,10 @@ export const VoiceShell: React.FC = () => {
   const [typedConfirm, setTypedConfirm] = useState('');
   const [expectTyped, setExpectTyped] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /* Destructive actions only: the typed-token red gate (audit F2 destructive). */
   const [pending, setPending] = useState<WriteCommand | null>(null);
   const [pendingRisk, setPendingRisk] = useState<'write' | 'destructive'>('write');
   const [pendingNote, setPendingNote] = useState('');
-  type SlotMode =
-    | { kind: 'createClinic'; step: 'name' | 'doctor' | 'phone'; name?: string; doctor?: string; phone?: string }
-    | { kind: 'createCase'; step: 'patient' | 'clinic' | 'caseType' | 'teeth' | 'price' | 'priority' | 'shade' | 'delivery' | 'doctor'; patient?: string; clinic?: string; caseType?: string; teeth?: number[]; doctor?: string; price?: number; priority?: string; shade?: string; delivery?: string };
-  const [slotMode, setSlotMode] = useState<SlotMode | null>(null);
-  const [caseContext, setCaseContext] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const cloudStop = useRef<null | (() => void)>(null);
@@ -196,294 +182,31 @@ export const VoiceShell: React.FC = () => {
     setOpen((v) => { const next = !v; if (next) setStatus('idle'); return next; });
   };
 
-  const queueWrite = (cmd: WriteCommand, note: string, risk: 'write' | 'destructive' = 'write') => {
+  /* Writes auto-execute (the AI agentic loop resolved the intent). Only
+     destructive actions park in the red-gate queue: the operator must type the
+     shown token; spoken confirmation is intentionally not accepted. */
+  const queueWrite = (cmd: WriteCommand, note: string, risk: 'destructive' = 'destructive') => {
     setPending(cmd);
     setPendingRisk(risk);
     setPendingNote(note);
     setStatus('done');
-    if (risk === 'destructive') {
-      const want = cmd.kind === 'purgeCase' ? `PURGE ${cmd.caseNumber}` : `DELETE ${cmd.caseNumber}`;
-      setExpectTyped(want);
-      setPending(cmd);
-      setPendingRisk(risk);
-      setPendingNote(note);
-      setStatus('done');
-      setAnswer(`DESTRUCTIVE — type “${want}” to confirm. This cannot be undone.`);
-      return;
-    }
-    if (cmd.kind === 'createClinic') {
-      setAnswer(`Confirm: create clinic “${cmd.clinicHint}”?`);
-      speak(`Confirm: create clinic ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
-      return;
-    }
-    if (cmd.kind === 'createCase') {
-      setAnswer(`Confirm: create case for ${cmd.patientName ?? 'patient'} — ${cmd.caseTypeName ?? 'case'} at ${cmd.clinicHint} — PKR ${cmd.amount.toLocaleString()}?`);
-      speak(`Confirm: create case for ${cmd.patientName ?? 'patient'} at ${cmd.clinicHint}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
-      return;
-    }
-    if (cmd.amount === 0) {
-      const label = (() => {
-        switch (cmd.kind) {
-          case 'printSettingsSave': return 'apply the print settings';
-          case 'printSectionsSave': return `set ${cmd.docKind} print sections`;
-          case 'notificationConfigSave': return 'save the notification configuration';
-          case 'closeMonth': return `close ${cmd.month || ''} for ${cmd.labName || cmd.clinicHint}`;
-          case 'setCaseStatus': return `move case ${cmd.caseNumber} to “${cmd.targetStatus}”`;
-          case 'caseUpdateFields': return `update ${cmd.caseNumber} — ${Object.entries(cmd.updateFields || {}).map(([k, v]) => `${k}: ${v}`).join(', ')}`;
-          case 'casePriority': return `set ${cmd.caseNumber} priority to “${cmd.priority}”`;
-          case 'bulkCaseStatus': return `move ${cmd.bulkCaseNumbers?.length ?? 0} case(s) to “${cmd.targetStatus}”`;
-          case 'restoreCase': return `restore ${cmd.caseNumber} (unarchive)`;
-          case 'caseTemplateSave': return `save template “${cmd.templateName}” from ${cmd.caseNumber}`;
-          case 'deleteCase': return `delete ${cmd.caseNumber} permanently`;
-          case 'purgeCase': return `purge ${cmd.caseNumber} — case + notes + attachments + QC data`;
-          case 'addCaseNote': return `add a note to ${cmd.caseNumber}`;
-          case 'recordQc': return `record QC ${cmd.qcResult?.toUpperCase()} for ${cmd.caseNumber}`;
-          case 'archiveCase': return `archive ${cmd.caseNumber}`;
-          case 'bulkArchive': return `archive ${cmd.amount || ''} delivered case(s) older than 30 days`;
-          case 'updateClinicField': return `update ${cmd.field} for ${cmd.clinicHint} to “${cmd.value}”`;
-          case 'updateClinicDoctor': return `set doctor for ${cmd.clinicHint} to ${cmd.doctorName}`;
-          case 'addClinicContact': return `add contact “${cmd.contactName}” to ${cmd.clinicHint}`;
-          case 'addClinicAddress': return `add a ${cmd.addressType} address for ${cmd.clinicHint}`;
-          case 'addPricingOverride': return `set pricing override for ${cmd.caseTypeName} at ${cmd.clinicHint}`;
-          default: return 'continue';
-        }
-      })();
-      setAnswer(`Confirm: ${label}.`);
-      speak(`Confirm: ${label}.`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
-      return;
-    }
-    const amount = `PKR ${cmd.amount.toLocaleString()}`;
-    const kind = cmd.kind === 'payment' ? `payment against ${cmd.invoiceNumber || 'the oldest unpaid invoices'}`
-      : cmd.kind === 'applyAdvance' ? `apply advance to ${cmd.invoiceNumber}`
-      : cmd.kind === 'markPaid' ? `mark ${(cmd.invoiceNumbers || []).join(', ')} paid`
-      : 'advance deposit';
-    setAnswer(`Confirm: ${amount} ${kind} for ${cmd.clinicHint} via ${cmd.method.toUpperCase()}?`);
-    speak(`Confirm: ${amount} ${kind} for ${cmd.clinicHint}.`, {
-      rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
-      locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false,
-    });
+    const want = cmd.kind === 'purgeCase' ? `PURGE ${cmd.caseNumber}` : `DELETE ${cmd.caseNumber}`;
+    setExpectTyped(want);
+    setAnswer(`DESTRUCTIVE — type “${want}” to confirm. This cannot be undone.`);
   };
 
   const submit = async (raw?: string) => {
     const text = (raw ?? query).trim();
     if (!text || busy) return;
-
-    /* Case-aware conversation: remember the case the operator means, and act on a
-       bare stage word without them repeating the number. Bulk-archive is a batch
-       action, not a per-case action, so detect and skip straight to the registry.
-       Write-intent phrases (update/set/mark/delete/…) go straight to the
-       registry — their tools own those phrases; only bare case references get
-       the interactive case flow. */
-    const wantsBulk = /archive\b.*\b(all|bulk|every|older|30\s*days)\b|bulk archive/i.test(text);
-    const WRITE_PHRASE = /\b(?:update|set|change|mark|move|route|send|put|place|shift|restore|save|add|record|delete|purge|bulk)\b/i;
-    const caseRefMatch = wantsBulk || WRITE_PHRASE.test(text) ? null : text.match(/\bDS-\d+\b/i);
-    const stage = wantsBulk ? null : detectStageWord(text);
-    if (caseRefMatch) {
-      const cn = caseRefMatch[0].toUpperCase();
-      setCaseContext(cn);
-      if (stage) {
-        if (stage === 'archive') {
-          queueWrite({ kind: 'archiveCase', amount: 0, clinicHint: cn, caseNumber: cn, method: 'bank' }, 'voice:archiveCase');
-          return;
-        }
-        queueWrite({ kind: 'setCaseStatus', amount: 0, clinicHint: cn, caseNumber: cn, targetStatus: stage, method: 'bank' }, 'voice:setCaseStatus');
-        return;
-      }
-      const found = (cases || []).find((c) => c.case_number === cn);
-      setAnswer(`Case ${cn}${found ? ` — ${found.patient_name || 'Patient'} · ${found.case_type_name || 'Case'} · currently “${found.status}”` : ''}. What now? Say “ready”, “delivered”, “QC pass”, “add note …”, “archive”, or “show cases”.`);
-      speak(`Case ${cn}. What would you like to do with it?`, { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
+    /* Destructive confirmation via the typed token — the red gate stays. */
+    if (pending && pendingRisk === 'destructive') {
+      if (typedMatch()) { executeWrite(pending); setPending(null); setPendingNote(''); setExpectTyped(null); setStatus('done'); return; }
+      setStatus('typing');
+      setAnswer(`Type “${expectTyped}” to confirm — this cannot be undone.`);
       return;
     }
-    if (stage && caseContext) {
-      if (stage === 'archive') {
-        queueWrite({ kind: 'archiveCase', amount: 0, clinicHint: caseContext, caseNumber: caseContext, method: 'bank' }, 'voice:archiveCase');
-        return;
-      }
-      queueWrite({ kind: 'setCaseStatus', amount: 0, clinicHint: caseContext, caseNumber: caseContext, targetStatus: stage, method: 'bank' }, 'voice:setCaseStatus');
-      return;
-    }
-    if (stage && !caseContext) {
-      setAnswer(`Which case? Available open cases: ${openCasesSummary({ labs, invoices, advancePayments, accountAdjustments, cases: cases || [], caseTypes, labContacts, labAddresses, pricingOverrides, user })}. Say one — e.g. “DS-0001 ready”.`);
-      speak('Which case would you like to update?', { rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri, locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false });
-      return;
-    }
-
-    /* Guided entry interview: “Add clinic” asks for the name, doctor, phone one
-       at a time, mirrors the New Clinic form, then opens the form pre-filled. */
-    if (slotMode) {
-      const val = text.trim();
-      const skip = /^(skip|none|no|-)$/i.test(val);
-      if (slotMode.kind === 'createClinic') {
-        if (slotMode.step === 'name') {
-          if (skip || val.length < 2) { setAnswer('A clinic needs a name — say the clinic name.'); return; }
-          setSlotMode({ ...slotMode, name: val, step: 'doctor' });
-          setAnswer(`Got “${val}”. Doctor's name? Say “skip” to leave it blank.`);
-          return;
-        }
-        if (slotMode.step === 'doctor') {
-          setSlotMode({ ...slotMode, doctor: skip ? undefined : val, step: 'phone' });
-          setAnswer(skip ? 'Okay. Phone? Say “skip” to leave it blank.' : `Got doctor ${val}. Phone? Say “skip” to leave it blank.`);
-          return;
-        }
-        const phone = skip ? undefined : val;
-        setCurrentView('labs');
-        // LabListView mounts AFTER the view flips; if we fire the prefill
-        // event synchronously it lands before the listener exists and is lost.
-        const detail = { name: slotMode.name!, doctor: slotMode.doctor, phone };
-        window.setTimeout(() => {
-          try {
-            window.dispatchEvent(new CustomEvent('voice:create-clinic', { detail }));
-          } catch { /* prefill is best effort */ }
-        }, 350);
-        setSlotMode(null);
-        setAnswer(`Opening Labs → New Clinic pre-filled with “${detail.name}”${detail.doctor ? `, doctor ${detail.doctor}` : ''}. Review the form and press “Add clinic” to finish.`);
-        speak('Opening the new clinic form with your details — review and press add clinic.', {
-          rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
-          locale: userPreferences?.voice_locale || 'en-PK', allowClinicalDetail: false,
-        });
-        return;
-      }
-
-      /* Guided case creation — asks for the same fields the New Case form asks. */
-      if (slotMode.step === 'patient') {
-        if (skip || val.length < 2) { setAnswer('Patient name is required.'); return; }
-        setSlotMode({ ...slotMode, patient: val, step: 'clinic' });
-        setAnswer('Which clinic?');
-        return;
-      }
-      if (slotMode.step === 'clinic') {
-        const matches = (labs || []).filter((l) => l.name.toLowerCase().includes(val.toLowerCase()));
-        if (matches.length === 1) {
-          setSlotMode({ ...slotMode, clinic: matches[0].name, step: 'caseType' });
-          setAnswer(`Got ${matches[0].name}. Which case type? For example: “Zirconia Crown”.`);
-          return;
-        }
-        setAnswer(matches.length > 1 ? `Which clinic — ${matches.map((m) => m.name).slice(0, 5).join(', ')}?` : 'No matching clinic. Say the exact clinic name or add it first.');
-        return;
-      }
-      if (slotMode.step === 'caseType') {
-        const wanted = val.toLowerCase();
-        const exact = (caseTypes || []).find((c) => c.name.toLowerCase() === wanted);
-        const partial = (caseTypes || []).filter((c) => c.name.toLowerCase().includes(wanted));
-        const chosen = exact || (partial.length === 1 ? partial[0] : partial[0]);
-        if (!chosen) {
-          const examples = (caseTypes || []).slice(0, 4).map((c) => c.name).join(', ');
-          setAnswer(`No case type “${val}”. Known: ${examples}.`);
-          return;
-        }
-        if (!exact && partial.length > 1) {
-          setAnswer(`Which case type — ${partial.slice(0, 5).map((c) => c.name).join(', ')}?`);
-          return;
-        }
-        const needsTeeth = chosen.needs_teeth !== false;
-        setSlotMode({ ...slotMode, caseType: chosen.name, step: needsTeeth ? 'teeth' : 'price' });
-        setAnswer(needsTeeth
-          ? `Got ${chosen.name} — which teeth? Say FDI numbers (e.g. “26 27”). Say “skip” if this case has no teeth.`
-          : `Got ${chosen.name}. Price, PKR?`);
-        return;
-      }
-      if (slotMode.step === 'teeth') {
-        if (skip) {
-          setSlotMode({ ...slotMode, teeth: [], step: 'price' });
-          setAnswer('No teeth — price PKR?');
-          return;
-        }
-        const fdi = /\b(1[1-8]|2[1-8]|3[1-8]|4[1-8])\b/g;
-        const found: number[] = Array.from(new Set((val.match(fdi) || []).map(Number)));
-        if (!found.length) {
-          setAnswer('Say FDI numbers (e.g. “26 27”), or “skip” for no teeth.');
-          return;
-        }
-        const ct = (caseTypes || []).find((c) => c.name.toLowerCase() === (slotMode.caseType || '').toLowerCase());
-        const unit = ct?.base_price ?? 0;
-        const proposed = unit * found.length;
-        setSlotMode({ ...slotMode, teeth: found, price: proposed, step: 'price' });
-        setAnswer(`${found.length} tooth${found.length === 1 ? '' : ' teeth'} × PKR ${unit.toLocaleString()} = PKR ${proposed.toLocaleString()}. Say a number to override, or “skip” to accept.`);
-        return;
-      }
-      if (slotMode.step === 'price') {
-        const n = Number(val.replace(/[^\d.]/g, ''));
-        const nValid = Number.isFinite(n) && n > 0;
-        if (slotMode.price !== undefined) {
-          setSlotMode({ ...slotMode, price: skip ? slotMode.price : (nValid ? n : slotMode.price), step: 'priority' });
-          setAnswer('Priority? Say “low”, “normal”, “high” or “urgent” (default normal), or “skip”.');
-          return;
-        }
-        if (!nValid) { setAnswer('Give a positive amount, e.g. “8500”.'); return; }
-        setSlotMode({ ...slotMode, price: n, step: 'priority' });
-        setAnswer('Priority? Say “low”, “normal”, “high” or “urgent” (default normal), or “skip”.');
-        return;
-      }
-      if (slotMode.step === 'priority') {
-        const map: Record<string, string> = { low: 'low', normal: 'normal', high: 'high', urgent: 'urgent', rush: 'urgent', critical: 'urgent' };
-        const chosen = skip ? 'normal' : (map[val.toLowerCase()] || 'normal');
-        setSlotMode({ ...slotMode, priority: chosen, step: 'shade' });
-        setAnswer(`Priority ${chosen}. Shade? (e.g. “A2”) Say “skip”.`);
-        return;
-      }
-      if (slotMode.step === 'shade') {
-        setSlotMode({ ...slotMode, shade: skip ? undefined : val.toUpperCase(), step: 'delivery' });
-        setAnswer('Delivery date? (YYYY-MM-DD, or “tomorrow”)');
-        return;
-      }
-      if (slotMode.step === 'delivery') {
-        const resolveDate = (raw: string): string | null => {
-          const t = raw.toLowerCase().trim();
-          if (t === 'today') return getTodayStr();
-          if (t === 'tomorrow') { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
-          if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-          const d = new Date(raw);
-          if (Number.isNaN(d.getTime())) return null;
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        };
-        const d = resolveDate(val);
-        if (!d) { setAnswer('Say a date like 2026-11-30, “today” or “tomorrow”.'); return; }
-        setSlotMode({ ...slotMode, delivery: d, step: 'doctor' });
-        setAnswer(`Delivery ${d}. Doctor? Say “skip” to leave blank.`);
-        return;
-      }
-      // doctor step → finish
-      const doctor = skip ? undefined : val;
-      const ct = (caseTypes || []).find((c) => c.name.toLowerCase() === (slotMode.caseType || '').toLowerCase());
-      setSlotMode(null);
-      queueWrite(
-        {
-          kind: 'createCase', amount: slotMode.price!, clinicHint: slotMode.clinic!,
-          caseTypeId: ct?.id, caseTypeName: slotMode.caseType, doctorName: doctor,
-          patientName: slotMode.patient, deliveryDate: slotMode.delivery, method: 'bank',
-          teeth: slotMode.teeth, priority: slotMode.priority, shade: slotMode.shade,
-        },
-        'voice:createCase',
-        'write',
-      );
-      return;
-    }
-    if (/^(add|create|new|register|log)\s+(a\s+)?(case|job)\s*$/i.test(text)) {
-      setSlotMode({ kind: 'createCase', step: 'patient' });
-      setAnswer('Patient name?');
-      setStatus('idle');
-      return;
-    }
-    if (/^(add|create|new|make)\s+(a\s+)?(clinic|lab|dental clinic)\s*$/i.test(text)) {
-      setSlotMode({ kind: 'createClinic', step: 'name' });
-      setAnswer('What is the clinic’s name?');
-      setStatus('idle');
-      return;
-    }
-
-    // Spoken confirmation path: an action is pending — destructive actions
-    // require typing the expected token; spoken "yes" does not auto-mutate.
-    if (pending) {
-      if (pendingRisk === 'destructive') {
-        confirmPendingIfAllowed();
-        return;
-      }
-      if (/^(confirm|yes|do it|go ahead|ok)$/i.test(text)) { confirmPending(); return; }
-      if (/^(cancel|no|stop|abort)$/i.test(text)) { cancelPending(); return; }
-      setAnswer('Say “confirm” to post it or “cancel”.');
-      return;
-    }
-
+    /* Everything — reads, writes, navigation — goes through the agentic loop
+       (Groq tool calling) below. No fixed-phrase routing, no slot interviews. */
     setBusy(true);
     setAnswer('');
     try {
@@ -491,21 +214,32 @@ export const VoiceShell: React.FC = () => {
       const result = await askAssistant(text, {
         labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], cases: cases || [],
         caseTypes: caseTypes || [], labContacts: labContacts || [], labAddresses: labAddresses || [], pricingOverrides: pricingOverrides || [],
-        qcInspections: qcInspections || [], caseNotes: caseNotes || {}, caseAttachments: caseAttachments || {}, user,
+        qcInspections: qcInspections || [], caseNotes: caseNotes || {}, caseAttachments: caseAttachments || [], user,
         allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
         api: {
-          labs: labs || [],
-          invoices: invoices || [],
-          cases: cases || [],
+          labs: labs || [], invoices: invoices || [], cases: cases || [],
           advancePayments: advancePayments || [],
           setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase, recordTransactionV2, recordAdvanceDepositV2,
         },
       });
-      if (result.navigateTo) {
-        setCurrentView(result.navigateTo);
-      }
+      if (result.navigateTo) setCurrentView(result.navigateTo);
       if (result.pendingWrite) {
-        queueWrite(result.pendingWrite, text, result.risk === 'destructive' ? 'destructive' : 'write');
+        if (result.risk === 'destructive') {
+          // Destructive: the typed-token red gate — auto-execute for the rest.
+          queueWrite(result.pendingWrite, text, 'destructive');
+          setBusy(false);
+          return;
+        }
+        const tts = {
+          rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
+          locale: userPreferences?.voice_locale || 'en-PK',
+          allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
+        };
+        await executeWrite(result.pendingWrite);
+        setMemoryCount(listMemories().length);
+        setStatus('done');
+        setAnswer(result.text);
+        speak(result.text, tts);
         setBusy(false);
         return;
       }
@@ -527,15 +261,11 @@ export const VoiceShell: React.FC = () => {
   };
 
   const resolveClinicForWrite = (hint: string) => {
-    const ranked = rankCandidates(labs || [], hint);
-    if (ranked.length === 1) return { clinic: ranked[0].lab };
-    if (ranked.length > 1 && ranked[0].score > ranked[1].score) return { clinic: ranked[0].lab };
-    const exact = (labs || []).find((l) => l.name.toLowerCase() === hint.toLowerCase());
-    if (exact) return { clinic: exact };
-    return { candidates: ranked.map((r) => r.lab.name).slice(0, 4) };
+    const clinic = findLabByHint(labs || [], hint);
+    if (!clinic) return { candidates: (labs || []).filter((l) => l.name.toLowerCase().includes(hint.toLowerCase())).map((l) => l.name).slice(0, 4) };
+    return { clinic: { id: clinic.id, name: clinic.name } };
   };
 
-  /** Voice-layer permission re-check before any confirm executes. */
   const deny = (action: string) => {
     if (!user) return 'Sign in required.';
     return can(user, action) ? null : `Requires the “${action}” permission.`;
@@ -553,20 +283,13 @@ export const VoiceShell: React.FC = () => {
     const typed = ((typedConfirm || query) || '').replace(/\s+/g, '').toUpperCase();
     return !!want && typed === want;
   };
-  const confirmPendingIfAllowed = () => {
-    if (pending && pendingRisk === 'destructive' && !typedMatch()) {
-      setAnswer(`Type “${expectTyped}” to confirm — this cannot be undone.`);
-      return;
-    }
-    confirmPending();
-  };
 
-  const confirmPending = () => {
-    if (!pending) return;
-    if (pending.kind === 'createClinic') {
+  const executeWrite = (cmd: WriteCommand) => {
+    if (!cmd) return;
+    if (cmd.kind === 'createClinic') {
       try {
         const created = addLab({
-          name: pending.clinicHint,
+          name: cmd.clinicHint,
           contact_person: '',
           phone: '',
           email: '',
@@ -579,70 +302,64 @@ export const VoiceShell: React.FC = () => {
         });
         setAnswer(`Clinic “${created.name}” created. Open Settings or the directory to add doctor, phone and pricing.`);
         setStatus('done');
-        setPending(null);
-        setPendingNote('');
       } catch (err) {
         setStatus('error');
         setAnswer(err instanceof Error ? err.message : 'Could not create the clinic.');
       }
       return;
     }
-    if (pending.kind === 'setCaseStatus' && pending.caseNumber && pending.targetStatus) {
+    if (cmd.kind === 'setCaseStatus' && cmd.caseNumber && cmd.targetStatus) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
+      const target = (cases || []).find((c) => c.case_number === cmd.caseNumber);
       if (!target) {
         setStatus('error');
-        setAnswer(`No case ${pending.caseNumber} found.`);
+        setAnswer(`No case ${cmd.caseNumber} found.`);
         return;
       }
       try {
-        updateCase(target.id, { status: pending.targetStatus } as never, `Voice: moved to ${pending.targetStatus}`);
-        setAnswer(`Case ${pending.caseNumber} moved to ${pending.targetStatus}.`);
+        updateCase(target.id, { status: cmd.targetStatus } as never, `Voice: moved to ${cmd.targetStatus}`);
+        setAnswer(`Case ${cmd.caseNumber} moved to ${cmd.targetStatus}.`);
         setStatus('done');
-        setPending(null);
-        setPendingNote('');
       } catch (err) {
         setStatus('error');
         setAnswer(err instanceof Error ? err.message : 'Could not move the case.');
       }
       return;
     }
-    if (pending.kind === 'caseUpdateFields' && pending.caseNumber) {
+    if (cmd.kind === 'caseUpdateFields' && cmd.caseNumber) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = findCaseByNumber(pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
-        const fields = (pending.updateFields || {}) as never;
+        const fields = (cmd.updateFields || {}) as never;
         updateCase(target.id, fields, `Voice: updated case fields`);
-        const parts = Object.entries(pending.updateFields || {}).map(([k, v]) => `${k} = ${v}`).join(', ');
-        setAnswer(`Case ${pending.caseNumber} updated — ${parts}.`);
-        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the case.'); }
+        const parts = Object.entries(cmd.updateFields || {}).map(([k, v]) => `${k} = ${v}`).join(', ');
+        setAnswer(`Case ${cmd.caseNumber} updated — ${parts}.`);
+        setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the case.'); }
       return;
     }
-    if (pending.kind === 'casePriority' && pending.caseNumber && pending.priority) {
+    if (cmd.kind === 'casePriority' && cmd.caseNumber && cmd.priority) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = findCaseByNumber(pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
-        updateCase(target.id, { priority: pending.priority } as never, `Voice: priority ${pending.priority}`);
-        setAnswer(`Priority of ${pending.caseNumber} set to “${pending.priority}”.`);
-        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not set the priority.'); }
+        updateCase(target.id, { priority: cmd.priority } as never, `Voice: priority ${cmd.priority}`);
+        setAnswer(`Priority of ${cmd.caseNumber} set to “${cmd.priority}”.`);
+        setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not set the priority.'); }
       return;
     }
-    if (pending.kind === 'bulkCaseStatus' && pending.bulkCaseNumbers?.length && pending.targetStatus) {
+    if (cmd.kind === 'bulkCaseStatus' && cmd.bulkCaseNumbers?.length && cmd.targetStatus) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const moved: string[] = [];
       const missing: string[] = [];
-      for (const num of pending.bulkCaseNumbers) {
+      for (const num of cmd.bulkCaseNumbers) {
         const target = findCaseByNumber(num);
         if (!target) { missing.push(num); continue; }
-        updateCase(target.id, { status: pending.targetStatus } as never, `Voice: bulk move to ${pending.targetStatus}`);
+        updateCase(target.id, { status: cmd.targetStatus } as never, `Voice: bulk move to ${cmd.targetStatus}`);
         moved.push(num);
       }
       if (!moved.length) {
@@ -650,115 +367,104 @@ export const VoiceShell: React.FC = () => {
         setAnswer(missing.length ? `No case(s) found: ${missing.join(', ')}.` : 'Nothing matched those case numbers.');
         return;
       }
-      setAnswer(`Moved ${moved.length} case(s) to “${pending.targetStatus}”${missing.length ? ` — not found: ${missing.join(', ')}` : ''}.`);
-      setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
-      return;
+      setAnswer(`Moved ${moved.length} case(s) to “${cmd.targetStatus}”${missing.length ? ` — not found: ${missing.join(', ')}` : ''}.`);
+      setStatus('done'); setPending(null); setPendingNote('');      return;
     }
-    if (pending.kind === 'restoreCase' && pending.caseNumber) {
+    if (cmd.kind === 'restoreCase' && cmd.caseNumber) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = findCaseByNumber(pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
         restoreCase(target.id);
-        setAnswer(`Case ${pending.caseNumber} restored to the workstation.`);
-        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not restore the case.'); }
+        setAnswer(`Case ${cmd.caseNumber} restored to the workstation.`);
+        setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not restore the case.'); }
       return;
     }
-    if (pending.kind === 'caseTemplateSave' && pending.caseNumber && pending.templateName) {
+    if (cmd.kind === 'caseTemplateSave' && cmd.caseNumber && cmd.templateName) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = findCaseByNumber(pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
-        saveAsTemplate(pending.templateName, target);
-        setAnswer(`Template “${pending.templateName}” saved from ${pending.caseNumber}.`);
-        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save the template.'); }
+        saveAsTemplate(cmd.templateName, target);
+        setAnswer(`Template “${cmd.templateName}” saved from ${cmd.caseNumber}.`);
+        setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save the template.'); }
       return;
     }
-    if (pending.kind === 'deleteCase' && pending.caseNumber) {
+    if (cmd.kind === 'deleteCase' && cmd.caseNumber) {
       const blocked = deny('case:delete');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = findCaseByNumber(pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
         deleteCasePermanently(target.id);
-        setAnswer(`Case ${pending.caseNumber} deleted permanently.`);
-        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the case.'); }
+        setAnswer(`Case ${cmd.caseNumber} deleted permanently.`);
+        setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the case.'); }
       return;
     }
-    if (pending.kind === 'purgeCase' && pending.caseNumber) {
+    if (cmd.kind === 'purgeCase' && cmd.caseNumber) {
       const blocked = deny('case:delete');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = findCaseByNumber(pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
         deleteCasePermanently(target.id);
-        setAnswer(`Case ${pending.caseNumber} purged — case, notes, attachments and QC data removed.`);
-        setStatus('done'); setPending(null); setPendingNote(''); setExpectTyped(null);
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not purge the case.'); }
+        setAnswer(`Case ${cmd.caseNumber} purged — case, notes, attachments and QC data removed.`);
+        setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not purge the case.'); }
       return;
     }
-    if (pending.kind === 'updateClinicDoctor' && pending.doctorName) {
+    if (cmd.kind === 'updateClinicDoctor' && cmd.doctorName) {
       const blocked = deny('clinic:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const ranked = rankCandidates(labs || [], pending.clinicHint);
-      const exact = (labs || []).find((l) => l.name.toLowerCase() === pending.clinicHint.toLowerCase());
-      const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
       if (!chosen) {
         setStatus('error');
-        setAnswer(ranked.length > 1 ? `Which clinic — ${ranked.map((r) => r.lab.name).slice(0, 4).join(', ')}?` : 'I could not match that clinic. Say the exact clinic name.');
+        setAnswer('I could not match that clinic. Tell me the clinic name again.');
         return;
       }
       try {
-        updateLab(chosen.id, { contact_person: pending.doctorName, doctor_name: pending.doctorName });
-        setAnswer(`Doctor for ${chosen.name} set to ${pending.doctorName}.`);
+        updateLab(chosen.id, { contact_person: cmd.doctorName, doctor_name: cmd.doctorName });
+        setAnswer(`Doctor for ${chosen.name} set to ${cmd.doctorName}.`);
         setStatus('done');
-        setPending(null);
-        setPendingNote('');
       } catch (err) {
         setStatus('error');
         setAnswer(err instanceof Error ? err.message : 'Could not update the doctor.');
       }
       return;
     }
-    if (pending.kind === 'addCaseNote' && pending.caseNumber && pending.noteText) {
+    if (cmd.kind === 'addCaseNote' && cmd.caseNumber && cmd.noteText) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = (cases || []).find((c) => c.case_number === cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
-        addCaseNote(target.id, pending.noteText, user?.name || 'Voice');
-        setAnswer(`Note added on ${pending.caseNumber}.`);
+        addCaseNote(target.id, cmd.noteText, user?.name || 'Voice');
+        setAnswer(`Note added on ${cmd.caseNumber}.`);
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not add the note.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not add the note.'); }
       return;
     }
-    if (pending.kind === 'recordQc' && pending.caseNumber && pending.qcResult) {
+    if (cmd.kind === 'recordQc' && cmd.caseNumber && cmd.qcResult) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
+      const target = (cases || []).find((c) => c.case_number === cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
         const receipt = recordQcCase({
           action: 'record',
           case_id: target.id,
-          result: pending.qcResult,
-          reason_code: pending.qcReason as never,
+          result: cmd.qcResult,
+          reason_code: cmd.qcReason as never,
           inspector: user?.name || 'Voice',
         });
         const after = receipt?.status_after ? ` Case moved to ${receipt.status_after}.` : '';
-        setAnswer(`QC ${pending.qcResult.toUpperCase()} recorded on ${pending.caseNumber}.${after}`);
+        setAnswer(`QC ${cmd.qcResult.toUpperCase()} recorded on ${cmd.caseNumber}.${after}`);
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not record the QC result.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not record the QC result.'); }
       return;
     }
-    if (pending.kind === 'bulkArchive') {
+    if (cmd.kind === 'bulkArchive') {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const due = selectCasesToAutoArchive(cases || [], new Date(`${getTodayStr()}T00:00:00`));
@@ -768,183 +474,161 @@ export const VoiceShell: React.FC = () => {
         try { archiveCase(c.id); archived += 1; } catch { /* keep going */ }
       }
       setAnswer(`Archived ${archived} delivered case${archived === 1 ? '' : 's'} from more than 30 days ago.`);
-      setStatus('done'); setPending(null); setPendingNote('');
-      return;
+      setStatus('done'); setPending(null);      return;
     }
-    if (pending.kind === 'archiveCase' && pending.caseNumber) {
+    if (cmd.kind === 'archiveCase' && cmd.caseNumber) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const target = (cases || []).find((c) => c.case_number === pending.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`No case ${pending.caseNumber} found.`); return; }
-      if (target.status !== 'delivered') { setStatus('error'); setAnswer(`Case ${pending.caseNumber} is "${target.status}" — archive works on delivered cases only.`); setPending(null); setPendingNote(''); return; }
+      const target = (cases || []).find((c) => c.case_number === cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
+      if (target.status !== 'delivered') { setStatus('error'); setAnswer(`Case ${cmd.caseNumber} is "${target.status}" — archive works on delivered cases only.`); setPending(null); setPendingNote(''); return; }
       try {
         archiveCase(target.id);
-        setAnswer(`Case ${pending.caseNumber} archived.`);
+        setAnswer(`Case ${cmd.caseNumber} archived.`);
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not archive the case.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not archive the case.'); }
       return;
     }
-    if (pending.kind === 'updateClinicField' && pending.field && pending.value) {
+    if (cmd.kind === 'updateClinicField' && cmd.field && cmd.value) {
       const blocked = deny('clinic:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const ranked = rankCandidates(labs || [], pending.clinicHint);
-      const norm = (s: string) => (s || '').toLowerCase();
-      const exact = (labs || []).find((l) => norm(l.name) === norm(pending.clinicHint!));
-      const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
-      if (!chosen) {
-        setStatus('error');
-        setAnswer(ranked.length > 1 ? `Which clinic — ${ranked.map((r) => r.lab.name).slice(0, 4).join(', ')}?` : 'I could not match that clinic. Say the exact clinic name.');
-        return;
-      }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      if (!chosen) { setStatus('error'); setAnswer('I could not match that clinic. Tell me the clinic name again.'); return; }
       try {
-        const updates: Record<string, string> = pending.field === 'doctor'
-          ? { contact_person: pending.value, doctor_name: pending.value }
-          : { [pending.field]: pending.value };
+        const updates: Record<string, string> = cmd.field === 'doctor'
+          ? { contact_person: cmd.value, doctor_name: cmd.value }
+          : { [cmd.field]: cmd.value };
         updateLab(chosen.id, updates);
-        setAnswer(`${pending.field} for ${chosen.name} updated.`);
+        setAnswer(`${cmd.field} for ${chosen.name} updated.`);
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the clinic.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the clinic.'); }
       return;
     }
-    if (pending.kind === 'createCase' && pending.patientName && pending.clinicHint && pending.caseTypeName) {
+    if (cmd.kind === 'createCase' && cmd.patientName && cmd.clinicHint && cmd.caseTypeName) {
       const blocked = deny('case:create');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const exact = (labs || []).find((l) => l.name.toLowerCase() === pending.clinicHint!.toLowerCase());
-      const ranked = rankCandidates(labs || [], pending.clinicHint!);
-      const clinic = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
-      const ct = (caseTypes || []).find((c) => c.name.toLowerCase() === pending.caseTypeName!.toLowerCase());
+      const clinic = findLabByHint(labs || [], cmd.clinicHint!);
+      const ct = (caseTypes || []).find((c) => c.name.toLowerCase() === cmd.caseTypeName!.toLowerCase());
       if (!clinic || !ct) { setStatus('error'); setAnswer('Could not resolve the clinic or case type.'); return; }
       try {
         const created = addCase({
           lab_id: clinic.id, lab_name: clinic.name,
           case_type_id: ct.id, case_type_name: ct.name,
-          doctor_name: pending.doctorName || 'Voice',
-          selected_teeth: pending.teeth ?? [], shade: pending.shade,
-          delivery_date: pending.deliveryDate!,
-          priority: (pending.priority as never) ?? 'normal', price: pending.amount, discount: 0, final_price: pending.amount,
-          status: 'received', patient_name: pending.patientName,
+          doctor_name: cmd.doctorName || 'Voice',
+          selected_teeth: cmd.teeth ?? [], shade: cmd.shade,
+          delivery_date: cmd.deliveryDate!,
+          priority: (cmd.priority as never) ?? 'normal', price: cmd.amount, discount: 0, final_price: cmd.amount,
+          status: 'received', patient_name: cmd.patientName,
         } as never);
-        setAnswer(`Case created for ${pending.patientName} at ${clinic.name} — ${ct.name}, PKR ${pending.amount.toLocaleString()}. Case number: ${created.case_number}.`);
-        setStatus('done'); setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not create the case.'); }
+        setAnswer(`Case created for ${cmd.patientName} at ${clinic.name} — ${ct.name}, PKR ${cmd.amount.toLocaleString()}. Case number: ${created.case_number}.`);
+        setStatus('done'); setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not create the case.'); }
       return;
     }
-    if (pending.kind === 'addClinicContact' || pending.kind === 'addClinicAddress' || pending.kind === 'addPricingOverride') {
-      const action = pending.kind === 'addPricingOverride' ? 'pricing:edit' : 'contacts:edit';
+    if (cmd.kind === 'addClinicContact' || cmd.kind === 'addClinicAddress' || cmd.kind === 'addPricingOverride') {
+      const action = cmd.kind === 'addPricingOverride' ? 'pricing:edit' : 'contacts:edit';
       const blocked = deny(action);
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const exact = (labs || []).find((l) => (l.name || '').toLowerCase() === (pending.clinicHint || '').toLowerCase());
-      const ranked = rankCandidates(labs || [], pending.clinicHint || '');
-      const chosen = exact || (ranked.length && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].lab : null);
-      if (!chosen) { setStatus('error'); setAnswer(ranked.length > 1 ? `Which clinic — ${ranked.map((r) => r.lab.name).slice(0, 4).join(', ')}?` : 'I could not match that clinic. Say the exact clinic name.'); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint || '');
+      if (!chosen) { setStatus('error'); setAnswer('I could not match that clinic. Tell me the clinic name again.'); return; }
       try {
-        if (pending.kind === 'addClinicContact') {
-          addLabContact({ lab_id: chosen.id, name: pending.contactName!, phone: pending.contactPhone!, email: pending.contactEmail ?? '', role: pending.contactRole || undefined, notes: 'Added by voice assistant', is_primary: !!pending.isPrimary });
-          setAnswer(`Contact “${pending.contactName}” added to ${chosen.name}${pending.isPrimary ? ' as primary' : ''}.`);
-        } else if (pending.kind === 'addClinicAddress') {
-          addLabAddress({ lab_id: chosen.id, type: pending.addressType!, street: pending.street!, city: pending.city!, state: pending.state!, postal_code: pending.postalCode!, country: pending.country!, is_default: !!pending.isDefault });
-          setAnswer(`${pending.addressType} address added for ${chosen.name}${pending.isDefault ? ' as default' : ''}.`);
+        if (cmd.kind === 'addClinicContact') {
+          addLabContact({ lab_id: chosen.id, name: cmd.contactName!, phone: cmd.contactPhone!, email: cmd.contactEmail ?? '', role: cmd.contactRole || undefined, notes: 'Added by voice assistant', is_primary: !!cmd.isPrimary });
+          setAnswer(`Contact “${cmd.contactName}” added to ${chosen.name}${cmd.isPrimary ? ' as primary' : ''}.`);
+        } else if (cmd.kind === 'addClinicAddress') {
+          addLabAddress({ lab_id: chosen.id, type: cmd.addressType!, street: cmd.street!, city: cmd.city!, state: cmd.state!, postal_code: cmd.postalCode!, country: cmd.country!, is_default: !!cmd.isDefault });
+          setAnswer(`${cmd.addressType} address added for ${chosen.name}${cmd.isDefault ? ' as default' : ''}.`);
         } else {
-          addPricingOverride({ lab_id: chosen.id, case_type_id: pending.caseTypeId!, case_type_name: pending.caseTypeName!, standard_price: pending.standardPrice!, custom_price: pending.customPrice!, discount_percentage: pending.discountPercentage, effective_date: pending.effectiveDate });
-          setAnswer(`Pricing override set for ${pending.caseTypeName} at ${chosen.name}: PKR ${pending.customPrice?.toLocaleString()}.`);
+          addPricingOverride({ lab_id: chosen.id, case_type_id: cmd.caseTypeId!, case_type_name: cmd.caseTypeName!, standard_price: cmd.standardPrice!, custom_price: cmd.customPrice!, discount_percentage: cmd.discountPercentage, effective_date: cmd.effectiveDate });
+          setAnswer(`Pricing override set for ${cmd.caseTypeName} at ${chosen.name}: PKR ${cmd.customPrice?.toLocaleString()}.`);
         }
-        setStatus('done'); setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save.'); }
+        setStatus('done'); setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save.'); }
       return;
     }
-    if (pending.kind === 'applyAdvance' && pending.invoiceNumber) {
+    if (cmd.kind === 'applyAdvance' && cmd.invoiceNumber) {
       const blocked = deny('payment:record');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
-      const inv = (invoices || []).find((i) => i.invoice_number.toUpperCase() === pending.invoiceNumber!.toUpperCase());
-      if (!inv) { setStatus('error'); setAnswer(`No invoice ${pending.invoiceNumber} found.`); return; }
+      const inv = (invoices || []).find((i) => i.invoice_number.toUpperCase() === cmd.invoiceNumber!.toUpperCase());
+      if (!inv) { setStatus('error'); setAnswer(`No invoice ${cmd.invoiceNumber} found.`); return; }
       try {
-        const ok = applyAdvanceCreditV2({ clinicId: inv.lab_id, invoiceId: inv.id, amount: pending.amount, notes: 'Voice-applied advance' });
+        const ok = applyAdvanceCreditV2({ clinicId: inv.lab_id, invoiceId: inv.id, amount: cmd.amount, notes: 'Voice-applied advance' });
         setAnswer(ok
-          ? `Advance of PKR ${pending.amount.toLocaleString()} applied to ${inv.invoice_number} — receipt issued.`
+          ? `Advance of PKR ${cmd.amount.toLocaleString()} applied to ${inv.invoice_number} — receipt issued.`
           : `Could not apply — the wallet balance or the invoice balance may have changed.`);
-        setStatus('done'); setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not apply the advance.'); }
+        setStatus('done'); setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not apply the advance.'); }
       return;
     }
-    if (pending.kind === 'markPaid' && pending.invoiceNumbers?.length) {
+    if (cmd.kind === 'markPaid' && cmd.invoiceNumbers?.length) {
       if (user && !canPost(user, 'payment:bulk')) { setStatus('error'); setAnswer('Requires the “bulk settle” permission.'); return; }
-      const nums = new Set(pending.invoiceNumbers.map((n) => n.toUpperCase()));
+      const nums = new Set(cmd.invoiceNumbers.map((n) => n.toUpperCase()));
       const ids = (invoices || []).filter((i) => nums.has(i.invoice_number.toUpperCase())).map((i) => i.id);
       if (!ids.length) { setStatus('error'); setAnswer('No matching invoices remained.'); return; }
       try {
         bulkMarkPaid(ids);
-        setAnswer(`${ids.length} invoice${ids.length > 1 ? 's' : ''} marked paid — payments journalled for PKR ${pending.amount.toLocaleString()}.`);
-        setStatus('done'); setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not mark paid.'); }
+        setAnswer(`${ids.length} invoice${ids.length > 1 ? 's' : ''} marked paid — payments journalled for PKR ${cmd.amount.toLocaleString()}.`);
+        setStatus('done'); setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not mark paid.'); }
       return;
     }
-    if (pending.kind === 'printSettingsSave') {
+    if (cmd.kind === 'printSettingsSave') {
       const blocked = deny('print:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       try {
-        savePrintSettings(pending.printSettings as never);
+        savePrintSettings(cmd.printSettings as never);
         setAnswer('Print settings saved.');
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save print settings.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save print settings.'); }
       return;
     }
-    if (pending.kind === 'printSectionsSave' && pending.docKind && pending.sections) {
+    if (cmd.kind === 'printSectionsSave' && cmd.docKind && cmd.sections) {
       const blocked = deny('print:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       try {
-        saveDocumentSections(pending.docKind, pending.sections);
-        if (pending.docKind === 'statement') setStatementBankExcluded(!pending.sections.includes('bank'));
-        if (pending.docKind === 'invoice') setInvoiceSummaryExcluded(false);
-        setAnswer(`${pending.docKind} sections saved: ${pending.sections.join(', ')}.`);
+        saveDocumentSections(cmd.docKind, cmd.sections);
+        if (cmd.docKind === 'statement') setStatementBankExcluded(!cmd.sections.includes('bank'));
+        if (cmd.docKind === 'invoice') setInvoiceSummaryExcluded(false);
+        setAnswer(`${cmd.docKind} sections saved: ${cmd.sections.join(', ')}.`);
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save print sections.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save print sections.'); }
       return;
     }
-    if (pending.kind === 'notificationConfigSave') {
+    if (cmd.kind === 'notificationConfigSave') {
       const blocked = deny('notifications:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       try {
-        saveNotificationConfig(pending.notification as never);
+        saveNotificationConfig(cmd.notification as never);
         announceNotificationConfigChanged();
         setAnswer('Notification configuration saved — sweeps will use the new cadence.');
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save notification config.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save notification config.'); }
       return;
     }
-    if (pending.kind === 'closeMonth' && pending.month && pending.labId) {
+    if (cmd.kind === 'closeMonth' && cmd.month && cmd.labId) {
       if (user && !canPost(user, 'payment:record')) { setStatus('error'); setAnswer('Requires the “Record payment” permission to close a month.'); return; }
       try {
-        closeMonth({ invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], labs: labs || [], month: pending.month, labId: pending.labId, labName: pending.labName, actor: user?.name || 'System' });
-        setAnswer(`${pending.month} closed for ${pending.labName}. Nothing locks — corrections can re-close.`);
+        closeMonth({ invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], labs: labs || [], month: cmd.month, labId: cmd.labId, labName: cmd.labName, actor: user?.name || 'System' });
+        setAnswer(`${cmd.month} closed for ${cmd.labName}. Nothing locks — corrections can re-close.`);
         setStatus('done');
-        setPending(null); setPendingNote('');
-      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not close the month.'); }
+        setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not close the month.'); }
       return;
     }
-    const { clinic, candidates } = resolveClinicForWrite(pending.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };
+    const { clinic, candidates } = resolveClinicForWrite(cmd.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };
     if (!clinic) {
       setStatus('error');
-      setAnswer(candidates?.length ? `Which clinic — ${candidates.join(', ')}?` : 'I could not match that clinic. Say the clinic name again.');
+      setAnswer(candidates?.length ? `Which clinic — ${candidates.join(', ')}?` : 'I could not match that clinic. Tell me the clinic name again.');
       return;
     }
     try {
       const date = getTodayStr();
-      if (pending.kind === 'payment') {
+      if (cmd.kind === 'payment') {
         const clinicInvoices = (invoices || []).filter((i) => i.lab_id === clinic.id)
           .map((i) => ({ inv: i, balance: invoiceBalanceDue(i) }))
           .filter((x) => x.balance > 0)
           .sort((a, b) => String(a.inv.created_at).localeCompare(String(b.inv.created_at)));
-        let remaining = pending.amount;
+        let remaining = cmd.amount;
         const allocations: { invoiceId: string; amount: number }[] = [];
-        if (pending.invoiceNumber) {
-          const inv = clinicInvoices.find((x) => x.inv.invoice_number === pending.invoiceNumber);
-          if (!inv) { setStatus('error'); setAnswer(`No outstanding invoice ${pending.invoiceNumber} for ${clinic.name}.`); return; }
-          const alloc = Math.min(inv.balance, pending.amount);
+        if (cmd.invoiceNumber) {
+          const inv = clinicInvoices.find((x) => x.inv.invoice_number === cmd.invoiceNumber);
+          if (!inv) { setStatus('error'); setAnswer(`No outstanding invoice ${cmd.invoiceNumber} for ${clinic.name}.`); return; }
+          const alloc = Math.min(inv.balance, cmd.amount);
           allocations.push({ invoiceId: inv.inv.id, amount: alloc });
           remaining -= alloc;
         } else {
@@ -956,21 +640,19 @@ export const VoiceShell: React.FC = () => {
           }
         }
         const result = recordTransactionV2({
-          clinicId: clinic.id, amount: pending.amount, method: pending.method, date,
+          clinicId: clinic.id, amount: cmd.amount, method: cmd.method, date,
           notes: pendingNote || 'Voice-confirmed payment', allocations, saveRemainingAsAdvance: false, isVerified: false,
         });
-        const unapplied = Math.max(0, pending.amount - allocations.reduce((s, a) => s + a.amount, 0));
+        const unapplied = Math.max(0, cmd.amount - allocations.reduce((s, a) => s + a.amount, 0));
         setAnswer(`Payment posted for ${clinic.name}: receipt ${result.receiptNumber}.${unapplied > 0 ? ` Unapplied PKR ${unapplied.toLocaleString()} held on the receipt.` : ''}`);
       } else {
         const result = recordAdvanceDepositV2({
-          clinicId: clinic.id, amount: pending.amount, method: pending.method, date,
+          clinicId: clinic.id, amount: cmd.amount, method: cmd.method, date,
           notes: pendingNote || 'Voice-confirmed advance deposit', isVerified: false,
         });
         setAnswer(`Advance deposit recorded for ${clinic.name}: receipt ${result.receiptNumber}.`);
       }
       setStatus('done');
-      setPending(null);
-      setPendingNote('');
     } catch (err) {
       setStatus('error');
       setAnswer(err instanceof Error ? err.message : 'Could not post the transaction.');
@@ -1159,12 +841,10 @@ export const VoiceShell: React.FC = () => {
 
           {pending && (
             <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
-              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : 'Confirm the action below'}</div>
+              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : ''}</div>
               <p className="mt-1.5">{answer}</p>
-              {pendingRisk === 'destructive' ? (
+              {pendingRisk === 'destructive' && (
                 <p className="mt-1 text-[10px] font-semibold text-rose-600">Type the confirmation above, then press “Confirm destructive”. Spoken “confirm” is not accepted.</p>
-              ) : (
-                <p className="mt-1 text-[10px] font-semibold text-slate-500">Or say “confirm” / “cancel”.</p>
               )}
               <div className="mt-2 flex gap-2">
                 {pendingRisk === 'destructive' ? (
@@ -1177,7 +857,7 @@ export const VoiceShell: React.FC = () => {
                     className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-xs font-bold text-rose-900"
                   />
                 ) : null}
-                <button type="button" onClick={pendingRisk === 'destructive' ? () => void submit() : confirmPending} className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white ${pendingRisk === 'destructive' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{pendingRisk === 'destructive' ? 'Confirm destructive' : 'Confirm & post'}</button>
+                <button type="button" onClick={() => void submit()} className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700">Confirm destructive</button>
                 <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
               </div>
             </div>
