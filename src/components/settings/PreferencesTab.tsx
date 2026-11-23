@@ -487,6 +487,23 @@ export const PreferencesTab: React.FC = () => {
               ]}
             />
           </div>
+          <div className="flex items-center gap-3 border-t border-slate-200 pt-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Always Listen (VAD + Groq)</label>
+              <p className="text-[10px] text-slate-400">While the orb is open, speak anytime — audio is detected and transcribed via Groq. Off by default; tap the mic to type, or enable this to talk without tapping.
+              </p>
+            </div>
+            <GlassSelect
+              value={userPreferences?.voice_always_listen ? 'true' : 'false'}
+              onChange={(v) => updateUserPreferences({ voice_always_listen: v === 'true' })}
+              ariaLabel="Always listen enabled"
+              className="w-36 p-2 text-xs font-bold shrink-0"
+              options={[
+                { value: 'false', label: 'Off' },
+                { value: 'true', label: 'On' },
+              ]}
+            />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Locale</label>

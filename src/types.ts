@@ -611,6 +611,8 @@ export interface UserPreferences {
   voice_groq_enabled?: boolean;
   /** Opt-in Groq Whisper transcription for desktop speech input. */
   voice_cloud_transcription?: boolean;
+  /** Always-on mic: VAD on while the orb is open; speech transcribes via Groq and routes to Jarvis. */
+  voice_always_listen?: boolean;
 }
 
 export interface UserProfile {

@@ -13,7 +13,7 @@ import { type DentalCase } from '../../types';
 import { saveNotificationConfig, announceNotificationConfigChanged } from '../../services/notificationSettings';
 import { closeMonth } from '../../services/monthClose';
 import { groqEnabled } from '../../services/voiceGroq';
-import { recordClip, transcribeWithGroq } from '../../services/voiceGroqStt';
+import { recordClip, transcribeWithGroq, type RecordingHandle } from '../../services/voiceGroqStt';
 import type { WriteCommand } from '../../services/voiceWrite';
 import { openCasesSummary } from '../../services/voiceTools';
 import { selectCasesToAutoArchive } from '../../context/hooks/autoArchive';
@@ -103,13 +103,94 @@ export const VoiceShell: React.FC = () => {
      exist in WebView2, so cloud mic is the only reliable speech-input path on
      desktop. */
   const cloudMic = groqEnabled() && typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
+
+  /* ── Always-On Mic (VAD + Groq Whisper) ───────────────────────────────
+      While the orb is open and Always Listen is enabled, a poller watches
+      the microphone RMS. When speech starts it begins a Groq Whisper capture;
+      when speech ends it transcribes and submits. Submission goes through
+      `submit()` so every gate (amber writes, typed-token destructive) still
+      applies exactly as in push-to-talk. */
+  const vadRef = useRef<{ stream: MediaStream; ctx: AudioContext; timer: number } | null>(null);
+  const busyRef = useRef(busy); busyRef.current = busy;
+  /* Assigned lazily in startAlwaysOn: it runs from the effect, by which time
+     `submit` below is initialized. */
+  const submitRef = useRef<((raw?: string) => Promise<void>) | null>(null);
+  const SPEECH_START_RMS = 0.045;
+  const SPEECH_END_RMS = 0.012;
+
+  const stopAlwaysOn = () => {
+    const v = vadRef.current;
+    vadRef.current = null;
+    if (v) {
+      window.clearTimeout(v.timer);
+      v.stream.getTracks().forEach((t) => t.stop());
+      void v.ctx.close();
+    }
+  };
+
+  const startAlwaysOn = () => {
+    if (!cloudMic || busyRef.current) return;
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        submitRef.current = submit;
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        const samples = new Float32Array(analyser.frequencyBinCount);
+        let recording = false;
+        let handle: RecordingHandle | null = null;
+
+        const poll = async () => {
+          if (!analyser) return;
+          if (!busyRef.current) {
+            analyser.getFloatTimeDomainData(samples);
+            let sumSq = 0;
+            for (let i = 0; i < samples.length; i++) { sumSq += samples[i] * samples[i]; }
+            const rms = Math.sqrt(sumSq / samples.length);
+            if (rms > SPEECH_START_RMS && !recording) {
+              recording = true;
+              setStatus('listening');
+              setAnswer('Speak now — transcribing…');
+              handle = await recordClip();
+            } else if (rms < SPEECH_END_RMS && recording) {
+              recording = false;
+              const done = handle;
+              handle = null;
+              setStatus('idle');
+              setAnswer('Listening (always-on)');
+              void done?.stop()
+                .then((blob: Blob) => transcribeWithGroq(blob))
+                .then((text: string | null) => { if (text && submitRef.current) void submitRef.current(text); })
+                .catch(() => { /* ignore */ });
+            }
+          }
+          if (vadRef.current) {
+            vadRef.current.timer = window.setTimeout(poll, 300);
+          }
+        };
+
+        const timer = window.setTimeout(poll, 300);
+        vadRef.current = { stream, ctx, timer };
+        void ctx.resume();
+      } catch (err) {
+        stopAlwaysOn();
+        setStatus('error');
+        setAnswer(err instanceof Error && err.name === 'NotAllowedError'
+          ? 'Microphone access is blocked. Allow microphone for this app in your system settings, then try again.'
+          : 'Always-on mic unavailable — type your questions instead.');
+      }
+    })();
+  };
   const locked = useMemo(() => {
     const id = moduleForView(currentView);
     if (!id) return false;
     return isViewProtected(id, currentView) && !isModuleUnlocked(id);
   }, [currentView]);
 
-  const close = () => { setOpen(false); setStatus('idle'); cancelSpeech(); recRef.current?.stop(); cloudStop.current?.(); cloudStop.current = null; };
+  const close = () => { stopAlwaysOn(); setOpen(false); setStatus('idle'); cancelSpeech(); recRef.current?.stop(); cloudStop.current?.(); cloudStop.current = null; };
   const toggle = () => {
     if (locked) { setStatus('locked'); setAnswer('This module is locked.'); return; }
     setOpen((v) => { const next = !v; if (next) setStatus('idle'); return next; });
@@ -898,6 +979,9 @@ export const VoiceShell: React.FC = () => {
 
   const listen = () => {
     if (locked || busy) return;
+    // Push-to-tap and Always-On are mutually exclusive — stop the poller
+    // so the manual clip isn't appended to the still-open speech path.
+    stopAlwaysOn();
     // Cloud mic (Groq Whisper) — the only speech-input path that works in
     // Tauri/WebView2 (the built-in SpeechRecognition API is not exposed there).
     if (cloudMic) {
@@ -995,6 +1079,21 @@ export const VoiceShell: React.FC = () => {
       window.removeEventListener('offline', onOffline);
     };
   }, [voiceEnabled]);
+
+  /* Always-on mode: arm the VAD poller while the orb is open + toggle on. */
+  useEffect(() => {
+    if (open && userPreferences?.voice_always_listen) {
+      if (cloudMic) startAlwaysOn();
+      else {
+        stopAlwaysOn();
+        setStatus('idle');
+        setAnswer('Always-on needs Groq: save a key in Settings → Voice Assistant, or turn off Always Listen.');
+      }
+    } else {
+      stopAlwaysOn();
+    }
+    return stopAlwaysOn;
+  }, [open, userPreferences?.voice_always_listen, cloudMic, busy]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
   if (!voiceEnabled || !user || !online) return null;
