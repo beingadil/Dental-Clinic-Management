@@ -36,14 +36,13 @@ const finish = (text: string, raw = ''): AssistantResult => {
 
 /** Natural, general question when the AI has no tool call to run. */
 const noActionText = (): string =>
-  'What would you like me to do? You can ask about balances, statements, ledgers, ' +
-  'overdue work, cash collected, or open any screen — or ask “what can you do?”';
+  'Hey — want to know anything about your clinic? Balances, statements, your open cases, or ask “what can you do?” for the full list.';
 
 export async function askAssistant(raw: string, ctx: VoiceToolContext): Promise<AssistantResult> {
   const q = (raw || '').trim();
   const done = (text: string) => finish(text, q);
   if (!q) {
-    return done('Ask me anything about the clinic — balances, statements, ledgers, overdue work, cash collected, or open any screen. Ask "what can you do?" for the full list.');
+    return done('Try asking about balances, statements, ledgers or open cases — or say "what can you do?" for the full list.');
   }
 
   // Primary path: Groq agentic loop (tool calling, no regex matching).
