@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { VoiceOrb } from './VoiceOrb';
+import { VoiceOrb, type VoiceOrbState } from './VoiceOrb';
 import { listMemories, clearMemories } from '../../services/voiceMemory';
 import { X, SendHorizonal, AudioLines, CheckCircle2, History, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -1080,6 +1080,8 @@ export const VoiceShell: React.FC = () => {
     };
   }, [voiceEnabled]);
 
+  /* Always-on mode: armed while Always Listen is on and the orb is open. */
+  const alwaysOnActive = !!userPreferences?.voice_always_listen && !!cloudMic && !locked;
   /* Always-on mode: arm the VAD poller while the orb is open + toggle on. */
   useEffect(() => {
     if (open && userPreferences?.voice_always_listen) {
@@ -1094,6 +1096,11 @@ export const VoiceShell: React.FC = () => {
     }
     return stopAlwaysOn;
   }, [open, userPreferences?.voice_always_listen, cloudMic, busy]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* A "listening" *speech capture* pulse beats faster; the always-on beat
+     is steady — the visual says "already listening" vs "listening now". */
+  const orbState: VoiceOrbState =
+    locked ? 'locked' : status === 'listening' ? 'listening' : alwaysOnActive ? 'always_on' : status === 'thinking' ? 'thinking' : 'idle';
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
   if (!voiceEnabled || !user || !online) return null;
@@ -1102,7 +1109,7 @@ export const VoiceShell: React.FC = () => {
     <aside aria-label="Voice assistant" className="no-print pointer-events-none fixed bottom-24 right-4 sm:right-6 z-[90] flex flex-col items-end gap-2">
       {/* The orb is the single entry point; breathing idle → ring pulse while listening/thinking. */}
       <VoiceOrb
-        state={locked ? 'locked' : status === 'listening' ? 'listening' : status === 'thinking' ? 'thinking' : 'idle'}
+        state={orbState}
         locked={locked}
         onClick={toggle}
       />
@@ -1119,6 +1126,11 @@ export const VoiceShell: React.FC = () => {
               <button type="button" onClick={close} aria-label="Close voice assistant" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
             </div>
           </div>
+          {expanded && alwaysOnActive && (
+            <div className="mt-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs font-semibold text-emerald-800" role="status">
+              Always listening — speak anytime, or click the mic to type.
+            </div>
+          )}
           {expanded && (
             <div className="mt-3 grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-3">
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 overflow-y-auto max-h-[30vh] lg:max-h-full">
@@ -1184,7 +1196,7 @@ export const VoiceShell: React.FC = () => {
             <button type="button" onClick={listen} aria-label="Listen" title="Listen" className="ds-tap rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><AudioLines className="h-4 w-4" /></button>
             <button type="submit" disabled={busy} aria-label="Ask" className="ds-tap rounded-lg bg-indigo-600 p-2 text-white hover:bg-indigo-700 disabled:opacity-50"><SendHorizonal className="h-4 w-4" /></button>
           </form>
-          <p className="mt-2 text-[10px] text-slate-400">Mic: {cloudMic ? 'Groq Whisper cloud transcription (audio goes to Groq).' : 'No cloud mic — save a Groq API key in Settings → Voice Assistant, or type the question.'} {groqEnabled() ? 'Groq routing ON.' : 'Groq routing off — offline answers.'}</p>
+          <p className="mt-2 text-[10px] text-slate-400">Mic: {alwaysOnActive ? 'Always listening (VAD + Groq Whisper).' : cloudMic ? 'Groq Whisper cloud transcription (audio goes to Groq).' : 'No cloud mic — save a Groq API key in Settings → Voice Assistant, or type the question.'} {groqEnabled() ? 'Groq routing ON.' : 'Groq routing off — offline answers.'}</p>
         </div>
       )}
     </aside>
