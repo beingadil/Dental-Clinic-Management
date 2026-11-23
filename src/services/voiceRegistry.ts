@@ -42,6 +42,14 @@ import { invoiceBalanceDue } from './financeDomain';
 import { formatDoctorName } from '../utils/doctorName';
 import { REPORTS_ENTRY_ID, REPORTS_TABS } from '../components/common/financeTabs';
 import { fillJarvisForm, jarvisFormTargets, type JarvisFormData } from './jarvisForms';
+import {
+  applyPatch,
+  getAutoUpdatePhase,
+  getLastUpdateCheck,
+  runAutoUpdate,
+  type AutoUpdatePhase,
+} from './updateInstaller';
+import { currentVersion } from './updateService';
 
 export type VoiceRisk = 'read' | 'write' | 'destructive';
 export type ConfirmMode = 'none' | 'confirm';
@@ -88,6 +96,23 @@ export interface VoiceTool {
 }
 
 const folded = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** One-line summary of the auto-update phase — used by the update tools. */
+const summarizeUpdatePhase = (phase: AutoUpdatePhase): string => {
+  switch (phase.state) {
+    case 'idle': return 'never checked this session';
+    case 'checking': return 'a check is running';
+    case 'up_to_date': return `up to date (${currentVersion()})`;
+    case 'available': return `a newer app version is available (${phase.version})`;
+    case 'patch_available': return `a hot patch is available (${phase.display_version})`;
+    case 'patch_applying': return `a hot patch is applying (${phase.base_version})`;
+    case 'patched': return `the hot patch ${phase.display_version} is applied — the app is reloading`;
+    case 'failed': return `an update failed: ${phase.message}`;
+    case 'patch_failed': return `a hot patch failed (${phase.message}) — open Settings → Updates to retry`;
+    case 'handed_off': return `the update was sent to your browser (${phase.message})`;
+    default: return `update state: ${phase.state}`;
+  }
+};
 
 const clinicFor = (ctx: VoiceToolContext, q: string) => guessClinic(ctx, q);
 type ClinicNeed = { error: string; clinic?: undefined } | { clinic: DentalLab; error?: undefined };
@@ -677,6 +702,39 @@ const tools: VoiceTool[] = [
       return { kind: 'action', risk: 'write', pending: { kind: 'updateClinicField', amount: 0, clinicHint: clinic, field, value, method: 'bank' }, summary: `Update ${field} for ${clinic} to "${value}"` };
     },
   },
+  {
+    id: 'updateStatus', description: 'Report the app update state: up to date, a newer version is downloading, a hot patch is available, patch applying, patched, or an update failed. No args.', risk: 'read',
+    run: async () => {
+      const phase = getAutoUpdatePhase();
+      const last = getLastUpdateCheck();
+      let text = summarizeUpdatePhase(phase);
+      if (last) text += ` — last check: ${last.state}${last.version ? ` (version ${last.version})` : ''} at ${last.at}`.replace(/—/, ',');
+      return { kind: 'read', text: `Update status — ${text}.` };
+    },
+  },
+  {
+    id: 'checkUpdates', description: 'Run the update check now (app auto-checks on open, but you can ask again). Returns the update state. No args.', risk: 'read',
+    run: async () => {
+      const phase = await runAutoUpdate();
+      const last = getLastUpdateCheck();
+      let text = summarizeUpdatePhase(phase);
+      if (last) text += ` — last check: ${last.state}${last.version ? ` (version ${last.version})` : ''} at ${last.at}`.replace(/—/, ',');
+      return { kind: 'read', text: `Checked now — ${text}.` };
+    },
+  },
+  {
+    id: 'applyPatch', description: 'Apply the hot patch if one is available (say "apply the hot patch"). No-op otherwise. No args.', risk: 'write',
+    run: async () => {
+      const phase = getAutoUpdatePhase();
+      if (phase.state !== 'patch_available') {
+        return { kind: 'read', text: `No hot patch is available — update state: ${summarizeUpdatePhase(phase)}.` };
+      }
+      const after = await applyPatch();
+      if (after.state === 'patched') return { kind: 'read', text: `Applying the hot patch…` };
+      if (after.state === 'patch_applying') return { kind: 'read', text: 'Hot patch applying — the app will reload when done.' };
+      return { kind: 'read', text: `Hot patch not applied — state: ${summarizeUpdatePhase(after)}.` };
+    },
+  },
   // ── Help ───────────────────────────────────────────────────────────────
   {
     id: 'fillForm', description: 'Pre-fill an open form by voice. Args: { target: string, data: object }. target is one of: "record-transaction-modal" (the Record Payment form: fields amount, method, date, referenceNumber), "case-detail-modal" (New Case form, create mode: fields patientName, caseTypeId, price, shade, deliveryDate, instructions). The form fills now — review it on screen, then press submit (or say "cancel"). Does not commit anything.', risk: 'write',
@@ -778,5 +836,8 @@ export const TOOL_PARAMS: Record<string, { required: string[]; optional: string[
   updateClinicDoctor: { required: ['clinic', 'doctorName'], optional: [] },
   updateClinicField: { required: ['clinic', 'field', 'value'], optional: [] },
   fillForm: { required: ['target', 'data'], optional: [] },
+  updateStatus: { required: [], optional: [] },
+  checkUpdates: { required: [], optional: [] },
+  applyPatch: { required: [], optional: [] },
   help: { required: [], optional: [] },
 };
