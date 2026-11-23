@@ -987,7 +987,7 @@ export const VoiceShell: React.FC = () => {
     if (cloudMic) {
       void (async () => {
         setStatus('listening');
-        setAnswer('Listening — speak now…');
+        setAnswer('Listening…');
         try {
           const handle = await recordClip();
           const timeout = window.setTimeout(async () => {
@@ -997,7 +997,7 @@ export const VoiceShell: React.FC = () => {
               setAnswer('Transcribing…');
               const text = await transcribeWithGroq(blob);
               if (text) { setQuery(text); void submit(text); }
-              else { setStatus('error'); setAnswer('Groq transcription did not return text. Check the Groq key in Settings → Voice Assistant, or type the question.'); }
+              else { setStatus('error'); setAnswer('Jarvis could not transcribe that — check the Groq key in Settings, or type the question.'); }
             } finally { cloudStop.current = null; }
           }, 6000);
           cloudStop.current = () => { window.clearTimeout(timeout); handle.cancel(); };
@@ -1017,7 +1017,7 @@ export const VoiceShell: React.FC = () => {
       setStatus('error');
       setAnswer(groqEnabled()
         ? 'Cloud mic failed to start. Check microphone permissions, or type the question.'
-        : 'No Groq API key configured for voice input. Save one in Settings → Voice Assistant → Groq API key, or type the question.');
+        : 'No Groq key saved yet. Paste one in Settings → Jarvis → Groq API key, or type the question.');
       return;
     }
     recRef.current?.stop();
@@ -1089,7 +1089,7 @@ export const VoiceShell: React.FC = () => {
       else {
         stopAlwaysOn();
         setStatus('idle');
-        setAnswer('Always-on needs Groq: save a key in Settings → Voice Assistant, or turn off Always Listen.');
+        setAnswer('Always-on needs Groq: save a key in Settings → Jarvis, or pause Always Listen.');
       }
     } else {
       stopAlwaysOn();
@@ -1118,7 +1118,7 @@ export const VoiceShell: React.FC = () => {
       {open && (
         <div className={`pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl ${expanded ? 'fixed inset-4 sm:inset-10 z-[95] flex flex-col overflow-hidden' : 'w-80'}`}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Voice Assistant {expanded ? '— dedicated panel' : ''}</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Jarvis {expanded ? '— dedicated panel' : ''}</span>
             <div className="flex items-center gap-1.5">
               <button type="button" onClick={() => setExpanded((v) => !v)} aria-label={expanded ? 'Collapse panel' : 'Open dedicated panel'} title={expanded ? 'Collapse' : 'Dedicated panel'} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                 {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -1154,7 +1154,7 @@ export const VoiceShell: React.FC = () => {
             </div>
           )}
           <div className="mt-3 min-h-[64px] whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-700" role="status" aria-live="polite">
-            {busy ? 'Thinking…' : answer || 'Ask a clinic balance, statement, ledger, outstanding or advance wallet — or say “Record payment of PKR 5,000 for Mir Dental”.'}
+            {busy ? 'Thinking…' : answer || 'Ask Jarvis — balances, statements, payments, navigation — or just talk.'}
           </div>
 
           {pending && (
@@ -1189,14 +1189,14 @@ export const VoiceShell: React.FC = () => {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type or speak…"
+              placeholder="Ask Jarvis or type…"
               className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-xs"
-              aria-label="Ask the assistant"
+              aria-label="Ask Jarvis"
             />
             <button type="button" onClick={listen} aria-label="Listen" title="Listen" className="ds-tap rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><AudioLines className="h-4 w-4" /></button>
             <button type="submit" disabled={busy} aria-label="Ask" className="ds-tap rounded-lg bg-indigo-600 p-2 text-white hover:bg-indigo-700 disabled:opacity-50"><SendHorizonal className="h-4 w-4" /></button>
           </form>
-          <p className="mt-2 text-[10px] text-slate-400">Mic: {alwaysOnActive ? 'Always listening (VAD + Groq Whisper).' : cloudMic ? 'Groq Whisper cloud transcription (audio goes to Groq).' : 'No cloud mic — save a Groq API key in Settings → Voice Assistant, or type the question.'} {groqEnabled() ? 'Groq routing ON.' : 'Groq routing off — offline answers.'}</p>
+          <p className="mt-2 text-[10px] text-slate-400">Mic: {alwaysOnActive ? 'Always listening (VAD + Groq Whisper).' : cloudMic ? 'Groq Whisper cloud transcription (audio goes to Groq).' : 'No cloud mic — save a Groq API key in Settings → Jarvis, or type the question.'} {groqEnabled() ? 'Groq routing ON.' : 'Groq routing off — offline answers.'}</p>
         </div>
       )}
     </aside>

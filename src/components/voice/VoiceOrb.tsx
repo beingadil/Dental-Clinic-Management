@@ -19,11 +19,11 @@ export const VoiceOrb: React.FC<{ state: VoiceOrbState; locked?: boolean; onClic
   return (
     <button
       type="button"
-      aria-label={locked ? 'Voice assistant locked' : state === 'listening' ? 'Stop listening' : state === 'always_on' ? 'Jarvis — listening (always on)' : 'Toggle voice assistant (Ctrl+Shift+V)'}
+      aria-label={locked ? 'Jarvis locked' : state === 'listening' ? 'Stop listening' : state === 'always_on' ? 'Jarvis — listening (always on)' : 'Toggle Jarvis (Ctrl+Shift+V)'}
       aria-pressed={state === 'listening'}
       aria-description={state === 'always_on' ? 'Mic is always listening while this orb is open' : undefined}
       aria-disabled={locked}
-      title={locked ? 'Module locked' : state === 'listening' ? 'Listening — press again to stop' : state === 'always_on' ? 'Jarvis — listening (always on). Click to open.' : 'Voice assistant (Ctrl+Shift+V)'}
+      title={locked ? 'Module locked' : state === 'listening' ? 'Listening — press again to stop' : state === 'always_on' ? 'Jarvis — listening (always on). Click to open.' : 'Jarvis (Ctrl+Shift+V)'}
       onClick={onClick}
       className="pointer-events-auto relative flex h-12 w-12 select-none items-center justify-center rounded-full cursor-pointer"
       style={{ background: `radial-gradient(circle at 35% 35%, ${palette[1]}, ${palette[0]})` }}

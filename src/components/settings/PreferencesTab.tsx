@@ -473,13 +473,13 @@ export const PreferencesTab: React.FC = () => {
         <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Voice Assistant</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">Offline speech output; speech input and Groq routing arrive in later phases.</p>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Jarvis</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Voice assistant. Online comprehension via Groq; no hardcoded phrases or keywords.</p>
             </div>
             <GlassSelect
               value={userPreferences?.voice_enabled ? 'true' : 'false'}
               onChange={(v) => updateUserPreferences({ voice_enabled: v === 'true' })}
-              ariaLabel="Voice assistant enabled"
+              ariaLabel="Jarvis enabled"
               className="w-44 p-2 text-xs font-bold"
               options={[
                 { value: 'false', label: 'Off (default)' },
