@@ -13,6 +13,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { reportsTabForView } from './components/common/financeTabs';
 import { ModuleAccessGate } from './components/common/ModuleAccessGate';
 import { lockAllModules, lockModule, moduleForView } from './services/moduleSecurity';
+import { JarvisProvider } from './context/JarvisProvider';
 
 // View modules are code-split: each mounts only when its tab is opened. The
 // app shell (auth, sidebar, header, toasts) stays in the eager chunk so first
@@ -296,7 +297,9 @@ export function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
-        <MainAppContent />
+        <JarvisProvider>
+          <MainAppContent />
+        </JarvisProvider>
       </AppProvider>
     </ErrorBoundary>
   );

@@ -100,7 +100,7 @@ describe('VOICE_TOOLS registry (Tier-1+4 read tools)', () => {
   it('qc_state tool runs read-only', async () => {
     const tool = VOICE_TOOLS.find((t) => t.id === 'qc_state')!;
     expect(tool.risk).toBe('read');
-    const r = await tool.run(ctx, 'DS-0001 QC state');
+    const r = await tool.run(ctx, { caseNumber: 'DS-0001' });
     expect(r?.kind).toBe('read');
   });
 });

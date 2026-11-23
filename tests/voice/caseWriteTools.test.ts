@@ -3,6 +3,7 @@
  *
  * Runs tools through the registry table (no React): assert the pending
  * WriteCommand shape and that destructive tools surface risk 'destructive'.
+ * Tools now take structured args (as Groq would provide), not raw strings.
  */
 import { describe, it, expect } from 'vitest';
 import { VOICE_TOOLS } from '../../src/services/voiceRegistry';
@@ -13,15 +14,15 @@ const cases: any[] = [
 ];
 const ctx: any = { labs: [], invoices: [], advancePayments: [], accountAdjustments: [], cases, user: null };
 
-const run = async (id: string, q: string): Promise<any> => {
+const run = async (id: string, args: Record<string, unknown>): Promise<any> => {
   const tool = VOICE_TOOLS.find((t) => t.id === id)!;
   expect(tool, `tool ${id} must exist`).toBeTruthy();
-  return tool.run(ctx, q);
+  return tool.run(ctx, args);
 };
 
 describe('Tier 2 — case write tools', () => {
   it('caseUpdateFields queues fields + amber risk', async () => {
-    const r: any = await run('caseUpdateFields', 'Update case DS-0001 — shade A2, priority urgent');
+    const r: any = await run('caseUpdateFields', { caseNumber: 'DS-0001', shade: 'A2', priority: 'urgent' });
     expect(r.kind).toBe('action');
     expect(r.risk).toBe('write');
     expect(r.pending.kind).toBe('caseUpdateFields');
@@ -31,14 +32,14 @@ describe('Tier 2 — case write tools', () => {
   });
 
   it('caseUpdateFields reads material and instructions', async () => {
-    const r: any = await run('caseUpdateFields', 'set case DS-0001 material zirconia instructions crown polished');
+    const r: any = await run('caseUpdateFields', { caseNumber: 'DS-0001', material: 'zirconia', instructions: 'crown polished' });
     expect(r.kind).toBe('action');
     expect(r.pending.updateFields.material).toBe('zirconia');
     expect(r.pending.updateFields.instructions).toBe('crown polished');
   });
 
   it('casePriority queues the priority change', async () => {
-    const r: any = await run('casePriority', 'set priority of DS-0001 to high');
+    const r: any = await run('casePriority', { caseNumber: 'DS-0001', priority: 'high' });
     expect(r.kind).toBe('action');
     expect(r.risk).toBe('write');
     expect(r.pending.kind).toBe('casePriority');
@@ -46,14 +47,14 @@ describe('Tier 2 — case write tools', () => {
     expect(r.pending.priority).toBe('high');
   });
 
-  it('casePriority also accepts "DS-0001 priority urgent"', async () => {
-    const r: any = await run('casePriority', 'DS-0001 priority urgent');
+  it('casePriority also accepts urgent', async () => {
+    const r: any = await run('casePriority', { caseNumber: 'DS-0001', priority: 'urgent' });
     expect(r.kind).toBe('action');
     expect(r.pending.priority).toBe('urgent');
   });
 
   it('bulkCaseStatus queues every listed case', async () => {
-    const r: any = await run('bulkCaseStatus', 'mark DS-0001, DS-0002 ready');
+    const r: any = await run('bulkCaseStatus', { caseNumbers: ['DS-0001', 'DS-0002'], targetStatus: 'ready' });
     expect(r.kind).toBe('action');
     expect(r.risk).toBe('write');
     expect(r.pending.kind).toBe('bulkCaseStatus');
@@ -62,14 +63,14 @@ describe('Tier 2 — case write tools', () => {
   });
 
   it('restoreCase queues the unarchive', async () => {
-    const r: any = await run('restoreCase', 'restore DS-0001');
+    const r: any = await run('restoreCase', { caseNumber: 'DS-0001' });
     expect(r.kind).toBe('action');
     expect(r.pending.kind).toBe('restoreCase');
     expect(r.pending.caseNumber).toBe('DS-0001');
   });
 
   it('caseTemplateSave queues the template name', async () => {
-    const r: any = await run('caseTemplateSave', 'save case DS-0001 as template "Retraced Crown"');
+    const r: any = await run('caseTemplateSave', { caseNumber: 'DS-0001', templateName: 'Retraced Crown' });
     expect(r.kind).toBe('action');
     expect(r.pending.kind).toBe('caseTemplateSave');
     expect(r.pending.caseNumber).toBe('DS-0001');
@@ -79,7 +80,7 @@ describe('Tier 2 — case write tools', () => {
 
 describe('Tier 3 — destructive tools', () => {
   it('deleteCase is destructive with the case number', async () => {
-    const r: any = await run('deleteCase', 'delete DS-0001');
+    const r: any = await run('deleteCase', { caseNumber: 'DS-0001' });
     expect(r.kind).toBe('action');
     expect(r.risk).toBe('destructive');
     expect(r.pending.kind).toBe('deleteCase');
@@ -87,7 +88,7 @@ describe('Tier 3 — destructive tools', () => {
   });
 
   it('purgeCase is destructive with the case number', async () => {
-    const r: any = await run('purgeCase', 'purge DS-0002');
+    const r: any = await run('purgeCase', { caseNumber: 'DS-0002' });
     expect(r.kind).toBe('action');
     expect(r.risk).toBe('destructive');
     expect(r.pending.kind).toBe('purgeCase');
@@ -95,7 +96,7 @@ describe('Tier 3 — destructive tools', () => {
   });
 
   it('returns a clarify message when no case number is given', async () => {
-    const r: any = await run('deleteCase', 'delete the case');
+    const r: any = await run('deleteCase', {});
     expect(r.kind).toBe('read');
     expect(r.text).toContain('Say:');
   });

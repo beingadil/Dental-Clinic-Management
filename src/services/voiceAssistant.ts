@@ -1,12 +1,12 @@
 /**
  * Voice assistant entry point.
  *
- * Registry-driven: every capability lives in services/voiceRegistry.ts as a
- * declarative tool with risk + confirmation contract. This file only glues the
- * registry to the LLM fallback, the local memory and the voice shell.
+ * Per AGENTS.md: NO hardcoded phrases. All intent resolution happens via
+ * Groq Tool Calling through runAgenticLoop. This file glues the agentic
+ * loop to the local memory, TTS, and confirmation handling.
  */
 import { remember } from './voiceMemory';
-import { runVoiceTool, type VoiceToolContext } from './voiceRegistry';
+import type { VoiceToolContext } from './voiceRegistry';
 import type { WriteCommand } from './voiceWrite';
 import { runAgenticLoop } from './voiceAgent';
 
@@ -71,21 +71,11 @@ export async function askAssistant(raw: string, ctx: VoiceToolContext): Promise<
     return done('Ask me anything about the clinic: balances, statements, ledgers, overdue work, cash collected, or open any screen. Say “what can you do?” for the full list.');
   }
 
-  const result = await runVoiceTool(ctx, q);
-  if (result?.kind === 'read') {
-    const answer: AssistantResult = { text: result.text, spoke: true };
-    if ('navigateTo' in result && result.navigateTo) answer.navigateTo = result.navigateTo;
-    try { remember(q, result.text); } catch { /* best effort */ }
-    return answer;
-  }
-  if (result?.kind === 'action') {
-    return { text: result.summary, spoke: true, pendingWrite: result.pending, risk: result.risk as 'write' | 'destructive' };
-  }
-
-  // ── Online agentic loop (skipped when Groq is absent/unreachable) ──────
+  // Primary path: Groq agentic loop (tool calling, no regex matching).
   const agentResult = await runAgenticLoop(q, ctx);
   if (agentResult?.navigateTo) return { ...agentResult, spoke: true } as AssistantResult;
   if (agentResult?.text) return { ...agentResult, spoke: true } as AssistantResult;
 
+  // Fallback: clarification.
   return done(buildClarification(ctx, q));
 }

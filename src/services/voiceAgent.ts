@@ -11,7 +11,7 @@ import { groqChatTools } from './voiceGroq';
 import { memoryContext } from './voiceMemory';
 import { VOICE_TOOLS, type VoiceToolContext } from './voiceRegistry';
 import type { WriteCommand } from './voiceWrite';
-import { REPORTS_ENTRY_ID, REPORTS_TABS } from '../components/common/financeTabs';
+import { REPORTS_TABS } from '../components/common/financeTabs';
 
 export interface AgentResult {
   text: string;
@@ -103,39 +103,13 @@ export const clarify = (question: string): AgentResult => ({ text: question });
 const invokeApprovedTool = async (id: string, args: Record<string, unknown>, ctx: VoiceToolContext): Promise<AgentResult> => {
   const tool = VOICE_TOOLS.find((t) => t.id === id);
   if (!tool) return clarify(`I know that one as "${id}", but the app doesn't have it wired yet.`);
-  // Read tools that don't need args can run immediately.
-  const simpleReads = ['overdueCases', 'briefing', 'standings', 'cashCollected', 'monthClose', 'openCases'];
-  if (simpleReads.includes(id)) {
-    void args;
-    const result = await (tool.run as (c: VoiceToolContext, q: string) => Promise<{ kind: 'read'; text: string } | null>)(ctx, id);
-    if (result) return { text: result.text ?? 'Done.' };
+  const result = await tool.run(ctx, args);
+  if (!result) return clarify(`I can do "${tool.description}", but I need more detail.`);
+  if (result.kind === 'read') {
+    return { text: result.text ?? 'Done.', navigateTo: result.navigateTo };
   }
-  // Suggest the most likely missing info from the args instead of erroring.
-  if ((id === 'clinicBalance' || id === 'statement' || id === 'ledger' || id === 'outstanding' || id === 'advanceWallet' || id === 'narrate') && !args.clinic) {
-    return clarify('Which clinic?');
-  }
-  if (id === 'navigate' && args.view) {
-    const viewMap: Record<string, string> = {
-      dashboard: 'dashboard', home: 'dashboard', overview: 'dashboard',
-      case: 'cases', cases: 'cases', workstation: 'cases',
-      labs: 'labs', lab: 'labs', clinics: 'labs', clinic: 'labs',
-      billing: 'billing',
-      [REPORTS_TABS[3]?.id ?? 'payments']: 'billing',
-      finance: 'billing', payment_receive: 'billing',
-      ledger: REPORTS_TABS[0].id, [REPORTS_TABS[0].id]: REPORTS_TABS[0].id, books: REPORTS_TABS[0].id,
-      [REPORTS_TABS[1].id]: REPORTS_TABS[1].id, monthly: REPORTS_TABS[1].id, reports: REPORTS_ENTRY_ID,
-      [REPORTS_TABS[2].id]: REPORTS_TABS[2].id, analytics: REPORTS_TABS[2].id, insight: REPORTS_TABS[2].id,
-      catalog: 'catalog', catalogue: 'catalog', price: 'catalog', pricing: 'catalog',
-      notifications: 'notifications', alerts: 'notifications', inbox: 'notifications',
-      settings: 'settings', preferences: 'settings',
-      print_invoices: 'print-invoices', batch: 'print-invoices', batch_print: 'print-invoices',
-    };
-    const target = viewMap[String(args.view).toLowerCase().replace(/\s+/g, '_')];
-    if (!target) return clarify(`I don't know a screen called “${args.view}”.`);
-    return { text: `Opening ${target}.`, navigateTo: target };
-  }
-  // Everything else: ask instead of guessing.
-  return clarify(`I can do "${tool.description}", but I need more detail — e.g. which clinic, which case, how much?`);
+  // It's an action — return it so the caller can show the confirmation panel.
+  return { text: result.summary, pendingWrite: result.pending, risk: result.risk as 'write' | 'destructive' };
 };
 
 /** Run the agentic loop: model → tool → result → maybe ask, repeat up to MAX_ITER times. */
