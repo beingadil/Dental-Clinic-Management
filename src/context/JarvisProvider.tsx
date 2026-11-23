@@ -21,6 +21,7 @@ import { useApp } from './AppContext';
 import { can } from '../services/permissions';
 import { runAgenticLoop, type AgentResult } from '../services/voiceAgent';
 import { VoiceToolContext } from '../services/voiceRegistry';
+import { fillJarvisForm, type JarvisFormData } from '../services/jarvisForms';
 import { speak, cancelSpeech } from '../services/voiceUtterance';
 
 interface JarvisContextValue {
@@ -116,7 +117,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
         setCurrentView(target);
       }
       if (action === 'fill_form') {
-        window.dispatchEvent(new CustomEvent('jarvis-fill-form', { detail: { target, data } }));
+        fillJarvisForm(String(target || ''), (data as Record<string, JarvisFormData[string]>) || {});
       }
     },
     [setCurrentView],

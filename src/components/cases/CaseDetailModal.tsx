@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { PRIORITY_SLA_DAYS, prioritySlaLabel, computeSlaDueDate } from '../../services/prioritySla';
 import { resolveOverrideForCase } from '../../services/pricingOverride';
+import { useJarvisForm } from '../../services/jarvisForms';
 import { DatePickerSingle } from '../common/DatePickerSingle';
 import { addDaysISO, todayISO } from '../common/DatePickerRange';
 
@@ -168,6 +169,18 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
   const isEdit = Boolean(initialCase?.id);
   const attachmentsForCase = isEdit && initialCase ? (caseAttachments[initialCase.id] || []) : [];
+
+  /* Jarvis fill_form: voice pre-fills basics for a NEW case — patient,
+     procedure/type, price, shade, delivery date, instructions — while the
+     operator reviews on screen before pressing Create. */
+  useJarvisForm('case-detail-modal', !isEdit, {
+    patientName: (v) => setPatientName(String(v || '')),
+    caseTypeId: (v) => setCaseTypeId(String(v || '')),
+    price: (v) => setPrice(Number(v) || 0),
+    shade: (v) => setShade(String(v || '')),
+    deliveryDate: (v) => setDeliveryDate(String(v || '')),
+    instructions: (v) => setInstructions(String(v || '')),
+  });
 
   /* ---------------------------- form state (preserved) ---------------------------- */
   const [patientName, setPatientName] = useState(initialCase?.patient_name || '');

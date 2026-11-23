@@ -6,6 +6,7 @@ import { PaymentAttachment, PaymentRecord } from '../../types';
 ;
 import { validateFile } from '../../services/fileValidation';
 import { canPost } from '../../services/permissions';
+import { useJarvisForm } from '../../services/jarvisForms';
 import {
   CheckCircle2,
   AlertCircle,
@@ -105,6 +106,18 @@ export const RecordTransactionModal: React.FC<RecordTransactionModalProps> = ({
      the list is folded away so a stale query does not greet them next time. */
   const [allocationQuery, setAllocationQuery] = useState('');
 
+  /* Jarvis fill_form: voice pre-fills amount/method/date/reference — the
+     operator reviews on screen and presses submit (the write still goes
+     through this form). */
+  useJarvisForm('record-transaction-modal', isOpen, {
+    amount: (v) => setAmount(Number(v) || 0),
+    method: (v) => {
+      const m = String(v || '').toLowerCase();
+      setMethod(m === 'cash' || m === 'bank' || m === 'cheque' ? (m as 'cash' | 'bank' | 'cheque') : 'cash');
+    },
+    date: (v) => setDate(String(v || '')),
+    referenceNumber: (v) => setReferenceNumber(String(v || '')),
+  });
   /* Inline validation/POST errors (B6): alert() was blocking, non-aria and
      inconsistent with the rest of the module's inline-error voice. One error
      slot, cleared on the next submit attempt, tied to the footer banner. */
