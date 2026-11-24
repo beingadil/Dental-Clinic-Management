@@ -139,17 +139,17 @@ describe('voice registry tool ids', () => {
   });
 });
 
-describe('VoiceShell confirmation branches', () => {
-  it('branches on every required WriteCommand kind', () => {
+describe('VoiceShell write execution', () => {
+  it('branches on every required WriteCommand kind in executeWrite', () => {
     const missing: string[] = [];
     for (const kind of SHELL_BRANCH_KINDS) {
       if (kind === 'advance') {
-        // 'advance' is the else-branch of the payment confirmation block:
-        // it must call recordAdvanceDepositV2 after the payment branch.
+        // 'advance' is the else-branch of the payment block: it calls
+        // recordAdvanceDepositV2 when kind === 'payment' is not the case.
         const hasAdvanceBranch =
-          shell.includes("kind === 'advance'")
-          || /pending\.kind === 'payment'[\s\S]{0,4000}?recordAdvanceDepositV2/.test(shell);
-        if (!hasAdvanceBranch) missing.push('advance (expected an advance-deposit branch calling recordAdvanceDepositV2 after the payment branch)');
+          shell.includes("kind === 'payment'")
+          && /recordAdvanceDepositV2/.test(shell);
+        if (!hasAdvanceBranch) missing.push('advance (expected an advance-deposit branch calling recordAdvanceDepositV2)');
         continue;
       }
       if (!shell.includes(`kind === '${kind}'`)) {
@@ -158,8 +158,24 @@ describe('VoiceShell confirmation branches', () => {
     }
     expect(
       missing,
-      `VoiceShell.tsx is missing a confirmation branch for kind(s): ${missing.join(', ')}`,
+      `VoiceShell.tsx is missing a write branch for kind(s): ${missing.join(', ')}`,
     ).toEqual([]);
+  });
+
+  it('auto-executes non-destructive writes; no Confirm phrases anywhere', () => {
+    // Writes auto-execute via executeWrite (submitted by the AI agentic loop).
+    expect(shell.includes('const executeWrite = (cmd: WriteCommand) =>'),
+      'VoiceShell.tsx should auto-execute writes via executeWrite').toBe(true);
+    expect(shell.includes('await executeWrite(result.pendingWrite)'),
+      'VoiceShell.submit should call executeWrite for auto-executed writes').toBe(true);
+    // Fixed-phrase flow is gone.
+    expect(/Confirm:/.test(shell), 'no "Confirm:" phrases remain in the voice stack').toBe(false);
+    expect(shell.includes('confirmPending'), 'confirmPending is removed (auto-execute)').toBe(false);
+    // Only destructive actions park in the red gate.
+    expect(shell.includes('queueWrite'), 'destructive flow stays via queueWrite').toBe(true);
+    expect(shell.includes("pendingRisk === 'destructive'"), 'destructive gate intact').toBe(true);
+    expect(/slotMode|STAGE_TOKEN_MAP|detectStageWord|rankCandidates|setCaseContext/.test(shell),
+      'no fixed-phrase routing helpers remain').toBe(false);
   });
 });
 
@@ -209,10 +225,15 @@ describe('voice help + fallback surface', () => {
     ).toBe(true);
   });
 
-  it('assistant fallback uses buildClarification', () => {
-    expect(
-      assistant.includes('buildClarification'),
-      'voiceAssistant.ts no longer references buildClarification; the LLM/no-match fallback must route through it',
-    ).toBe(true);
+  it('assistant fallback asks a natural question through the agentic loop', () => {
+    // Intent resolution is via Groq tool calling; the no-match fallback is a
+    // natural general question — never a canned keyword phrase list.
+    expect(assistant.includes('runAgenticLoop'),
+      'voiceAssistant.ts must route through the agentic loop').toBe(true);
+    expect(assistant.includes('noActionText'),
+      'voiceAssistant.ts should define the natural-question fallback').toBe(true);
+    expect(assistant.includes('buildClarification'),
+      'legacy canned fallback helper should be removed').toBe(false);
+    expect(/confirm\b\s*[:=]/.test(assistant), 'no Confirm phrases in voiceAssistant').toBe(false);
   });
 });

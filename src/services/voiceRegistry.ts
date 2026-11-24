@@ -1,5 +1,5 @@
 /**
- * Voice tool registry — ONE declarative table for everything the assistant may do.
+ * Voice tool registry - ONE declarative table for everything the assistant may do.
  *
  * Per AGENTS.md: NO hardcoded phrases. Intent resolution happens exclusively
  * via LLM Tool Calling (Groq). Each tool declares:
@@ -91,13 +91,13 @@ export interface VoiceTool {
   id: string;
   description: string;
   risk: VoiceRisk;
-  /** Structured args from Groq — no regex matching on raw text. */
+  /** Structured args from Groq - no regex matching on raw text. */
   run: (ctx: VoiceToolContext, args: Record<string, unknown>) => VoiceToolResult | Promise<VoiceToolResult>;
 }
 
 const folded = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-/** One-line summary of the auto-update phase — used by the update tools. */
+/** One-line summary of the auto-update phase - used by the update tools. */
 const summarizeUpdatePhase = (phase: AutoUpdatePhase): string => {
   switch (phase.state) {
     case 'idle': return 'never checked this session';
@@ -106,9 +106,9 @@ const summarizeUpdatePhase = (phase: AutoUpdatePhase): string => {
     case 'available': return `a newer app version is available (${phase.version})`;
     case 'patch_available': return `a hot patch is available (${phase.display_version})`;
     case 'patch_applying': return `a hot patch is applying (${phase.base_version})`;
-    case 'patched': return `the hot patch ${phase.display_version} is applied — the app is reloading`;
+    case 'patched': return `the hot patch ${phase.display_version} is applied - the app is reloading`;
     case 'failed': return `an update failed: ${phase.message}`;
-    case 'patch_failed': return `a hot patch failed (${phase.message}) — open Settings → Updates to retry`;
+    case 'patch_failed': return `a hot patch failed (${phase.message}) - open Settings → Updates to retry`;
     case 'handed_off': return `the update was sent to your browser (${phase.message})`;
     default: return `update state: ${phase.state}`;
   }
@@ -118,10 +118,10 @@ const clinicFor = (ctx: VoiceToolContext, q: string) => guessClinic(ctx, q);
 type ClinicNeed = { error: string; clinic?: undefined } | { clinic: DentalLab; error?: undefined };
 const needClinic = (ctx: VoiceToolContext, q: string): ClinicNeed => {
   const hit = clinicFor(ctx, q);
-  if (hit && 'ambiguous' in hit) return { error: `Which clinic — ${hit.ambiguous.join(', ')}?` };
+  if (hit && 'ambiguous' in hit) return { error: `Which clinic - ${hit.ambiguous.join(', ')}?` };
   if (!hit) {
     const cands = clinicCandidates(ctx, q);
-    return { error: cands.length > 1 ? `Which clinic — ${cands.map((c) => c.name).join(', ')}?` : 'Which clinic should I use?' };
+    return { error: cands.length > 1 ? `Which clinic - ${cands.map((c) => c.name).join(', ')}?` : 'Which clinic should I use?' };
   }
   return { clinic: hit };
 };
@@ -143,7 +143,7 @@ const NAV: Record<string, string> = {
 const tools: VoiceTool[] = [
   // ── Navigation ─────────────────────────────────────────────────────────
   {
-    id: 'navigate', description: 'Open any screen in the app. Args: { view: string } — one of: dashboard, cases, labs, clinics, billing, ledger, statements, insights, catalog, notifications, settings, print-invoices', risk: 'read',
+    id: 'navigate', description: 'Open any screen in the app. Args: { view: string } - one of: dashboard, cases, labs, clinics, billing, ledger, statements, insights, catalog, notifications, settings, print-invoices', risk: 'read',
     run(_ctx, args) {
       const view = String(args.view || '').trim().toLowerCase().replace(/\s+/g, '_');
       const target = NAV[view];
@@ -214,7 +214,7 @@ const tools: VoiceTool[] = [
     id: 'qc_gate_check', description: 'DS-XXXX: may it ship (passed QC)? Args: { caseNumber: string }', risk: 'read',
     run: (ctx, args) => {
       const num = String(args.caseNumber || '').match(/DS-\d+/i)?.[0]?.toUpperCase() ?? null;
-      if (!num) return { kind: 'read', text: 'Say e.g. "Can DS-0393 ship?"' };
+      if (!num) return { kind: 'read', text: 'Which case number — like DS-0393 — do you mean?' };
       return { kind: 'read', text: getQcGateCheck(ctx, num) };
     },
   },
@@ -235,13 +235,13 @@ const tools: VoiceTool[] = [
   },
   {
     id: 'qc_reasons', description: 'Top QC reason codes. No args.', risk: 'read',
-    run: () => ({ kind: 'read', text: `Top QC reason codes: ${qcReasonCodeList()} — use "Show why DS-XXXX failed" for a case.` }),
+    run: () => ({ kind: 'read', text: `Top QC reason codes: ${qcReasonCodeList()} - Just ask: "Why did DS-XXXX fail?"` }),
   },
   {
     id: 'case_detail', description: 'DS-XXXX material, teeth, shade, procedure, prep, dates, status. Args: { caseNumber: string }', risk: 'read',
     run: (ctx, args) => {
       const num = String(args.caseNumber || '').match(/DS-\d+/i)?.[0]?.toUpperCase();
-      if (!num) return { kind: 'read', text: 'Say: "Show me case DS-0001 detail" or "Which material is DS-0001?"' };
+      if (!num) return { kind: 'read', text: 'Which case number — like DS-0001 — do you want? Or ask which material DS-0001 is.' };
       return { kind: 'read', text: getCaseDetail(ctx, num) };
     },
   },
@@ -360,13 +360,13 @@ const tools: VoiceTool[] = [
       return docs ? { kind: 'read', text: `From the codebase and docs:\n${docs}` } : null;
     },
   },
-  // ── Write tools (amber confirmation) ───────────────────────────────────
+  // ── Write tools (auto-executed; destructive keeps the typed-token gate) ───────────────────────────────────
   {
     id: 'recordPayment', description: 'Record a payment (PKR amount, clinic). Args: { clinic: string, amount: number, method?: "cash"|"bank"|"cheque", invoice?: string }', risk: 'write',
     run: (_ctx, args) => {
       const clinic = String(args.clinic || '');
       const amount = Number(args.amount || 0);
-      if (!clinic || !amount || amount <= 0) return { kind: 'read', text: 'Say: "Record payment of PKR 5,000 for Mir Dental".' };
+      if (!clinic || !amount || amount <= 0) return { kind: 'read', text: 'Sure — which payment? Tell me the amount and the clinic, like a payment of PKR 5,000 for Mir Dental.' };
       const method = (args.method === 'cash' || args.method === 'bank' || args.method === 'cheque' ? args.method : 'bank') as 'cash' | 'bank' | 'cheque';
       const invoice = String(args.invoice || '');
       return {
@@ -382,7 +382,7 @@ const tools: VoiceTool[] = [
     run: (_ctx, args) => {
       const clinic = String(args.clinic || '');
       const amount = Number(args.amount || 0);
-      if (!clinic || !amount || amount <= 0) return { kind: 'read', text: 'Say: "Record advance deposit of PKR 5,000 for Mir Dental".' };
+      if (!clinic || !amount || amount <= 0) return { kind: 'read', text: 'Sure — which advance deposit? Tell me the amount and the clinic, like an advance deposit of PKR 5,000 for Mir Dental.' };
       const method = (args.method === 'cash' || args.method === 'bank' || args.method === 'cheque' ? args.method : 'bank') as 'cash' | 'bank' | 'cheque';
       return {
         kind: 'action',
@@ -397,8 +397,8 @@ const tools: VoiceTool[] = [
     run: (ctx, args) => {
       const inv = (ctx.invoices || []).find((i) => i.invoice_number === String(args.invoice || ''));
       const amount = Number(args.amount || 0);
-      if (!inv) return { kind: 'read', text: 'Which invoice? Say e.g. "Apply advance PKR 25,000 to INV-0042".' };
-      if (!amount || amount <= 0) return { kind: 'read', text: 'How much? Say e.g. "Apply advance PKR 25,000 to INV-0042".' };
+      if (!inv) return { kind: 'read', text: 'Sure — which invoice? Tell me the amount and the invoice, like applying advance PKR 25,000 to INV-0042.' };
+      if (!amount || amount <= 0) return { kind: 'read', text: 'How much do you want applied — like 25,000 to INV-0042?' };
       return { kind: 'action', risk: 'write', pending: { kind: 'applyAdvance', amount, clinicHint: inv.lab_name, invoiceNumber: inv.invoice_number, method: 'bank' }, summary: `Apply advance PKR ${amount.toLocaleString()} to ${inv.invoice_number}` };
     },
   },
@@ -406,7 +406,7 @@ const tools: VoiceTool[] = [
     id: 'markInvoicePaid', description: 'Mark one or more invoices as paid in full. Args: { invoiceNumbers: string[] }', risk: 'write',
     run: (ctx, args) => {
       const unique = Array.from(new Set((args.invoiceNumbers as string[] || []).map((n) => n.toUpperCase())));
-      if (!unique.length) return { kind: 'read', text: 'Say e.g. "Mark INV-0042 paid" or "Mark INV-0042, INV-0043 paid".' };
+      if (!unique.length) return { kind: 'read', text: 'Sure — which invoices do you want marked paid? Tell me the numbers, like INV-0042, INV-0043.' };
       const invoices = ctx.invoices || [];
       const missing = unique.filter((n) => !invoices.find((i) => i.invoice_number.toUpperCase() === n));
       if (missing.length) return { kind: 'read', text: `No invoice ${missing.join(', ')} found.` };
@@ -414,7 +414,7 @@ const tools: VoiceTool[] = [
         const inv = invoices.find((i) => i.invoice_number.toUpperCase() === n)!;
         return sum + invoiceBalanceDue(inv);
       }, 0);
-      return { kind: 'action', risk: 'write', pending: { kind: 'markPaid', amount: total, clinicHint: invoices[0].lab_name, invoiceNumbers: unique, method: 'bank' }, summary: `Mark ${unique.join(', ')} paid — PKR ${total.toLocaleString()} outstanding` };
+      return { kind: 'action', risk: 'write', pending: { kind: 'markPaid', amount: total, clinicHint: invoices[0].lab_name, invoiceNumbers: unique, method: 'bank' }, summary: `Mark ${unique.join(', ')} paid - PKR ${total.toLocaleString()} outstanding` };
     },
   },
   {
@@ -429,9 +429,9 @@ const tools: VoiceTool[] = [
       else if (typeof args.showLogo === 'string') patch.showLogo = args.showLogo !== 'false';
       if (args.logoPosition) patch.logoPosition = args.logoPosition;
       if (args.jobSlipStyle) patch.jobSlipStyle = args.jobSlipStyle;
-      if (!Object.keys(patch).length) return { kind: 'read', text: 'Say what to change — paper, margins, font, logo, or job-slip style.' };
+      if (!Object.keys(patch).length) return { kind: 'read', text: 'What do you want to change in the print sections — paper, margins, font, logo or job-slip style?' };
       const next = { ...loadPrintSettings(), ...patch };
-      return { kind: 'action', risk: 'write', pending: { kind: 'printSettingsSave', amount: 0, clinicHint: '', method: 'bank', printSettings: next }, summary: `Print settings — ${Object.entries(patch).map(([k, v]) => `${k}: ${v}`).join(', ')}` };
+      return { kind: 'action', risk: 'write', pending: { kind: 'printSettingsSave', amount: 0, clinicHint: '', method: 'bank', printSettings: next }, summary: `Print settings - ${Object.entries(patch).map(([k, v]) => `${k}: ${v}`).join(', ')}` };
     },
   },
   {
@@ -439,7 +439,7 @@ const tools: VoiceTool[] = [
     run: (ctx, args) => {
       if (ctx.user && !can(ctx.user, 'print:edit')) return { kind: 'read', text: 'Requires the "Edit print templates" permission.' };
       const kind = String(args.docKind || '').replace(/[ _]+/g, '_') as 'invoice' | 'job_slip' | 'receipt' | 'statement' | undefined;
-      if (!kind) return { kind: 'read', text: 'Say which document — invoice, statement, receipt or job slip.' };
+      if (!kind) return { kind: 'read', text: 'Which document do you want printed — invoice, statement, receipt or job slip?' };
       const catalog = PRINT_SECTIONS[kind] || [];
       const ids = catalog.map((s) => s.id);
       const sections = Array.isArray(args.sections) ? args.sections as string[] : [];
@@ -458,14 +458,14 @@ const tools: VoiceTool[] = [
       if (args.escalation !== undefined) cfg.enable_escalation = args.escalation === true;
       if (args.thresholdDays) cfg.escalation_threshold_days = Number(args.thresholdDays);
       if (args.interval) cfg.recurring_interval = (args.interval === 'daily' || args.interval === 'every_3_days' || args.interval === 'weekly' ? args.interval : 'daily') as 'daily' | 'every_3_days' | 'weekly';
-      return { kind: 'action', risk: 'write', pending: { kind: 'notificationConfigSave', amount: 0, clinicHint: '', method: 'bank', notification: cfg }, summary: `Notification config — ${pay ? 'payment' : 'overdue'} reminders ${frequencies.join(', ') || 'unchanged'}; escalation ${cfg.enable_escalation ? 'on' : 'off'} after ${cfg.escalation_threshold_days}d, ${cfg.recurring_interval}` };
+      return { kind: 'action', risk: 'write', pending: { kind: 'notificationConfigSave', amount: 0, clinicHint: '', method: 'bank', notification: cfg }, summary: `Notification config - ${pay ? 'payment' : 'overdue'} reminders ${frequencies.join(', ') || 'unchanged'}; escalation ${cfg.enable_escalation ? 'on' : 'off'} after ${cfg.escalation_threshold_days}d, ${cfg.recurring_interval}` };
     },
   },
   {
     id: 'addClinicContact', description: 'Add a contact to a clinic. Args: { clinic: string, contactName: string, contactPhone: string, contactEmail?: string, contactRole?: string, isPrimary?: boolean }', risk: 'write',
     run: (ctx, args) => {
       const clinic = clinicFor(ctx, String(args.clinic || ''));
-      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Which clinic? Say, for example: "Add contact Ahmed Khan to Mir Dental".' };
+      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Sure — which clinic and what contact? Tell me the contact name and the clinic, like adding contact Ahmed Khan to Mir Dental.' };
       return {
         kind: 'action',
         risk: 'write',
@@ -488,7 +488,7 @@ const tools: VoiceTool[] = [
     id: 'addClinicAddress', description: 'Add a billing/shipping/lab address for a clinic. Args: { clinic: string, addressType: "billing"|"shipping"|"lab_location", street: string, city: string, state: string, postalCode: string, country: string, isDefault?: boolean }', risk: 'write',
     run: (ctx, args) => {
       const clinic = (ctx.labs || []).find((l) => folded(l.name).startsWith(folded(String(args.clinic || '')))) || clinicFor(ctx, String(args.clinic || ''));
-      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Which clinic? Say, for example: "Add billing address for Mir Dental: …".' };
+      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Sure — which clinic and what address? Like a billing address for Mir Dental: 1 Main Street.' };
       return {
         kind: 'action',
         risk: 'write',
@@ -513,7 +513,7 @@ const tools: VoiceTool[] = [
     id: 'createClinic', description: 'Create a new clinic. Args: { name: string, doctor?: string, phone?: string }', risk: 'write',
     run: (_ctx, args) => {
       const name = String(args.name || '').trim();
-      if (!name) return { kind: 'read', text: 'Say: "Add clinic Mir Dental".' };
+      if (!name) return { kind: 'read', text: 'Sure — which clinic do you want to add? Tell me the name, like Mir Dental.' };
       return {
         kind: 'action',
         risk: 'write',
@@ -526,7 +526,7 @@ const tools: VoiceTool[] = [
     id: 'addPricingOverride', description: 'Set a pricing override for a case type at a clinic. Args: { clinic: string, caseType: string, customPrice: number, discountPercentage?: number, effectiveDate?: string }', risk: 'write',
     run: (ctx, args) => {
       const clinic = (ctx.labs || []).find((l) => folded(l.name).startsWith(folded(String(args.clinic || '')))) || clinicFor(ctx, String(args.clinic || ''));
-      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Which clinic? Say, for example: "Add pricing override for Mir Dental: Zirconia Crown at PKR 25,000".' };
+      if (!clinic || 'ambiguous' in clinic) return { kind: 'read', text: 'Sure — which clinic and which case type? Like Zirconia Crown at PKR 25,000 for Mir Dental.' };
       const wanted = String(args.caseType || '').toLowerCase();
       const ct = (ctx.caseTypes || []).find((c) => c.name.toLowerCase() === wanted)
         || (ctx.caseTypes || []).find((c) => c.name.toLowerCase().includes(wanted));
@@ -555,14 +555,14 @@ const tools: VoiceTool[] = [
     id: 'closeMonth', description: 'Close a clinic month. Args: { clinic: string, month: "YYYY-MM" }', risk: 'write',
     run: (ctx, args) => {
       const month = String(args.month || '');
-      if (!month) return { kind: 'read', text: 'Say which month — "Close October 2026 for Mir Dental".' };
+      if (!month) return { kind: 'read', text: 'Sure — which month do you want to close? Like October 2026 for Mir Dental.' };
       const need = needClinic(ctx, String(args.clinic || ''));
       if (need.error !== undefined) return { kind: 'read', text: need.error };
       const again = closedMonthFor(month).has(need.clinic.id);
       const rows = clinicMonthSnapshots({ invoices: ctx.invoices, advancePayments: ctx.advancePayments, accountAdjustments: ctx.accountAdjustments, labs: ctx.labs }, month);
       const row = rows.find((r) => r.lab_id === need.clinic.id);
       const line = row ? `billed PKR ${row.billed.toLocaleString()}, collected PKR ${row.collected.toLocaleString()}, closing PKR ${Math.abs(row.closing_balance).toLocaleString()}` : 'no postings this month';
-      return { kind: 'action', risk: 'write', pending: { kind: 'closeMonth', amount: 0, clinicHint: need.clinic.name, labId: need.clinic.id, labName: need.clinic.name, month, method: 'bank' }, summary: `${again ? 'Re-close' : 'Close'} ${formatMonthLabel(month)} — ${line}. Nothing locks; corrections re-close` };
+      return { kind: 'action', risk: 'write', pending: { kind: 'closeMonth', amount: 0, clinicHint: need.clinic.name, labId: need.clinic.id, labName: need.clinic.name, month, method: 'bank' }, summary: `${again ? 'Re-close' : 'Close'} ${formatMonthLabel(month)} - ${line}. Nothing locks; corrections re-close` };
     },
   },
   {
@@ -570,8 +570,8 @@ const tools: VoiceTool[] = [
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
       const target = String(args.targetStatus || '').toLowerCase();
-      if (!caseNumber || !target) return { kind: 'read', text: 'Say which case and which stage, e.g. "Mark case DS-0393 ready".' };
-      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: target, method: 'bank' }, summary: `Confirm: Move case ${caseNumber} to "${target}"` };
+      if (!caseNumber || !target) return { kind: 'read', text: 'Sure — which case do you want to move, and to which stage?' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: target, method: 'bank' }, summary: `Case ${caseNumber} moved to "${target}".` };
     },
   },
   {
@@ -580,7 +580,7 @@ const tools: VoiceTool[] = [
       const caseNumber = String(args.caseNumber || '').toUpperCase();
       let priority = String(args.priority || '').toLowerCase();
       if (priority === 'critical') priority = 'urgent';
-      if (!caseNumber || !priority) return { kind: 'read', text: 'Say: "Set priority of DS-0001 to high."' };
+      if (!caseNumber || !priority) return { kind: 'read', text: 'Sure — which case and what priority — like setting DS-0001 to high?' };
       return { kind: 'action', risk: 'write', pending: { kind: 'casePriority', amount: 0, clinicHint: caseNumber, caseNumber, priority, method: 'bank' }, summary: `Set priority of ${caseNumber} to "${priority}"` };
     },
   },
@@ -589,7 +589,7 @@ const tools: VoiceTool[] = [
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
       const text = String(args.noteText || '').trim().slice(0, 500);
-      if (!caseNumber || !text) return { kind: 'read', text: 'Say: "Add note on case DS-0393: doctor approved wax-up by phone".' };
+      if (!caseNumber || !text) return { kind: 'read', text: 'Sure — which case do you want the note on, and what should it say?' };
       return { kind: 'action', risk: 'write', pending: { kind: 'addCaseNote', amount: 0, clinicHint: caseNumber, caseNumber, noteText: text, method: 'bank' }, summary: `Add note to ${caseNumber}: "${text}"` };
     },
   },
@@ -599,7 +599,7 @@ const tools: VoiceTool[] = [
       const caseNumber = String(args.caseNumber || '').toUpperCase();
       const qcResult = (args.qcResult === 'pass' || args.qcResult === 'fail' ? args.qcResult : 'pass') as 'pass' | 'fail';
       const reason = String(args.qcReason || '');
-      if (!caseNumber || !qcResult) return { kind: 'read', text: 'Say: "QC pass case DS-0393" or "QC fail case DS-0393 margin_fit".' };
+      if (!caseNumber || !qcResult) return { kind: 'read', text: 'Sure — which case and what QC result — pass or fail? If it failed, why: margin_fit, shade_mismatch, occlusion, contact_tightness, finish_polish, damage, dimension or other.' };
       if (qcResult === 'fail' && !reason) {
         return { kind: 'read', text: 'QC fail needs a reason: margin_fit, shade_mismatch, occlusion, contact_tightness, finish_polish, damage, dimension, other.' };
       }
@@ -610,7 +610,7 @@ const tools: VoiceTool[] = [
     id: 'archiveCase', description: 'Archive a delivered case. Args: { caseNumber: string }', risk: 'write',
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
-      if (!caseNumber) return { kind: 'read', text: 'Say: "Archive case DS-0393" — works on delivered cases.' };
+      if (!caseNumber) return { kind: 'read', text: 'Sure — which delivered case do you want to archive?' };
       return { kind: 'action', risk: 'write', pending: { kind: 'archiveCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Archive ${caseNumber}` };
     },
   },
@@ -625,8 +625,8 @@ const tools: VoiceTool[] = [
       if (args.instructions) fields.instructions = String(args.instructions).slice(0, 500);
       if (args.teeth) fields.teeth = Array.isArray(args.teeth) ? args.teeth as number[] : [];
       if (args.delivery_date) fields.delivery_date = String(args.delivery_date);
-      if (!caseNumber) return { kind: 'read', text: 'Say: "Update case DS-0393 — set priority urgent".' };
-      if (!Object.keys(fields).length) return { kind: 'read', text: 'Say which fields: priority, shade, material, instructions, delivery date or teeth.' };
+      if (!caseNumber) return { kind: 'read', text: 'Sure — which case and which fields — priority, shade, material, instructions, delivery date or teeth?' };
+      if (!Object.keys(fields).length) return { kind: 'read', text: 'Sure — which fields — priority, shade, material, instructions, delivery date or teeth?' };
       const summary = Object.entries(fields).map(([k, v]) => `${k} = ${v}`).join(', ');
       return { kind: 'action', risk: 'write', pending: { kind: 'caseUpdateFields', amount: 0, clinicHint: caseNumber, caseNumber, updateFields: fields, method: 'bank' }, summary: `Update ${caseNumber}: ${summary}` };
     },
@@ -636,7 +636,7 @@ const tools: VoiceTool[] = [
     run: (_ctx, args) => {
       const nums = Array.from(new Set((args.caseNumbers as string[] || []).map((n) => n.toUpperCase())));
       const targetStatus = String(args.targetStatus || '').toLowerCase();
-      if (!nums.length || !targetStatus) return { kind: 'read', text: 'Say: "Mark DS-0001, DS-0002 ready".' };
+      if (!nums.length || !targetStatus) return { kind: 'read', text: 'Sure — which cases do you want marked ready? Tell me the numbers, like DS-0001, DS-0002.' };
       const summary = `Move ${nums.length} case(s) (${nums.slice(0, 4).join(', ')}) to "${targetStatus}"`;
       return { kind: 'action', risk: 'write', pending: { kind: 'bulkCaseStatus', amount: 0, clinicHint: nums.join(', '), bulkCaseNumbers: nums, targetStatus, method: 'bank' }, summary };
     },
@@ -645,7 +645,7 @@ const tools: VoiceTool[] = [
     id: 'restoreCase', description: 'Restore an archived case (unarchive it). Args: { caseNumber: string }', risk: 'write',
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
-      if (!caseNumber) return { kind: 'read', text: 'Say: "Restore DS-0001."' };
+      if (!caseNumber) return { kind: 'read', text: 'Sure — which case do you want restored?' };
       return { kind: 'action', risk: 'write', pending: { kind: 'restoreCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Restore ${caseNumber} (unarchive)` };
     },
   },
@@ -654,7 +654,7 @@ const tools: VoiceTool[] = [
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
       const templateName = String(args.templateName || '').replace(/["']/g, '').trim();
-      if (!caseNumber || !templateName) return { kind: 'read', text: 'Say: "Save case DS-0393 as template “Follow-up”."' };
+      if (!caseNumber || !templateName) return { kind: 'read', text: 'Sure — which case do you want saved as a template, and what template name?' };
       return { kind: 'action', risk: 'write', pending: { kind: 'caseTemplateSave', amount: 0, clinicHint: caseNumber, caseNumber, templateName, method: 'bank' }, summary: `Save template "${templateName}" from ${caseNumber}` };
     },
   },
@@ -663,7 +663,7 @@ const tools: VoiceTool[] = [
     id: 'deleteCase', description: 'Delete a case permanently. Args: { caseNumber: string }', risk: 'destructive',
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
-      if (!caseNumber) return { kind: 'read', text: 'Say: "Delete case DS-0393."' };
+      if (!caseNumber) return { kind: 'read', text: 'Sure — which case do you want deleted?' };
       return { kind: 'action', risk: 'destructive', pending: { kind: 'deleteCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Delete ${caseNumber} permanently` };
     },
   },
@@ -671,16 +671,16 @@ const tools: VoiceTool[] = [
     id: 'purgeCase', description: 'Permanently delete a case and purge its data. Args: { caseNumber: string }', risk: 'destructive',
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
-      if (!caseNumber) return { kind: 'read', text: 'Say: "Purge case DS-0393."' };
-      return { kind: 'action', risk: 'destructive', pending: { kind: 'purgeCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Purge ${caseNumber} — case, notes, attachments, QC data erased` };
+      if (!caseNumber) return { kind: 'read', text: 'Sure — which case do you want purged? Its case, notes, attachments and QC data are removed for good.' };
+      return { kind: 'action', risk: 'destructive', pending: { kind: 'purgeCase', amount: 0, clinicHint: caseNumber, caseNumber, method: 'bank' }, summary: `Purge ${caseNumber} - case, notes, attachments, QC data erased` };
     },
   },
   {
     id: 'cancelCase', description: 'Cancel a case. Args: { caseNumber: string }', risk: 'write',
     run: (_ctx, args) => {
       const caseNumber = String(args.caseNumber || '').toUpperCase();
-      if (!caseNumber) return { kind: 'read', text: 'Say which case — e.g. "Cancel case DS-0393".' };
-      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: 'cancelled', method: 'bank' }, summary: `Confirm: Cancel case ${caseNumber}` };
+      if (!caseNumber) return { kind: 'read', text: 'Sure — which case do you want cancelled?' };
+      return { kind: 'action', risk: 'write', pending: { kind: 'setCaseStatus', amount: 0, clinicHint: caseNumber, caseNumber, targetStatus: 'cancelled', method: 'bank' }, summary: `Case ${caseNumber} cancelled.` };
     },
   },
   {
@@ -688,7 +688,7 @@ const tools: VoiceTool[] = [
     run: (_ctx, args) => {
       const clinic = String(args.clinic || '').trim();
       const doctor = String(args.doctorName || '').trim().replace(/^dr\.?\s*/i, 'Dr ');
-      if (!clinic || !doctor || doctor.length < 2) return { kind: 'read', text: 'Say "Update doctor for Mir Dental to Dr Tariq".' };
+      if (!clinic || !doctor || doctor.length < 2) return { kind: 'read', text: 'Sure — which clinic and which doctor? Tell me the doctor’s name, like Dr Tariq at Mir Dental.' };
       return { kind: 'action', risk: 'write', pending: { kind: 'updateClinicDoctor', amount: 0, clinicHint: clinic, doctorName: doctor, method: 'bank' }, summary: `Set doctor for ${clinic} to ${doctor}` };
     },
   },
@@ -698,7 +698,7 @@ const tools: VoiceTool[] = [
       const field = String(args.field || '').toLowerCase() as 'name' | 'phone' | 'email' | 'address' | 'city' | 'doctor';
       const clinic = String(args.clinic || '').trim();
       const value = String(args.value || '').trim();
-      if (!clinic || !value || value.length > 200) return { kind: 'read', text: 'Say: "Update phone for Mir Dental to 0300-1234567".' };
+      if (!clinic || !value || value.length > 200) return { kind: 'read', text: 'Sure — which clinic and what phone number? Like 0300-1234567 for Mir Dental.' };
       return { kind: 'action', risk: 'write', pending: { kind: 'updateClinicField', amount: 0, clinicHint: clinic, field, value, method: 'bank' }, summary: `Update ${field} for ${clinic} to "${value}"` };
     },
   },
@@ -708,8 +708,8 @@ const tools: VoiceTool[] = [
       const phase = getAutoUpdatePhase();
       const last = getLastUpdateCheck();
       let text = summarizeUpdatePhase(phase);
-      if (last) text += ` — last check: ${last.state}${last.version ? ` (version ${last.version})` : ''} at ${last.at}`.replace(/—/, ',');
-      return { kind: 'read', text: `Update status — ${text}.` };
+      if (last) text += ` - last check: ${last.state}${last.version ? ` (version ${last.version})` : ''} at ${last.at}`.replace(/-/, ',');
+      return { kind: 'read', text: `Update status - ${text}.` };
     },
   },
   {
@@ -718,36 +718,36 @@ const tools: VoiceTool[] = [
       const phase = await runAutoUpdate();
       const last = getLastUpdateCheck();
       let text = summarizeUpdatePhase(phase);
-      if (last) text += ` — last check: ${last.state}${last.version ? ` (version ${last.version})` : ''} at ${last.at}`.replace(/—/, ',');
-      return { kind: 'read', text: `Checked now — ${text}.` };
+      if (last) text += ` - last check: ${last.state}${last.version ? ` (version ${last.version})` : ''} at ${last.at}`.replace(/-/, ',');
+      return { kind: 'read', text: `Checked now - ${text}.` };
     },
   },
   {
-    id: 'applyPatch', description: 'Apply the hot patch if one is available (say "apply the hot patch"). No-op otherwise. No args.', risk: 'write',
+    id: 'applyPatch', description: 'Apply the hot patch if one is available. No-op otherwise. No args.', risk: 'write',
     run: async () => {
       const phase = getAutoUpdatePhase();
       if (phase.state !== 'patch_available') {
-        return { kind: 'read', text: `No hot patch is available — update state: ${summarizeUpdatePhase(phase)}.` };
+        return { kind: 'read', text: `No hot patch is available - update state: ${summarizeUpdatePhase(phase)}.` };
       }
       const after = await applyPatch();
       if (after.state === 'patched') return { kind: 'read', text: `Applying the hot patch…` };
-      if (after.state === 'patch_applying') return { kind: 'read', text: 'Hot patch applying — the app will reload when done.' };
-      return { kind: 'read', text: `Hot patch not applied — state: ${summarizeUpdatePhase(after)}.` };
+      if (after.state === 'patch_applying') return { kind: 'read', text: 'Hot patch applying - the app will reload when done.' };
+      return { kind: 'read', text: `Hot patch not applied - state: ${summarizeUpdatePhase(after)}.` };
     },
   },
   // ── Help ───────────────────────────────────────────────────────────────
   {
-    id: 'fillForm', description: 'Pre-fill an open form by voice. Args: { target: string, data: object }. target is one of: "record-transaction-modal" (the Record Payment form: fields amount, method, date, referenceNumber), "case-detail-modal" (New Case form, create mode: fields patientName, caseTypeId, price, shade, deliveryDate, instructions). The form fills now — review it on screen, then press submit (or say "cancel"). Does not commit anything.', risk: 'write',
+    id: 'fillForm', description: 'Pre-fill an open form by voice. Args: { target: string, data: object }. target is one of: "record-transaction-modal" (the Record Payment form: fields amount, method, date, referenceNumber), "case-detail-modal" (New Case form, create mode: fields patientName, caseTypeId, price, shade, deliveryDate, instructions). The form fills now - review it on screen, then press submit (or say "cancel"). Does not commit anything.', risk: 'write',
     run: (_ctx, args) => {
       const target = String(args.target || '');
       const data = (args.data && typeof args.data === 'object' ? args.data : {}) as JarvisFormData;
-      if (!target) return { kind: 'read', text: 'Say: "Fill the payment form — amount 5000, method bank".' };
+      if (!target) return { kind: 'read', text: 'Which form do you want to fill — the record-payment form or the case-detail form?' };
       const ok = fillJarvisForm(target, data);
       if (!ok) {
         const available = jarvisFormTargets();
-        return { kind: 'read', text: `No form named "${target}" is open${available.length ? `. Open one first — available forms: ${available.join(', ')}` : ''}. Say: "Open record payment".` };
+        return { kind: 'read', text: `No form named "${target}" is open${available.length ? `. Open one first - available forms: ${available.join(', ')}` : ''}. Tell me which one you want.` };
       }
-      return { kind: 'read', text: `I filled ${target} — review it on screen, press submit, or say “cancel”.` };
+      return { kind: 'read', text: `I filled ${target} - review it on screen and press submit, or press cancel.` };
     },
   },
   {
@@ -762,7 +762,7 @@ const tools: VoiceTool[] = [
         '• Clinics: add contacts, addresses, pricing overrides',
         '• Settings/print: "Invoice sections only brand, lineItems, totals", "Print settings A4", "Set notifications 1 day before"',
         '• Billing: "Record payment of PKR 5,000 for Mir Dental", "Apply advance PKR 25,000 to INV-0042", "Mark INV-0042 paid", "Mark INV-0042, INV-0043 paid"',
-        '• Cases: "show cases", "DS-0001" (then just "ready" / "delivered" / "QC pass" / "archive"), "Mark case DS-0393 ready", "update DS-0001 — shade A2, priority urgent", "set DS-0001 priority high", "mark DS-0001, DS-0002 ready", "restore DS-0001", "save DS-0001 as template “Follow-up”"',
+        '• Cases: "show cases", "DS-0001" (then just "ready" / "delivered" / "QC pass" / "archive"), "Mark case DS-0393 ready", "update DS-0001 - shade A2, priority urgent", "set DS-0001 priority high", "mark DS-0001, DS-0002 ready", "restore DS-0001", "save DS-0001 as template “Follow-up”"',
         '• Delete (typed confirm): "delete DS-0001", "purge DS-0001"',
         '• Write (amber confirmation): "Add clinic Mir Dental", "Mark case DS-0393 ready", "Update doctor for Mir Dental to Dr Tariq", "Update phone for Mir Dental to 0300-1234567", "Add note on case DS-0393", "QC pass/fail case DS-0393", "Archive case DS-0393"',
         '• Code/docs: "How does the monthly statement compute closing balance?"',
@@ -779,7 +779,7 @@ export const toolDescriptions = () => tools.map((t) => `• ${t.description}`).j
 export const riskForResult = (result: VoiceToolResult): VoiceRisk =>
   (result && result.kind === 'action' ? result.risk : 'read') as VoiceRisk;
 
-/** Machine-readable parameter hints per tool id — used to build Groq JSON Schema. */
+/** Machine-readable parameter hints per tool id - used to build Groq JSON Schema. */
 export const TOOL_PARAMS: Record<string, { required: string[]; optional: string[] }> = {
   navigate: { required: ['view'], optional: [] },
   cashCollected: { required: [], optional: ['period'] },
