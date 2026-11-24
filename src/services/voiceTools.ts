@@ -202,9 +202,9 @@ export const getDueTodayBriefing = (ctx: VoiceContext): string => {
 
 /** Count cases — total, by clinic, or by status. Natural language answers. */
 export const getCaseCount = (ctx: VoiceContext, clinicId?: string, status?: string): string => {
-  const cases = (ctx.cases || []).filter((c) => !c.archived_at);
-  if (clinicId) cases.filter((c) => c.lab_id === clinicId);
-  if (status) cases.filter((c) => c.status === status);
+  let cases = (ctx.cases || []).filter((c) => !c.archived_at);
+  if (clinicId) cases = cases.filter((c) => c.lab_id === clinicId);
+  if (status) cases = cases.filter((c) => c.status === status);
   const label = status ? ` ${status} ` : ' ';
   const clinicLabel = clinicId ? ` for ${(ctx.labs || []).find((l) => l.id === clinicId)?.name || 'that clinic'}` : '';
   return `You have ${cases.length}${label}case${cases.length === 1 ? '' : 's'}${clinicLabel}.`;
