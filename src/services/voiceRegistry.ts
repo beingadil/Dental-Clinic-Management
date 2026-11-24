@@ -24,6 +24,7 @@ import {
   getQcCaseState, getQcInspectionLog, getQcSummary, getQcGateCheck, getQcReworkList, qcReasonCodeList,
   getCaseDetail, getCaseSearch, getCaseTimeline, getCaseNotes, getCaseAttachments, getCaseNotesSearch,
   getCaseCount, getTodayCases, getCasesByClinic, getCasesByStatus,
+  getPatientCases, getInvoiceByAmount, getClinicOutstanding, getQcPending,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { type WriteCommand, type CaseUpdateFields } from './voiceWrite';
@@ -323,6 +324,35 @@ const tools: VoiceTool[] = [
       if (!status) return { kind: 'read', text: 'Which status? Like ready, delivered, qc, overdue, cancelled.' };
       return { kind: 'read', text: getCasesByStatus(ctx, status) };
     },
+  },
+  {
+    id: 'patient_cases', description: 'Find cases by patient name (partial match). Args: { patientName: string }', risk: 'read',
+    run: (ctx, args) => {
+      const name = String(args.patientName || '');
+      if (!name) return { kind: 'read', text: 'Which patient do you mean? Tell me the name.' };
+      return { kind: 'read', text: getPatientCases(ctx, name) };
+    },
+  },
+  {
+    id: 'invoice_by_amount', description: 'Find invoices by amount. Args: { amount: number }', risk: 'read',
+    run: (ctx, args) => {
+      const amount = Number(args.amount || 0);
+      if (!amount || amount <= 0) return { kind: 'read', text: 'Which amount? Tell me the PKR amount, like 5000 or 25000.' };
+      return { kind: 'read', text: getInvoiceByAmount(ctx, amount) };
+    },
+  },
+  {
+    id: 'clinic_outstanding', description: 'Outstanding invoices for a clinic. Args: { clinic: string } — clinic name', risk: 'read',
+    run: (ctx, args) => {
+      const clinicName = String(args.clinic || '');
+      const lab = (ctx.labs || []).find((l) => l.name.toLowerCase().includes(clinicName.toLowerCase()));
+      if (!lab) return { kind: 'read', text: `I could not find a clinic named "${clinicName}".` };
+      return { kind: 'read', text: getClinicOutstanding(ctx, lab.id) };
+    },
+  },
+  {
+    id: 'qc_pending', description: 'Cases needing QC attention (failed or not yet inspected). No args.', risk: 'read',
+    run: (ctx) => ({ kind: 'read', text: getQcPending(ctx) }),
   },
   {
     id: 'exportInvoicesCsv', description: 'Export the invoice list as a CSV file. No args.', risk: 'read',

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { VoiceOrb, type VoiceOrbState } from './VoiceOrb';
 import { listMemories, clearMemories } from '../../services/voiceMemory';
-import { X, SendHorizonal, AudioLines, CheckCircle2, History, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
+import { X, SendHorizonal, AudioLines, CheckCircle2, History, Sparkles, Maximize2, Minimize2, Mic } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { moduleForView, isViewProtected, isModuleUnlocked } from '../../services/moduleSecurity';
 import { speak, cancelSpeech } from '../../services/voiceUtterance';
@@ -198,11 +198,23 @@ export const VoiceShell: React.FC = () => {
   const submit = async (raw?: string) => {
     const text = (raw ?? query).trim();
     if (!text || busy) return;
-    /* Destructive confirmation via the typed token — the red gate stays. */
+    /* Destructive confirmation — accept typed token OR spoken token match. */
     if (pending && pendingRisk === 'destructive') {
-      if (typedMatch()) { executeWrite(pending); setPending(null); setPendingNote(''); setExpectTyped(null); setStatus('done'); return; }
+      const norm = (s: string) => s.replace(/\s+/g, '').toUpperCase();
+      const want = norm(expectTyped || '');
+      const typedOk = typedMatch();
+      const spokenOk = !!want && norm(text) === want;
+      if (typedOk || spokenOk) {
+        executeWrite(pending);
+        setPending(null);
+        setPendingNote('');
+        setExpectTyped(null);
+        setTypedConfirm('');
+        setStatus('done');
+        return;
+      }
       setStatus('typing');
-      setAnswer(`Type “${expectTyped}” to confirm — this cannot be undone.`);
+      setAnswer(`Say “${expectTyped}” or type it to confirm — this cannot be undone.`);
       return;
     }
     /* Everything — reads, writes, navigation — goes through the agentic loop
@@ -862,21 +874,31 @@ export const VoiceShell: React.FC = () => {
               <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : ''}</div>
               <p className="mt-1.5">{answer}</p>
               {pendingRisk === 'destructive' && (
-                <p className="mt-1 text-[10px] font-semibold text-rose-600">Type the confirmation above, then press “Confirm destructive”. Spoken “confirm” is not accepted.</p>
+                <>
+                  <p className="mt-1 text-[10px] font-semibold text-rose-600">Say “{expectTyped}” to confirm this cannot be undone. Or type it above.</p>
+                  {expectTyped && (
+                    <div className="mt-1 flex items-center gap-1 px-2 py-1 rounded bg-rose-50 text-[10px] font-semibold text-rose-900">
+                      <Mic className="h-3 w-3" /> Spoken: “{expectTyped}”
+                    </div>
+                  )}
+                </>
               )}
               <div className="mt-2 flex gap-2">
                 {pendingRisk === 'destructive' ? (
-                  <input
-                    type="text"
-                    value={typedConfirm}
-                    onChange={(e) => setTypedConfirm(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
-                    aria-label="Type to confirm"
-                    className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-xs font-bold text-rose-900"
-                  />
+                  <>
+                    <input
+                      type="text"
+                      value={typedConfirm}
+                      onChange={(e) => setTypedConfirm(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+                      placeholder={`Type “${expectTyped}”`}
+                      aria-label="Type to confirm"
+                      className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-xs font-bold text-rose-900"
+                    />
+                    <button type="button" onClick={() => void submit()} className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700">Confirm destructive</button>
+                    <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
+                  </>
                 ) : null}
-                <button type="button" onClick={() => void submit()} className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700">Confirm destructive</button>
-                <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
               </div>
             </div>
           )}

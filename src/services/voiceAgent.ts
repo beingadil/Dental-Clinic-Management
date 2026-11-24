@@ -64,6 +64,10 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   cases_today: { required: [], optional: ['clinic'], describe: 'Cases due today. Optional: clinic name' },
   cases_by_clinic: { required: ['clinic'], optional: [], describe: 'All active cases for a clinic. Args: clinic name' },
   cases_by_status: { required: ['status'], optional: [], describe: 'All active cases in a status. Args: status (draft|received|in_progress|qc|ready|delivered|revision|cancelled)' },
+  patient_cases: { required: ['patientName'], optional: [], describe: 'Find cases by patient name (partial match). Args: patient name' },
+  invoice_by_amount: { required: ['amount'], optional: [], describe: 'Find invoices by amount. Args: PKR amount' },
+  clinic_outstanding: { required: ['clinic'], optional: [], describe: 'Outstanding invoices for a clinic. Args: clinic name' },
+  qc_pending: { required: [], optional: [], describe: 'Cases needing QC attention (failed or not yet inspected). No args.' },
 };
 
 const toolCatalog = () =>

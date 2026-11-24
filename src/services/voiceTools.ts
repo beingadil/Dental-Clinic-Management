@@ -373,6 +373,52 @@ export const getCaseNotesSearch = (ctx: VoiceContext, q: string) => {
   return `Found ${hits.length} note(s): ${hits.slice(0, 6).join('; ')}`;
 };
 
+/** Find cases by patient name (partial match). */
+export const getPatientCases = (ctx: VoiceContext, patientName: string): string => {
+  const lower = (patientName || '').toLowerCase().trim();
+  if (!lower) return 'Which patient do you mean? Tell me the name.';
+  const hits = (ctx.cases || [])
+    .filter((c) => !c.archived_at)
+    .filter((c) => (c.patient_name || '').toLowerCase().includes(lower));
+  if (!hits.length) return `No cases found for patient "${patientName}".`;
+  return `Cases for "${patientName}" (${hits.length}): ${hits.map((c) => `${c.case_number} — ${c.case_type_name || 'Case'} — ${c.status}`).join('; ')}.`;
+};
+
+/** Find invoices by amount (partial match). */
+export const getInvoiceByAmount = (ctx: VoiceContext, amount: number): string => {
+  const hits = (ctx.invoices || [])
+    .filter((i) => Math.abs((i.final_amount || i.amount || 0) - amount) < 1);
+  if (!hits.length) return `No invoices found for PKR ${amount.toLocaleString()}.`;
+  return `Invoices for PKR ${amount.toLocaleString()} (${hits.length}): ${hits.map((i) => `${i.invoice_number} — ${i.lab_name || 'clinic'} — ${i.payment_status || 'unpaid'}`).join('; ')}.`;
+};
+
+/** Outstanding invoices for a specific clinic — natural language. */
+export const getClinicOutstanding = (ctx: VoiceContext, clinicId: string): string => {
+  const clinic = (ctx.labs || []).find((l) => l.id === clinicId);
+  const invoices = (ctx.invoices || [])
+    .filter((i) => i.lab_id === clinicId)
+    .filter((i) => invoiceBalanceDue(i) > 0);
+  if (!invoices.length) return `${clinic?.name || 'That clinic'} has no outstanding invoices.`;
+  const total = invoices.reduce((acc, inv) => acc + invoiceBalanceDue(inv), 0);
+  return `Outstanding invoices for ${clinic?.name || 'that clinic'} (${invoices.length}): PKR ${total.toLocaleString()} total. ${invoices.slice(0, 6).map((i) => `${i.invoice_number}: PKR ${invoiceBalanceDue(i).toLocaleString()}`).join('; ')}.`;
+};
+
+/** Pending QC items (not yet passed). */
+export const getQcPending = (ctx: VoiceContext): string => {
+  const hits: string[] = [];
+  for (const c of ctx.cases || []) {
+    if (c.archived_at || c.status === 'delivered' || c.status === 'cancelled') continue;
+    const state = deriveQcCaseState(ctx.qcInspections || [], c.id);
+    if (state.attempts === 0) {
+      hits.push(`${c.case_number}: no QC inspection yet`);
+    } else if (!state.passed) {
+      hits.push(`${c.case_number}: QC failed (attempt ${state.attempts})`);
+    }
+  }
+  if (!hits.length) return 'All cases have passed QC or have no inspections.';
+  return `Cases needing QC attention (${hits.length}): ${hits.slice(0, 8).join('; ')}.`;
+};
+
 /** Status-change history for one case. */
 export const getCaseTimeline = (ctx: VoiceContext, caseNumber: string | null | undefined, limit = 12) => {
   const c = findCase(ctx, caseNumber);
