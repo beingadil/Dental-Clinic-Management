@@ -674,9 +674,22 @@ export const VoiceShell: React.FC = () => {
         try {
           // Watchdog: if the recorder doesn't start in time, don't sit at
           // "Listening…" forever — surface an error instead of a silent stall.
+          // Retry the clip start once: a dropped getUserMedia or recorder
+          // error shouldn't dead-end the mic button.
+          const startClip = async (): Promise<RecordingHandle> => {
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              try {
+                return await recordClip();
+              } catch (err) {
+                if (attempt === 1) throw err;
+                await new Promise((r) => setTimeout(r, 500));
+              }
+            }
+            throw new Error('recordClip-no-handle');
+          };
           const handle = await new Promise<RecordingHandle>((resolve, reject) => {
             clipStartTimer = window.setTimeout(() => reject(new Error('clip-start-timeout')), 4000);
-            void recordClip().then((h) => { window.clearTimeout(clipStartTimer!); clipStartTimer = null; resolve(h); });
+            void startClip().then((h) => { window.clearTimeout(clipStartTimer!); clipStartTimer = null; resolve(h); });
           });
           const timeout = window.setTimeout(async () => {
             try {
