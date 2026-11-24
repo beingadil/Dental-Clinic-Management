@@ -60,6 +60,10 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   cancelCase: { required: ['caseNumber'], optional: [], describe: 'Cancel a case' },
   addNote: { required: ['caseNumber', 'note'], optional: [], describe: 'Add a note on a case' },
   case_notes_search: { required: ['query'], optional: [], describe: 'Search case notes by content across all cases' },
+  case_count: { required: [], optional: ['clinic', 'status'], describe: 'Count cases. Optional: clinic name, status (draft|received|in_progress|qc|ready|delivered|revision|cancelled)' },
+  cases_today: { required: [], optional: ['clinic'], describe: 'Cases due today. Optional: clinic name' },
+  cases_by_clinic: { required: ['clinic'], optional: [], describe: 'All active cases for a clinic. Args: clinic name' },
+  cases_by_status: { required: ['status'], optional: [], describe: 'All active cases in a status. Args: status (draft|received|in_progress|qc|ready|delivered|revision|cancelled)' },
 };
 
 const toolCatalog = () =>

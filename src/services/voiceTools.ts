@@ -200,6 +200,45 @@ export const getDueTodayBriefing = (ctx: VoiceContext): string => {
   return briefing || `${open.length} open case(s) in total.`;
 };
 
+/** Count cases — total, by clinic, or by status. Natural language answers. */
+export const getCaseCount = (ctx: VoiceContext, clinicId?: string, status?: string): string => {
+  const cases = (ctx.cases || []).filter((c) => !c.archived_at);
+  if (clinicId) cases.filter((c) => c.lab_id === clinicId);
+  if (status) cases.filter((c) => c.status === status);
+  const label = status ? ` ${status} ` : ' ';
+  const clinicLabel = clinicId ? ` for ${(ctx.labs || []).find((l) => l.id === clinicId)?.name || 'that clinic'}` : '';
+  return `You have ${cases.length}${label}case${cases.length === 1 ? '' : 's'}${clinicLabel}.`;
+};
+
+/** Cases due today — natural language. */
+export const getTodayCases = (ctx: VoiceContext, clinicId?: string): string => {
+  const today = new Date().toISOString().slice(0, 10);
+  const cases = (ctx.cases || [])
+    .filter((c) => !c.archived_at && c.status !== 'delivered' && c.status !== 'cancelled')
+    .filter((c) => String(c.delivery_date).slice(0, 10) === today)
+    .filter((c) => !clinicId || c.lab_id === clinicId);
+  if (!cases.length) return clinicId ? 'No cases due today for that clinic.' : 'No cases due today.';
+  return `Cases due today${clinicId ? ' for that clinic' : ''} (${cases.length}): ${cases.map((c) => `${c.case_number} — ${c.case_type_name || 'Case'} — ${c.status}`).join('; ')}.`;
+};
+
+/** All cases for a specific clinic — natural language. */
+export const getCasesByClinic = (ctx: VoiceContext, clinicId: string): string => {
+  const clinic = (ctx.labs || []).find((l) => l.id === clinicId);
+  const cases = (ctx.cases || [])
+    .filter((c) => c.lab_id === clinicId && !c.archived_at)
+    .filter((c) => c.status !== 'delivered' && c.status !== 'cancelled');
+  if (!cases.length) return `No open cases for ${clinic?.name || 'that clinic'}.`;
+  return `Open cases for ${clinic?.name || 'that clinic'} (${cases.length}): ${cases.map((c) => `${c.case_number} — ${c.case_type_name || 'Case'} — ${c.status}`).join('; ')}.`;
+};
+
+/** Cases in a specific status — natural language. */
+export const getCasesByStatus = (ctx: VoiceContext, status: string): string => {
+  const cases = (ctx.cases || [])
+    .filter((c) => !c.archived_at && c.status === status);
+  if (!cases.length) return `No cases in "${status}" status.`;
+  return `Cases in "${status}" status (${cases.length}): ${cases.map((c) => `${c.case_number} — ${c.case_type_name || 'Case'}`).join('; ')}.`;
+};
+
 /** The 30-day auto-archive predicate, applied on demand with a spoken confirm. */
 export const bulkArchivePreview = (ctx: VoiceContext) => {
   const due = selectCasesToAutoArchive(ctx.cases || [], new Date(`${getTodayStr()}T00:00:00`));

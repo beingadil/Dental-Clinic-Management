@@ -30,15 +30,18 @@ interface JarvisContextValue {
   sendCommand: (prompt: string) => Promise<void>;
   /** Current pending confirmation (write or destructive). */
   pending: AgentResult | null;
-  /** Confirm the pending write (amber). */
-  confirmPending: () => void;
-  /** Confirm the pending destructive action (typed token already validated). */
-  confirmDestructive: (typedToken: string) => void;
+  /** Confirm the pending write (amber). Pass 'confirm' / 'cancel' for spoken input. */
+  confirmPending: (spokenConfirm?: 'confirm' | 'cancel') => void;
+  /** Confirm the pending destructive action. Pass a spoken token to match by voice;
+   *  omit it to validate the typed `typedToken` instead. */
+  confirmDestructive: (spokenToken?: string) => void;
   /** Cancel the pending action. */
   cancelPending: () => void;
   /** Typed token input value (for destructive confirmation). */
   typedToken: string;
   setTypedToken: (v: string) => void;
+  /** Token Jarvis expects to hear spoken back for a pending destructive action. */
+  expectedSpokenToken: string;
   /** Whether Jarvis is currently processing. */
   busy: boolean;
   /** Last spoken answer (for TTS + UI display). */
@@ -107,7 +110,18 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState('');
   const [typedToken, setTypedToken] = useState('');
+  /** Token Jarvis expects to hear spoken back for a pending destructive action. */
+  const [expectedSpokenToken, setExpectedSpokenToken] = useState('');
   const { record: auditRecord, log: auditLog, setUserId: auditSetUserId } = useJarvisAudit();
+
+  /** Expected spoken confirmation token for a destructive pending action:
+   *  "DELETE DS-0001" / "PURGE DS-0001". */
+  const destructiveSpokenToken = useCallback((result: AgentResult): string => {
+    const kind = result.pendingWrite?.kind;
+    const num = String(result.pendingWrite?.caseNumber || '').trim();
+    if (!num) return '';
+    return kind === 'purgeCase' ? `PURGE ${num}` : `DELETE ${num}`;
+  }, []);
 
   if (user) auditSetUserId(user.id);
 
@@ -196,10 +210,21 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Pending write → amber confirmation.
+        // Pending write → amber confirmation; destructive → red gate, speak the
+        // spoken confirmation token so the user can say it back.
         if (result.pendingWrite) {
           setPending(result);
           auditRecord('write', String(result.pendingWrite.kind), null, result.pendingWrite, 'write', false);
+          if (result.risk === 'destructive') {
+            const token = destructiveSpokenToken(result);
+            setExpectedSpokenToken(token);
+            void speak(`Say '${token}' to confirm this cannot be undone.`, {
+              rate: 1,
+              voiceUri: undefined,
+              locale: userPreferences?.voice_locale,
+              allowClinicalDetail: false,
+            });
+          }
           setBusy(false);
           return;
         }
@@ -220,43 +245,75 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     [user, currentView, labs, invoices, cases, advancePayments, accountAdjustments, setCurrentView, auditRecord, userPreferences],
   );
 
-  const confirmPending = useCallback(() => {
-    if (!pending) return;
-    if (pending.risk === 'destructive') {
-      // Destructive needs typed token — handled by confirmDestructive.
-      return;
-    }
-    // Amber write — execute now.
-    setAnswer(`Executing: ${pending.text}`);
-    auditRecord('write', String(pending.pendingWrite?.kind), null, pending.pendingWrite, 'write', true);
-    setPending(null);
-    setBusy(false);
-  }, [pending, auditRecord]);
-
-  const confirmDestructive = useCallback(
-    (typed: string) => {
-      if (!pending || pending.risk !== 'destructive') return;
-      const expected = pending.text.match(/type\s+"([^"]+)"/)?.[1] || pending.pendingWrite?.caseNumber || '';
-      if (typed.toUpperCase() !== expected.toUpperCase()) {
-        setAnswer(`Typed token didn't match "${expected}". Action cancelled.`);
+  const confirmPending = useCallback(
+    (spokenConfirm?: 'confirm' | 'cancel') => {
+      if (!pending) return;
+      if (pending.risk === 'destructive') {
+        // Destructive needs a token — handled by confirmDestructive.
+        return;
+      }
+      // Spoken "cancel" aborts an amber write; spoken "confirm" or a click executes.
+      if (spokenConfirm === 'cancel') {
         setPending(null);
-        setTypedToken('');
-        auditRecord('destructive', String(pending.pendingWrite?.kind), null, pending.pendingWrite, 'destructive', false);
+        setAnswer('Cancelled.');
         setBusy(false);
         return;
       }
-      setAnswer(`Executing destructive: ${pending.text}`);
-      auditRecord('destructive', String(pending.pendingWrite?.kind), null, pending.pendingWrite, 'destructive', true);
+      // Amber write — execute now.
+      setAnswer(`Executing: ${pending.text}`);
+      auditRecord('write', String(pending.pendingWrite?.kind), null, pending.pendingWrite, 'write', true);
       setPending(null);
-      setTypedToken('');
       setBusy(false);
     },
     [pending, auditRecord],
   );
 
+  const confirmDestructive = useCallback(
+    (spokenToken?: string) => {
+      if (!pending || pending.risk !== 'destructive') return;
+
+      const expected = expectedSpokenToken || pending.pendingWrite?.caseNumber || '';
+      const candidate = spokenToken !== undefined ? spokenToken : typedToken;
+
+      const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toUpperCase();
+
+      if (norm(candidate) !== norm(expected)) {
+        if (spokenToken !== undefined) {
+          // Spoken path: keep the gate open and invite a retry or cancel.
+          setAnswer(`That doesn't match. Say '${expected}' to confirm, or 'cancel' to abort.`);
+          void speak(`That doesn't match. Say ${expected} to confirm, or cancel to abort.`, {
+            rate: 1,
+            voiceUri: undefined,
+            locale: userPreferences?.voice_locale,
+            allowClinicalDetail: false,
+          });
+          setBusy(false);
+          return;
+        }
+        // Typed path: reject and cancel (existing behaviour).
+        setAnswer(`Typed token didn't match "${expected}". Action cancelled.`);
+        setPending(null);
+        setExpectedSpokenToken('');
+        setTypedToken('');
+        auditRecord('destructive', String(pending.pendingWrite?.kind), null, pending.pendingWrite, 'destructive', false);
+        setBusy(false);
+        return;
+      }
+
+      setAnswer(`Executing destructive: ${pending.text}`);
+      auditRecord('destructive', String(pending.pendingWrite?.kind), null, pending.pendingWrite, 'destructive', true);
+      setPending(null);
+      setExpectedSpokenToken('');
+      setTypedToken('');
+      setBusy(false);
+    },
+    [pending, expectedSpokenToken, typedToken, userPreferences?.voice_locale, auditRecord],
+  );
+
   const cancelPending = useCallback(() => {
     setPending(null);
     setTypedToken('');
+    setExpectedSpokenToken('');
     setAnswer('Cancelled.');
     setBusy(false);
   }, []);
@@ -265,6 +322,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     cancelSpeech();
     setPending(null);
     setTypedToken('');
+    setExpectedSpokenToken('');
     setBusy(false);
     setAnswer('');
   }, []);
@@ -277,6 +335,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     cancelPending,
     typedToken,
     setTypedToken,
+    expectedSpokenToken,
     busy,
     answer,
     cancelAll,

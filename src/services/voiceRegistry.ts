@@ -23,6 +23,7 @@ import {
   searchInvoicesInContext, getCodeAnswer, clinicCandidates, narrateStatement, getTodayBriefing,
   getQcCaseState, getQcInspectionLog, getQcSummary, getQcGateCheck, getQcReworkList, qcReasonCodeList,
   getCaseDetail, getCaseSearch, getCaseTimeline, getCaseNotes, getCaseAttachments, getCaseNotesSearch,
+  getCaseCount, getTodayCases, getCasesByClinic, getCasesByStatus,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { type WriteCommand, type CaseUpdateFields } from './voiceWrite';
@@ -278,6 +279,49 @@ const tools: VoiceTool[] = [
     run: (ctx, args) => {
       const num = String(args.caseNumber || '').match(/DS-\d+/i)?.[0]?.toUpperCase();
       return { kind: 'read', text: getCaseAttachments(ctx, num) };
+    },
+  },
+  {
+    id: 'case_count', description: 'Count total cases, or cases for a clinic, or cases in a status. Args: { clinic?: string, status?: string } — clinic is clinic name, status: draft|received|in_progress|qc|ready|delivered|revision|cancelled', risk: 'read',
+    run: (ctx, args) => {
+      const clinicName = String(args.clinic || '');
+      let clinicId: string | undefined;
+      if (clinicName) {
+        const lab = (ctx.labs || []).find((l) => l.name.toLowerCase().includes(clinicName.toLowerCase()));
+        if (!lab) return { kind: 'read', text: `I could not find a clinic named "${clinicName}".` };
+        clinicId = lab.id;
+      }
+      return { kind: 'read', text: getCaseCount(ctx, clinicId, status ? String(status) : undefined) };
+    },
+  },
+  {
+    id: 'cases_today', description: 'Cases due today (delivery date = today). Args: { clinic?: string } — clinic is optional clinic name', risk: 'read',
+    run: (ctx, args) => {
+      const clinicName = String(args.clinic || '');
+      let clinicId: string | undefined;
+      if (clinicName) {
+        const lab = (ctx.labs || []).find((l) => l.name.toLowerCase().includes(clinicName.toLowerCase()));
+        if (!lab) return { kind: 'read', text: `I could not find a clinic named "${clinicName}".` };
+        clinicId = lab.id;
+      }
+      return { kind: 'read', text: getTodayCases(ctx, clinicId) };
+    },
+  },
+  {
+    id: 'cases_by_clinic', description: 'All active cases for a specific clinic. Args: { clinic: string } — clinic name', risk: 'read',
+    run: (ctx, args) => {
+      const clinicName = String(args.clinic || '');
+      const lab = (ctx.labs || []).find((l) => l.name.toLowerCase().includes(clinicName.toLowerCase()));
+      if (!lab) return { kind: 'read', text: `I could not find a clinic named "${clinicName}".` };
+      return { kind: 'read', text: getCasesByClinic(ctx, lab.id) };
+    },
+  },
+  {
+    id: 'cases_by_status', description: 'All active cases in a given status. Args: { status: string } — status: draft|received|in_progress|qc|ready|delivered|revision|cancelled', risk: 'read',
+    run: (ctx, args) => {
+      const status = String(args.status || '');
+      if (!status) return { kind: 'read', text: 'Which status? Like ready, delivered, qc, overdue, cancelled.' };
+      return { kind: 'read', text: getCasesByStatus(ctx, status) };
     },
   },
   {
