@@ -71,7 +71,7 @@ describe('the compact Daily Lab Report PDF', () => {
   it('prints the operator and the period in the header', () => {
     const { pdf } = buildDailyLabReportPdf([row()], meta());
     const text = streamText(pdf);
-    expect(text).toContain('DAILY LAB REPORT');
+    expect(text).toContain('Daily Lab Report');
     expect(text).toContain('Mateen');
     expect(text).toContain('2026-11-23');
   });
@@ -94,18 +94,34 @@ describe('the compact Daily Lab Report PDF', () => {
     expect(text).not.toMatch(/Page 1 of 1/i);
   });
 
-  it('draws a compact centred table with proper margins, not edge to edge', () => {
+  it('draws a full-width table inside the page margins, not to the paper edge', () => {
     const { pdf } = buildDailyLabReportPdf([row()], meta());
     const text = streamText(pdf);
-    /* The column-heading band must be narrower than the full 523pt content
-       width and centred — a sheet that runs to the page edge was the bug. */
+    /* The table spans the content width but the page has real margins: the
+       header band starts at x=36 and ends at 559 on a 595pt page. */
     const band = text.match(/0\.93 g (\d+(?:\.\d+)?) (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)/);
     expect(band).toBeTruthy();
     const x = Number(band![1]);
     const w = Number(band![3]);
-    expect(w).toBeLessThan(480);
-    expect(x).toBeGreaterThan(36); // inset from the left page margin
-    expect(x + w).toBeLessThan(559); // inset from the right page margin
+    expect(x).toBe(36);
+    expect(x + w).toBe(559);
+    expect(x + w).toBeLessThan(595); // margin on the right
+  });
+
+  it('prints a TOTAL row and a report footer', () => {
+    const { pdf } = buildDailyLabReportPdf(
+      [
+        row({ units: '2', unitsValue: 2, fee: 'PKR 30,000', feeValue: 30000 }),
+        row({ units: '3', unitsValue: 3, fee: 'PKR 27,000', feeValue: 27000 }),
+      ],
+      meta(),
+    );
+    const text = streamText(pdf);
+    expect(text).toContain('TOTAL');
+    expect(text).toContain('5'); // summed units
+    expect(text).toContain('57,000'); // summed fee
+    expect(text).toContain('Daily Lab Report');
+    expect(text).toContain('2026-11-23'); // footer period
   });
 
   it('paginates long sheets with repeated headings, still portrait', () => {

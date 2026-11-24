@@ -86,18 +86,18 @@ export const DailyReportView: React.FC = () => {
   /* The print columns: same keys as the dropdown, with the page widths and
      alignment the A4 sheet needs. Only the operator's ticked keys go to paper. */
   const PRINT_COLUMNS: DailyLabReportColumn[] = [
-    { key: 'caseNumber', label: 'CASE', w: 58, align: 'left' },
-    { key: 'receivedDate', label: 'RECEIVED', w: 58, align: 'left' },
-    { key: 'deliveryDate', label: 'DELIVERY', w: 58, align: 'left' },
-    { key: 'caseType', label: 'TYPE', w: 62, align: 'left' },
-    { key: 'patient', label: 'PATIENT', w: 78, align: 'left' },
-    { key: 'doctor', label: 'DOCTOR', w: 74, align: 'left' },
-    { key: 'clinic', label: 'CLINIC', w: 112, align: 'left' },
-    { key: 'status', label: 'STATUS', w: 52, align: 'left' },
-    { key: 'units', label: 'UNITS', w: 34, align: 'right' },
-    { key: 'teeth', label: 'TEETH', w: 48, align: 'left' },
-    { key: 'shade', label: 'SHADE', w: 34, align: 'left' },
-    { key: 'fee', label: 'FEE', w: 62, align: 'right' },
+    { key: 'caseNumber', label: 'CASE', w: 10, align: 'left' },
+    { key: 'receivedDate', label: 'RECEIVED', w: 10, align: 'left' },
+    { key: 'deliveryDate', label: 'DELIVERY', w: 10, align: 'left' },
+    { key: 'caseType', label: 'TYPE', w: 17, align: 'left' },
+    { key: 'patient', label: 'PATIENT', w: 13, align: 'left' },
+    { key: 'doctor', label: 'DOCTOR', w: 12, align: 'left' },
+    { key: 'clinic', label: 'CLINIC', w: 35, align: 'left' },
+    { key: 'status', label: 'STATUS', w: 10, align: 'left' },
+    { key: 'units', label: 'UNITS', w: 9, align: 'right' },
+    { key: 'teeth', label: 'TEETH', w: 9, align: 'left' },
+    { key: 'shade', label: 'SHADE', w: 9, align: 'left' },
+    { key: 'fee', label: 'FEE', w: 17, align: 'right' },
   ];
 
   /* The production sheet's columns, each tagged with the include-toggle it
@@ -218,9 +218,11 @@ export const DailyReportView: React.FC = () => {
       clinic: r.clinic,
       status: String(r.status).replace('_', ' '),
       units: r.units > 0 ? String(r.units) : '',
+      unitsValue: r.units || 0,
       teeth: r.teeth && r.teeth !== '—' ? r.teeth : '',
       shade: r.shade && r.shade !== '—' ? r.shade : '',
       fee: formatPKR(r.price),
+      feeValue: r.price || 0,
     }));
     const result = buildDailyLabReportPdf(rows, {
       labName,

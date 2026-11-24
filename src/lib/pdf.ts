@@ -1685,11 +1685,15 @@ export interface DailyLabReportRow {
   status: string;
   /** Formatted units count — blank when the case has none. */
   units: string;
+  /** Numeric units, for the TOTAL row. */
+  unitsValue?: number;
   /** Formatted FDI teeth — blank when the case has none. */
   teeth: string;
   shade: string;
   /** Formatted PKR fee. */
   fee: string;
+  /** Numeric PKR fee, for the TOTAL row. */
+  feeValue?: number;
 }
 
 export interface DailyLabReportDocMeta {
@@ -1718,12 +1722,14 @@ export function buildDailyLabReportPdf(
 ): PdfBuildResult {
   const g = GEOS['a4-portrait'];
 
-  /* Header: the full-width letterhead — clinic, title and the three facts that
-     identify the sheet. The table UNDER it is deliberately narrower, so the
-     page keeps real margins instead of a sheet that runs edge to edge. */
+  /* A letterhead: top rule, clinic, the report name at display weight, a small
+     subtitle, and the three identifying facts in a right-hand column. The
+     production table underneath spans the FULL content width — the page's own
+     12mm margins are what keep it off the edge, not a narrower table. */
   const header = (): DocHeader => ({
     labName: meta.labName,
-    title: 'DAILY LAB REPORT',
+    title: 'Daily Lab Report',
+    subtitle: ['PRODUCTION REPORT'],
     meta: [
       { label: 'Period', value: meta.periodLabel },
       { label: 'Prepared by', value: meta.operator || '—' },
@@ -1731,38 +1737,26 @@ export function buildDailyLabReportPdf(
     ],
   });
 
-  /* Fixed point-widths per field. A 5-column sheet uses ~380pt and centres on
-     the page; adding columns widens the table up to the full content width.
-     Nothing is stretched to fill space it does not need. */
-  const FIELD_W: Record<string, number> = {
-    caseNumber: 58,
-    receivedDate: 58,
-    deliveryDate: 58,
-    caseType: 62,
-    patient: 78,
-    doctor: 74,
-    clinic: 112,
-    status: 52,
-    units: 34,
-    teeth: 48,
-    shade: 34,
-    fee: 62,
+  /* Column shares mirror the sheet's CSS: type 17, patient 13, clinic 35,
+     units 9, shade 9, fee 17. layoutCols() normalises them to the page's
+     content width, so an operator who ticks other fields still gets a table
+     that fits. */
+  const WEIGHT: Record<string, number> = {
+    caseNumber: 10,
+    receivedDate: 10,
+    deliveryDate: 10,
+    caseType: 17,
+    patient: 13,
+    doctor: 12,
+    clinic: 35,
+    status: 10,
+    units: 9,
+    teeth: 9,
+    shade: 9,
+    fee: 17,
   };
-  const tableW = Math.min(
-    g.CONTENT_W,
-    meta.columns.reduce((sum, c) => sum + (FIELD_W[c.key] ?? 60), 0),
-  );
-  const tableX = g.MARGIN + Math.floor((g.CONTENT_W - tableW) / 2);
-  /* layoutCols() starts at g.MARGIN and spreads to g.MARGIN + g.CONTENT_W.
-     Give the table renderer a geometry whose MARGIN/CONTENT_W describe the
-     CENTRED table; the header still uses the real page geometry above. */
-  const tg: Geo = { ...g, MARGIN: tableX, CONTENT_W: tableW };
-
   const cols: TableCol[] = meta.columns.map((c) => ({
-    key: c.key,
-    label: c.label,
-    w: FIELD_W[c.key] ?? 60,
-    align: c.align,
+    key: c.key, label: c.label, w: WEIGHT[c.key] ?? 10, align: c.align,
   }));
 
   const columnCells = (r: DailyLabReportRow): TableCell[] =>
@@ -1783,15 +1777,17 @@ export function buildDailyLabReportPdf(
       };
       const text = raw[c.key] ?? '';
       const strong = c.key === 'caseNumber' || c.key === 'fee';
-      return { text, bold: strong, grey: strong ? 0.22 : 0.1 };
+      return { text, bold: strong, grey: strong ? 0.18 : 0.12 };
     });
+
+  const totalUnits = rows.reduce((s, r) => s + (r.unitsValue ?? 0), 0);
+  const totalFee = rows.reduce((s, r) => s + (r.feeValue ?? 0), 0);
 
   const sections: TableSection[] = [
     {
       cols,
       rows: rows.map((r) => ({ cells: columnCells(r) })),
-      /* No summary to clear: the table starts just under the header rule. */
-      top: docRuleY(g, 3) - 48,
+      top: docRuleY(g, 3) - 54,
       continuationTop: docRuleY(g, 3) - 34,
       bottom: g.CONTENT_BOTTOM + 26,
       heading: (ops, geo, y, continued) => {
@@ -1811,15 +1807,42 @@ export function buildDailyLabReportPdf(
         }
         return y;
       },
+      /* The TOTAL row: a ruled band with the label, the summed units and the
+         summed fee — the sheet's own footing, the last thing read before the
+         report footer. */
+      totals: (ops, geo, X, tcols, rowEndY) => {
+        const y = rowEndY - 2;
+        ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 19, grey: 0.92 });
+        drawGridLines(ops, geo, tcols, X, y - 8, y + 11);
+        ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: geo.MARGIN + geo.CONTENT_W, y2: y - 8, grey: 0.45, width: 1.1 });
+        ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 11, x2: geo.MARGIN + geo.CONTENT_W, y2: y + 11, grey: 0.3, width: 1 });
+        const first = tcols[0];
+        ops.push({ kind: 'text', x: first ? X[first.key] + 2 : geo.MARGIN, y: y + 1, size: 7, bold: true, grey: 0.15, text: 'TOTAL' });
+        const unitsCol = tcols.find((c) => c.key === 'units');
+        if (unitsCol) {
+          const t = num(totalUnits);
+          ops.push({ kind: 'text', x: X[unitsCol.key] + unitsCol.w - textW(t, 7) - 2, y: y + 1, size: 7, bold: true, grey: 0.15, text: t });
+        }
+        const feeCol = tcols.find((c) => c.key === 'fee');
+        if (feeCol) {
+          const t = pk(totalFee);
+          ops.push({ kind: 'text', x: X[feeCol.key] + feeCol.w - textW(t, 7) - 2, y: y + 1, size: 7, bold: true, grey: 0.15, text: t });
+        }
+      },
     },
   ];
 
   const pages = renderTableSections(
-    tg,
+    g,
     sections,
     (ops) => { drawDocHeader(ops, g, header()); },
-    /* No footer on this sheet. */
-    () => {},
+    (ops) => {
+      const y = g.FOOTER_Y;
+      ops.push({ kind: 'line', x1: g.MARGIN, y1: y + 12, x2: g.W - g.MARGIN, y2: y + 12, grey: 0.72, width: 0.4 });
+      ops.push({ kind: 'text', x: g.MARGIN, y, size: 6, grey: 0.46, text: fitShrink(meta.labName, g.CONTENT_W * 0.5, 6).text });
+      const right = `Daily Lab Report · ${meta.periodLabel}`;
+      ops.push({ kind: 'text', x: g.W - g.MARGIN - textW(right, 6), y, size: 6, grey: 0.46, text: right });
+    },
   );
   return assemblePdf(pages);
 }
