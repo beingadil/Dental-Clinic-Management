@@ -149,7 +149,7 @@ export const VoiceShell: React.FC = () => {
               setAnswer('Listening (always-on)');
               void done?.stop()
                 .then((blob: Blob) => transcribeWithGroq(blob))
-                .then((text: string | null) => { if (text && submitRef.current) void submitRef.current(text); })
+                .then((text: string | null) => { if (text) setQuery(text); })
                 .catch(() => { /* ignore */ });
             }
           }
@@ -670,32 +670,35 @@ export const VoiceShell: React.FC = () => {
       void (async () => {
         setStatus('listening');
         setAnswer('Listening…');
-        let clipStartTimer: number | null = null;
-        let handle: RecordingHandle | null = null;
-        let started = false;
+        let startTimer: number | null = null;
         try {
-          // Watchdog: if the recorder doesn't start in time, surface an error
-          // instead of sitting at "Listening…" forever.
-          clipStartTimer = window.setTimeout(() => {
+          // Watchdog: if the mic doesn't start in time, surface an error.
+          startTimer = window.setTimeout(() => {
             setStatus('error');
             setAnswer('Microphone did not start. Try again.');
           }, 4000);
-          // Simple sequential start: mic → recorder → ready.
-          handle = await recordClip();
-          window.clearTimeout(clipStartTimer);
-          clipStartTimer = null;
-          started = true;
+          // Inline: mic → recorder → ready (no external promise chain).
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          window.clearTimeout(startTimer);
+          startTimer = null;
+          const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+          const recorder = new MediaRecorder(stream, { mimeType: mime });
+          const chunks: BlobPart[] = [];
+          recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+          const blobPromise = new Promise<Blob>((r) => { recorder.onstop = () => r(new Blob(chunks, { type: mime })); });
+          recorder.start();
           const timeout = window.setTimeout(async () => {
             try {
-              const blob = await handle!.stop();
+              recorder.stop();
+              const blob = await blobPromise;
               setStatus('thinking');
               setAnswer('Transcribing…');
               const text = await transcribeWithGroq(blob);
-              if (text) { setQuery(text); void submit(text); }
+              if (text) { setQuery(text); setAnswer(''); }
               else { setStatus('error'); setAnswer('Jarvis could not transcribe that — check the Groq key in Settings, or type the question.'); }
             } finally { cloudStop.current = null; }
           }, 6000);
-          cloudStop.current = () => { window.clearTimeout(timeout); handle?.cancel(); };
+          cloudStop.current = () => { window.clearTimeout(timeout); recorder.stop(); stream.getTracks().forEach((t) => t.stop()); };
         } catch (err) {
           const msg = err instanceof Error && err.name === 'NotAllowedError'
             ? 'Microphone access is blocked. Allow microphone for this app in your system settings, then try again.'
@@ -703,8 +706,7 @@ export const VoiceShell: React.FC = () => {
           setStatus('error');
           setAnswer(msg);
         } finally {
-          if (clipStartTimer) window.clearTimeout(clipStartTimer);
-          if (!started) { setStatus('error'); setAnswer('Microphone did not start. Try again.'); }
+          if (startTimer) window.clearTimeout(startTimer);
         }
       })();
       return;
