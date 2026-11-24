@@ -37,6 +37,13 @@ export interface DailyReportInput {
   /** Include archived cases. Off by default: an archived case is history. */
   includeArchived?: boolean;
   /**
+   * The operator's include-toggles for the sheet's list: which fields appear
+   * at all. Anything not supplied stays on (see {@link defaultDailyReportInclude}).
+   * "Don't show units" is why `units` is off by default — the operator never
+   * asked for a units column in the daily sheet.
+   */
+  include?: DailyReportInclude;
+  /**
    * Restrict the report to some case types ("Zirconia", "Aligners", …).
    *
    * An empty list, or the entries `'all'`, mean every type. The match is exact
@@ -52,6 +59,71 @@ export interface DailyReportInput {
   /** Single-type shorthand for callers that only ever ask about one treatment. */
   caseType?: string;
 }
+
+/* ---- What's in the sheet's list: the operator's on/off toggles --------
+ * Each key is one thing the sheet may show or hide. `units` is the one that
+ * ships off, because the operator never asked for units in the daily sheet. */
+export interface DailyReportInclude {
+  caseNumber: boolean;
+  receivedDate: boolean;
+  deliveryDate: boolean;
+  caseType: boolean;
+  patient: boolean;
+  doctor: boolean;
+  clinic: boolean;
+  status: boolean;
+  units: boolean;
+  shade: boolean;
+  price: boolean;
+}
+
+export const defaultDailyReportInclude = (): DailyReportInclude => ({
+  caseNumber: true,
+  receivedDate: true,
+  deliveryDate: true,
+  caseType: true,
+  patient: true,
+  doctor: true,
+  clinic: true,
+  status: true,
+  units: false,
+  shade: true,
+  price: true,
+});
+
+/** Fill in the toggles a caller left out, so an include object is always complete. */
+export const normalizeDailyReportInclude = (
+  partial?: Partial<DailyReportInclude>,
+): DailyReportInclude => {
+  const def = defaultDailyReportInclude();
+  const out: DailyReportInclude = { ...def };
+  if (partial) {
+    (Object.keys(def) as Array<keyof DailyReportInclude>).forEach((k) => {
+      if (partial[k] !== undefined) out[k] = Boolean(partial[k]);
+    });
+  }
+  return out;
+};
+
+/** localStorage key for the operator's persisted toggles. */
+const INCLUDE_KEY = 'ds.dailyLabReport.include';
+
+export const getDailyReportInclude = (): DailyReportInclude => {
+  try {
+    const raw = localStorage.getItem(INCLUDE_KEY);
+    return normalizeDailyReportInclude(raw ? (JSON.parse(raw) as Partial<DailyReportInclude>) : undefined);
+  } catch {
+    return normalizeDailyReportInclude();
+  }
+};
+
+export const setDailyReportInclude = (inc: DailyReportInclude): void => {
+  try {
+    localStorage.setItem(INCLUDE_KEY, JSON.stringify(normalizeDailyReportInclude(inc)));
+  } catch {
+    /* storage unavailable — the report still builds with in-memory toggles */
+  }
+};
 
 /** One case as it appears in the production sheet. */
 export interface ProductionRow {
@@ -120,6 +192,8 @@ export interface DailyLabReport {
   to: string;
   /** The case-type filter this report was built with (`''` = all types). */
   caseType: string;
+  /** The include-toggles the sheet was built with (normalized). */
+  include: DailyReportInclude;
   /** Per-clinic work for the window and the chosen type, biggest value first. */
   byClinic: ClinicWorkRow[];
   /** Cases received in the window. */
@@ -149,6 +223,9 @@ const DAY_MS = 86_400_000;
 
 export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => {
   const { cases, invoices, advancePayments, from, to, includeArchived } = input;
+  /* The operator's on/off toggles, normalized once so the UI, the sheet and
+     the PDF all read the same set of what's included. */
+  const include = normalizeDailyReportInclude(input.include);
 
   /* One list of requested types, whichever way the caller supplied them, with
      hand-typed duplicates folded together so the label cannot read
@@ -346,6 +423,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
   return {
     from,
     to,
+    include,
     received: production.length,
     due: due.length,
     open,

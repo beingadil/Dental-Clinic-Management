@@ -4,10 +4,14 @@ import { can } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { EmptyState, DataTable, GlassSelect, Modal } from '../common/ui';
 import { formatPKR } from '../../services/financeDomain';
-import { buildDailyReportPdf, downloadPdf } from '../../lib/pdf';
+import { buildDailyReportPdf, downloadPdf, type DailyReportPdfRow } from '../../lib/pdf';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
   buildDailyLabReport,
+  defaultDailyReportInclude,
+  getDailyReportInclude,
+  setDailyReportInclude,
+  type DailyReportInclude,
   type ClinicWorkRow,
   type ProductionRow,
 } from '../../services/dailyLabReport';
@@ -53,6 +57,71 @@ export const DailyReportView: React.FC = () => {
    * is a switch and not a second report: nothing can fall out of sync.
    */
   const [pane, setPane] = useState<'sheet' | 'clinic'>('sheet');
+  /**
+   * The operator's include-toggles — "which things the report shows". The
+   * list is first: what's in the sheet is decided here, then read off.
+   * `units` ships off: the operator never asked for a units column.
+   */
+  const [include, setInclude] = useState<DailyReportInclude>(() => getDailyReportInclude());
+  const OPTION_ITEMS: Array<[keyof DailyReportInclude, string]> = [
+    ['caseNumber', 'Case #'],
+    ['receivedDate', 'Received'],
+    ['deliveryDate', 'Delivery'],
+    ['caseType', 'Type'],
+    ['patient', 'Patient'],
+    ['doctor', 'Doctor'],
+    ['clinic', 'Clinic'],
+    ['status', 'Status'],
+    ['units', 'Units'],
+    ['shade', 'Shade'],
+    ['price', 'Fee'],
+  ];
+
+  /* The production sheet's columns, each tagged with the include-toggle it
+     belongs to — so a toggled-off field disappears from the list and nothing
+     about it lingers (header, width, order). */
+  type SheetColumn = {
+    key: keyof DailyReportInclude;
+    header: React.ReactNode;
+    className?: string;
+    render: (r: ProductionRow) => React.ReactNode;
+  };
+  const sheetColumns: SheetColumn[] = [
+    { key: 'caseNumber', header: 'Case #', className: 'font-bold text-slate-900 font-mono whitespace-nowrap', render: (r) => <>{r.caseNumber}</> },
+    { key: 'receivedDate', header: 'Received', className: 'whitespace-nowrap text-slate-600 tabular-nums', render: (r) => <>{r.receivedDate}</> },
+    { key: 'caseType', header: 'Type', className: 'whitespace-nowrap text-slate-700', render: (r) => <>{r.caseType}</> },
+    { key: 'patient', header: 'Patient', className: 'font-semibold text-slate-900 whitespace-nowrap', render: (r) => <>{r.patient}</> },
+    { key: 'doctor', header: 'Doctor', className: 'text-slate-700 whitespace-nowrap', render: (r) => <>{r.doctor}</> },
+    { key: 'clinic', header: 'Clinic', className: 'text-slate-600 whitespace-nowrap', render: (r) => <>{r.clinic}</> },
+    {
+      key: 'deliveryDate',
+      header: 'Delivery',
+      className: 'whitespace-nowrap tabular-nums',
+      render: (r) => (
+        <span className={r.isOverdue ? 'font-bold text-rose-700' : 'text-slate-600'}>
+          {r.deliveryDate}
+          {r.isOverdue && (
+            <span className="ml-1 text-[10px] font-bold uppercase">
+              {Math.abs(r.daysRemaining)}d late
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { key: 'units', header: 'Units', className: 'text-right tabular-nums text-slate-600 whitespace-nowrap', render: (r) => <>{r.units}</> },
+    { key: 'shade', header: 'Shade', className: 'font-mono text-slate-600 whitespace-nowrap', render: (r) => <>{r.shade}</> },
+    {
+      key: 'status',
+      header: 'Status',
+      className: 'whitespace-nowrap',
+      render: (r) => (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold capitalize bg-slate-100 text-slate-700">
+          {String(r.status).replace('_', ' ')}
+        </span>
+      ),
+    },
+    { key: 'price', header: 'Fee', className: 'text-right font-mono font-bold text-slate-900 whitespace-nowrap', render: (r) => <>{formatPKR(r.price)}</> },
+  ];
 
   const report = useMemo(
     () =>
@@ -64,9 +133,13 @@ export const DailyReportView: React.FC = () => {
         to,
         includeArchived,
         caseTypes,
+        include,
       }),
-    [cases, invoices, advancePayments, from, to, includeArchived, caseTypes]
+    [cases, invoices, advancePayments, from, to, includeArchived, caseTypes, include]
   );
+
+  /* The production sheet's list, filtered by the operator's toggles. */
+  const sheetColumnsOn: SheetColumn[] = sheetColumns.filter((c) => report.include[c.key]);
 
   /** The scope as it reads on screen — the chip, the empty state and the
    *  drill-down header all name it the same way. */
@@ -103,18 +176,20 @@ export const DailyReportView: React.FC = () => {
     const periodLabel = `${from || 'Beginning'} → ${to || 'Present'}${
       report.caseType ? ` · ${report.caseType} only` : ''
     }`;
-    const result = buildDailyReportPdf(
-      report.production.map((r) => ({
-        caseNumber: r.caseNumber,
-        receivedDate: r.receivedDate,
-        caseType: r.caseType,
-        patient: r.patient,
-        doctor: r.doctor,
-        clinic: r.clinic,
-        deliveryDate: r.deliveryDate,
-        daysLate: r.isOverdue ? Math.abs(r.daysRemaining) : 0,
-        fee: r.price,
-      })),
+    const rows: DailyReportPdfRow[] = report.production.map((r) => ({
+      /* The exported document carries only what the operator included: a
+         toggled-off field is empty in the PDF too, not just hidden on screen. */
+      caseNumber: report.include.caseNumber ? r.caseNumber : '',
+      receivedDate: report.include.receivedDate ? r.receivedDate : '',
+      caseType: report.include.caseType ? r.caseType : '',
+      patient: report.include.patient ? r.patient : '',
+      doctor: report.include.doctor ? r.doctor : '',
+      clinic: report.include.clinic ? r.clinic : '',
+      deliveryDate: report.include.deliveryDate ? r.deliveryDate : '',
+      daysLate: report.include.deliveryDate ? (r.isOverdue ? Math.abs(r.daysRemaining) : 0) : 0,
+      fee: report.include.price ? r.price : 0,
+    }));
+    const result = buildDailyReportPdf(rows,
       [],
       {
         labName,
@@ -184,6 +259,24 @@ export const DailyReportView: React.FC = () => {
           own header instead. */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
+          {/* ---- What's included — the operator's on/off list, FIRST in the
+              list: decide here what the sheet and the PDF carry. `units`
+              ships off, because the operator never asked for a units column. */}
+          <GlassSelect
+            multiple
+            ariaLabel="Include in the daily lab report"
+            emptyLabel="Include: everything"
+            values={OPTION_ITEMS.filter(([k]) => include[k]).map(([k]) => k)}
+            onValuesChange={(selected) => {
+              const sel = new Set(selected);
+              const next = defaultDailyReportInclude();
+              OPTION_ITEMS.forEach(([k]) => { next[k] = sel.has(k); });
+              setInclude(next);
+              setDailyReportInclude(next);
+            }}
+            options={OPTION_ITEMS.map(([k, label]) => ({ value: k, label }))}
+            className="w-[300px] px-3 py-1.5 text-xs font-semibold text-slate-700"
+          />
           <div
             role="group"
             aria-label="Report view"
@@ -295,76 +388,7 @@ export const DailyReportView: React.FC = () => {
             <DataTable<ProductionRow>
               data={report.production}
               rowKey={(r) => r.id}
-              columns={[
-                {
-                  header: 'Case #',
-                  className: 'font-bold text-slate-900 font-mono whitespace-nowrap',
-                  render: (r) => <>{r.caseNumber}</>,
-                },
-                {
-                  header: 'Received',
-                  className: 'whitespace-nowrap text-slate-600 tabular-nums',
-                  render: (r) => <>{r.receivedDate}</>,
-                },
-                {
-                  header: 'Type',
-                  className: 'whitespace-nowrap text-slate-700',
-                  render: (r) => <>{r.caseType}</>,
-                },
-                {
-                  header: 'Patient',
-                  className: 'font-semibold text-slate-900 whitespace-nowrap',
-                  render: (r) => <>{r.patient}</>,
-                },
-                {
-                  header: 'Doctor',
-                  className: 'text-slate-700 whitespace-nowrap',
-                  render: (r) => <>{r.doctor}</>,
-                },
-                {
-                  header: 'Clinic',
-                  className: 'text-slate-600 whitespace-nowrap',
-                  render: (r) => <>{r.clinic}</>,
-                },
-                {
-                  header: 'Delivery',
-                  className: 'whitespace-nowrap tabular-nums',
-                  render: (r) => (
-                    <span className={r.isOverdue ? 'font-bold text-rose-700' : 'text-slate-600'}>
-                      {r.deliveryDate}
-                      {r.isOverdue && (
-                        <span className="ml-1 text-[10px] font-bold uppercase">
-                          {Math.abs(r.daysRemaining)}d late
-                        </span>
-                      )}
-                    </span>
-                  ),
-                },
-                {
-                  header: 'Units',
-                  className: 'text-right tabular-nums text-slate-600 whitespace-nowrap',
-                  render: (r) => <>{r.units || '—'}</>,
-                },
-                {
-                  header: 'Shade',
-                  className: 'font-mono text-slate-600 whitespace-nowrap',
-                  render: (r) => <>{r.shade}</>,
-                },
-                {
-                  header: 'Status',
-                  className: 'whitespace-nowrap',
-                  render: (r) => (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold capitalize bg-slate-100 text-slate-700">
-                      {String(r.status).replace('_', ' ')}
-                    </span>
-                  ),
-                },
-                {
-                  header: 'Fee',
-                  className: 'text-right font-mono font-bold text-slate-900 whitespace-nowrap',
-                  render: (r) => <>{formatPKR(r.price)}</>,
-                },
-              ]}
+              columns={sheetColumnsOn}
             />
           )}
         </div>
@@ -415,7 +439,7 @@ export const DailyReportView: React.FC = () => {
               <div className="hidden sm:grid grid-cols-[1fr_64px_64px_120px_24px] gap-3 px-4 py-2 border-b border-slate-100 ds-th">
                 <span>Clinic</span>
                 <span className="text-right">Cases</span>
-                <span className="text-right">Units</span>
+                {report.include.units && <span className="text-right">Units</span>}
                 <span className="text-right">Value</span>
                 <span />
               </div>
@@ -442,9 +466,11 @@ export const DailyReportView: React.FC = () => {
                       <span className="hidden sm:block text-right text-xs font-semibold text-slate-700 tabular-nums">
                         {row.cases}
                       </span>
-                      <span className="hidden sm:block text-right text-xs text-slate-600 tabular-nums">
-                        {row.units || '—'}
-                      </span>
+                      {report.include.units && (
+                        <span className="hidden sm:block text-right text-xs text-slate-600 tabular-nums">
+                          {row.units}
+                        </span>
+                      )}
                       <span className="hidden sm:block text-right text-xs font-bold text-slate-900 tabular-nums">
                         {formatPKR(row.value)}
                       </span>
@@ -484,10 +510,12 @@ export const DailyReportView: React.FC = () => {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Cases</div>
                 <div className="text-lg font-bold text-slate-900 tabular-nums">{detail.cases}</div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Units</div>
-                <div className="text-lg font-bold text-slate-900 tabular-nums">{detail.units}</div>
-              </div>
+              {report.include.units && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Units</div>
+                  <div className="text-lg font-bold text-slate-900 tabular-nums">{detail.units}</div>
+                </div>
+              )}
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Value</div>
                 <div className="text-lg font-bold text-slate-900 tabular-nums">{formatPKR(detail.value)}</div>
@@ -521,12 +549,14 @@ export const DailyReportView: React.FC = () => {
                     className: 'whitespace-nowrap text-slate-700',
                     render: (r) => <>{r.caseType}</>,
                   },
-                  {
-                    header: 'Units',
-                    align: 'right' as const,
-                    className: 'tabular-nums text-slate-600 whitespace-nowrap',
-                    render: (r) => <>{r.units || '—'}</>,
-                  },
+                  ...(report.include.units
+                    ? [{
+                        header: 'Units' as const,
+                        align: 'right' as const,
+                        className: 'tabular-nums text-slate-600 whitespace-nowrap',
+                        render: (r: ProductionRow) => <>{r.units}</>,
+                      }]
+                    : []),
                   {
                     header: 'Status',
                     className: 'whitespace-nowrap',
