@@ -86,18 +86,18 @@ export const DailyReportView: React.FC = () => {
   /* The print columns: same keys as the dropdown, with the page widths and
      alignment the A4 sheet needs. Only the operator's ticked keys go to paper. */
   const PRINT_COLUMNS: DailyLabReportColumn[] = [
-    { key: 'caseNumber', label: 'CASE', w: 0.12, align: 'left' },
-    { key: 'receivedDate', label: 'RECEIVED', w: 0.1, align: 'left' },
-    { key: 'deliveryDate', label: 'DELIVERY', w: 0.1, align: 'left' },
-    { key: 'caseType', label: 'TYPE', w: 0.13, align: 'left' },
-    { key: 'patient', label: 'PATIENT', w: 0.15, align: 'left' },
-    { key: 'doctor', label: 'DOCTOR', w: 0.12, align: 'left' },
-    { key: 'clinic', label: 'CLINIC', w: 0.14, align: 'left' },
-    { key: 'status', label: 'STATUS', w: 0.1, align: 'left' },
-    { key: 'units', label: 'UNITS', w: 0.07, align: 'right' },
-    { key: 'teeth', label: 'TEETH', w: 0.09, align: 'left' },
-    { key: 'shade', label: 'SHADE', w: 0.08, align: 'left' },
-    { key: 'fee', label: 'FEE', w: 0.1, align: 'right' },
+    { key: 'caseNumber', label: 'CASE', w: 58, align: 'left' },
+    { key: 'receivedDate', label: 'RECEIVED', w: 58, align: 'left' },
+    { key: 'deliveryDate', label: 'DELIVERY', w: 58, align: 'left' },
+    { key: 'caseType', label: 'TYPE', w: 62, align: 'left' },
+    { key: 'patient', label: 'PATIENT', w: 78, align: 'left' },
+    { key: 'doctor', label: 'DOCTOR', w: 74, align: 'left' },
+    { key: 'clinic', label: 'CLINIC', w: 112, align: 'left' },
+    { key: 'status', label: 'STATUS', w: 52, align: 'left' },
+    { key: 'units', label: 'UNITS', w: 34, align: 'right' },
+    { key: 'teeth', label: 'TEETH', w: 48, align: 'left' },
+    { key: 'shade', label: 'SHADE', w: 34, align: 'left' },
+    { key: 'fee', label: 'FEE', w: 62, align: 'right' },
   ];
 
   /* The production sheet's columns, each tagged with the include-toggle it

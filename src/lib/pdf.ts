@@ -1717,11 +1717,10 @@ export function buildDailyLabReportPdf(
   meta: DailyLabReportDocMeta,
 ): PdfBuildResult {
   const g = GEOS['a4-portrait'];
-  const right = g.W - g.MARGIN;
 
-  /* Header: issuer, report title and the three facts that identify the sheet.
-     The existing doc header draws clinic/title/period/generated in its right
-     meta column; the operator is a friendly fourth line underneath. */
+  /* Header: the full-width letterhead — clinic, title and the three facts that
+     identify the sheet. The table UNDER it is deliberately narrower, so the
+     page keeps real margins instead of a sheet that runs edge to edge. */
   const header = (): DocHeader => ({
     labName: meta.labName,
     title: 'DAILY LAB REPORT',
@@ -1732,8 +1731,38 @@ export function buildDailyLabReportPdf(
     ],
   });
 
+  /* Fixed point-widths per field. A 5-column sheet uses ~380pt and centres on
+     the page; adding columns widens the table up to the full content width.
+     Nothing is stretched to fill space it does not need. */
+  const FIELD_W: Record<string, number> = {
+    caseNumber: 58,
+    receivedDate: 58,
+    deliveryDate: 58,
+    caseType: 62,
+    patient: 78,
+    doctor: 74,
+    clinic: 112,
+    status: 52,
+    units: 34,
+    teeth: 48,
+    shade: 34,
+    fee: 62,
+  };
+  const tableW = Math.min(
+    g.CONTENT_W,
+    meta.columns.reduce((sum, c) => sum + (FIELD_W[c.key] ?? 60), 0),
+  );
+  const tableX = g.MARGIN + Math.floor((g.CONTENT_W - tableW) / 2);
+  /* layoutCols() starts at g.MARGIN and spreads to g.MARGIN + g.CONTENT_W.
+     Give the table renderer a geometry whose MARGIN/CONTENT_W describe the
+     CENTRED table; the header still uses the real page geometry above. */
+  const tg: Geo = { ...g, MARGIN: tableX, CONTENT_W: tableW };
+
   const cols: TableCol[] = meta.columns.map((c) => ({
-    key: c.key, label: c.label, w: c.w, align: c.align,
+    key: c.key,
+    label: c.label,
+    w: FIELD_W[c.key] ?? 60,
+    align: c.align,
   }));
 
   const columnCells = (r: DailyLabReportRow): TableCell[] =>
@@ -1754,7 +1783,7 @@ export function buildDailyLabReportPdf(
       };
       const text = raw[c.key] ?? '';
       const strong = c.key === 'caseNumber' || c.key === 'fee';
-      return { text, bold: strong, grey: strong ? 0.25 : 0.12 };
+      return { text, bold: strong, grey: strong ? 0.22 : 0.1 };
     });
 
   const sections: TableSection[] = [
@@ -1786,13 +1815,12 @@ export function buildDailyLabReportPdf(
   ];
 
   const pages = renderTableSections(
-    g,
+    tg,
     sections,
     (ops) => { drawDocHeader(ops, g, header()); },
     /* No footer on this sheet. */
     () => {},
   );
-  void right;
   return assemblePdf(pages);
 }
 

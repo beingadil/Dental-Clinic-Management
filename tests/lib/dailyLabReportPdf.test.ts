@@ -94,6 +94,20 @@ describe('the compact Daily Lab Report PDF', () => {
     expect(text).not.toMatch(/Page 1 of 1/i);
   });
 
+  it('draws a compact centred table with proper margins, not edge to edge', () => {
+    const { pdf } = buildDailyLabReportPdf([row()], meta());
+    const text = streamText(pdf);
+    /* The column-heading band must be narrower than the full 523pt content
+       width and centred — a sheet that runs to the page edge was the bug. */
+    const band = text.match(/0\.93 g (\d+(?:\.\d+)?) (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)/);
+    expect(band).toBeTruthy();
+    const x = Number(band![1]);
+    const w = Number(band![3]);
+    expect(w).toBeLessThan(480);
+    expect(x).toBeGreaterThan(36); // inset from the left page margin
+    expect(x + w).toBeLessThan(559); // inset from the right page margin
+  });
+
   it('paginates long sheets with repeated headings, still portrait', () => {
     const rows = Array.from({ length: 90 }, (_, i) => row({ caseNumber: `DS-${1000 + i}` }));
     const { pdf, pageCount } = buildDailyLabReportPdf(rows, meta());
