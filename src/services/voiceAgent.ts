@@ -8,7 +8,6 @@
  * never the LLM.
  */
 import { aiChatTools } from './voiceAiRouter';
-import { memoryContext } from './voiceMemory';
 import { VOICE_TOOLS, type VoiceToolContext } from './voiceRegistry';
 import type { WriteCommand } from './voiceWrite';
 import { REPORTS_TABS } from '../components/common/financeTabs';
@@ -70,12 +69,6 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   qc_pending: { required: [], optional: [], describe: 'Cases needing QC attention (failed or not yet inspected). No args.' },
 };
 
-const toolCatalog = () =>
-  VOICE_TOOLS.map((t) => {
-    const hints = TOOL_PARAMS[t.id];
-    return `- ${t.id}: ${t.description}${hints ? ` (args: ${hints.describe})` : ''}`;
-  }).join('\n');
-
 const toolsForApi = () =>
   VOICE_TOOLS.map((t) => {
     const hints = TOOL_PARAMS[t.id];
@@ -104,6 +97,10 @@ const toolsForApi = () =>
     };
   });
 
+/** Compact tool catalog — only id + description (no args hints) to save tokens. */
+const compactToolCatalog = () =>
+  VOICE_TOOLS.map((t) => `- ${t.id}: ${t.description}`).join('\n');
+
 /** Build a one-line summary of every clinic for the system prompt. */
 const allClinicsSummary = (ctx: VoiceToolContext): string => {
   const labs = ctx.labs || [];
@@ -122,37 +119,23 @@ const systemPrompt = (clinicContext?: ClinicContextSnapshot | null, ctx?: VoiceT
   const ctxSection = clinicContext ? formatContextForPrompt(clinicContext) : '';
   const allClinics = ctx ? `\n## All Clinics\n${allClinicsSummary(ctx)}` : '';
 
-  return `You are Jarvis, the voice assistant for Dental Solutions — a dental-lab billing app. You are friendly, warm, and conversational, like a helpful colleague who knows the clinic's books. Answer any question naturally when you can; use tools to read data or do things. Keep answers short and factual; questions conversational.
+  return `You are Jarvis, the voice assistant for Dental Solutions — a dental-lab billing app. Be friendly, warm, conversational. Answer naturally; use tools for data and actions. Keep answers short.
 
-You may answer conversationally — from clinic context, memory, and your knowledge — when no tool fits. You may ONLY answer figures, clinics, cases, invoices or case numbers by calling tools: never invent them.
+You may answer conversationally from clinic context, memory, and knowledge when no tool fits. You may ONLY answer figures, clinics, cases, invoices or case numbers by calling tools: never invent them.
 
-If a required argument is missing or the request is ambiguous, ask for it as a short question instead of guessing.
+If a required argument is missing or ambiguous, ask a short question.
 
-Void/wipe/refund are never tools. Delete/purge of a case goes through deleteCase/purgeCase — the app gates those behind its own confirmation, and the user must speak or type the confirmation.
+Void/wipe/refund are never tools. Delete/purge go through deleteCase/purgeCase — user must confirm.
 
-The user may speak with loose wording ("DS-0001", "Mir Dental", "the books", "what's owed", "show me yesterday's work", "is DS-0393 ready yet?"). Map it to the closest tool; ask if you can't.
+The user may speak loosely ("DS-0001", "Mir Dental", "the books", "what's owed"). Map to closest tool; ask if unsure.
 
-Clinics and case numbers must exactly match what the user said or what exists; never fabricate.
+Clinics and case numbers must match what exists; never fabricate.
 
 ## Current Clinic Context
 ${ctxSection || 'No specific clinic context — ask which clinic the user means.'}${allClinics}
 
-## How to search
-- Case numbers: DS-XXXX (e.g., DS-0001)
-- Patient names: full or partial name
-- Clinics: full or partial name
-- Money: PKR amounts
-- Teeth: FDI numbers (e.g., "26 27")
-- Materials: Zirconia Crown, PFM, Emax, etc.
-- Shades: A1, A2, A3, B1, etc.
-- Priorities: low, normal, high, urgent
-- Statuses: draft, received, in_progress, qc, ready, delivered, revision, cancelled
-
-## Known tools
-${toolCatalog()}
-
-## Memory (redacted, previous operator questions and accepted answers)
-${memoryContext()}`;
+## Tools
+${compactToolCatalog()}`;
 };
 
 const KNOWN_CASE_NUMBER = /\bDS-\d+\b/i;
