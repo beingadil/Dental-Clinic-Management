@@ -298,7 +298,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
         clinic: c.lab_name || '—',
         status: c.status,
         priority: c.priority,
-        units: c.units_count || 0,
+        units: c.units_count ?? (c.selected_teeth?.length || 0),
         teeth: (c.selected_teeth || []).length ? c.selected_teeth.map((t) => `#${t}`).join(' ') : '—',
         shade: c.shade || '—',
         material: c.material || '—',
