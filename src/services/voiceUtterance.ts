@@ -24,7 +24,8 @@ export const clampRate = (rate: number | undefined): number =>
 
 /**
  * Pick a voice for the utterance: explicit URI wins, then a locale-prefix
- * match (en vs en-PK), then any English voice, then nothing.
+ * match (en-PK preferred for Pakistani English, then en), then any English
+ * voice, then nothing.
  */
 export const pickVoice = (
   voices: SpeechSynthesisVoice[],

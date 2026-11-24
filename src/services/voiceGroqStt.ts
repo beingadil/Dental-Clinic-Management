@@ -28,6 +28,11 @@ export async function recordClip(): Promise<RecordingHandle> {
   };
 }
 
+/**
+ * Groq Whisper (whisper-large-v3-turbo) handles Pakistani English and other
+ * South Asian English accents well — it is accent-agnostic by design.
+ * language 'en' biases toward English without locking to a specific locale.
+ */
 export async function transcribeWithGroq(blob: Blob): Promise<string | null> {
   const key = getGroqKeyForAudio();
   if (!key) return null;
