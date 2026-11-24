@@ -79,6 +79,12 @@ const toolCatalog = () =>
 const toolsForApi = () =>
   VOICE_TOOLS.map((t) => {
     const hints = TOOL_PARAMS[t.id];
+    // Include BOTH required and optional params in properties — OpenAI/Groq
+    // requires every required property to exist in the properties schema.
+    // Required params are type 'string'; optional params are nullable so the AI
+    // can pass null when not provided (Groq sends null for omitted optional args).
+    const requiredSet = new Set(hints?.required ?? []);
+    const allParams = [...(hints?.required ?? []), ...(hints?.optional ?? [])];
     return {
       type: 'function' as const,
       function: {
@@ -86,7 +92,12 @@ const toolsForApi = () =>
         description: t.description,
         parameters: {
           type: 'object',
-          properties: Object.fromEntries((hints?.optional ?? []).map((k) => [k, { type: 'string' }])),
+          properties: Object.fromEntries(allParams.map((k) => [
+            k,
+            requiredSet.has(k)
+              ? { type: 'string' }
+              : { type: ['string', 'null'] },
+          ])),
           required: hints?.required ?? [],
         },
       },
