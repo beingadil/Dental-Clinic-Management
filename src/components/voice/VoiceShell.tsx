@@ -671,29 +671,23 @@ export const VoiceShell: React.FC = () => {
         setStatus('listening');
         setAnswer('Listening…');
         let clipStartTimer: number | null = null;
+        let handle: RecordingHandle | null = null;
+        let started = false;
         try {
-          // Watchdog: if the recorder doesn't start in time, don't sit at
-          // "Listening…" forever — surface an error instead of a silent stall.
-          // Retry the clip start once: a dropped getUserMedia or recorder
-          // error shouldn't dead-end the mic button.
-          const startClip = async (): Promise<RecordingHandle> => {
-            for (let attempt = 0; attempt < 2; attempt += 1) {
-              try {
-                return await recordClip();
-              } catch (err) {
-                if (attempt === 1) throw err;
-                await new Promise((r) => setTimeout(r, 500));
-              }
-            }
-            throw new Error('recordClip-no-handle');
-          };
-          const handle = await new Promise<RecordingHandle>((resolve, reject) => {
-            clipStartTimer = window.setTimeout(() => reject(new Error('clip-start-timeout')), 4000);
-            void startClip().then((h) => { window.clearTimeout(clipStartTimer!); clipStartTimer = null; resolve(h); });
-          });
+          // Watchdog: if the recorder doesn't start in time, surface an error
+          // instead of sitting at "Listening…" forever.
+          clipStartTimer = window.setTimeout(() => {
+            setStatus('error');
+            setAnswer('Microphone did not start. Try again.');
+          }, 4000);
+          // Simple sequential start: mic → recorder → ready.
+          handle = await recordClip();
+          window.clearTimeout(clipStartTimer);
+          clipStartTimer = null;
+          started = true;
           const timeout = window.setTimeout(async () => {
             try {
-              const blob = await handle.stop();
+              const blob = await handle!.stop();
               setStatus('thinking');
               setAnswer('Transcribing…');
               const text = await transcribeWithGroq(blob);
@@ -701,17 +695,16 @@ export const VoiceShell: React.FC = () => {
               else { setStatus('error'); setAnswer('Jarvis could not transcribe that — check the Groq key in Settings, or type the question.'); }
             } finally { cloudStop.current = null; }
           }, 6000);
-          cloudStop.current = () => { window.clearTimeout(timeout); handle.cancel(); };
+          cloudStop.current = () => { window.clearTimeout(timeout); handle?.cancel(); };
         } catch (err) {
           const msg = err instanceof Error && err.name === 'NotAllowedError'
             ? 'Microphone access is blocked. Allow microphone for this app in your system settings, then try again.'
-            : err instanceof Error && err.message === 'clip-start-timeout'
-              ? 'Microphone did not start. Try again.'
-              : 'Microphone is unavailable on this device. Type your question — the assistant answers it the same way.';
+            : 'Microphone is unavailable on this device. Type your question — the assistant answers it the same way.';
           setStatus('error');
           setAnswer(msg);
         } finally {
           if (clipStartTimer) window.clearTimeout(clipStartTimer);
+          if (!started) { setStatus('error'); setAnswer('Microphone did not start. Try again.'); }
         }
       })();
       return;
