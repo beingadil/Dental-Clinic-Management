@@ -140,7 +140,13 @@ export const VoiceShell: React.FC = () => {
               recording = true;
               setStatus('listening');
               setAnswer('Speak now — transcribing…');
-              handle = await recordClip();
+              try {
+                handle = await recordClip();
+              } catch {
+                recording = false;
+                setStatus('idle');
+                setAnswer('Microphone busy or unavailable — type your question instead.');
+              }
             } else if (rms < SPEECH_END_RMS && recording) {
               recording = false;
               const done = handle;
@@ -149,7 +155,10 @@ export const VoiceShell: React.FC = () => {
               setAnswer('Listening (always-on)');
               void done?.stop()
                 .then((blob: Blob) => transcribeWithGroq(blob))
-                .then((text: string | null) => { if (text && submitRef.current) void submitRef.current(text); })
+                .then((text: string | null) => {
+                  if (text && submitRef.current) void submitRef.current(text);
+                  else if (!text) setAnswer('I didn’t catch that — try again, or type the question.');
+                })
                 .catch(() => { /* ignore */ });
             }
           }
@@ -679,7 +688,7 @@ export const VoiceShell: React.FC = () => {
               setAnswer('Transcribing…');
               const text = await transcribeWithGroq(blob);
               if (text) { setQuery(text); void submit(text); }
-              else { setStatus('error'); setAnswer('Groq transcription did not return text. Check the Groq key in Settings → Voice Assistant, or type the question.'); }
+              else { setStatus('idle'); setAnswer('I didn’t catch that — try again, or type the question.'); }
             } finally { cloudStop.current = null; }
           }, 6000);
           cloudStop.current = () => { window.clearTimeout(timeout); handle.cancel(); };
