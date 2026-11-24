@@ -8,7 +8,7 @@
 import { redactVoiceText } from './voiceRedaction';
 
 const KEY = 'ds.voice.memory';
-const MAX_ENTRIES = 50;
+const MAX_ENTRIES = 100;
 
 export interface VoiceMemoryEntry { id: string; question: string; answer: string; at: string }
 
