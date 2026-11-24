@@ -112,6 +112,24 @@ const invokeApprovedTool = async (id: string, args: Record<string, unknown>, ctx
   return { text: result.summary, pendingWrite: result.pending, risk: result.risk as 'write' | 'destructive' };
 };
 
+/**
+ * Groq can 429, 5xx or time out transiently — retry a couple of times with a
+ * short backoff so a busy moment doesn't dead-end the query into the fixed
+ * fallback. Returns null only when every attempt failed.
+ */
+const callGroq = async (
+  messages: Parameters<typeof groqChatTools>[0],
+  tools: Parameters<typeof groqChatTools>[1],
+  opts: Parameters<typeof groqChatTools>[2],
+): Promise<Awaited<ReturnType<typeof groqChatTools>>> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const resp = await groqChatTools(messages, tools, opts);
+    if (resp) return resp;
+    if (attempt + 1 < 3) await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+  }
+  return null;
+};
+
 /** Run the agentic loop: model → tool → result → maybe ask, repeat up to MAX_ITER times. */
 export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext): Promise<AgentResult | null> => {
   const tools = toolsForApi();
@@ -120,7 +138,7 @@ export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext): Promis
     { role: 'user', content: raw },
   ];
   for (let iter = 0; iter < MAX_ITER; iter += 1) {
-    const resp = await groqChatTools(messages, tools, { maxTokens: 400, timeoutMs: 15000, temperature: 0.1, tool_choice: 'auto' });
+    const resp = await callGroq(messages, tools, { maxTokens: 400, timeoutMs: 15000, temperature: 0.1, tool_choice: 'auto' });
     if (!resp) return null;
     if (!resp.tool_calls?.length) {
       return { text: resp.content ?? 'Done.' };

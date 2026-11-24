@@ -670,8 +670,14 @@ export const VoiceShell: React.FC = () => {
       void (async () => {
         setStatus('listening');
         setAnswer('Listening…');
+        let clipStartTimer: number | null = null;
         try {
-          const handle = await recordClip();
+          // Watchdog: if the recorder doesn't start in time, don't sit at
+          // "Listening…" forever — surface an error instead of a silent stall.
+          const handle = await new Promise<RecordingHandle>((resolve, reject) => {
+            clipStartTimer = window.setTimeout(() => reject(new Error('clip-start-timeout')), 4000);
+            void recordClip().then((h) => { window.clearTimeout(clipStartTimer!); clipStartTimer = null; resolve(h); });
+          });
           const timeout = window.setTimeout(async () => {
             try {
               const blob = await handle.stop();
@@ -686,9 +692,13 @@ export const VoiceShell: React.FC = () => {
         } catch (err) {
           const msg = err instanceof Error && err.name === 'NotAllowedError'
             ? 'Microphone access is blocked. Allow microphone for this app in your system settings, then try again.'
-            : 'Microphone is unavailable on this device. Type your question — the assistant answers it the same way.';
+            : err instanceof Error && err.message === 'clip-start-timeout'
+              ? 'Microphone did not start. Try again.'
+              : 'Microphone is unavailable on this device. Type your question — the assistant answers it the same way.';
           setStatus('error');
           setAnswer(msg);
+        } finally {
+          if (clipStartTimer) window.clearTimeout(clipStartTimer);
         }
       })();
       return;
