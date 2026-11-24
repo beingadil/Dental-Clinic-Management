@@ -108,7 +108,7 @@ export const DailyReportView: React.FC = () => {
         </span>
       ),
     },
-    { key: 'units', header: 'Units', className: 'text-right tabular-nums text-slate-600 whitespace-nowrap', render: (r) => <>{r.units}</> },
+    { key: 'units', header: 'Units', className: 'text-right tabular-nums text-slate-600 whitespace-nowrap', render: (r) => <>{r.units > 0 ? r.units : ''}</> },
     { key: 'shade', header: 'Shade', className: 'font-mono text-slate-600 whitespace-nowrap', render: (r) => <>{r.shade}</> },
     {
       key: 'status',
@@ -264,7 +264,7 @@ export const DailyReportView: React.FC = () => {
               ships off, because the operator never asked for a units column. */}
           <GlassSelect
             multiple
-            ariaLabel="Include in the daily lab report"
+            ariaLabel="Values"
             emptyLabel="Include: everything"
             values={OPTION_ITEMS.filter(([k]) => include[k]).map(([k]) => k)}
             onValuesChange={(selected) => {
@@ -468,7 +468,7 @@ export const DailyReportView: React.FC = () => {
                       </span>
                       {report.include.units && (
                         <span className="hidden sm:block text-right text-xs text-slate-600 tabular-nums">
-                          {row.units}
+                          {row.units > 0 ? row.units : ''}
                         </span>
                       )}
                       <span className="hidden sm:block text-right text-xs font-bold text-slate-900 tabular-nums">
@@ -554,7 +554,7 @@ export const DailyReportView: React.FC = () => {
                         header: 'Units' as const,
                         align: 'right' as const,
                         className: 'tabular-nums text-slate-600 whitespace-nowrap',
-                        render: (r: ProductionRow) => <>{r.units}</>,
+                        render: (r: ProductionRow) => <>{r.units > 0 ? r.units : ''}</>,
                       }]
                     : []),
                   {

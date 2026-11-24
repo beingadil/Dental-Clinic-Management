@@ -86,7 +86,9 @@ export const defaultDailyReportInclude = (): DailyReportInclude => ({
   doctor: true,
   clinic: true,
   status: true,
-  units: false,
+  /* Units are on by default now: the operator asked for them ("show units of
+     each case if it has") — cells render blank for cases without a count. */
+  units: true,
   shade: true,
   price: true,
 });
