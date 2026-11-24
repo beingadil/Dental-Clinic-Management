@@ -636,8 +636,28 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
     const periodLabel = startDate || endDate
       ? `${startDate || 'Beginning'} → ${endDate || 'Present'}`
       : 'All Time';
+    /* Statement-opening fold (Part 6). Opening-balance postings are not
+       movements: `ledgerDomain` derives and dates them at the clinic's own
+       creation so they land BEFORE the first invoice. With an All-Time
+       statement there is no "before", so the posting arrives as the first
+       row and the old PDF said "Opening balance 0" while a 31,500 "Opening
+       Balance" line sat below it — the sample discrepancy. Fold the postings
+       into the statement's opening position instead:
+         * they are already inside `caseScope.closing` (the closing balance
+           is unchanged),
+         * the grand debits/credits drop them, because they are now part of
+           the opening figure,
+         * they leave the transaction list: the PDF carries them as one
+           "Balance brought forward" line on the first page, not as a
+           transaction that merely re-states the balance. */
+    const openingEntries = caseScope.items.filter((i) => (i.entry_type || '') === 'opening_balance');
+    const openingDelta = openingEntries.reduce((s, i) => s + ((i.debit || 0) - (i.credit || 0)), 0);
+    const statementEntries = caseScope.items.filter((i) => (i.entry_type || '') !== 'opening_balance');
+    const statementOpening = openingBalance + openingDelta;
+    const statementDebits = caseScope.debitsSum - openingEntries.reduce((s, i) => s + (i.debit || 0), 0);
+    const statementCredits = caseScope.creditsSum - openingEntries.reduce((s, i) => s + (i.credit || 0), 0);
     const result = buildLedgerPdf(
-      caseScope.items.map((item) => {
+      statementEntries.map((item) => {
         const details = getNarrationDetails(item);
         const c = findCaseForEntry(item, cases);
         return {
@@ -662,12 +682,20 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         caseFilterLabel: caseFilter.trim() || undefined,
         accountName: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.name,
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.code,
-        openingBalance,
-        totalDebits: caseScope.debitsSum,
-        totalCredits: caseScope.creditsSum,
+        accountClass: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.name,
+        openingBalance: statementOpening,
+        totalDebits: statementDebits,
+        totalCredits: statementCredits,
         closingBalance: caseScope.closing,
-        transactionCount: caseScope.items.length,
+        transactionCount: statementEntries.length,
         generatedOn: todayISO(),
+        openingRows: openingEntries.length
+          ? openingEntries.map((e) => ({
+              date: String(e.date || '').slice(0, 10),
+              typeLabel: getNarrationDetails(e).typeLabel,
+              amount: (e.debit || 0) - (e.credit || 0),
+            }))
+          : undefined,
       },
     );
     const fileName = `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`;
