@@ -190,10 +190,10 @@ describe('the PDF writer', () => {
     expect(inspect(pdf)).toEqual([]);
   });
 
-  it('states every balance with its side and states page and grand totals', () => {
+  it('states every balance with its side and drops the old strips', () => {
     const { pdf } = buildLedgerPdf(
       [
-        { date: '2026-10-20', clinic: 'Rahat', caseNumber: 'DS-1', typeLabel: 'Invoice', narration: 'Patient: Ali • Teeth: #11', debit: 0, credit: 100, closing: 100 },
+        { date: '2026-10-20', clinic: 'Rahat', caseNumber: 'DS-1', typeLabel: 'Invoice', narration: 'Payment received', debit: 0, credit: 100, closing: 100 },
         { date: '2026-10-21', clinic: 'Rahat', caseNumber: '', typeLabel: 'Payment', narration: 'Cash', debit: 200, credit: 0, closing: -100 },
       ],
       {
@@ -209,25 +209,13 @@ describe('the PDF writer', () => {
       }
     );
     const text = toBytes(pdf).reduce((a, b) => a + String.fromCharCode(b), '');
-    // Balance column states the side on every row (200 Dr closing, then Cr).
-    expect(text).toContain('100 Dr');
-    expect(text).toContain('200');
-    expect(text).toContain('100 Cr');
-    // Secondaries (Patient/Teeth) travel as lines under the narration.
-    expect(text).toContain('Ali');
-    expect(text).toContain('Teeth: #11');
-    // Statement pieces: page totals, grand total and the four-field summary.
-    expect(text).toContain('PAGE TOTAL');
-    expect(text).toContain('ACCOUNT SUMMARY');
-    expect(text).toContain('OPENING BALANCE');
-    expect(text).toContain('TOTAL DEBITS');
-    expect(text).toContain('TOTAL CREDITS');
+    expect(text).toContain('100 Dr'); // positive balance = Debit
+    expect(text).toContain('100 Cr'); // negative balance = Credit
     expect(text).toContain('CLOSING BALANCE');
-    // Account prominence on the letterhead.
-    expect(text).toContain('STATEMENT FOR');
-    expect(text).toContain('REPORT PERIOD');
-    expect(text).toContain('CURRENCY');
-    expect(text).toContain('PKR');
+    expect(text).not.toContain('PAGE TOTAL');
+    expect(text).not.toContain('ACCOUNT SUMMARY');
+    expect(text).not.toContain('Total debits');
+    expect(text).not.toContain('Total credits');
   });
 });
 

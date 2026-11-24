@@ -4,12 +4,6 @@ import { assemblePdf, buildLedgerPdf, LedgerPdfEntry, LedgerPdfMeta, GEOS } from
 /** Byte-accurate string: every char is one byte (WinAnsi output). */
 const toBytes = (s: string) => Uint8Array.from(s, (c) => c.charCodeAt(0) & 0xff);
 
-/** Decoded page text (backslash-octal escapes turned back into chars). */
-const streamText = (pdf: string): string => {
-  const s = toBytes(pdf).reduce((a, b) => a + String.fromCharCode(b), '');
-  return s.replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
-};
-
 describe('assemblePdf', () => {
   it('emits a valid PDF envelope with correct xref byte offsets', () => {
     const { pdf } = assemblePdf([
@@ -84,11 +78,12 @@ describe('buildLedgerPdf', () => {
     // Letterhead + columns present
     expect(pdf).toContain('Bright Smile Dental Lab');
     expect(pdf).toContain('GENERAL LEDGER');
-    // Clean: no CLINIC column, and the statement statements say what they are.
-    expect(pdf).not.toContain('(CLINIC)');
+    // Clean portrait: no CLINIC column, no amount headers, simple header.
     expect(pdf).toContain('GENERAL LEDGER');
-    expect(pdf).toContain('PAGE TOTAL');
-    expect(pdf).toContain('ACCOUNT SUMMARY');
+    expect(pdf).not.toContain('(CLINIC)');
+    expect(pdf).not.toContain('(Account:');
+    expect(pdf).not.toContain('(As of:');
+    expect(pdf).not.toContain('Opening Balance');
     expect(pdf).toContain('(Page 1 of');
     expect(pdf).toContain(`(Page ${pageCount} of ${pageCount})`);
   });
@@ -100,22 +95,23 @@ describe('buildLedgerPdf', () => {
     expect(pdf).toContain('(Page 1 of 1)');
   });
 
-  it('states the account, and there is no CLINIC column', () => {
+  it('renders clean portrait with no amount headers or clinic column', () => {
     const { pdf } = buildLedgerPdf(entries.slice(0, 2), {
       ...meta,
       periodLabel: 'All Time',
       accountName: 'Accounts Receivable (Dental Clinics)',
       accountCode: '1100',
     });
-    const text = streamText(pdf);
-    expect(text).toContain('Account:');
-    expect(text).toContain('1100 \u00b7 Accounts Receivable');
+    expect(pdf).not.toContain('Account:');
+    expect(pdf).not.toContain('As of:');
     expect(pdf).not.toContain('(CLINIC)');
+    expect(pdf).toContain('GENERAL LEDGER');
   });
 
-  it('defaults to Accounts Receivable when no account override is given', () => {
+  it('defaults to plain Accounts Receivable when no account override is given', () => {
     const { pdf } = buildLedgerPdf(entries.slice(0, 1), meta);
-    expect(streamText(pdf)).toContain('Accounts Receivable');
+    expect(pdf).not.toContain('Account:');
+    expect(pdf).not.toContain('1100 \u00b7');
   });
 });
 

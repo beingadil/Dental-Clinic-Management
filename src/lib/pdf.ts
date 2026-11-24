@@ -250,8 +250,6 @@ export interface LedgerPdfMeta {
   caseFilterLabel?: string; // present when narrowed to one case/job
   accountName?: string;  // ledger account label; default 'Accounts Receivable'
   accountCode?: string;  // chart-of-accounts code, shown as '1100 · Name'
-  /** The account's classification (e.g. 'Accounts Receivable (Dental Clinics)'). */
-  accountClass?: string;
   paper?: PaperKind;
   orientation?: Orientation;
   openingBalance: number;
@@ -260,13 +258,6 @@ export interface LedgerPdfMeta {
   closingBalance: number;
   transactionCount: number;
   generatedOn: string; // YYYY-MM-DD
-  /**
-   * The statement's brought-forward opening position. When set (and > 0) a
-   * BRIEF line above the table states it, so the Account Summary's
-   * Opening Balance and the first row's closing balance read as one balance,
-   * not two different figures.
-   */
-  openingRows?: Array<{ date: string; typeLabel?: string; amount: number }>;
 }
 
 const pk = (n: number) => `PKR ${(n || 0).toLocaleString('en-US')}`;
@@ -345,16 +336,41 @@ const fitShrink = (s: string, maxW: number, size: number): { text: string; size:
 };
 
 /**
- * Auto-orientation, per document: a ledger statement is seven narrow columns
- * with long descriptions, so landscape is what gives the DESCRIPTION column
- * the width an accountant reads without horizontal scrolling — the daily
- * report is portrait, and the two are not forced onto one canvas because they
- * have different shapes (Part 8: "do not force both report types into the
- * same orientation").
+ * Lay a ledger narration out as compact accounting lines.
+ *
+ * The source narration is one long " • "-joined string (heading, then facts).
+ * Wrapping it as one stream breaks facts mid-value and runs to 3–4 lines.
+ * Instead: heading on its own line, then pack facts with " | " separators,
+ * keeping each fact intact. This yields a clean 2–3 line arrangement with no
+ * clinical or financial detail lost — every part of the source is preserved.
  */
+function formatNarrationLines(narration: string, maxW: number, size: number): string[] {
+  const parts = String(narration || '')
+    .split('\u2022')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return wrapText(narration, maxW, size);
+
+  const lines: string[] = [parts[0]];
+  let cur = '';
+  for (const fact of parts.slice(1)) {
+    const candidate = cur ? `${cur} | ${fact}` : fact;
+    if (textW(candidate, size) <= maxW) {
+      cur = candidate;
+    } else {
+      if (cur) lines.push(cur);
+      // A single fact wider than the column is wrapped on its own lines.
+      cur = textW(fact, size) <= maxW ? fact : wrapText(fact, maxW, size).pop() || '';
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** Auto-orientation: user asked for portrait clean PDF. */
 export const chooseOrientation = (meta: LedgerPdfMeta): Orientation => {
   if (meta.orientation) return meta.orientation;
-  return 'landscape';
+  return 'portrait';
 };
 
 interface LedgerCol { key: string; label: string; w: number; align: 'left' | 'right' }
@@ -370,14 +386,11 @@ interface LedgerCol { key: string; label: string; w: number; align: 'left' | 'ri
  * are. Hence a condition, not a deletion.
  */
 function planColumns(g: Geo): { cols: LedgerCol[]; X: Record<string, number>; tableW: number } {
-  /* Landscape gives the DESCRIPTION column ~355pt: enough width for the
-     narration's facts on their own lines without small, unreadable type.
-     The money columns are roomy but not wasteful — a figure like
-     "1,000,000.00 Dr" at 7.5pt still fits at 59pt. */
   const weights: Record<string, number> = {
-    date: 0.088, case: 0.116, type: 0.108, narr: 0.462,
-    debit: 0.076, credit: 0.076, close: 0.074,
+    date: 0.11, case: 0.13, type: 0.15, narr: 0.45,
+    debit: 0.08, credit: 0.08, close: 0.08,
   };
+  /* User asked: remove CLINIC column unconditionally; clean portrait. */
   const raw: [string, string, number, 'left' | 'right'][] = [
     ['date', 'DATE', weights.date, 'left'],
     ['case', 'CASE/JOB', weights.case, 'left'],
@@ -397,16 +410,7 @@ function planColumns(g: Geo): { cols: LedgerCol[]; X: Record<string, number>; ta
   return { cols, X, tableW: g.CONTENT_W };
 }
 
-/**
- * Build the General Ledger statement PDF.
- *
- * One document: letterhead (company, GENERAL LEDGER, account facts), then a
- * RULED DESCRIPTION column where each entry carries its heading plus its
- * secondary facts (patient, teeth, shade, procedure) as subordinate lines,
- * three money columns, then on the last page: the grand-total band, the
- * four-field Account Summary and the accounting disclaimer — under which the
- * footer carries the generation date and "Page N of M".
- */
+/** Build the ledger statement PDF. Multi-page, cursor-driven, no overflow. */
 export function buildLedgerPdf(
   entries: LedgerPdfEntry[],
   meta: LedgerPdfMeta,
@@ -414,170 +418,153 @@ export function buildLedgerPdf(
   const orientation = chooseOrientation(meta);
   const geoKey = `${meta.paper || 'a4'}-${orientation}`;
   const g = GEOS[geoKey] || GEOS['a4-portrait'];
+  /* User asked: remove CLINIC column; portrait; clean header. */
   const planned = planColumns(g);
+  const colByKey = Object.fromEntries(planned.cols.map((c) => [c.key, c]));
+  const narrW = colByKey.narr.w - 4;
+  /* Compact accounting typography — readable, restrained, professional. */
+  const lineH = 10;
+  const rowBase = 16;
 
-  /* Compose each entry: a heading plus its facts as subordinate lines. The
-     row is pre-wrapped by the caller, so its height accounts for the wrap and
-     a page break never splits a parent/facts pair (Part 5.3). */
-  const ACCT_LINE_H = 9.2; // secondary facts
-  const HEAD_H = 7.4;      // primary heading
-  const factsOf = (e: LedgerPdfEntry): string[] =>
-    String(e.narration || '')
-      .split('\u2022')
-      .map((p) => p.trim())
-      .filter(Boolean);
+  /* Pre-wrap every row once, so a page break never splits a row and the
+     narration is never clipped. The row's height accounts for the wrap. */
   const rows = entries.map((e) => {
-    const facts = factsOf(e);
-    const heading = facts.shift() || (e.typeLabel ? `${e.typeLabel}` : '');
-    const lines = [heading, ...facts].filter(Boolean);
-    const h = Math.max(16, lines.length * ACCT_LINE_H + 6);
-    const cells: TableCell[] = [
-      { text: e.date, size: 7 },
-      { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.3 : 0, size: 7 },
-      { text: e.typeLabel, size: 7 },
-      {
-        text: '', lines, size: 6.6, grey: 0.42,
-        lineStyles: lines.map((_, li) =>
-          li === 0 ? { size: HEAD_H, bold: true, grey: 0.14 } : { size: ACCT_LINE_H, grey: 0.42 }),
-      },
-      { text: e.debit ? num(e.debit) : '\u2013', size: 7 },
-      { text: e.credit ? num(e.credit) : '\u2013', size: 7 },
-      { text: bal(e.closing), bold: true, size: 7 },
-    ];
-    return { e, h, debit: e.debit || 0, credit: e.credit || 0, cells };
+    /* No typeLabel prefix here. It was rendered into the description as
+       "Case Invoice - " while ALSO being the TYPE column, so every row opened
+       by naming its own column. The type belongs in the column; the
+       description should describe the work.
+       Compact 2–3 line layout: heading, then facts packed with " | ". */
+    const narrLines = formatNarrationLines(e.narration || '', narrW, 7);
+    return {
+      e,
+      h: Math.max(rowBase, narrLines.length * lineH + 6),
+      debit: e.debit,
+      credit: e.credit,
+      cells: [
+        { text: e.date, size: 7 },
+        { text: e.caseNumber, bold: !!e.caseNumber, grey: e.caseNumber ? 0.25 : 0, size: 7 },
+        { text: e.typeLabel, size: 7 },
+        { text: '', lines: narrLines, size: 7 },
+        /* A money column with nothing in it says so with a dash, the way a
+           ledger has always been ruled: an empty cell reads as a missing value. */
+        { text: e.debit ? num(e.debit) : '\u2013', size: 7 },
+        { text: e.credit ? num(e.credit) : '\u2013', size: 7 },
+        /* The running balance is the column a reader follows down the page:
+           one step heavier than the money beside it. */
+        { text: bal(e.closing), bold: true, size: 7.5 },
+      ] as TableCell[],
+    };
   });
 
   const right = g.W - g.MARGIN;
 
-  /* ── statement facts (letterhead) ──
-     The account (clinic) is stated as the document's identity: on the right of
-     the company heading as a two-column facts strip, and prominent enough that
-     it reads as the statement is about THIS account, not "a ledger". */
-  const drawStatementBand = (ops: PdfOp[]): void => {
-    const lX = g.MARGIN + 8;
-    const rX = right - 300;
-    ops.push({ kind: 'line', x1: g.MARGIN + 30, y1: g.H - 22, x2: right - 30, y2: g.H - 22, grey: 0.25, width: 0.4 });
-    ops.push({ kind: 'line', x1: rX, y1: g.H - 36, x2: rX, y2: g.H - 26, grey: 0.35, width: 0.4 });
-    // Left: what the statement is FOR — statement for + account identity.
-    ops.push({ kind: 'text', x: lX, y: g.H - 34, size: 5.8, bold: true, grey: 0.3, text: 'STATEMENT FOR' });
-    ops.push({ kind: 'text', x: lX, y: g.H - 49, size: 13.5, bold: true, grey: 0.12, text: fitShrink(meta.clinicLabel || '', 300, 13.5).text });
-    ops.push({ kind: 'text', x: lX + 2, y: g.H - 53, size: 7.2, grey: 0.35, text: fitShrink(`Account: ${[meta.accountCode ? `${meta.accountCode} \u00b7 ` : '', meta.accountName || 'Accounts Receivable'].join('')}`, 230, 7.2).text });
-    // Right: report period + currency.
-    ops.push({ kind: 'text', x: rX + 6, y: g.H - 36, size: 5.8, bold: true, grey: 0.3, text: 'REPORT PERIOD' });
-    ops.push({ kind: 'text', x: rX, y: g.H - 43, size: 7.6, grey: 0.08, text: fitShrink(meta.periodLabel, 320, 7.6).text });
-    ops.push({ kind: 'text', x: rX + 120, y: g.H - 36, size: 5.8, bold: true, grey: 0.3, text: 'CURRENCY' });
-    ops.push({ kind: 'text', x: rX + 132, y: g.H - 43, size: 7.6, bold: true, grey: 0.08, text: fitShrink('PKR', 60, 7.6).text });
-  };
-
-  const ruleY = g.H - 62;
-  const sectionLabelY = ruleY - 24;
-  const tableHeadY = ruleY - 42;
+  /* ── letterhead ──
+     Company, document title, and the statement's own facts in a BOXED table
+     on the right, rather than four floating label/value pairs: the box is what
+     makes the block read as a statement cover and not as a subtitle. */
+  const infoRows: DocMetaLine[] = [
+    { label: 'Statement for', value: meta.clinicLabel },
+    { label: 'Account', value: meta.accountName || 'Customer Ledger' },
+    { label: 'Report period', value: meta.periodLabel },
+    { label: 'Currency', value: 'PKR' },
+  ];
+  const infoTop = g.H - 34;
+  const infoBottom = infoTop - infoRows.length * INFO_ROW_H;
+  const ruleY = Math.min(g.H - 104, infoBottom - 12);
+  /* The table starts under a section heading and the column headings, so a
+     page break never lands between a heading and the rows it introduces. */
+  const sectionLabelY = ruleY - 20;
+  const tableHeadY = ruleY - 38;
   const firstRowY = tableHeadY - 18;
 
-  const drawHeader = (ops: PdfOp[]): void => {
-    const titleW = (right - g.MARGIN) * 0.42;
+  /* First page: title block + account facts box. Kept tight so transactions
+     start high; branding never crowds the ledger. */
+  const drawHeader = (ops: PdfOp[]) => {
+    const infoLeft = right - 268; // must match drawStatementInfoBox default width
+    const titleW = infoLeft - g.MARGIN - 14;
     ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 20, w: g.CONTENT_W, h: 2.5, grey: 0.12 });
-    ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 34, size: 9, bold: true, grey: 0.3, text: fitShrink(meta.labName, titleW, 9).text });
-    ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 58, size: 18, bold: true, grey: 0.08, text: fitShrink('GENERAL LEDGER', titleW, 18).text });
-    ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 74, size: 7, grey: 0.4, text: fitShrink(meta.caseFilterLabel ? `Filtered to cases matching "${meta.caseFilterLabel}"` : 'Account statement and transaction details', titleW, 7).text });
-    drawStatementBand(ops);
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 34, size: 10, bold: true, grey: 0.15,
+      text: fitShrink(meta.labName, titleW, 10).text,
+    });
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 54, size: 21, bold: true, grey: 0.08,
+      text: fitShrink('GENERAL LEDGER', titleW, 21).text,
+    });
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 65, size: 7, grey: 0.4,
+      text: fitShrink(
+        meta.caseFilterLabel
+          ? `Filtered to cases matching “${meta.caseFilterLabel}”`
+          : 'Account statement and transaction details',
+        titleW,
+        7,
+      ).text,
+    });
+    drawStatementInfoBox(ops, g, infoRows, infoTop);
     ops.push({ kind: 'line', x1: g.MARGIN, y1: ruleY, x2: right, y2: ruleY, grey: 0.35, width: 0.9 });
   };
 
-  /* Continuation pages: a compact identity line — no repeated letterhead. */
-  const compactTableHeadY = g.H - 60;
-  const drawCompactHeader = (ops: PdfOp[]): void => {
-    ops.push({ kind: 'line', x1: g.MARGIN, y1: g.H - 16, x2: right, y2: g.H - 16, grey: 0.25, width: 0.5 });
-    ops.push({ kind: 'text', x: g.MARGIN, y: g.H - 30, size: 11, bold: true, grey: 0.1, text: fitShrink('GENERAL LEDGER', g.CONTENT_W - 230, 11).text });
-    ops.push({ kind: 'text', x: g.MARGIN + 105, y: g.H - 30, size: 7.5, grey: 0.35, text: fitShrink(`${meta.labName}  ·  ${meta.accountName || 'Accounts Receivable'}  ·  ${meta.periodLabel}`, g.CONTENT_W - 110, 7.5).text });
+  /* Continuation pages: a single compact identity line — no repeated letterhead
+     box, no oversized title. Frees ~75pt per continuation page for rows. */
+  const drawCompactHeader = (ops: PdfOp[]) => {
+    ops.push({ kind: 'rect', x: g.MARGIN, y: g.H - 16, w: g.CONTENT_W, h: 2, grey: 0.12 });
+    ops.push({
+      kind: 'text', x: g.MARGIN, y: g.H - 30, size: 11, bold: true, grey: 0.1,
+      text: 'GENERAL LEDGER',
+    });
+    ops.push({
+      kind: 'text', x: g.MARGIN + 105, y: g.H - 30, size: 7.5, grey: 0.35,
+      text: fitShrink(
+        `${meta.clinicLabel}  ·  ${meta.accountName || 'Accounts Receivable'}  ·  ${meta.periodLabel}`,
+        g.CONTENT_W - 110,
+        7.5,
+      ).text,
+    });
+    ops.push({ kind: 'line', x1: g.MARGIN, y1: g.H - 38, x2: right, y2: g.H - 38, grey: 0.3, width: 0.8 });
   };
 
-  /* ── one table section ── */
-  const openedRows = (meta.openingRows || []).filter((r) => r.amount !== 0);
+  /* On continuation pages the table sits higher because the header is compact. */
+  const compactTableHeadY = g.H - 62;
+  const compactFirstRowY = compactTableHeadY - 18;
+
   const section: TableSection = {
     cols: planned.cols,
     rows: rows.map((r) => ({ cells: r.cells, height: r.h, debit: r.debit, credit: r.credit })),
     top: firstRowY,
-    continuationTop: compactTableHeadY - 18,
+    /* Continuation pages start higher because they carry a compact header. */
+    continuationTop: compactFirstRowY,
+    /* No per-page strip; reserve only the closing-balance band on the last page. */
     bottom: g.CONTENT_BOTTOM + 26,
     heading: (ops, geo, _y, continued) => {
       if (!continued) {
-        ops.push({ kind: 'text', x: geo.MARGIN, y: sectionLabelY, size: 8, bold: true, grey: 0.2, text: 'TRANSACTION DETAILS' });
+        ops.push({
+          kind: 'text', x: geo.MARGIN, y: sectionLabelY, size: 8, bold: true, grey: 0.2,
+          text: 'TRANSACTION DETAILS',
+        });
         return tableHeadY;
       }
+      /* Compact header already identifies the document; no repeated section
+         label — go straight to the column headings, higher up the page. */
       return compactTableHeadY;
     },
-    /* Brought-forward line on the first page only. It is a balance, not a
-       transaction: the caller folded the opening posting into
-       meta.openingBalance, so the number shown here is where the table starts. */
-    preRows: openedRows.length
-      ? [{ cells: [
-          { text: openedRows[0].date, size: 7 },
-          { text: '', size: 7 },
-          { text: openedRows[0].typeLabel || 'Opening balance', bold: true, size: 7 },
-          { text: `Balance ${openedRows.map((r) => bal(r.amount)).join('; ')}`, size: 6.5 },
-          { text: '\u2013', size: 7 },
-          { text: '\u2013', size: 7 },
-          { text: bal(openedRows.reduce((s, r) => s + r.amount, 0)), bold: true, size: 7 },
-        ] }]
-      : undefined,
-    /* Per-page footer of the ACTUAL movements on that page — never another
-       page's rows, and never a closing balance (that lives in the summary). */
-    pageStrip: (ops, geo, X, cols, y, pageRows) => {
-      let d = 0; let c = 0;
-      pageRows.forEach((r) => { d += r.debit || 0; c += r.credit || 0; });
-      const top = y;
-      const bottom = y + 20;
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.94 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: right, y2: top, grey: 0.5, width: 0.5 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: right, y2: bottom, grey: 0.5, width: 0.5 });
-      const narrC = cols.find((col) => col.key === 'narr')!;
-      ops.push({ kind: 'text', x: X[narrC.key] + 2, y: top + 1.5, size: 6.5, bold: true, grey: 0.15, text: 'PAGE TOTAL' });
-      const dCol = cols.find((col) => col.key === 'debit')!;
-      const cCol = cols.find((col) => col.key === 'credit')!;
-      ops.push({ kind: 'text', x: X[dCol.key] + dCol.w - textW(num(d), 7) - 2, y: top + 1.5, size: 7, bold: true, grey: 0.15, text: num(d) });
-      ops.push({ kind: 'text', x: X[cCol.key] + cCol.w - textW(num(c), 7) - 2, y: top + 1.5, size: 7, bold: true, grey: 0.15, text: num(c) });
-    },
-    /* The Grand Total band + Account Summary + accounting disclaimer: the
-       financial conclusion of the statement. */
-    totals: (ops, geo, X, cols, rowEndY, rowCount) => {
-      const tY = rowEndY - 2;
-      const bY = tY - 18;
-      // ─ Grand total band ─
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: bY, w: geo.CONTENT_W, h: 18, grey: 0.92 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: tY, x2: right, y2: tY, grey: 0.35, width: 0.5 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: bY, x2: right, y2: bY, grey: 0.5, width: 0.4 });
-      const narrC = cols.find((col) => col.key === 'narr')!;
-      ops.push({ kind: 'text', x: geo.MARGIN + X[narrC.key] + 2, y: tY + 3, size: 6.8, bold: true, grey: 0.14, text: fitShrink(`TOTAL — ${rowCount} transactions`, cols[2].w - 20, 6.8).text });
-      const dCol = cols.find((col) => col.key === 'debit')!;
-      const cCol = cols.find((col) => col.key === 'credit')!;
-      ops.push({ kind: 'text', x: X[dCol.key] + dCol.w - textW(num(meta.totalDebits), 7) - 2, y: tY + 3, size: 7, bold: true, grey: 0.12, text: num(meta.totalDebits) });
-      ops.push({ kind: 'text', x: X[cCol.key] + cCol.w - textW(num(meta.totalCredits), 7) - 2, y: tY + 3, size: 7, bold: true, grey: 0.12, text: num(meta.totalCredits) });
-      // ─ Account summary: four fields, compact table ─
-      const shTop = tY - 27;
-      const frmTop = shTop - 3;
-      const frmBot = frmTop - 40;
-      ops.push({ kind: 'text', x: geo.MARGIN, y: shTop, size: 6.5, bold: true, grey: 0.25, text: 'ACCOUNT SUMMARY' });
-      const bandX = [geo.MARGIN, geo.MARGIN + geo.CONTENT_W / 4, geo.MARGIN + 2 * geo.CONTENT_W / 4, geo.MARGIN + 3 * geo.CONTENT_W / 4, right];
-      const putLabel = (i: number, label: string, yBase: number) =>
-        ops.push({ kind: 'text', x: bandX[i] + 2, y: yBase, size: 5.8, bold: true, grey: 0.3, text: fitShrink(label, bandX[i + 1] - bandX[i] - 10, 5.8).text });
-      const putValue = (i: number, text: string, yBase: number) => {
-        const f = fitShrink(text, bandX[i + 1] - bandX[i] - 10, 7);
-        ops.push({ kind: 'text', x: bandX[i + 1] - textW(f.text, f.size) - 4, y: yBase, size: f.size, bold: true, grey: 0.1, text: f.text });
-      };
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: frmBot, w: geo.CONTENT_W, h: 20, grey: 0.97 });
-      putLabel(0, 'OPENING BALANCE', frmBot + 14);
-      putLabel(1, 'TOTAL DEBITS', frmBot + 14);
-      putLabel(2, 'TOTAL CREDITS', frmBot + 14);
-      putLabel(3, 'CLOSING BALANCE', frmBot + 14);
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: frmBot + 2, x2: right, y2: frmBot + 2, grey: 0.45, width: 0.5 });
-      const yVals = frmBot + 8;
-      putValue(0, meta.openingBalance ? bal(meta.openingBalance) : '—', yVals);
-      putValue(1, num(meta.totalDebits), yVals);
-      putValue(2, num(meta.totalCredits), yVals);
-      putValue(3, bal(meta.closingBalance), yVals);
-      // ─ Disclaimer ─
-      ops.push({ kind: 'text', x: geo.MARGIN, y: frmBot - 8, size: 6.2, grey: 0.5, text: fitShrink('This is a computer-generated account statement. Please verify the entries against the clinic\'s records.', geo.CONTENT_W, 6.2).text });
+    totals: (ops, geo, _X, _cols, rowEndY) => {
+      const y = rowEndY - 8;
+      const end = geo.MARGIN + geo.CONTENT_W;
+      const top = y + 12;
+      const bottom = y - 8;
+      ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.93 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: end, y2: top, grey: 0.45, width: 0.8 });
+      ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: end, y2: bottom, grey: 0.45, width: 0.8 });
+      ops.push({
+        kind: 'text', x: geo.MARGIN + 6, y: y + 1, size: 7, bold: true, grey: 0.12,
+        text: 'CLOSING BALANCE',
+      });
+      const value = bal(meta.closingBalance);
+      ops.push({
+        kind: 'text', x: end - textW(value, 9) - 6, y: y + 1, size: 9, bold: true, grey: 0.1,
+        text: value,
+      });
     },
   };
 
@@ -585,16 +572,25 @@ export function buildLedgerPdf(
     g,
     [section],
     (ops, _sectionIndex, pageInSection) => {
+      /* Full letterhead on the first page, compact identity bar thereafter. */
       if (pageInSection === 0) drawHeader(ops);
       else drawCompactHeader(ops);
     },
     (ops, i, total) => {
       ops.push({ kind: 'line', x1: g.MARGIN, y1: g.FOOTER_Y + 13, x2: right, y2: g.FOOTER_Y + 13, grey: 0.7, width: 0.4 });
-      ops.push({ kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: fitShrink(`${meta.labName} — General Ledger — ${meta.periodLabel}`, g.CONTENT_W - 220, 6.5).text });
+      ops.push({
+        kind: 'text', x: g.MARGIN, y: g.FOOTER_Y, size: 6.5, grey: 0.45,
+        text: fitShrink(`${meta.labName} · General Ledger`, g.CONTENT_W - 200, 6.5).text,
+      });
+      /* Page number and generation date are separate runs: a reader (and the
+         test suite) looks for "Page 1 of 4" as its own phrase. */
       const pg = `Page ${i + 1} of ${total}`;
       ops.push({ kind: 'text', x: right - textW(pg, 6.5), y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: pg });
       const gen = `Generated ${meta.generatedOn}`;
-      ops.push({ kind: 'text', x: right - textW(pg, 6.5) - textW(gen, 6.5) - 12, y: g.FOOTER_Y, size: 6.5, grey: 0.45, text: gen });
+      ops.push({
+        kind: 'text', x: right - textW(pg, 6.5) - textW(gen, 6.5) - 14, y: g.FOOTER_Y,
+        size: 6.5, grey: 0.45, text: gen,
+      });
     },
   );
 
@@ -975,6 +971,49 @@ function drawDocHeader(ops: PdfOp[], g: Geo, h: DocHeader): number {
 /* ---------- ledger letterhead blocks ---------- */
 
 /** Height of one statement-info row. */
+const INFO_ROW_H = 15;
+
+/**
+ * The statement's facts, as a boxed two-column table.
+ *
+ * A ledger cover states who the statement is for, on which account, over what
+ * period and in which currency — four labelled facts. Floating right-aligned
+ * pairs read as a caption; a ruled box reads as the cover of a statement.
+ * Returns the y of the box's bottom edge.
+ */
+function drawStatementInfoBox(
+  ops: PdfOp[],
+  g: Geo,
+  rows: DocMetaLine[],
+  top: number,
+  width = 268,
+): number {
+  const right = g.W - g.MARGIN;
+  const left = right - width;
+  const bottom = top - rows.length * INFO_ROW_H;
+  /* Labels take 34% — "REPORT PERIOD" fits — values get 66% so long clinic
+     and account names never push past the right edge of the box. */
+  const split = left + width * 0.34;
+  /* One consistent thin frame — no doubled strokes. */
+  ops.push({ kind: 'line', x1: left, y1: bottom, x2: left, y2: top, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: right, y1: bottom, x2: right, y2: top, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: left, y1: top, x2: right, y2: top, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: left, y1: bottom, x2: right, y2: bottom, grey: 0.5, width: 0.5 });
+  ops.push({ kind: 'line', x1: split, y1: bottom, x2: split, y2: top, grey: 0.8, width: 0.35 });
+  rows.forEach((row, i) => {
+    const rowTop = top - i * INFO_ROW_H;
+    const base = rowTop - 10.5;
+    if (i > 0) ops.push({ kind: 'line', x1: left, y1: rowTop, x2: right, y2: rowTop, grey: 0.8, width: 0.35 });
+    ops.push({
+      kind: 'text', x: left + 6, y: base, size: 6, bold: true, grey: 0.25,
+      text: fitShrink(row.label.toUpperCase(), split - left - 10, 6).text,
+    });
+    const v = fitShrink(row.value, right - split - 10, 7);
+    ops.push({ kind: 'text', x: right - 6 - textW(v.text, v.size), y: base, size: v.size, bold: true, grey: 0.1, text: v.text });
+  });
+  return bottom;
+}
+
 /**
  * The account summary under a ledger's totals: four figures, a closing line,
  * and the note that says what the document is.
@@ -1032,13 +1071,6 @@ export interface TableCell {
   size?: number;
   bold?: boolean;
   grey?: number;
-  /**
-   * Optional styling of a wrapped cell's lines: [0] is the heading, the rest
-   * are the subordinate facts. Used by documents whose lines are prose, not
-   * identifiers — the ledger gives its narration lines a smaller size and
-   * lighter ink than the leading line.
-   */
-  lineStyles?: Array<{ size?: number; bold?: boolean; grey?: number }>;
   /**
    * A cell whose content WRAPS: the lines, top to bottom.
    *
@@ -1255,16 +1287,14 @@ function drawRow(
     const size = cell.size ?? 6.5;
     if (cell.lines && cell.lines.length) {
       cell.lines.forEach((line, li) => {
-        const ls = cell.lineStyles?.[li];
-        const lsize = ls?.size ?? size;
-        const fit = fitShrink(line, col.w - 4, lsize);
+        const fit = fitShrink(line, col.w - 4, size);
         ops.push({
           kind: 'text',
           x: col.align === 'right' ? X[col.key] + col.w - textW(fit.text, fit.size) - 2 : X[col.key] + 2,
           y: y - li * LINE_H,
           size: fit.size,
-          bold: ls?.bold ?? cell.bold,
-          grey: ls?.grey ?? cell.grey,
+          bold: cell.bold,
+          grey: cell.grey,
           text: fit.text,
         });
       });
