@@ -94,7 +94,7 @@ export function buildClinicContext(
       status: i.payment_status || 'unpaid',
     }))
     .sort((a, b) => b.balanceDue - a.balanceDue)
-    .slice(0, 20);
+    .slice(0, 10);
 
   // Recent cases (last 30 days, open + delivered)
   const recentCases: CaseSummary[] = clinicCases
@@ -116,7 +116,7 @@ export function buildClinicContext(
       const db = String(b.deliveryDate || '').slice(0, 10);
       return db.localeCompare(da);
     })
-    .slice(0, 30);
+    .slice(0, 10);
 
   // Patient names (available to AI, redacted from TTS)
   const patientNames: string[] = allowClinical
@@ -153,47 +153,36 @@ export function formatContextForPrompt(snapshot: ClinicContextSnapshot | null): 
   if (!snapshot) return '';
 
   const lines: string[] = [];
-  lines.push(`## Current Clinic Context`);
   lines.push(`Clinic: ${snapshot.clinicName}`);
-  lines.push(`Outstanding balance: PKR ${snapshot.outstandingBalance.toLocaleString()} ${snapshot.outstandingBalance > 0 ? '(clinic owes us)' : snapshot.creditBalance > 0 ? '(credit held)' : '(settled)'}`);
-  lines.push(`Advance wallet: PKR ${snapshot.advanceWallet.toLocaleString()} unallocated`);
+  lines.push(`Balance: PKR ${snapshot.outstandingBalance.toLocaleString()}${snapshot.outstandingBalance > 0 ? ' (clinic owes us)' : snapshot.creditBalance > 0 ? ' (credit held)' : ' (settled)'}`);
+  lines.push(`Advance wallet: PKR ${snapshot.advanceWallet.toLocaleString()}`);
   lines.push(`Month close: ${snapshot.monthCloseStatus}`);
 
   if (snapshot.recentCases.length) {
-    lines.push(`\nRecent cases (last 30 days, ${snapshot.recentCases.length}):`);
-    for (const c of snapshot.recentCases.slice(0, 15)) {
-      const patient = c.patientName ? ` (patient: ${c.patientName})` : '';
-      lines.push(`- ${c.caseNumber}: ${c.caseTypeName || 'Case'} — ${c.status}${patient} — priority ${c.priority || 'normal'} — delivery ${c.deliveryDate || 'n/a'}`);
+    lines.push(`\nRecent cases (${snapshot.recentCases.length}):`);
+    for (const c of snapshot.recentCases.slice(0, 5)) {
+      const patient = c.patientName ? ` (${c.patientName})` : '';
+      lines.push(`- ${c.caseNumber}: ${c.caseTypeName || 'Case'} — ${c.status}${patient} — ${c.priority || 'normal'} — ${c.deliveryDate || 'n/a'}`);
     }
-  } else {
-    lines.push(`\nRecent cases: none.`);
   }
 
   if (snapshot.outstandingInvoices.length) {
     lines.push(`\nOutstanding invoices (${snapshot.outstandingInvoices.length}):`);
-    for (const inv of snapshot.outstandingInvoices.slice(0, 15)) {
-      const patient = inv.patientName ? ` (patient: ${inv.patientName})` : '';
-      lines.push(`- ${inv.invoiceNumber}: PKR ${inv.balanceDue.toLocaleString()} due${patient} — status ${inv.status} — due ${inv.dueDate || 'n/a'}`);
+    for (const inv of snapshot.outstandingInvoices.slice(0, 5)) {
+      const patient = inv.patientName ? ` (${inv.patientName})` : '';
+      lines.push(`- ${inv.invoiceNumber}: PKR ${inv.balanceDue.toLocaleString()}${patient} — ${inv.status} — ${inv.dueDate || 'n/a'}`);
     }
-  } else {
-    lines.push(`\nOutstanding invoices: none.`);
   }
 
   if (snapshot.pendingQc.length) {
-    lines.push(`\nPending QC (${snapshot.pendingQc.length}):`);
-    for (const q of snapshot.pendingQc.slice(0, 10)) {
-      lines.push(`- ${q.caseNumber}: QC pending — inspected ${q.inspectedAt}`);
-    }
+    lines.push(`\nPending QC: ${snapshot.pendingQc.map((q) => q.caseNumber).join(', ')}`);
   }
   if (snapshot.failedQc.length) {
-    lines.push(`\nFailed QC (${snapshot.failedQc.length}):`);
-    for (const q of snapshot.failedQc.slice(0, 10)) {
-      lines.push(`- ${q.caseNumber}: QC FAILED${q.reason ? ` (${q.reason})` : ''}`);
-    }
+    lines.push(`\nFailed QC: ${snapshot.failedQc.map((q) => q.caseNumber).join(', ')}`);
   }
 
   if (snapshot.patientNames.length) {
-    lines.push(`\nKnown patients (for routing only — redacted from speech): ${snapshot.patientNames.join(', ')}`);
+    lines.push(`\nPatients: ${snapshot.patientNames.join(', ')}`);
   }
 
   return lines.join('\n');

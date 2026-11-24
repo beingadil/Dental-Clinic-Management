@@ -68,7 +68,27 @@ const DEFAULT_PROVIDERS: AiProviderConfig[] = [
   },
 ];
 
-let providers: AiProviderConfig[] = [...DEFAULT_PROVIDERS];
+let providers: AiProviderConfig[] = [...DEFAULT_PROVIDERS].map((p) => {
+  // Load API keys from localStorage on initialization
+  const storageKey = `ds.ai.${p.id}.key`;
+  const storedKey = typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) : null;
+  const storedEnabled = typeof localStorage !== 'undefined' ? localStorage.getItem(`ds.ai.${p.id}.enabled`) : null;
+  const storedModel = typeof localStorage !== 'undefined' ? localStorage.getItem(`ds.ai.${p.id}.model`) : null;
+  const groqLegacyKey = p.id === 'groq' && !storedKey
+    ? (typeof localStorage !== 'undefined' ? localStorage.getItem('ds.voice.groq.key') : null)
+    : null;
+  const groqLegacyEnabled = p.id === 'groq' && !storedKey
+    ? (typeof localStorage !== 'undefined' ? localStorage.getItem('ds.voice.groq.enabled') : null)
+    : null;
+  return {
+    ...p,
+    apiKey: storedKey || groqLegacyKey || null,
+    model: storedModel || p.model,
+    enabled: p.id === 'groq'
+      ? (storedEnabled === 'true' || groqLegacyEnabled === 'true')
+      : storedEnabled === 'true',
+  };
+});
 let lastError: AiChatResult['error'] = null;
 
 export const getProviders = (): AiProviderConfig[] => [...providers];
@@ -80,17 +100,55 @@ export const setProviderConfig = (configs: AiProviderConfig[]) => {
 
 export const setProviderEnabled = (id: AiProviderId, enabled: boolean) => {
   const p = providers.find((p) => p.id === id);
-  if (p) p.enabled = enabled;
+  if (p) {
+    p.enabled = enabled;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`ds.ai.${id}.enabled`, enabled ? 'true' : 'false');
+      // Sync Groq legacy location
+      if (id === 'groq') {
+        localStorage.setItem('ds.voice.groq.enabled', enabled ? 'true' : 'false');
+      }
+    }
+  }
 };
 
 export const setProviderKey = (id: AiProviderId, key: string) => {
   const p = providers.find((p) => p.id === id);
-  if (p) p.apiKey = key || null;
+  if (p) {
+    p.apiKey = key || null;
+    // Persist to localStorage
+    if (typeof localStorage !== 'undefined') {
+      if (key) {
+        localStorage.setItem(`ds.ai.${id}.key`, key);
+        localStorage.setItem(`ds.ai.${id}.enabled`, 'true');
+        p.enabled = true;
+      } else {
+        localStorage.removeItem(`ds.ai.${id}.key`);
+        localStorage.removeItem(`ds.ai.${id}.enabled`);
+        p.enabled = false;
+      }
+      // Also sync Groq legacy location
+      if (id === 'groq') {
+        if (key) {
+          localStorage.setItem('ds.voice.groq.key', key);
+          localStorage.setItem('ds.voice.groq.enabled', 'true');
+        } else {
+          localStorage.removeItem('ds.voice.groq.key');
+          localStorage.removeItem('ds.voice.groq.enabled');
+        }
+      }
+    }
+  }
 };
 
 export const setProviderModel = (id: AiProviderId, model: string) => {
   const p = providers.find((p) => p.id === id);
-  if (p) p.model = model;
+  if (p) {
+    p.model = model;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`ds.ai.${id}.model`, model);
+    }
+  }
 };
 
 export const setProviderBaseUrl = (id: AiProviderId, baseUrl: string) => {
@@ -144,6 +202,8 @@ const callProvider = async (
     });
 
     if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      console.error('[voiceAiRouter] Groq error', response.status, errBody.slice(0, 500));
       const err = classifyError(response.status);
       lastError = err;
       // On rate limit or invalid key, try next provider; on network error, try next too

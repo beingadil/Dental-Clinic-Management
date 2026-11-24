@@ -895,20 +895,7 @@ const tools: VoiceTool[] = [
     id: 'help', description: 'List everything voice can do. No args.', risk: 'read',
     run: () => ({
       kind: 'read',
-      text: [
-        'Everything voice can do right now:',
-        '• Open any screen: "Open dashboard", "Open general ledger", "Open statements", "Open settings"',
-        '• Read: due-today ("what is due today?"), morning briefing, walk me through a statement, cash collected today, overdue cases, standings, month close, clinic balance, statement, ledger, outstanding, advance wallet',
-        '• Export: "Export invoices", "Export transactions"',
-        '• Clinics: add contacts, addresses, pricing overrides',
-        '• Settings/print: "Invoice sections only brand, lineItems, totals", "Print settings A4", "Set notifications 1 day before"',
-        '• Billing: "Record payment of PKR 5,000 for Mir Dental", "Apply advance PKR 25,000 to INV-0042", "Mark INV-0042 paid", "Mark INV-0042, INV-0043 paid"',
-        '• Cases: "show cases", "DS-0001" (then just "ready" / "delivered" / "QC pass" / "archive"), "Mark case DS-0393 ready", "update DS-0001 - shade A2, priority urgent", "set DS-0001 priority high", "mark DS-0001, DS-0002 ready", "restore DS-0001", "save DS-0001 as template “Follow-up”"',
-        '• Delete (typed confirm): "delete DS-0001", "purge DS-0001"',
-        '• Write (amber confirmation): "Add clinic Mir Dental", "Mark case DS-0393 ready", "Update doctor for Mir Dental to Dr Tariq", "Update phone for Mir Dental to 0300-1234567", "Add note on case DS-0393", "QC pass/fail case DS-0393", "Archive case DS-0393"',
-        '• Code/docs: "How does the monthly statement compute closing balance?"',
-        'Destructive actions (void, delete, wipe) stay behind the app confirmation.',
-      ].join('\n'),
+      text: 'Everything voice can do: open any screen (dashboard, cases, billing, ledger, settings), read balances/statements/ledgers, record payments/advances, update cases, manage clinics, export data, and more. Just ask naturally.',
     }),
   },
 ];
