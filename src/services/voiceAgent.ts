@@ -122,10 +122,10 @@ const callGroq = async (
   tools: Parameters<typeof groqChatTools>[1],
   opts: Parameters<typeof groqChatTools>[2],
 ): Promise<Awaited<ReturnType<typeof groqChatTools>>> => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     const resp = await groqChatTools(messages, tools, opts);
     if (resp) return resp;
-    if (attempt + 1 < 3) await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+    if (attempt + 1 < 2) await new Promise((r) => setTimeout(r, 900));
   }
   return null;
 };
