@@ -113,7 +113,19 @@ const INCLUDE_KEY = 'ds.dailyLabReport.include';
 export const getDailyReportInclude = (): DailyReportInclude => {
   try {
     const raw = localStorage.getItem(INCLUDE_KEY);
-    return normalizeDailyReportInclude(raw ? (JSON.parse(raw) as Partial<DailyReportInclude>) : undefined);
+    const stored = raw ? (JSON.parse(raw) as Partial<DailyReportInclude> | null) : null;
+    const def = defaultDailyReportInclude();
+    const out: DailyReportInclude = { ...def };
+    if (stored) {
+      (Object.keys(def) as Array<keyof DailyReportInclude>).forEach((k) => {
+        if (stored[k] !== undefined) out[k] = Boolean(stored[k]);
+      });
+    }
+    /* The operator wants units shown — not off ("units of each case if it
+       has"). A stored "off" from the older default is not a real choice, so
+       the sheet comes up with Units on. */
+    out.units = true;
+    return out;
   } catch {
     return normalizeDailyReportInclude();
   }
