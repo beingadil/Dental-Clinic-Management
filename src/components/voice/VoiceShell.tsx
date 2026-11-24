@@ -149,7 +149,7 @@ export const VoiceShell: React.FC = () => {
               setAnswer('Listening (always-on)');
               void done?.stop()
                 .then((blob: Blob) => transcribeWithGroq(blob))
-                .then((text: string | null) => { if (text) setQuery(text); })
+                .then((text: string | null) => { if (text) { setQuery(text); void submitRef.current?.(text); } })
                 .catch(() => { /* ignore */ });
             }
           }
@@ -694,7 +694,7 @@ export const VoiceShell: React.FC = () => {
               setStatus('thinking');
               setAnswer('Transcribing…');
               const text = await transcribeWithGroq(blob);
-              if (text) { setQuery(text); setAnswer(''); }
+              if (text) { setQuery(text); void submit(text); }
               else { setStatus('error'); setAnswer('Jarvis could not transcribe that — check the Groq key in Settings, or type the question.'); }
             } finally { cloudStop.current = null; }
           }, 6000);
