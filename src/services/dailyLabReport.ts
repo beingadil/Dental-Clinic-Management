@@ -78,21 +78,24 @@ export interface DailyReportInclude {
   price: boolean;
 }
 
+/**
+ * Default columns: Type, Patient, Clinic, Units, Shade — the operator's chosen
+ * opening set for both the on-screen sheet and the PDF. Everything else stays
+ * available in the Values dropdown and comes up off.
+ */
 export const defaultDailyReportInclude = (): DailyReportInclude => ({
-  caseNumber: true,
-  receivedDate: true,
-  deliveryDate: true,
+  caseNumber: false,
+  receivedDate: false,
+  deliveryDate: false,
   caseType: true,
   patient: true,
-  doctor: true,
+  doctor: false,
   clinic: true,
-  status: true,
-  /* Units are on by default now: the operator asked for them ("show units of
-     each case if it has") — cells render blank for cases without a count. */
+  status: false,
   units: true,
-  /* Teeth are shown on by default too — the operator asked for them. */ teeth: true,
+  teeth: false,
   shade: true,
-  price: true,
+  price: false,
 });
 
 /** Fill in the toggles a caller left out, so an include object is always complete. */
@@ -111,9 +114,17 @@ export const normalizeDailyReportInclude = (
 
 /** localStorage key for the operator's persisted toggles. */
 const INCLUDE_KEY = 'ds.dailyLabReport.include';
+/** Bump when the default column set changes, so old stored values don't win. */
+const INCLUDE_VERSION = 'ds.dailyLabReport.include.v2';
 
 export const getDailyReportInclude = (): DailyReportInclude => {
   try {
+    /* A version bump means the operator's old selection belonged to the old
+       default set — start from the new defaults instead of reviving it. */
+    if (localStorage.getItem(INCLUDE_VERSION) !== '2') {
+      localStorage.removeItem(INCLUDE_KEY);
+      localStorage.setItem(INCLUDE_VERSION, '2');
+    }
     const raw = localStorage.getItem(INCLUDE_KEY);
     const stored = raw ? (JSON.parse(raw) as Partial<DailyReportInclude> | null) : null;
     const def = defaultDailyReportInclude();
@@ -123,10 +134,6 @@ export const getDailyReportInclude = (): DailyReportInclude => {
         if (stored[k] !== undefined) out[k] = Boolean(stored[k]);
       });
     }
-    /* The operator wants units shown — not off ("units of each case if it
-       has"). A stored "off" from the older default is not a real choice, so
-       the sheet comes up with Units on. */
-    out.units = true;
     return out;
   } catch {
     return normalizeDailyReportInclude();

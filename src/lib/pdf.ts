@@ -1657,6 +1657,145 @@ export function buildDailyReportPdf(
   return assemblePdf(pages);
 }
 
+
+/* ---------- daily lab report — compact portrait print ---------- */
+
+/**
+ * The operator's column choice for the Daily Lab Report, in print order.
+ * The screen's Values dropdown and the PDF read the SAME list, so what the
+ * operator ticks on screen is exactly what gets printed.
+ */
+export interface DailyLabReportColumn {
+  key: string;
+  label: string;
+  /** Share of the content width. */
+  w: number;
+  align: 'left' | 'right';
+}
+
+/** One case row on the printed Daily Lab Report. */
+export interface DailyLabReportRow {
+  caseNumber: string;
+  receivedDate: string;
+  deliveryDate: string;
+  caseType: string;
+  patient: string;
+  doctor: string;
+  clinic: string;
+  status: string;
+  /** Formatted units count — blank when the case has none. */
+  units: string;
+  /** Formatted FDI teeth — blank when the case has none. */
+  teeth: string;
+  shade: string;
+  /** Formatted PKR fee. */
+  fee: string;
+}
+
+export interface DailyLabReportDocMeta {
+  labName: string;
+  /** The signed-in operator who prepared this sheet. */
+  operator: string;
+  /** The date window, e.g. '2026-11-23 → 2026-11-23'. */
+  periodLabel: string;
+  generatedOn: string;
+  /** The columns to print, in order — taken from the Values dropdown. */
+  columns: DailyLabReportColumn[];
+}
+
+/**
+ * Compact, portrait A4 Daily Lab Report — one clean table, no summary strip,
+ * no per-clinic section, no footer. A letterhead, a ruled section heading and
+ * the case rows: the sheet a lab owner reads off the bench and files.
+ *
+ * Columns are the operator's selection (the Values dropdown), so a field they
+ * excluded on screen never appears on paper. Rows paginate on measured height;
+ * the column headings repeat on every page.
+ */
+export function buildDailyLabReportPdf(
+  rows: DailyLabReportRow[],
+  meta: DailyLabReportDocMeta,
+): PdfBuildResult {
+  const g = GEOS['a4-portrait'];
+  const right = g.W - g.MARGIN;
+
+  /* Header: issuer, report title and the three facts that identify the sheet.
+     The existing doc header draws clinic/title/period/generated in its right
+     meta column; the operator is a friendly fourth line underneath. */
+  const header = (): DocHeader => ({
+    labName: meta.labName,
+    title: 'DAILY LAB REPORT',
+    meta: [
+      { label: 'Period', value: meta.periodLabel },
+      { label: 'Prepared by', value: meta.operator || '—' },
+      { label: 'Generated', value: meta.generatedOn },
+    ],
+  });
+
+  const cols: TableCol[] = meta.columns.map((c) => ({
+    key: c.key, label: c.label, w: c.w, align: c.align,
+  }));
+
+  const columnCells = (r: DailyLabReportRow): TableCell[] =>
+    meta.columns.map((c) => {
+      const raw: Record<string, string> = {
+        caseNumber: r.caseNumber,
+        receivedDate: r.receivedDate,
+        deliveryDate: r.deliveryDate,
+        caseType: r.caseType,
+        patient: r.patient,
+        doctor: r.doctor,
+        clinic: r.clinic,
+        status: r.status,
+        units: r.units,
+        teeth: r.teeth,
+        shade: r.shade,
+        fee: r.fee,
+      };
+      const text = raw[c.key] ?? '';
+      const strong = c.key === 'caseNumber' || c.key === 'fee';
+      return { text, bold: strong, grey: strong ? 0.25 : 0.12 };
+    });
+
+  const sections: TableSection[] = [
+    {
+      cols,
+      rows: rows.map((r) => ({ cells: columnCells(r) })),
+      /* No summary to clear: the table starts just under the header rule. */
+      top: docRuleY(g, 3) - 48,
+      continuationTop: docRuleY(g, 3) - 34,
+      bottom: g.CONTENT_BOTTOM + 26,
+      heading: (ops, geo, y, continued) => {
+        drawSectionHeading(
+          ops,
+          geo.MARGIN,
+          y + 16,
+          geo.CONTENT_W,
+          continued ? 'Production sheet (continued)' : 'Production sheet',
+          `${num(rows.length)} case${rows.length === 1 ? '' : 's'}`,
+        );
+        if (!rows.length) {
+          ops.push({
+            kind: 'text', x: geo.MARGIN, y: y - 8, size: 8, grey: 0.45,
+            text: 'No cases were received in this window.',
+          });
+        }
+        return y;
+      },
+    },
+  ];
+
+  const pages = renderTableSections(
+    g,
+    sections,
+    (ops) => { drawDocHeader(ops, g, header()); },
+    /* No footer on this sheet. */
+    () => {},
+  );
+  void right;
+  return assemblePdf(pages);
+}
+
 /* ---------- monthly statement ---------- */
 
 /**

@@ -4,7 +4,12 @@ import { can } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { EmptyState, DataTable, GlassSelect, Modal } from '../common/ui';
 import { formatPKR } from '../../services/financeDomain';
-import { buildDailyReportPdf, downloadPdf, type DailyReportPdfRow } from '../../lib/pdf';
+import {
+  buildDailyLabReportPdf,
+  downloadPdf,
+  type DailyLabReportColumn,
+  type DailyLabReportRow,
+} from '../../lib/pdf';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
   buildDailyLabReport,
@@ -76,6 +81,23 @@ export const DailyReportView: React.FC = () => {
     ['teeth', 'Teeth'],
     ['shade', 'Shade'],
     ['price', 'Fee'],
+  ];
+
+  /* The print columns: same keys as the dropdown, with the page widths and
+     alignment the A4 sheet needs. Only the operator's ticked keys go to paper. */
+  const PRINT_COLUMNS: DailyLabReportColumn[] = [
+    { key: 'caseNumber', label: 'CASE', w: 0.12, align: 'left' },
+    { key: 'receivedDate', label: 'RECEIVED', w: 0.1, align: 'left' },
+    { key: 'deliveryDate', label: 'DELIVERY', w: 0.1, align: 'left' },
+    { key: 'caseType', label: 'TYPE', w: 0.13, align: 'left' },
+    { key: 'patient', label: 'PATIENT', w: 0.15, align: 'left' },
+    { key: 'doctor', label: 'DOCTOR', w: 0.12, align: 'left' },
+    { key: 'clinic', label: 'CLINIC', w: 0.14, align: 'left' },
+    { key: 'status', label: 'STATUS', w: 0.1, align: 'left' },
+    { key: 'units', label: 'UNITS', w: 0.07, align: 'right' },
+    { key: 'teeth', label: 'TEETH', w: 0.09, align: 'left' },
+    { key: 'shade', label: 'SHADE', w: 0.08, align: 'left' },
+    { key: 'fee', label: 'FEE', w: 0.1, align: 'right' },
   ];
 
   /* The production sheet's columns, each tagged with the include-toggle it
@@ -172,47 +194,41 @@ export const DailyReportView: React.FC = () => {
    */
   const buildDocument = () => {
     const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
-    /* The exported document must say what it left out. The sheet is built from
-       the filtered rows, so a type filter that only lived in the screen state
-       would produce a PDF that looks like the lab's whole month. */
+    /* The label must say what the sheet left out, so a type filter that only
+       lived in screen state never produces a document that reads as the lab's
+       whole month. */
     const periodLabel = `${from || 'Beginning'} → ${to || 'Present'}${
       report.caseType ? ` · ${report.caseType} only` : ''
     }`;
-    const rows: DailyReportPdfRow[] = report.production.map((r) => ({
-      /* The exported document carries only what the operator included: a
-         toggled-off field is empty in the PDF too, not just hidden on screen. */
-      caseNumber: report.include.caseNumber ? r.caseNumber : '',
-      receivedDate: report.include.receivedDate ? r.receivedDate : '',
-      caseType: report.include.caseType ? r.caseType : '',
-      patient: report.include.patient ? r.patient : '',
-      doctor: report.include.doctor ? r.doctor : '',
-      clinic: report.include.clinic ? r.clinic : '',
-      deliveryDate: report.include.deliveryDate ? r.deliveryDate : '',
-      daysLate: report.include.deliveryDate ? (r.isOverdue ? Math.abs(r.daysRemaining) : 0) : 0,
-      fee: report.include.price ? r.price : 0,
-      teeth: report.include.teeth ? r.teeth : '',
-    }));
-    const result = buildDailyReportPdf(rows,
-      [],
-      {
-        labName,
-        periodLabel,
-        generatedOn: getTodayStr(),
-        invoicesRaised: report.invoicesRaised,
-        invoicedValue: report.invoicedValue,
-        paymentsReceived: report.paymentsReceived,
-        paidValue: report.paidValue,
-        totalOutstanding: report.totalOutstanding,
-        production: {
-          casesReceived: report.received,
-          unitsReceived: report.production.reduce((s, r) => s + (r.units || 0), 0),
-          casesDue: report.due,
-          openCases: report.open,
-          overdueCases: report.overdue,
-          clinics: report.clinics.length,
-        },
-      }
+    /* The operator's ticked fields become the printed columns — same flags
+       the on-screen Values dropdown uses. `fee` is the print name for `price`. */
+    const includeKey: Record<string, keyof DailyReportInclude> = {
+      fee: 'price',
+    };
+    const columns = PRINT_COLUMNS.filter((c) =>
+      report.include[includeKey[c.key] ?? (c.key as keyof DailyReportInclude)]
     );
+    const rows: DailyLabReportRow[] = report.production.map((r) => ({
+      caseNumber: r.caseNumber,
+      receivedDate: r.receivedDate,
+      deliveryDate: r.deliveryDate,
+      caseType: r.caseType,
+      patient: r.patient,
+      doctor: r.doctor,
+      clinic: r.clinic,
+      status: String(r.status).replace('_', ' '),
+      units: r.units > 0 ? String(r.units) : '',
+      teeth: r.teeth && r.teeth !== '—' ? r.teeth : '',
+      shade: r.shade && r.shade !== '—' ? r.shade : '',
+      fee: formatPKR(r.price),
+    }));
+    const result = buildDailyLabReportPdf(rows, {
+      labName,
+      operator: user?.name || '—',
+      periodLabel,
+      generatedOn: getTodayStr(),
+      columns,
+    });
     const fileName = `Daily_Report_${from || 'Beginning'}_${to || 'Present'}`.replace(
       /[^A-Za-z0-9_-]+/g,
       '_'
