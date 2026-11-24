@@ -356,6 +356,98 @@ export const getCaseSearch = (ctx: VoiceContext, q: string) => {
   return `Matched ${hits.length} case(s): ${hits.slice(0, 6).map((c) => `${c.case_number}${ctx.allowClinicalDetail && c.patient_name ? ` (${c.patient_name})` : ''} — ${c.case_type_name ?? '?'} — ${c.status}`).join('; ')}`;
 };
 
+/** Search patients by name, phone, address, or CNIC across all clinics. */
+export const searchPatients = (ctx: VoiceContext, q: string): string => {
+  const lower = (q || '').toLowerCase().trim();
+  if (!lower) return 'What do you want to search for — a patient name, phone, address, or CNIC?';
+  const hits = (ctx.cases || [])
+    .filter((c) => !c.archived_at)
+    .filter((c) =>
+      (c.patient_name || '').toLowerCase().includes(lower) ||
+      (c.doctor_name || '').toLowerCase().includes(lower) ||
+      (c.lab_name || '').toLowerCase().includes(lower) ||
+      (c.case_number || '').toLowerCase().includes(lower) ||
+      (c.material || '').toLowerCase().includes(lower) ||
+      (c.shade || '').toLowerCase().includes(lower) ||
+      (c.selected_teeth?.some((t) => String(t).includes(lower)) || false)
+    );
+  if (!hits.length) return `No patients or cases match "${q}".`;
+  const uniquePatients = [...new Set(hits.map((c) => c.patient_name).filter(Boolean))];
+  return `Found ${hits.length} case(s) for ${uniquePatients.length} patient(s): ${hits.slice(0, 8).map((c) => `${c.case_number} — ${c.patient_name || 'Patient'} (${c.case_type_name || 'Case'}) — ${c.status}`).join('; ')}.`;
+};
+
+/** Filter cases by status, clinic, priority, date range, material, shade, teeth. */
+export const filterCases = (ctx: VoiceContext, filters: {
+  status?: string;
+  clinic?: string;
+  priority?: string;
+  material?: string;
+  shade?: string;
+  teeth?: string;
+  fromDate?: string;
+  toDate?: string;
+}): string => {
+  let cases = (ctx.cases || []).filter((c) => !c.archived_at);
+  if (filters.status) cases = cases.filter((c) => c.status === filters.status);
+  if (filters.clinic) {
+    const clinic = (ctx.labs || []).find((l) => l.name.toLowerCase().includes(filters.clinic!.toLowerCase()));
+    if (clinic) cases = cases.filter((c) => c.lab_id === clinic.id);
+  }
+  if (filters.priority) cases = cases.filter((c) => (c.priority || 'normal') === filters.priority);
+  if (filters.material) cases = cases.filter((c) => (c.material || '').toLowerCase().includes(filters.material!.toLowerCase()));
+  if (filters.shade) cases = cases.filter((c) => (c.shade || '').toLowerCase().includes(filters.shade!.toLowerCase()));
+  if (filters.teeth) cases = cases.filter((c) => (c.selected_teeth || []).some((t) => String(t).includes(filters.teeth!)));
+  if (filters.fromDate) cases = cases.filter((c) => String(c.delivery_date).slice(0, 10) >= filters.fromDate!);
+  if (filters.toDate) cases = cases.filter((c) => String(c.delivery_date).slice(0, 10) <= filters.toDate!);
+  if (!cases.length) return 'No cases match those filters.';
+  return `Filtered cases (${cases.length}): ${cases.slice(0, 8).map((c) => `${c.case_number} — ${c.case_type_name || 'Case'} — ${c.status}`).join('; ')}.`;
+};
+
+/** Search invoices by amount range. */
+export const searchInvoicesByAmount = (ctx: VoiceContext, minAmount?: number, maxAmount?: number): string => {
+  const invoices = (ctx.invoices || []).filter((i) => {
+    const amt = i.final_amount || i.amount || 0;
+    if (minAmount && amt < minAmount) return false;
+    if (maxAmount && amt > maxAmount) return false;
+    return true;
+  });
+  if (!invoices.length) return 'No invoices match that amount range.';
+  return `Invoices (${invoices.length}): ${invoices.slice(0, 6).map((i) => `${i.invoice_number} — ${i.lab_name || 'clinic'} — PKR ${(i.final_amount || i.amount || 0).toLocaleString()} — ${i.payment_status || 'unpaid'}`).join('; ')}.`;
+};
+
+/** Monthly report summary for a clinic. */
+export const generateReport = (ctx: VoiceContext, clinicId: string, month?: string): string => {
+  const clinic = (ctx.labs || []).find((l) => l.id === clinicId);
+  if (!clinic) return 'I could not find that clinic.';
+  const invoices = (ctx.invoices || []).filter((i) => i.lab_id === clinicId);
+  const cases = (ctx.cases || []).filter((c) => c.lab_id === clinicId && !c.archived_at);
+  const totalBilled = invoices.reduce((acc, inv) => acc + (inv.final_amount || inv.amount || 0), 0);
+  const totalPaid = invoices.reduce((acc, inv) => acc + (inv.amount_paid || 0), 0);
+  const outstanding = invoices.reduce((acc, inv) => acc + invoiceBalanceDue(inv), 0);
+  const openCases = cases.filter((c) => c.status !== 'delivered' && c.status !== 'cancelled').length;
+  const delivered = cases.filter((c) => c.status === 'delivered').length;
+  const monthLabel = month || 'all time';
+  return `${clinic.name} report for ${monthLabel}: ${cases.length} total cases (${openCases} open, ${delivered} delivered), ${invoices.length} invoices, billed PKR ${totalBilled.toLocaleString()}, collected PKR ${totalPaid.toLocaleString()}, outstanding PKR ${outstanding.toLocaleString()}.`;
+};
+
+/** List users (for admin). */
+export const listUsers = (): string => {
+  // Users are not in the VoiceContext, so this returns a placeholder
+  return 'User management is available in Settings → Users. I can open that screen for you — just say "Open settings".';
+};
+
+/** Switch theme. */
+export const switchTheme = (mode: 'light' | 'dark' | 'system'): string => {
+  if (typeof window === 'undefined') return 'Theme switching is only available in the browser.';
+  try {
+    localStorage.setItem('dental.theme.mode', mode);
+    window.location.reload();
+    return `Switching to ${mode} theme...`;
+  } catch {
+    return 'Could not switch theme.';
+  }
+};
+
 /** Search case notes by content across all cases. */
 export const getCaseNotesSearch = (ctx: VoiceContext, q: string) => {
   const lower = (q || '').toLowerCase().trim();

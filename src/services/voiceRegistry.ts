@@ -25,6 +25,7 @@ import {
   getCaseDetail, getCaseSearch, getCaseTimeline, getCaseNotes, getCaseAttachments, getCaseNotesSearch,
   getCaseCount, getTodayCases, getCasesByClinic, getCasesByStatus,
   getPatientCases, getInvoiceByAmount, getClinicOutstanding, getQcPending,
+  searchPatients, filterCases, searchInvoicesByAmount, generateReport, listUsers, switchTheme,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { type WriteCommand, type CaseUpdateFields } from './voiceWrite';
@@ -283,7 +284,7 @@ const tools: VoiceTool[] = [
     },
   },
   {
-    id: 'case_count', description: 'Count total cases, or cases for a clinic, or cases in a status. Args: { clinic?: string, status?: string } — clinic is clinic name, status: draft|received|in_progress|qc|ready|delivered|revision|cancelled', risk: 'read',
+    id: 'case_count', description: 'Count cases (total, by clinic, or by status). Args: { clinic?, status? }', risk: 'read',
     run: (ctx, args) => {
       const clinicName = String(args.clinic || '');
       let clinicId: string | undefined;
@@ -353,6 +354,65 @@ const tools: VoiceTool[] = [
   {
     id: 'qc_pending', description: 'Cases needing QC attention (failed or not yet inspected). No args.', risk: 'read',
     run: (ctx) => ({ kind: 'read', text: getQcPending(ctx) }),
+  },
+  {
+    id: 'patient_search', description: 'Search patients by name, phone, address, or case number across all clinics. Args: { query: string }', risk: 'read',
+    run: (ctx, args) => {
+      const q = String(args.query || '');
+      if (!q) return { kind: 'read', text: 'What do you want to search for — a patient name, phone, or case number?' };
+      return { kind: 'read', text: searchPatients(ctx, q) };
+    },
+  },
+  {
+    id: 'cases_filter', description: 'Filter cases by status, clinic, priority, date range, material, shade, or teeth. Args: { status?, clinic?, priority?, material?, shade?, teeth?, fromDate?, toDate? }', risk: 'read',
+    run: (ctx, args) => {
+      return { kind: 'read', text: filterCases(ctx, {
+        status: args.status ? String(args.status) : undefined,
+        clinic: args.clinic ? String(args.clinic) : undefined,
+        priority: args.priority ? String(args.priority) : undefined,
+        material: args.material ? String(args.material) : undefined,
+        shade: args.shade ? String(args.shade) : undefined,
+        teeth: args.teeth ? String(args.teeth) : undefined,
+        fromDate: args.fromDate ? String(args.fromDate) : undefined,
+        toDate: args.toDate ? String(args.toDate) : undefined,
+      }) };
+    },
+  },
+  {
+    id: 'invoice_search_by_amount', description: 'Find invoices by amount range. Args: { minAmount?: number, maxAmount?: number }', risk: 'read',
+    run: (ctx, args) => {
+      const min = args.minAmount ? Number(args.minAmount) : undefined;
+      const max = args.maxAmount ? Number(args.maxAmount) : undefined;
+      if (!min && !max) return { kind: 'read', text: 'Which amount range? Like invoices over 50000 or between 10000 and 50000.' };
+      return { kind: 'read', text: searchInvoicesByAmount(ctx, min, max) };
+    },
+  },
+  {
+    id: 'report_generate', description: 'Generate a monthly report for a clinic. Args: { clinic: string, month?: string } — month in YYYY-MM format', risk: 'read',
+    run: (ctx, args) => {
+      const clinicName = String(args.clinic || '');
+      const clinic = (ctx.labs || []).find((l) => l.name.toLowerCase().includes(clinicName.toLowerCase()));
+      if (!clinic) return { kind: 'read', text: `I could not find a clinic named "${clinicName}".` };
+      const month = args.month ? String(args.month) : undefined;
+      return { kind: 'read', text: generateReport(ctx, clinic.id, month) };
+    },
+  },
+  {
+    id: 'user_list', description: 'List system users. No args.', risk: 'read',
+    run: () => ({ kind: 'read', text: listUsers() }),
+  },
+  {
+    id: 'theme_switch', description: 'Switch the app theme. Args: { mode: "light"|"dark"|"system" }', risk: 'write',
+    run: (_ctx, args) => {
+      const mode = String(args.mode || '').toLowerCase();
+      if (mode !== 'light' && mode !== 'dark' && mode !== 'system') return { kind: 'read', text: 'Which theme — light, dark, or system?' };
+      const result = switchTheme(mode as 'light' | 'dark' | 'system');
+      return { kind: 'read', text: result };
+    },
+  },
+  {
+    id: 'backup_create', description: 'Create a database backup. No args.', risk: 'read',
+    run: () => ({ kind: 'read', text: 'I can create a backup for you. Go to Settings → Backup, or say "open settings" and navigate to the Backup tab.' }),
   },
   {
     id: 'exportInvoicesCsv', description: 'Export the invoice list as a CSV file. No args.', risk: 'read',

@@ -67,6 +67,13 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   invoice_by_amount: { required: ['amount'], optional: [], describe: 'Find invoices by amount. Args: PKR amount' },
   clinic_outstanding: { required: ['clinic'], optional: [], describe: 'Outstanding invoices for a clinic. Args: clinic name' },
   qc_pending: { required: [], optional: [], describe: 'Cases needing QC attention (failed or not yet inspected). No args.' },
+  patient_search: { required: [], optional: ['query'], describe: 'Search patients by name, phone, address, or CNIC. Args: query' },
+  cases_filter: { required: [], optional: ['status', 'clinic', 'priority', 'material', 'shade', 'teeth', 'fromDate', 'toDate'], describe: 'Filter cases by status, clinic, priority, date range, material, shade, teeth. Args: status, clinic, priority, material, shade, teeth, fromDate, toDate' },
+  invoice_search_by_amount: { required: [], optional: ['minAmount', 'maxAmount'], describe: 'Find invoices by amount range. Args: minAmount, maxAmount' },
+  report_generate: { required: ['clinic'], optional: ['month'], describe: 'Generate a monthly report for a clinic. Args: clinic name, month (YYYY-MM)' },
+  user_list: { required: [], optional: [], describe: 'List system users. No args.' },
+  theme_switch: { required: ['mode'], optional: [], describe: 'Switch the app theme. Args: mode (light|dark|system)' },
+  backup_create: { required: [], optional: [], describe: 'Create a database backup. No args.' },
 };
 
 const toolsForApi = () =>
