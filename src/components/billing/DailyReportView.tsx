@@ -73,6 +73,7 @@ export const DailyReportView: React.FC = () => {
     ['clinic', 'Clinic'],
     ['status', 'Status'],
     ['units', 'Units'],
+    ['teeth', 'Teeth'],
     ['shade', 'Shade'],
     ['price', 'Fee'],
   ];
@@ -109,6 +110,7 @@ export const DailyReportView: React.FC = () => {
       ),
     },
     { key: 'units', header: 'Units', className: 'text-right tabular-nums text-slate-600 whitespace-nowrap', render: (r) => <>{r.units > 0 ? r.units : ''}</> },
+    { key: 'teeth', header: 'Teeth', className: 'text-slate-600 whitespace-nowrap', render: (r) => <>{r.teeth || ''}</> },
     { key: 'shade', header: 'Shade', className: 'font-mono text-slate-600 whitespace-nowrap', render: (r) => <>{r.shade}</> },
     {
       key: 'status',
@@ -188,6 +190,7 @@ export const DailyReportView: React.FC = () => {
       deliveryDate: report.include.deliveryDate ? r.deliveryDate : '',
       daysLate: report.include.deliveryDate ? (r.isOverdue ? Math.abs(r.daysRemaining) : 0) : 0,
       fee: report.include.price ? r.price : 0,
+      teeth: report.include.teeth ? r.teeth : '',
     }));
     const result = buildDailyReportPdf(rows,
       [],

@@ -651,6 +651,7 @@ export interface DailyReportPdfRow {
   /** Days past the promised delivery date. 0 when the case is not late. */
   daysLate: number;
   fee: number;
+  /** Teeth (FDI numbers) shown when the operator included teeth. */ teeth?: string;
 }
 
 export interface DailyReportPdfClinic {
@@ -697,6 +698,7 @@ const PRODUCTION_COLS: [string, string, number, 'left' | 'right'][] = [
   ['patient', 'PATIENT', 0.15, 'left'],
   ['doctor', 'DOCTOR', 0.15, 'left'],
   ['clinic', 'CLINIC', 0.15, 'left'],
+  ['teeth', 'TEETH', 0.1, 'left'],
   ['deliv', 'DELIVERY', 0.11, 'left'],
   ['fee', 'FEE', 0.1, 'right'],
 ];
@@ -1561,6 +1563,7 @@ export function buildDailyReportPdf(
           { text: r.patient },
           { text: r.doctor },
           { text: r.clinic },
+          { text: r.teeth || '' },
           {
             /* A case that went past its delivery date says so, on the row
                itself. The column is narrow, so the marker shrinks with the

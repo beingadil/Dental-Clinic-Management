@@ -73,6 +73,7 @@ export interface DailyReportInclude {
   clinic: boolean;
   status: boolean;
   units: boolean;
+  /** Which teeth the case uses (FDI numbers). */ teeth: boolean;
   shade: boolean;
   price: boolean;
 }
@@ -89,6 +90,7 @@ export const defaultDailyReportInclude = (): DailyReportInclude => ({
   /* Units are on by default now: the operator asked for them ("show units of
      each case if it has") — cells render blank for cases without a count. */
   units: true,
+  /* Teeth are shown on by default too — the operator asked for them. */ teeth: true,
   shade: true,
   price: true,
 });
