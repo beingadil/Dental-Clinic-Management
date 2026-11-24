@@ -263,6 +263,11 @@ export interface LedgerPdfMeta {
 const pk = (n: number) => `PKR ${(n || 0).toLocaleString('en-US')}`;
 const num = (n: number) => (n || 0).toLocaleString('en-US');
 
+/** A ledger balance always states its side: a negative balance is a credit,
+ *  a positive one (or zero) a debit. The operator reads the column straight
+ *  down without having to infer the side from a sign. */
+const bal = (n: number): string => `${num(Math.abs(n))} ${n < 0 ? 'Cr' : 'Dr'}`;
+
 /** Helvetica widths — measure, don't guess. */
 const HELV_W: Record<string, number> = {
   ' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, "'": 191,
@@ -446,7 +451,7 @@ export function buildLedgerPdf(
         { text: e.credit ? num(e.credit) : '\u2013', size: 7 },
         /* The running balance is the column a reader follows down the page:
            one step heavier than the money beside it. */
-        { text: num(e.closing), bold: true, size: 7.5 },
+        { text: bal(e.closing), bold: true, size: 7.5 },
       ] as TableCell[],
     };
   });
@@ -529,9 +534,8 @@ export function buildLedgerPdf(
     top: firstRowY,
     /* Continuation pages start higher because they carry a compact header. */
     continuationTop: compactFirstRowY,
-    /* Room for the per-page subtotal strip (~22) on every page, plus the
-       totals + account summary + note (~64) on the last page. */
-    bottom: g.CONTENT_BOTTOM + 48,
+    /* No per-page strip; reserve only the closing-balance band on the last page. */
+    bottom: g.CONTENT_BOTTOM + 26,
     heading: (ops, geo, _y, continued) => {
       if (!continued) {
         ops.push({
@@ -544,58 +548,23 @@ export function buildLedgerPdf(
          label — go straight to the column headings, higher up the page. */
       return compactTableHeadY;
     },
-    /* Per-page subtotal strip: this page's debit/credit and closing balance. */
-    pageStrip: (ops, geo, X, cols, y, pageRows) => {
-      const end = geo.MARGIN + geo.CONTENT_W;
-      const dr = pageRows.reduce((s, r) => s + (r.debit || 0), 0);
-      const cr = pageRows.reduce((s, r) => s + (r.credit || 0), 0);
-      const top = y + 2;
-      const bottom = y - 14;
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.955 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: end, y2: top, grey: 0.5, width: 0.6 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: end, y2: bottom, grey: 0.5, width: 0.6 });
-      ops.push({
-        kind: 'text', x: geo.MARGIN + 6, y: bottom + 4, size: 6.5, bold: true, grey: 0.15,
-        text: `PAGE TOTAL  (${pageRows.length} ${pageRows.length === 1 ? 'ENTRY' : 'ENTRIES'})`,
-      });
-      const figure = (key: string, text: string) => {
-        const col = cols.find((c) => c.key === key);
-        if (!col) return;
-        ops.push({
-          kind: 'text', x: X[key] + col.w - textW(text, 6.5) - 2, y: bottom + 4,
-          size: 6.5, bold: true, grey: 0.15, text,
-        });
-      };
-      figure('debit', dr ? num(dr) : '\u2013');
-      figure('credit', cr ? num(cr) : '\u2013');
-      figure('close', '');
-    },
-    totals: (ops, geo, X, cols, rowEndY, rowCount) => {
+    totals: (ops, geo, _X, _cols, rowEndY) => {
       const y = rowEndY - 8;
       const end = geo.MARGIN + geo.CONTENT_W;
-      /* One clean band for the grand totals — no stacked rules, no per-cell
-         boxes. The single table frame already provides the vertical rules. */
       const top = y + 12;
       const bottom = y - 8;
       ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.93 });
       ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: end, y2: top, grey: 0.45, width: 0.8 });
       ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: end, y2: bottom, grey: 0.45, width: 0.8 });
-
-      const label = `TOTALS (${num(rowCount || meta.transactionCount)} TRANSACTION${(rowCount || meta.transactionCount) === 1 ? '' : 'S'})`;
-      ops.push({ kind: 'text', x: geo.MARGIN + 6, y: y + 1, size: 6.5, bold: true, grey: 0.1, text: label });
-      const figure = (key: string, text: string, size: number) => {
-        const col = cols.find((c) => c.key === key);
-        if (!col) return;
-        ops.push({
-          kind: 'text', x: X[key] + col.w - textW(text, size) - 2, y: y + 1,
-          size, bold: true, grey: 0.1, text,
-        });
-      };
-      figure('debit', num(meta.totalDebits), 6.5);
-      figure('credit', num(meta.totalCredits), 6.5);
-      figure('close', num(meta.closingBalance), 8);
-
-      drawAccountSummary(ops, geo, meta, y - 34);
+      ops.push({
+        kind: 'text', x: geo.MARGIN + 6, y: y + 1, size: 7, bold: true, grey: 0.12,
+        text: 'CLOSING BALANCE',
+      });
+      const value = bal(meta.closingBalance);
+      ops.push({
+        kind: 'text', x: end - textW(value, 9) - 6, y: y + 1, size: 9, bold: true, grey: 0.1,
+        text: value,
+      });
     },
   };
 
@@ -1052,55 +1021,6 @@ function drawStatementInfoBox(
  * This is the page's conclusion, not a headline: the reader arrives at it
  * after the transactions, which is the order an accountant checks them in.
  */
-function drawAccountSummary(ops: PdfOp[], g: Geo, meta: LedgerPdfMeta, y: number): void {
-  const right = g.W - g.MARGIN;
-  const labels = ['Opening balance', 'Total debits', 'Total credits', 'Closing balance'];
-  const values = [
-    pk(meta.openingBalance),
-    pk(meta.totalDebits),
-    pk(meta.totalCredits),
-    pk(meta.closingBalance),
-  ];
-  const colW = g.CONTENT_W / labels.length;
-  const rowH = 17;
-
-  ops.push({ kind: 'text', x: g.MARGIN, y, size: 7.5, bold: true, grey: 0.2, text: 'ACCOUNT SUMMARY' });
-  const headTop = y - 8;
-  const tableBottom = headTop - rowH * 2;
-  /* One header band, one outer frame, one rule between the two rows — no
-     stacked strokes. Matches the clean single-rule table frame above. */
-  ops.push({ kind: 'rect', x: g.MARGIN, y: headTop - rowH, w: g.CONTENT_W, h: rowH, grey: 0.93 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop, x2: right, y2: headTop, grey: 0.45, width: 0.6 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop - rowH, x2: right, y2: headTop - rowH, grey: 0.75, width: 0.4 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: tableBottom, x2: right, y2: tableBottom, grey: 0.45, width: 0.6 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: tableBottom, x2: g.MARGIN, y2: headTop, grey: 0.45, width: 0.6 });
-  ops.push({ kind: 'line', x1: right, y1: tableBottom, x2: right, y2: headTop, grey: 0.45, width: 0.6 });
-  for (let i = 1; i < labels.length; i++) {
-    ops.push({ kind: 'line', x1: g.MARGIN + i * colW, y1: tableBottom, x2: g.MARGIN + i * colW, y2: headTop, grey: 0.85, width: 0.35 });
-  }
-  labels.forEach((label, i) => {
-    ops.push({
-      kind: 'text', x: g.MARGIN + i * colW + 6, y: headTop - 11, size: 6, bold: true, grey: 0.25,
-      text: fitShrink(label.toUpperCase(), colW - 12, 6).text,
-    });
-    const v = fitShrink(values[i], colW - 12, 8);
-    ops.push({
-      kind: 'text', x: g.MARGIN + i * colW + 6, y: headTop - rowH - 11.5, size: v.size, bold: true, grey: 0.1, text: v.text,
-    });
-  });
-
-  /* Closing balance is already the 4th column of the summary table, shown
-     prominently — a separate repeated sentence would only restate it. */
-  const noteY = tableBottom - 18;
-  ops.push({
-    kind: 'text', x: g.MARGIN, y: noteY, size: 6.5, grey: 0.45,
-    text: fitShrink(
-      'Note: This is a computer-generated account statement. Please verify the entries against the clinic\u2019s records.',
-      g.CONTENT_W,
-      6.5,
-    ).text,
-  });
-}
 
 /** Draws a document's footer: who it is, which document, and where we are. */
 function drawDocFooter(
