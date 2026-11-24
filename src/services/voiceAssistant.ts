@@ -1,9 +1,12 @@
 /**
- * Voice assistant entry point.
+ * Voice assistant entry point — CAG (Context-Augmented Generation).
  *
  * ALL intent resolution is via the Groq tool-calling agentic loop
- * (src/services/voiceAgent.ts). This file glues the agentic loop to local
- * memory and TTS.
+ * (src/services/voiceAgent.ts). Before calling the loop, this file builds
+ * a clinic context snapshot (recent cases, outstanding invoices, QC items,
+ * advance wallet, month-close status, patient names) and passes it into the
+ * dynamic system prompt, so Groq can resolve ANY phrase — typed or spoken —
+ * without hardcoded phrases or keyword matching.
  *
  * No fixed phrases anywhere: if the AI decides there is no tool call, it
  * asks the operator a natural, general question instead of a canned
@@ -11,6 +14,7 @@
  * act on; otherwise it asks.
  */
 import { remember } from './voiceMemory';
+import { buildClinicContext } from './voiceContextCache';
 import type { VoiceToolContext } from './voiceRegistry';
 import type { WriteCommand } from './voiceWrite';
 import { runAgenticLoop } from './voiceAgent';
@@ -23,6 +27,7 @@ export interface AssistantResult {
   /** When set, the voice shell auto-executes this write (destructive still
       keeps the typed-token gate). */
   pendingWrite?: WriteCommand;
+  /** Risk of the pending action (write | destructive). */
   risk?: 'write' | 'destructive';
 }
 
@@ -34,22 +39,38 @@ const finish = (text: string, raw = ''): AssistantResult => {
   return mkr(text);
 };
 
-/** Natural, general question when the AI has no tool call to run. */
-const noActionText = (): string =>
-  'Hey — want to know anything about your clinic? Balances, statements, your open cases, or ask “what can you do?” for the full list.';
+/** Build the clinic context snapshot for CAG — uses the first clinic in labs
+ *  (the one most likely on-screen), plus all-clinics summary in the prompt. */
+const buildContextForQuery = (ctx: VoiceToolContext): { clinicContext: any } | null => {
+  const labs = ctx.labs || [];
+  if (!labs.length) return null;
+  const clinic = labs[0];
+  return {
+    clinicContext: buildClinicContext(clinic, {
+      cases: ctx.cases || [],
+      invoices: ctx.invoices || [],
+      advancePayments: ctx.advancePayments || [],
+      accountAdjustments: ctx.accountAdjustments || [],
+      userPreferences: ctx as any,
+    }),
+  };
+};
 
 export async function askAssistant(raw: string, ctx: VoiceToolContext): Promise<AssistantResult> {
   const q = (raw || '').trim();
   const done = (text: string) => finish(text, q);
   if (!q) {
-    return done('Try asking about balances, statements, ledgers or open cases — or say "what can you do?" for the full list.');
+    return done('What would you like to know about your clinic? Balances, statements, open cases — or just ask "what can you do?"');
   }
 
+  // Build CAG context: recent cases, outstanding invoices, QC items, advance wallet, month-close, patient names.
+  const { clinicContext } = buildContextForQuery(ctx) || { clinicContext: null };
+
   // Primary path: Groq agentic loop (tool calling, no regex matching).
-  const agentResult = await runAgenticLoop(q, ctx);
+  const agentResult = await runAgenticLoop(q, ctx, clinicContext);
   if (agentResult?.navigateTo) return { ...agentResult, spoke: true } as AssistantResult;
   if (agentResult?.text) return { ...agentResult, spoke: true } as AssistantResult;
 
   // Fallback: a natural question, never a canned phrase list.
-  return done(noActionText());
+  return done("I'm not sure what you mean — could you say it a different way?");
 }

@@ -23,6 +23,7 @@ import { runAgenticLoop, type AgentResult } from '../services/voiceAgent';
 import { VoiceToolContext } from '../services/voiceRegistry';
 import { fillJarvisForm, type JarvisFormData } from '../services/jarvisForms';
 import { speak, cancelSpeech } from '../services/voiceUtterance';
+import { buildClinicContext } from '../services/voiceContextCache';
 
 interface JarvisContextValue {
   /** Send a natural-language command to Jarvis. Returns the agent result. */
@@ -163,7 +164,15 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
           can,
         } as unknown as VoiceToolContext;
 
-        const result = await runAgenticLoop(prompt, ctx);
+        // Build CAG context: recent cases, outstanding invoices, QC items, advance wallet, month-close, patient names.
+        const clinicContext = labs.length ? buildClinicContext(labs[0], {
+          cases: cases || [],
+          invoices: invoices || [],
+          advancePayments: advancePayments || [],
+          accountAdjustments: accountAdjustments || [],
+          userPreferences,
+        }) : null;
+        const result = await runAgenticLoop(prompt, ctx, clinicContext);
 
         if (!result) {
           setAnswer("I'm not sure — say 'what can you do?' for the list.");

@@ -296,10 +296,11 @@ export const getCaseDetail = (ctx: VoiceContext, caseNumber: string) => {
   return sections.filter(Boolean).join('; ');
 };
 
-/** Workstation search/filter via the app's own filter machinery. */
+/** Workstation search/filter via the app's own filter machinery. Searches case
+ *  number, patient name, case type, doctor, clinic, material, shade, and teeth. */
 export const getCaseSearch = (ctx: VoiceContext, q: string) => {
   const lower = (q || '').toLowerCase().trim();
-  if (!lower) return 'Say what you want to search — e.g. “crown” or “DS-0001”.';
+  if (!lower) return 'Say what you want to search — e.g. “crown”, “A2”, “26”, or “DS-0001”.';
   const normalized = lower.match(/DS-\d+/i)?.[0]?.toUpperCase();
   const hits = (ctx.cases || []).filter((c) =>
     (normalized ? c.case_number === normalized : true) &&
@@ -307,10 +308,30 @@ export const getCaseSearch = (ctx: VoiceContext, q: string) => {
       (lower && (c.patient_name || '').toLowerCase().includes(lower)) ||
       (c.case_type_name || '').toLowerCase().includes(lower) ||
       (c.doctor_name || '').toLowerCase().includes(lower) ||
-      (c.lab_name || '').toLowerCase().includes(lower))
+      (c.lab_name || '').toLowerCase().includes(lower) ||
+      (c.material || '').toLowerCase().includes(lower) ||
+      (c.shade || '').toLowerCase().includes(lower) ||
+      (c.selected_teeth?.some((t) => String(t).includes(lower)) || false))
   );
   if (!hits.length) return 'No cases match that search.';
   return `Matched ${hits.length} case(s): ${hits.slice(0, 6).map((c) => `${c.case_number}${ctx.allowClinicalDetail && c.patient_name ? ` (${c.patient_name})` : ''} — ${c.case_type_name ?? '?'} — ${c.status}`).join('; ')}`;
+};
+
+/** Search case notes by content across all cases. */
+export const getCaseNotesSearch = (ctx: VoiceContext, q: string) => {
+  const lower = (q || '').toLowerCase().trim();
+  if (!lower) return 'What do you want to search for in case notes?';
+  const hits: string[] = [];
+  for (const [caseId, notes] of Object.entries(ctx.caseNotes || {})) {
+    const c = (ctx.cases || []).find((x) => x.id === caseId);
+    for (const n of notes) {
+      if (String(n.note_text || '').toLowerCase().includes(lower)) {
+        hits.push(`${c?.case_number || caseId}: “${String(n.note_text).slice(0, 100)}” — by ${n.author}`);
+      }
+    }
+  }
+  if (!hits.length) return 'No case notes match that search.';
+  return `Found ${hits.length} note(s): ${hits.slice(0, 6).join('; ')}`;
 };
 
 /** Status-change history for one case. */

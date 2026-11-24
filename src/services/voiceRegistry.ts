@@ -22,7 +22,7 @@ import {
   getOverdueCases, getStandings, getStatementAnswer, getUnpaid, periodFromQuery,
   searchInvoicesInContext, getCodeAnswer, clinicCandidates, narrateStatement, getTodayBriefing,
   getQcCaseState, getQcInspectionLog, getQcSummary, getQcGateCheck, getQcReworkList, qcReasonCodeList,
-  getCaseDetail, getCaseSearch, getCaseTimeline, getCaseNotes, getCaseAttachments,
+  getCaseDetail, getCaseSearch, getCaseTimeline, getCaseNotes, getCaseAttachments, getCaseNotesSearch,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { type WriteCommand, type CaseUpdateFields } from './voiceWrite';
@@ -246,10 +246,17 @@ const tools: VoiceTool[] = [
     },
   },
   {
-    id: 'case_search', description: 'Find cases by patient/type/clinic/teeth. Args: { query: string }', risk: 'read',
+    id: 'case_search', description: 'Find cases by patient name, case type, clinic, doctor, material, shade, teeth, or case number. Args: { query: string }', risk: 'read',
     run: (ctx, args) => {
       const q2 = String(args.query || '');
       return { kind: 'read', text: getCaseSearch(ctx, q2) };
+    },
+  },
+  {
+    id: 'case_notes_search', description: 'Search case notes by content across all cases. Args: { query: string }', risk: 'read',
+    run: (ctx, args) => {
+      const q2 = String(args.query || '');
+      return { kind: 'read', text: getCaseNotesSearch(ctx, q2) };
     },
   },
   {

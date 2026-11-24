@@ -12,6 +12,8 @@ import { memoryContext } from './voiceMemory';
 import { VOICE_TOOLS, type VoiceToolContext } from './voiceRegistry';
 import type { WriteCommand } from './voiceWrite';
 import { REPORTS_TABS } from '../components/common/financeTabs';
+import { invoiceBalanceDue } from './financeDomain';
+import { formatContextForPrompt, type ClinicContextSnapshot } from './voiceContextCache';
 
 export interface AgentResult {
   text: string;
@@ -57,6 +59,7 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   purgeCase: { required: ['caseNumber'], optional: [], describe: 'Permanently delete a case + data (app-confirmed)' },
   cancelCase: { required: ['caseNumber'], optional: [], describe: 'Cancel a case' },
   addNote: { required: ['caseNumber', 'note'], optional: [], describe: 'Add a note on a case' },
+  case_notes_search: { required: ['query'], optional: [], describe: 'Search case notes by content across all cases' },
 };
 
 const toolCatalog = () =>
@@ -82,16 +85,56 @@ const toolsForApi = () =>
     };
   });
 
-const systemPrompt = () => `You are the assistant for Dental Solutions, a dental-lab billing app — a friendly, warm, conversational voice assistant, like a helpful chat partner, not a robot. Answer any question conversationally when you can; use tools to do things and read data. Be polite and natural, but efficient: answers stay short and factual, questions conversational.
-You may answer conversationally — from the clinic data, memory and your knowledge — when no tool fits; you may ONLY invent figures, clinics, cases, invoices or case numbers by calling tools: never invent them.
+/** Build a one-line summary of every clinic for the system prompt. */
+const allClinicsSummary = (ctx: VoiceToolContext): string => {
+  const labs = ctx.labs || [];
+  if (!labs.length) return 'No clinics registered yet.';
+  return labs
+    .map((lab) => {
+      const invs = (ctx.invoices || []).filter((i) => i.lab_id === lab.id);
+      const balance = invs.reduce((acc, inv) => acc + invoiceBalanceDue(inv), 0);
+      const openCases = (ctx.cases || []).filter((c) => c.lab_id === lab.id && c.status !== 'delivered' && c.status !== 'cancelled' && !c.archived_at).length;
+      return `- ${lab.name}: ${openCases} open case(s), ${invs.length} invoice(s), outstanding PKR ${Math.abs(balance).toLocaleString()}${balance > 0 ? ' (clinic owes us)' : balance < 0 ? ' (credit held)' : ' (settled)'}`;
+    })
+    .join('\n');
+};
+
+const systemPrompt = (clinicContext?: ClinicContextSnapshot | null, ctx?: VoiceToolContext) => {
+  const ctxSection = clinicContext ? formatContextForPrompt(clinicContext) : '';
+  const allClinics = ctx ? `\n## All Clinics\n${allClinicsSummary(ctx)}` : '';
+
+  return `You are Jarvis, the voice assistant for Dental Solutions — a dental-lab billing app. You are friendly, warm, and conversational, like a helpful colleague who knows the clinic's books. Answer any question naturally when you can; use tools to read data or do things. Keep answers short and factual; questions conversational.
+
+You may answer conversationally — from clinic context, memory, and your knowledge — when no tool fits. You may ONLY answer figures, clinics, cases, invoices or case numbers by calling tools: never invent them.
+
 If a required argument is missing or the request is ambiguous, ask for it as a short question instead of guessing.
-Void/wipe/refund are never tools. Delete/purge of a case goes through deleteCase/purgeCase — the app gates those behind its own confirmation.
-The user may speak with loose wording ("DS-0001", "Mir Dental", "the books"). Map it to the closest tool; ask if you can't.
+
+Void/wipe/refund are never tools. Delete/purge of a case goes through deleteCase/purgeCase — the app gates those behind its own confirmation, and the user must speak or type the confirmation.
+
+The user may speak with loose wording ("DS-0001", "Mir Dental", "the books", "what's owed", "show me yesterday's work", "is DS-0393 ready yet?"). Map it to the closest tool; ask if you can't.
+
 Clinics and case numbers must exactly match what the user said or what exists; never fabricate.
-Known tools:
+
+## Current Clinic Context
+${ctxSection || 'No specific clinic context — ask which clinic the user means.'}${allClinics}
+
+## How to search
+- Case numbers: DS-XXXX (e.g., DS-0001)
+- Patient names: full or partial name
+- Clinics: full or partial name
+- Money: PKR amounts
+- Teeth: FDI numbers (e.g., "26 27")
+- Materials: Zirconia Crown, PFM, Emax, etc.
+- Shades: A1, A2, A3, B1, etc.
+- Priorities: low, normal, high, urgent
+- Statuses: draft, received, in_progress, qc, ready, delivered, revision, cancelled
+
+## Known tools
 ${toolCatalog()}
-Memory (redacted, previous operator questions and accepted answers):
+
+## Memory (redacted, previous operator questions and accepted answers)
 ${memoryContext()}`;
+};
 
 const KNOWN_CASE_NUMBER = /\bDS-\d+\b/i;
 const STAGE_WORDS = /\b(ready|delivered|received|qc|quality|revision|rework|in progress|cancelled)\b/i;
@@ -131,10 +174,10 @@ const callGroq = async (
 };
 
 /** Run the agentic loop: model → tool → result → maybe ask, repeat up to MAX_ITER times. */
-export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext): Promise<AgentResult | null> => {
+export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext, clinicContext?: ClinicContextSnapshot | null): Promise<AgentResult | null> => {
   const tools = toolsForApi();
   const messages: { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; name?: string }[] = [
-    { role: 'system', content: systemPrompt() },
+    { role: 'system', content: systemPrompt(clinicContext, ctx) },
     { role: 'user', content: raw },
   ];
   for (let iter = 0; iter < MAX_ITER; iter += 1) {
@@ -166,7 +209,7 @@ export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext): Promis
       } catch { /* fall through */ }
     }
   }
-  return clarify('Still not sure — say "what can you do?" for the list.');
+  return clarify("I'm not sure what you mean — could you say it a different way?");
 };
 
 export { KNOWN_CASE_NUMBER, STAGE_WORDS };
