@@ -27,10 +27,9 @@ export interface AgentResult {
 const MAX_ITER = 3;
 
 /** Machine-readable parameter hints per tool id (names only — values are validated by the tool itself). */
-const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; describe: string }> = {
+const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; describe: string; kinds?: Record<string, 'number' | 'boolean' | 'array' | 'object'> }> = {
   cashCollected: { required: [], optional: ['period'], describe: 'Cash/advances collected. period: today|this month|this week|last month|all time' },
   overdueCases: { required: [], optional: [], describe: 'Cases overdue (delivery before today)' },
-  balance: { required: ['clinic'], optional: ['period', 'metric'], describe: 'Net balance of a clinic (Dr/Cr). metric: balance|advance' },
   clinicBalance: { required: ['clinic'], optional: [], describe: 'Net balance of a clinic (Dr/Cr)' },
   statement: { required: ['clinic'], optional: ['period'], describe: 'Monthly or All-Time statement for a clinic' },
   ledger: { required: ['clinic'], optional: ['period'], describe: 'Ledger (postings) for a clinic' },
@@ -59,7 +58,6 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   deleteCase: { required: ['caseNumber'], optional: [], describe: 'Delete a case permanently (app-confirmed)' },
   purgeCase: { required: ['caseNumber'], optional: [], describe: 'Permanently delete a case + data (app-confirmed)' },
   cancelCase: { required: ['caseNumber'], optional: [], describe: 'Cancel a case' },
-  addNote: { required: ['caseNumber', 'note'], optional: [], describe: 'Add a note on a case' },
   case_notes_search: { required: ['query'], optional: [], describe: 'Search case notes by content across all cases' },
   case_count: { required: [], optional: ['clinic', 'status'], describe: 'Count cases. Optional: clinic name, status (draft|received|in_progress|qc|ready|delivered|revision|cancelled)' },
   cases_today: { required: [], optional: ['clinic'], describe: 'Cases due today. Optional: clinic name' },
@@ -113,6 +111,35 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   audit_trail: { required: [], optional: ['limit'], describe: 'Recent audit-trail events. Args: limit (optional)' },
   sync_status: { required: [], optional: [], describe: 'Check online/offline/desktop status. No args.' },
   templates_list: { required: [], optional: [], describe: 'List saved case templates. No args.' },
+  dueToday: { required: [], optional: [], describe: 'Cases due today (priority-sorted) plus overdue. No args.' },
+  standings: { required: [], optional: [], describe: 'Clinics ranked by outstanding receivable. No args.' },
+  qc_state: { required: ['caseNumber'], optional: [], describe: 'QC state for a case — pass/fail, attempts, open gate. Args: caseNumber' },
+  qc_gate_check: { required: ['caseNumber'], optional: [], describe: 'Whether a case may ship (passed QC). Args: caseNumber' },
+  qc_inspection_log: { required: ['caseNumber'], optional: [], describe: 'QC inspection history for a case. Args: caseNumber' },
+  qc_metrics_summary: { required: [], optional: [], describe: 'Lab-wide QC metrics: first-pass rate, rework, failure reasons. No args.' },
+  qc_rework: { required: [], optional: [], describe: 'Cases currently in rework. No args.' },
+  qc_reasons: { required: [], optional: [], describe: 'Top QC failure reason codes. No args.' },
+  case_detail: { required: ['caseNumber'], optional: [], describe: 'Material, teeth, shade, procedure, dates and status for a case. Args: caseNumber' },
+  case_search: { required: ['query'], optional: [], describe: 'Find cases by patient, type, clinic, doctor, material, shade, teeth or case number. Args: query' },
+  case_timeline: { required: ['caseNumber'], optional: [], describe: 'Status history for a case in plain words. Args: caseNumber' },
+  case_notes_list: { required: ['caseNumber'], optional: [], describe: 'Notes on a case (author, time, text). Args: caseNumber' },
+  case_attachments: { required: ['caseNumber'], optional: [], describe: 'Files attached to a case. Args: caseNumber' },
+  exportInvoicesCsv: { required: [], optional: [], describe: 'Export the invoice list as a CSV file. No args.' },
+  exportTransactionsCsv: { required: [], optional: [], describe: 'Export the unified transaction register as CSV. No args.' },
+  codebase: { required: ['query'], optional: [], describe: 'Answer a question about the app’s codebase or docs. Args: query' },
+  applyAdvance: { required: ['clinic', 'amount', 'invoice'], optional: [], describe: 'Apply advance credit to an invoice. Args: clinic, amount, invoice', kinds: { amount: 'number' } },
+  markInvoicePaid: { required: ['invoiceNumbers'], optional: [], describe: 'Mark one or more invoices paid in full. Args: invoiceNumbers', kinds: { invoiceNumbers: 'array' } },
+  printSettingsSave: { required: [], optional: ['paper', 'margin', 'fontSize', 'showLogo', 'logoPosition', 'jobSlipStyle'], describe: 'Save the global print layout. Args: paper, margin, fontSize, showLogo, logoPosition, jobSlipStyle', kinds: { margin: 'number', fontSize: 'number', showLogo: 'boolean' } },
+  printSectionsSave: { required: ['docKind', 'sections'], optional: [], describe: 'Set which sections print for a document kind. Args: docKind (invoice|job_slip|receipt|statement), sections', kinds: { sections: 'array' } },
+  notificationConfigSave: { required: ['type'], optional: ['frequencies', 'escalation', 'thresholdDays', 'interval'], describe: 'Save notification cadence/escalation. Args: type (payment|overdue), frequencies, escalation, thresholdDays, interval', kinds: { frequencies: 'array', escalation: 'boolean', thresholdDays: 'number' } },
+  closeMonth: { required: ['clinic', 'month'], optional: [], describe: 'Close a clinic month. Args: clinic, month (YYYY-MM)' },
+  updateClinicDoctor: { required: ['clinic', 'doctorName'], optional: [], describe: 'Set the doctor for a clinic. Args: clinic, doctorName' },
+  updateClinicField: { required: ['clinic', 'field', 'value'], optional: [], describe: 'Edit one clinic field. Args: clinic, field (name|phone|email|address|city|doctor), value' },
+  updateStatus: { required: [], optional: [], describe: 'Report the app update state. No args.' },
+  checkUpdates: { required: [], optional: [], describe: 'Run the update check now. No args.' },
+  applyPatch: { required: [], optional: [], describe: 'Apply an available hot patch. No args.' },
+  fillForm: { required: ['target'], optional: ['data'], describe: 'Pre-fill an open form. Args: target (record-transaction-modal|case-detail-modal), data', kinds: { data: 'object' } },
+  help: { required: [], optional: [], describe: 'List everything voice can do. No args.' },
 };
 
 const toolsForApi = () =>
@@ -124,6 +151,15 @@ const toolsForApi = () =>
     // can pass null when not provided (Groq sends null for omitted optional args).
     const requiredSet = new Set(hints?.required ?? []);
     const allParams = [...(hints?.required ?? []), ...(hints?.optional ?? [])];
+    const propertyFor = (k: string) => {
+      const kind = hints?.kinds?.[k];
+      const required = requiredSet.has(k);
+      if (kind === 'number') return required ? { type: 'number' } : { type: ['number', 'null'] };
+      if (kind === 'boolean') return required ? { type: 'boolean' } : { type: ['boolean', 'null'] };
+      if (kind === 'array') return { type: 'array', items: { type: 'string' } };
+      if (kind === 'object') return { type: 'object', additionalProperties: true };
+      return required ? { type: 'string' } : { type: ['string', 'null'] };
+    };
     return {
       type: 'function' as const,
       function: {
@@ -131,12 +167,7 @@ const toolsForApi = () =>
         description: t.description,
         parameters: {
           type: 'object',
-          properties: Object.fromEntries(allParams.map((k) => [
-            k,
-            requiredSet.has(k)
-              ? { type: 'string' }
-              : { type: ['string', 'null'] },
-          ])),
+          properties: Object.fromEntries(allParams.map((k) => [k, propertyFor(k)])),
           required: hints?.required ?? [],
         },
       },
