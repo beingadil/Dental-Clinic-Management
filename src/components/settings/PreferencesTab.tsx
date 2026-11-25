@@ -6,8 +6,9 @@ import { Sliders, LayoutGrid, Lock, LockOpen, Save, Trash2, Play, RotateCcw, Sun
 import { isThemeMode, type ThemeMode } from '../../theme/theme';
 import { useDashboardLayout, type DashboardDensity } from '../../components/dashboard/useDashboardLayout';
 import { PANEL_KEYS } from '../../components/dashboard/panelRegistry';
-import { setGroqKey, clearGroqKey, groqKeyPresent, groqEnabled } from '../../services/voiceGroq';
+
 import { listMemories, clearMemories } from '../../services/voiceMemory';
+import { groqKeyPresent, groqEnabled } from '../../services/voiceGroq';
 
 
 /**
@@ -238,62 +239,6 @@ const VoiceExtras: React.FC<{
         <button type="button" onClick={() => { clearMemories(); setMemoryCount(0); }} className="rounded-lg border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-100">Clear memory</button>
       </div>
       {uk && <p className="mt-2 text-[10px] font-semibold text-emerald-700">Groq routing ON — memory digest is included (redacted) so routing stays consistent.</p>}
-    </div>
-  );
-};
-
-const GroqKeyControl: React.FC = () => {
-  const [key, setKey] = useState('');
-  const [status, setStatus] = useState<string>('');
-  const present = groqKeyPresent();
-  return (
-    <div className="rounded-xl border border-dashed border-slate-300 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Groq API key (optional)</label>
-          <p className="mt-0.5 text-[10px] text-slate-400">Stored locally only; never committed or shipped in the installer. Removing it disables Groq immediately.</p>
-        </div>
-        <span className={`text-[10px] font-bold ${groqEnabled() ? 'text-emerald-600' : 'text-slate-400'}`}>
-          {groqEnabled() ? 'GROQ ON' : 'GROQ OFF'}
-        </span>
-      </div>
-      <div className="mt-2 flex gap-2">
-        <input
-          type="password"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          placeholder={present ? 'Key saved — enter a new key to replace' : 'gsk_…'}
-          autoComplete="off"
-          aria-label="Groq API key"
-          className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs"
-        />
-        <button
-          type="button"
-          onClick={() => {
-            if (!key.trim()) return;
-            setGroqKey(key);
-            setKey('');
-            setStatus('Saved. Groq routing enabled.');
-            window.setTimeout(() => setStatus(''), 1500);
-          }}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            clearGroqKey();
-            setKey('');
-            setStatus('Cleared. Offline answers only.');
-            window.setTimeout(() => setStatus(''), 1500);
-          }}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100"
-        >
-          Clear
-        </button>
-      </div>
-      {status && <p className="mt-1.5 text-[10px] font-semibold text-emerald-700">{status}</p>}
     </div>
   );
 };
@@ -560,7 +505,7 @@ export const PreferencesTab: React.FC = () => {
               ]}
             />
           )}
-          <GroqKeyControl />
+          <p className="rounded-xl border border-dashed border-slate-300 px-3 py-2 text-[10px] text-slate-500">AI provider keys live in Settings → Jarvis AI, the single home for every AI key.</p>
           <div className="flex items-center justify-between gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Cloud microphone (Groq Whisper)</label>
