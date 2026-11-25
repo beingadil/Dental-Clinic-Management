@@ -61,7 +61,7 @@ export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
     caseTypes, labContacts, labAddresses, pricingOverrides, qcInspections, caseNotes, caseAttachments,
-    templates, doctorPreferences, allPayments, reconciliationItems, auditEvents,
+    templates, doctorPreferences, allPayments, reconciliationItems, auditEvents, savedVouchers,
     addLabContact, addLabAddress, addPricingOverride, addCase, applyAdvanceCreditV2, bulkMarkPaid,
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
     restoreCase, deleteCasePermanently, saveAsTemplate,
@@ -69,6 +69,7 @@ export const VoiceShell: React.FC = () => {
     deletePricingOverride, setDoctorPreferredLab, addCaseType, updateCaseType, deleteCaseType,
     recordAccountAdjustment, deleteAccountAdjustment, deletePaymentV2, updatePaymentAmountV2,
     deleteInvoice, issueCreditNoteV2, reconcileItemV2, flagReconciliationExceptionV2,
+    saveVoucherToSystem, deleteSavedVoucher,
   } = useApp();
   const [open, setOpen] = useState(false);
   const [online, setOnline] = useState(true);
@@ -907,6 +908,45 @@ export const VoiceShell: React.FC = () => {
         }
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update reconciliation.'); }
+      return;
+    }
+    /* ── Saved vouchers (job slips / invoice log) ─────────────────────── */
+    if (cmd.kind === 'saveVoucher' && cmd.caseNumber) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      if (!target) { setStatus('error'); setAnswer(`I can’t find case ${cmd.caseNumber}.`); return; }
+      const voucherType = cmd.voucherType || 'job_slip';
+      try {
+        const saved = saveVoucherToSystem({
+          voucher_number: `${voucherType === 'invoice' ? 'INV-V' : 'SLIP'}-${target.case_number}`,
+          voucher_type: voucherType,
+          case_id: target.id,
+          case_number: target.case_number,
+          lab_name: target.lab_name,
+          doctor_name: target.doctor_name,
+          patient_name: target.patient_name,
+          case_type_name: target.case_type_name,
+          amount: voucherType === 'invoice' ? Number(target.final_price || 0) : undefined,
+          notes: `Logged by voice${target.selected_teeth?.length ? ` — teeth ${target.selected_teeth.join(', ')}` : ''}`,
+        });
+        setAnswer(`${voucherType === 'invoice' ? 'Invoice' : 'Job slip'} voucher ${saved.voucher_number} logged for ${target.case_number}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not log the voucher.'); }
+      return;
+    }
+    if (cmd.kind === 'deleteVoucher' && cmd.voucherNumber) {
+      const blocked = deny('print:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const want = cmd.voucherNumber.toUpperCase();
+      const hit = (savedVouchers || []).find((v) => v.voucher_number.toUpperCase() === want)
+        || (savedVouchers || []).find((v) => v.voucher_number.toUpperCase().includes(want));
+      if (!hit) { setStatus('error'); setAnswer(`No voucher ${cmd.voucherNumber} in the register. Say “list vouchers” first.`); return; }
+      try {
+        deleteSavedVoucher(hit.id);
+        setAnswer(`Voucher ${hit.voucher_number} deleted from the register.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the voucher.'); }
       return;
     }
     const { clinic, candidates } = resolveClinicForWrite(cmd.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };

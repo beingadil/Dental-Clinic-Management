@@ -181,7 +181,7 @@ const callProvider = async (
   p: AiProviderConfig,
   messages: GroqChatMessage[],
   tools: { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }[],
-  opts: { maxTokens?: number; timeoutMs?: number; temperature?: number; tool_choice?: 'auto' | 'none' | 'any' },
+  opts: { maxTokens?: number; timeoutMs?: number; temperature?: number; tool_choice?: 'auto' | 'none' | 'any' | 'required' },
 ): Promise<{ result: AiChatResult | null; shouldTryNext: boolean }> => {
   if (!p.apiKey || !p.enabled) {
     return { result: null, shouldTryNext: true };
@@ -248,7 +248,7 @@ const callProvider = async (
 export const aiChatTools = async (
   messages: GroqChatMessage[],
   tools: { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }[],
-  opts?: { maxTokens?: number; timeoutMs?: number; temperature?: number; tool_choice?: 'auto' | 'none' | 'any' },
+  opts?: { maxTokens?: number; timeoutMs?: number; temperature?: number; tool_choice?: 'auto' | 'none' | 'any' | 'required' },
 ): Promise<AiChatResult | null> => {
   lastError = null;
 

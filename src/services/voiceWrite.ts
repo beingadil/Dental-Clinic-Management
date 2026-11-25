@@ -20,7 +20,8 @@ export interface WriteCommand {
   | 'deleteLab' | 'deleteLabContact' | 'deleteLabAddress' | 'deletePricingOverride' | 'setDoctorPreferredLab'
   | 'addCaseType' | 'updateCaseType' | 'deleteCaseType' | 'slaSave'
   | 'recordAdjustment' | 'deleteAdjustment' | 'deletePayment' | 'updatePayment' | 'deleteInvoice' | 'issueCreditNote'
-  | 'reconcileItem' | 'flagReconciliation';
+  | 'reconcileItem' | 'flagReconciliation'
+  | 'saveVoucher' | 'deleteVoucher';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
@@ -110,4 +111,7 @@ export interface WriteCommand {
   newAmount?: number;
   /** Reconciliation action. */
   reconciliationId?: string;
+  /** Saved voucher log. */
+  voucherType?: 'job_slip' | 'invoice';
+  voucherNumber?: string;
 }

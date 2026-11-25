@@ -117,6 +117,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     allPayments,
     reconciliationItems,
     auditEvents,
+    savedVouchers,
   } = useApp();
   const [pending, setPending] = useState<AgentResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -189,6 +190,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
           allPayments: allPayments || [],
           reconciliationItems: reconciliationItems || [],
           auditEvents: auditEvents || [],
+          savedVouchers: savedVouchers || [],
           setCurrentView,
           addLab: () => ({} as any),
           updateLab: () => {},

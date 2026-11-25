@@ -13,6 +13,7 @@ import type { WriteCommand } from './voiceWrite';
 import { REPORTS_TABS } from '../components/common/financeTabs';
 import { invoiceBalanceDue } from './financeDomain';
 import { formatContextForPrompt, type ClinicContextSnapshot } from './voiceContextCache';
+import { TOOL_GROUP_IDS, groupMenu, toolsForDomains } from './voiceToolGroups';
 
 export interface AgentResult {
   text: string;
@@ -111,6 +112,9 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   audit_trail: { required: [], optional: ['limit'], describe: 'Recent audit-trail events. Args: limit (optional)' },
   sync_status: { required: [], optional: [], describe: 'Check online/offline/desktop status. No args.' },
   templates_list: { required: [], optional: [], describe: 'List saved case templates. No args.' },
+  vouchers_list: { required: [], optional: ['limit'], describe: 'List the saved voucher log (job slips / invoices). Args: limit (optional)', kinds: { limit: 'number' } },
+  save_voucher: { required: ['caseNumber'], optional: ['voucherType'], describe: 'Log a job slip or invoice voucher for a case. Args: caseNumber, voucherType (job_slip|invoice)' },
+  delete_voucher: { required: ['voucherNumber'], optional: [], describe: 'Delete a saved voucher (destructive). Args: voucherNumber' },
   dueToday: { required: [], optional: [], describe: 'Cases due today (priority-sorted) plus overdue. No args.' },
   standings: { required: [], optional: [], describe: 'Clinics ranked by outstanding receivable. No args.' },
   qc_state: { required: ['caseNumber'], optional: [], describe: 'QC state for a case — pass/fail, attempts, open gate. Args: caseNumber' },
@@ -214,6 +218,55 @@ const STAGE_WORDS = /\b(ready|delivered|received|qc|quality|revision|rework|in p
 /** Ask the user for a missing piece — used when the planner stalls. */
 export const clarify = (question: string): AgentResult => ({ text: question });
 
+/**
+ * Step 1 of retrieval: ask the model which app areas this sentence needs.
+ *
+ * This is a normal tool call (not keyword matching): the model reads the group
+ * menu and returns the domains it wants. Sending only those tool schemas keeps
+ * each request inside free-tier token limits.
+ */
+const DOMAIN_TOOL = {
+  type: 'function' as const,
+  function: {
+    name: 'select_domain',
+    description: 'Choose the app areas needed to answer this request. You will receive those tools on the next step. Pick every area that could apply; pick none if the request is pure conversation.',
+    parameters: {
+      type: 'object',
+      properties: {
+        domains: {
+          type: 'array',
+          items: { type: 'string', enum: TOOL_GROUP_IDS },
+          description: `One or more of: ${TOOL_GROUP_IDS.join(', ')}`,
+        },
+      },
+      required: ['domains'],
+    },
+  },
+};
+
+const pickDomains = async (raw: string): Promise<string[]> => {
+  const resp = await aiChatTools(
+    [
+      {
+        role: 'system',
+        content: `You route requests for Dental Solutions, a dental-lab billing app. Available areas:\n${groupMenu()}\n\nCall select_domain with the areas needed. Include 'cases' for anything about a specific case. Include 'billing' for money, invoices, payments or balances. If the request is only greeting/small talk, call select_domain with an empty list.`,
+      },
+      { role: 'user', content: raw },
+    ],
+    [DOMAIN_TOOL],
+    { maxTokens: 60, timeoutMs: 9000, temperature: 0, tool_choice: 'required' },
+  );
+  const call = resp?.tool_calls?.[0];
+  if (!call) return [];
+  try {
+    const parsed = JSON.parse(call.function.arguments || '{}') as { domains?: unknown };
+    const list = Array.isArray(parsed.domains) ? parsed.domains.map(String) : [];
+    return list.filter((d) => TOOL_GROUP_IDS.includes(d));
+  } catch {
+    return [];
+  }
+};
+
 /** Execute a tool chosen by the planner; returns a user-ready message plus an optional pending write. */
 const invokeApprovedTool = async (id: string, args: Record<string, unknown>, ctx: VoiceToolContext): Promise<AgentResult> => {
   const tool = VOICE_TOOLS.find((t) => t.id === id);
@@ -231,7 +284,12 @@ const invokeApprovedTool = async (id: string, args: Record<string, unknown>, ctx
 
 /** Run the agentic loop: model → tool → result → maybe ask, repeat up to MAX_ITER times. */
 export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext, clinicContext?: ClinicContextSnapshot | null): Promise<AgentResult | null> => {
-  const tools = toolsForApi();
+  const allTools = toolsForApi();
+  // Two-step retrieval keeps the request small: the model names the areas it
+  // needs, then only those schemas (plus the always-on core) are sent.
+  const domains = await pickDomains(raw);
+  const wanted = toolsForDomains(domains);
+  const tools = allTools.filter((t) => wanted.has(t.function.name));
   const messages: { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; name?: string }[] = [
     { role: 'system', content: systemPrompt(clinicContext, ctx) },
     { role: 'user', content: raw },

@@ -29,6 +29,7 @@ import {
   getDeliveryCalendar, getCaseQueue, getShadeGuide, globalSearch,
   getCaseTypesList, getClinicalSpecs, getCatalogCategories, getSlaStatus, getAgingReport,
   getAdjustmentList, getPaymentList, getReconciliationQueue, getAuditTrail, getSyncStatus, getTemplateList,
+  getVoucherList,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { selectCasesToAutoArchive } from '../context/hooks/autoArchive';
@@ -1173,6 +1174,31 @@ const tools: VoiceTool[] = [
   {
     id: 'templates_list', description: 'List saved case templates. No args.', risk: 'read',
     run: (ctx) => ({ kind: 'read', text: getTemplateList(ctx) }),
+  },
+  // ── Saved vouchers (job slips / invoice log) ───────────────────────────
+  {
+    id: 'vouchers_list', description: 'List the saved voucher log — job slips and invoices already printed and logged. Args: { limit?: number }.', risk: 'read',
+    run: (ctx, args) => ({ kind: 'read', text: getVoucherList(ctx, Number(args.limit || 8)) }),
+  },
+  {
+    id: 'save_voucher', description: 'Log a voucher for a case — either a job slip or an invoice — into the saved voucher register. Args: { caseNumber: string, voucherType: "job_slip"|"invoice" }.', risk: 'write',
+    run: (ctx, args) => {
+      const caseNumber = String(args.caseNumber || '').trim().toUpperCase();
+      const voucherType = String(args.voucherType || 'job_slip').trim() as 'job_slip' | 'invoice';
+      if (!caseNumber) return { kind: 'read', text: 'Which case should I log a voucher for?' };
+      if (!['job_slip', 'invoice'].includes(voucherType)) return { kind: 'read', text: 'Should that be a job slip or an invoice voucher?' };
+      const target = (ctx.cases || []).find((c) => c.case_number.toUpperCase() === caseNumber);
+      if (!target) return { kind: 'read', text: `I can’t find case ${caseNumber}.` };
+      return { kind: 'action', risk: 'write', summary: `Log a ${voucherType.replace(/_/g, ' ')} voucher for ${caseNumber} (${target.lab_name})?`, pending: { kind: 'saveVoucher', caseNumber, clinicHint: target.lab_name, voucherType, amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_voucher', description: 'Delete a saved voucher from the register. Args: { voucherNumber: string }. Destructive.', risk: 'destructive',
+    run: (_ctx, args) => {
+      const voucherNumber = String(args.voucherNumber || '').trim().toUpperCase();
+      if (!voucherNumber) return { kind: 'read', text: 'Which voucher number should I delete?' };
+      return { kind: 'action', risk: 'destructive', summary: `Delete voucher ${voucherNumber} from the register?`, pending: { kind: 'deleteVoucher', voucherNumber, caseNumber: voucherNumber, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
   },
 ];
 

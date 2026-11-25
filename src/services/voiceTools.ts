@@ -45,6 +45,8 @@ export interface VoiceContext {
   templates?: import('../types').CaseTemplate[];
   /** Doctor → preferred lab links. */
   doctorPreferences?: import('../types').DoctorPreferredLab[];
+  /** Saved voucher log (job slips / invoices). */
+  savedVouchers?: import('../types').SavedVoucher[];
   user?: UserProfile | null;
   /** Owner/Super-Admin opt-in for patient detail on reads. */
   allowClinicalDetail?: boolean;
@@ -831,4 +833,11 @@ export const getTemplateList = (ctx: VoiceContext): string => {
   const rows = ctx.templates || [];
   if (!rows.length) return 'No saved case templates yet. Save a case as a template from the workstation.';
   return `Saved templates (${rows.length}): ${rows.map((t) => `${t.template_name}${t.case_type_name ? ` — ${t.case_type_name}` : ''}`).join('; ')}.`;
+};
+
+/** Saved voucher log (job slips / invoice vouchers). */
+export const getVoucherList = (ctx: VoiceContext, limit = 8): string => {
+  const rows = (ctx.savedVouchers || []).slice(0, limit);
+  if (!rows.length) return 'No vouchers saved yet. Print a job slip or invoice to log one.';
+  return `Saved vouchers (${rows.length}): ${rows.map((v) => `${v.voucher_number} — ${v.voucher_type.replace(/_/g, ' ')} — ${v.case_number} — ${v.lab_name}${v.amount ? ` — PKR ${Number(v.amount).toLocaleString()}` : ''}`).join('; ')}.`;
 };
