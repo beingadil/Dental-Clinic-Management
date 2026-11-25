@@ -16,6 +16,7 @@ import {
   deriveQcCaseState, effectiveQcEvents, computeQcMetrics, qcGateSatisfied, formatQcRate,
 } from './qcDomain';
 import { listMonthCloses } from './monthClose';
+import { loadSlaSettings } from './prioritySla';
 
 export interface VoiceContext {
   labs: DentalLab[];
@@ -34,6 +35,16 @@ export interface VoiceContext {
   pricingOverrides?: import('../types').LabPricingOverride[];
   labContacts?: import('../types').LabContact[];
   labAddresses?: import('../types').LabAddress[];
+  /** Payments register (read tools + payment edits by receipt number). */
+  allPayments?: import('../types').PaymentRecord[];
+  /** Bank reconciliation queue. */
+  reconciliationItems?: import('../types').ReconciliationItem[];
+  /** Audit trail (read tool). */
+  auditEvents?: import('../types').AuditEvent[];
+  /** Saved case templates. */
+  templates?: import('../types').CaseTemplate[];
+  /** Doctor → preferred lab links. */
+  doctorPreferences?: import('../types').DoctorPreferredLab[];
   user?: UserProfile | null;
   /** Owner/Super-Admin opt-in for patient detail on reads. */
   allowClinicalDetail?: boolean;
@@ -237,6 +248,61 @@ export const getCasesByStatus = (ctx: VoiceContext, status: string): string => {
     .filter((c) => !c.archived_at && c.status === status);
   if (!cases.length) return `No cases in "${status}" status.`;
   return `Cases in "${status}" status (${cases.length}): ${cases.map((c) => `${c.case_number} — ${c.case_type_name || 'Case'}`).join('; ')}.`;
+};
+
+/** Delivery calendar — show cases due on a date. */
+export const getDeliveryCalendar = (ctx: VoiceContext, date?: string): string => {
+  const targetDate = date || new Date().toISOString().slice(0, 10);
+  const cases = (ctx.cases || [])
+    .filter((c) => !c.archived_at && c.status !== 'delivered' && c.status !== 'cancelled')
+    .filter((c) => String(c.delivery_date).slice(0, 10) === targetDate);
+  if (!cases.length) return `No cases due for delivery on ${targetDate}.`;
+  return `Delivery calendar for ${targetDate} (${cases.length}): ${cases.map((c) => `${c.case_number} — ${c.case_type_name || 'Case'} — ${c.status}`).join('; ')}.`;
+};
+
+/** Case queue — cases ready for dispatch. */
+export const getCaseQueue = (ctx: VoiceContext): string => {
+  const cases = (ctx.cases || [])
+    .filter((c) => !c.archived_at && (c.status === 'ready' || c.status === 'qc'));
+  if (!cases.length) return 'No cases ready for dispatch.';
+  return `Case queue (${cases.length}): ${cases.map((c) => `${c.case_number} — ${c.case_type_name || 'Case'} — ${c.status}`).join('; ')}.`;
+};
+
+/** Shade guide reference. */
+export const getShadeGuide = (): string => {
+  return 'Shade guide: A1 (lightest), A2, A3, A3.5, A4, B1, B2, B3, B4, C1, C2, C3, C4, D2, D3, D4. VITA classical shades. Use "shade A2" when creating or updating a case.';
+};
+
+/** Global search across all data. */
+export const globalSearch = (ctx: VoiceContext, q: string): string => {
+  const lower = (q || '').toLowerCase().trim();
+  if (!lower) return 'What do you want to search for?';
+  const caseHits = (ctx.cases || []).filter((c) => !c.archived_at && (
+    c.case_number.toLowerCase().includes(lower) ||
+    (c.patient_name || '').toLowerCase().includes(lower) ||
+    (c.case_type_name || '').toLowerCase().includes(lower) ||
+    (c.doctor_name || '').toLowerCase().includes(lower) ||
+    (c.lab_name || '').toLowerCase().includes(lower) ||
+    (c.material || '').toLowerCase().includes(lower) ||
+    (c.shade || '').toLowerCase().includes(lower)
+  ));
+  const invoiceHits = (ctx.invoices || []).filter((i) =>
+    i.invoice_number.toLowerCase().includes(lower) ||
+    (i.lab_name || '').toLowerCase().includes(lower) ||
+    (i.patient_name || '').toLowerCase().includes(lower)
+  );
+  const clinicHits = (ctx.labs || []).filter((l) =>
+    l.name.toLowerCase().includes(lower) ||
+    (l.doctor_name || '').toLowerCase().includes(lower) ||
+    (l.city || '').toLowerCase().includes(lower)
+  );
+  const total = caseHits.length + invoiceHits.length + clinicHits.length;
+  if (!total) return `No results for "${q}".`;
+  const parts: string[] = [];
+  if (caseHits.length) parts.push(`${caseHits.length} case(s)`);
+  if (invoiceHits.length) parts.push(`${invoiceHits.length} invoice(s)`);
+  if (clinicHits.length) parts.push(`${clinicHits.length} clinic(s)`);
+  return `Global search for "${q}": ${parts.join(', ')}. ${caseHits.length ? `Cases: ${caseHits.slice(0, 3).map((c) => c.case_number).join(', ')}.` : ''} ${invoiceHits.length ? `Invoices: ${invoiceHits.slice(0, 3).map((i) => i.invoice_number).join(', ')}.` : ''} ${clinicHits.length ? `Clinics: ${clinicHits.slice(0, 3).map((l) => l.name).join(', ')}.` : ''}`;
 };
 
 /** The 30-day auto-archive predicate, applied on demand with a spoken confirm. */
@@ -639,4 +705,130 @@ export const getMonthCloseStatus = (monthHint: string | null) => {
   } catch {
     return 'Month close data is unavailable.';
   }
+};
+
+/* ── Catalog & clinical specs ─────────────────────────────────────────── */
+
+/** All case types with prices and lead times. */
+export const getCaseTypesList = (ctx: VoiceContext): string => {
+  const types = ctx.caseTypes || [];
+  if (!types.length) return 'The catalog has no case types yet. Add one in Catalog → Case types.';
+  return `Case types (${types.length}): ${types.map((t) => `${t.name} — PKR ${Number(t.base_price || 0).toLocaleString()}${t.lead_time_days ? ` — ${t.lead_time_days} day lead` : ''}`).join('; ')}.`;
+};
+
+/** Clinical specs for one case type (material, unit basis, shade guide, indications). */
+export const getClinicalSpecs = (ctx: VoiceContext, name: string): string => {
+  const q = (name || '').toLowerCase().trim();
+  const ct = (ctx.caseTypes || []).find((t) => t.name.toLowerCase() === q)
+    || (ctx.caseTypes || []).find((t) => t.name.toLowerCase().includes(q));
+  if (!ct) return `No case type named "${name}" in the catalog.`;
+  const parts = [
+    ct.material_system ? `material system: ${ct.material_system}` : '',
+    ct.unit_basis ? `unit basis: ${ct.unit_basis}` : '',
+    ct.shade_guide ? `shade guide: ${ct.shade_guide}` : '',
+    ct.warranty_months ? `warranty: ${ct.warranty_months} months` : '',
+    ct.lead_time_days ? `lead time: ${ct.lead_time_days} days` : '',
+    ct.indications ? `indications: ${ct.indications}` : '',
+    ct.contraindications ? `contraindications: ${ct.contraindications}` : '',
+  ].filter(Boolean);
+  return `${ct.name} — PKR ${Number(ct.base_price || 0).toLocaleString()}${parts.length ? `: ${parts.join('; ')}` : ' — no clinical specs recorded yet'}.`;
+};
+
+/** Catalog categories in use, with a case-type count each. */
+export const getCatalogCategories = (ctx: VoiceContext): string => {
+  const counts = new Map<string, number>();
+  for (const t of ctx.caseTypes || []) {
+    const key = (t.category || 'uncategorised').replace(/_/g, ' ');
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  if (!counts.size) return 'No catalog categories yet.';
+  return `Catalog categories: ${[...counts.entries()].map(([k, v]) => `${k} (${v})`).join('; ')}.`;
+};
+
+/** Current SLA turnaround promise per priority. */
+export const getSlaStatus = (): string => {
+  try {
+    const days = loadSlaSettings();
+    return `SLA turnaround: urgent ${days.urgent} day(s), high ${days.high}, normal ${days.normal}, low ${days.low}.`;
+  } catch {
+    return 'SLA settings are unavailable right now.';
+  }
+};
+
+/* -- Billing depth ----------------------------------------------------- */
+
+/** Outstanding-invoice ageing buckets, optionally for one clinic. */
+export const getAgingReport = (ctx: VoiceContext, clinicHint?: string): string => {
+  const clinic = clinicHint ? resolveClinic(ctx, clinicHint) : null;
+  const invoices = (ctx.invoices || [])
+    .filter((i) => !clinic || i.lab_id === clinic.id)
+    .map((i) => ({ inv: i, due: invoiceBalanceDue(i) }))
+    .filter((x) => x.due > 0.005);
+  if (!invoices.length) return clinic ? `${clinic.name} has no outstanding invoices.` : 'No outstanding invoices.';
+  const buckets = { current: 0, d30: 0, d60: 0, d90: 0, older: 0 };
+  const today = new Date(getTodayStr() + 'T00:00:00');
+  for (const { inv, due } of invoices) {
+    const created = new Date(String(inv.created_at || getTodayStr()).slice(0, 10) + 'T00:00:00');
+    const age = Math.max(0, Math.floor((today.getTime() - created.getTime()) / 86400000));
+    if (age <= 30) buckets.current += due;
+    else if (age <= 60) buckets.d30 += due;
+    else if (age <= 90) buckets.d60 += due;
+    else if (age <= 120) buckets.d90 += due;
+    else buckets.older += due;
+  }
+  const total = Object.values(buckets).reduce((a, b) => a + b, 0);
+  const scope = clinic ? clinic.name : 'All clinics';
+  return `${scope} aging — total outstanding PKR ${total.toLocaleString()}: 0–30 days PKR ${buckets.current.toLocaleString()}, 31–60 PKR ${buckets.d30.toLocaleString()}, 61–90 PKR ${buckets.d60.toLocaleString()}, 91–120 PKR ${buckets.d90.toLocaleString()}, 120+ PKR ${buckets.older.toLocaleString()} (${invoices.length} invoice(s)).`;
+};
+
+/** Recent account adjustments, optionally for one clinic. */
+export const getAdjustmentList = (ctx: VoiceContext, clinicHint?: string): string => {
+  const clinic = clinicHint ? resolveClinic(ctx, clinicHint) : null;
+  const rows = (ctx.accountAdjustments || [])
+    .filter((a) => !clinic || a.lab_id === clinic.id)
+    .slice(-8)
+    .reverse();
+  if (!rows.length) return clinic ? `No account adjustments for ${clinic.name}.` : 'No account adjustments recorded.';
+  return `Recent adjustments (${rows.length}): ${rows.map((a) => `${a.adjustment_number || a.id} — ${a.type.replace(/_/g, ' ')} — PKR ${Number(a.amount || 0).toLocaleString()} — ${a.lab_name} — ${String(a.date || '').slice(0, 10)}`).join('; ')}.`;
+};
+
+/** Recent payments with receipt numbers (for edit/delete by voice). */
+export const getPaymentList = (ctx: VoiceContext, clinicHint?: string): string => {
+  const clinic = clinicHint ? resolveClinic(ctx, clinicHint) : null;
+  const rows = (ctx.allPayments && ctx.allPayments.length ? ctx.allPayments : collectAllPayments(ctx.invoices || []))
+    .filter((p) => !clinic || p.lab_id === clinic.id)
+    .slice(-8)
+    .reverse();
+  if (!rows.length) return clinic ? `No payments recorded for ${clinic.name}.` : 'No payments recorded.';
+  return `Recent payments (${rows.length}): ${rows.map((p) => `${p.receipt_number || p.payment_number || p.id} — PKR ${Number(p.amount || 0).toLocaleString()} — ${p.lab_name || 'clinic'} — ${String(p.payment_date || '').slice(0, 10)}`).join('; ')}.`;
+};
+
+/** Bank reconciliation queue — matched/suggested/unmatched items. */
+export const getReconciliationQueue = (ctx: VoiceContext): string => {
+  const rows = (ctx.reconciliationItems || []).filter((r) => r.status !== 'verified' && r.status !== 'matched');
+  if (!rows.length) return 'Nothing waiting in the reconciliation queue — every item is matched or verified.';
+  return `Reconciliation queue (${rows.length}): ${rows.slice(0, 8).map((r) => `${r.reference_number} — PKR ${Number(r.amount || 0).toLocaleString()} — ${r.lab_name} — ${r.status.replace(/_/g, ' ')}`).join('; ')}.`;
+};
+
+/* -- Admin / diagnostics ----------------------------------------------- */
+
+/** Recent audit-trail events. */
+export const getAuditTrail = (ctx: VoiceContext, limit = 8): string => {
+  const rows = (ctx.auditEvents || []).slice(-limit).reverse();
+  if (!rows.length) return 'No audit events recorded yet.';
+  return `Recent audit events (${rows.length}): ${rows.map((e) => `${String(e.timestamp).slice(0, 16)} — ${e.actor} — ${e.action.replace(/_/g, ' ')} ${e.entity_type || ''}${e.entity_ref ? ` ${e.entity_ref}` : ''}`).join('; ')}.`;
+};
+
+/** Connectivity / session state. */
+export const getSyncStatus = (): string => {
+  const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+  const tauri = typeof window !== 'undefined' && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+  return `Sync status: ${online ? 'online' : 'offline'}${tauri ? ', desktop (Tauri) build' : ', browser preview'}. Data is stored locally in SQLite; the app works offline and reconnects automatically.`;
+};
+
+/** Saved case templates. */
+export const getTemplateList = (ctx: VoiceContext): string => {
+  const rows = ctx.templates || [];
+  if (!rows.length) return 'No saved case templates yet. Save a case as a template from the workstation.';
+  return `Saved templates (${rows.length}): ${rows.map((t) => `${t.template_name}${t.case_type_name ? ` — ${t.case_type_name}` : ''}`).join('; ')}.`;
 };

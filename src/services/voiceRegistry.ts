@@ -26,8 +26,13 @@ import {
   getCaseCount, getTodayCases, getCasesByClinic, getCasesByStatus,
   getPatientCases, getInvoiceByAmount, getClinicOutstanding, getQcPending,
   searchPatients, filterCases, searchInvoicesByAmount, generateReport, listUsers, switchTheme,
+  getDeliveryCalendar, getCaseQueue, getShadeGuide, globalSearch,
+  getCaseTypesList, getClinicalSpecs, getCatalogCategories, getSlaStatus, getAgingReport,
+  getAdjustmentList, getPaymentList, getReconciliationQueue, getAuditTrail, getSyncStatus, getTemplateList,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
+import { selectCasesToAutoArchive } from '../context/hooks/autoArchive';
+import { getTodayStr } from '../utils/dateUtils';
 import { type WriteCommand, type CaseUpdateFields } from './voiceWrite';
 import type { Invoice, DentalCase, DentalLab, AdvancePayment } from '../types';
 import {
@@ -413,6 +418,29 @@ const tools: VoiceTool[] = [
   {
     id: 'backup_create', description: 'Create a database backup. No args.', risk: 'read',
     run: () => ({ kind: 'read', text: 'I can create a backup for you. Go to Settings → Backup, or say "open settings" and navigate to the Backup tab.' }),
+  },
+  {
+    id: 'delivery_calendar', description: 'Show cases due for delivery on a date. Args: { date?: string } — YYYY-MM-DD format, defaults to today', risk: 'read',
+    run: (ctx, args) => {
+      const date = args.date ? String(args.date) : undefined;
+      return { kind: 'read', text: getDeliveryCalendar(ctx, date) };
+    },
+  },
+  {
+    id: 'shade_guide', description: 'Show the shade guide reference (VITA classical shades). No args.', risk: 'read',
+    run: () => ({ kind: 'read', text: getShadeGuide() }),
+  },
+  {
+    id: 'case_queue', description: 'Show cases ready for dispatch (ready or in QC status). No args.', risk: 'read',
+    run: (ctx) => ({ kind: 'read', text: getCaseQueue(ctx) }),
+  },
+  {
+    id: 'global_search', description: 'Search across all data — cases, invoices, clinics. Args: { query: string }', risk: 'read',
+    run: (ctx, args) => {
+      const q = String(args.query || '');
+      if (!q) return { kind: 'read', text: 'What do you want to search for?' };
+      return { kind: 'read', text: globalSearch(ctx, q) };
+    },
   },
   {
     id: 'exportInvoicesCsv', description: 'Export the invoice list as a CSV file. No args.', risk: 'read',
@@ -897,6 +925,254 @@ const tools: VoiceTool[] = [
       kind: 'read',
       text: 'Everything voice can do: open any screen (dashboard, cases, billing, ledger, settings), read balances/statements/ledgers, record payments/advances, update cases, manage clinics, export data, and more. Just ask naturally.',
     }),
+  },
+  // ── Case management extras ─────────────────────────────────────────────
+  {
+    id: 'delete_case_note', description: 'Delete a note from a case. Args: { caseNumber: string, noteText: string } — noteText is text from the note to delete.', risk: 'write',
+    run: (_ctx, args) => {
+      const caseNumber = String(args.caseNumber || '').trim().toUpperCase();
+      const noteText = String(args.noteText || '').trim();
+      if (!caseNumber || !noteText) return { kind: 'read', text: 'Which case, and which note text should I remove?' };
+      return { kind: 'action', risk: 'write', summary: `Delete the note containing “${noteText.slice(0, 60)}” from ${caseNumber}?`, pending: { kind: 'deleteCaseNote', caseNumber, noteText, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_case_attachment', description: 'Delete a file attached to a case. Args: { caseNumber: string, fileName: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const caseNumber = String(args.caseNumber || '').trim().toUpperCase();
+      const fileName = String(args.fileName || '').trim();
+      if (!caseNumber || !fileName) return { kind: 'read', text: 'Which case, and which attachment should I remove?' };
+      return { kind: 'action', risk: 'write', summary: `Delete attachment “${fileName}” from ${caseNumber}?`, pending: { kind: 'deleteCaseAttachment', caseNumber, fileName, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'create_case_from_template', description: 'Create a new case from a saved template. Args: { templateName: string, clinic: string, patientName?: string, deliveryDate?: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const templateName = String(args.templateName || '').trim();
+      const clinic = String(args.clinic || '').trim();
+      if (!templateName || !clinic) return { kind: 'read', text: 'Which template and which clinic should the new case go to?' };
+      return { kind: 'action', risk: 'write', summary: `Create a case from template “${templateName}” for ${clinic}?`, pending: { kind: 'createCaseFromTemplate', templateName, clinicHint: clinic, patientName: String(args.patientName || ''), deliveryDate: String(args.deliveryDate || ''), amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'bulk_archive', description: 'Archive all delivered cases older than 30 days in one action. No args.', risk: 'write',
+    run: (ctx) => {
+      const due = selectCasesToAutoArchive(ctx.cases || [], new Date(`${getTodayStr()}T00:00:00`));
+      if (!due.length) return { kind: 'read', text: 'Nothing to archive — no delivered case is more than 30 days past delivery.' };
+      return { kind: 'action', risk: 'write', summary: `Archive ${due.length} delivered case(s) older than 30 days?`, pending: { kind: 'bulkArchive', clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  // ── Lab / clinic lifecycle ─────────────────────────────────────────────
+  {
+    id: 'delete_clinic', description: 'Delete a clinic and all its cases, invoices and history. Args: { clinic: string }. Destructive — requires the spoken token.', risk: 'destructive',
+    run: (_ctx, args) => {
+      const clinic = String(args.clinic || '').trim();
+      if (!clinic) return { kind: 'read', text: 'Which clinic should I delete?' };
+      return { kind: 'action', risk: 'destructive', summary: `Delete clinic “${clinic}” and everything under it?`, pending: { kind: 'deleteLab', clinicHint: clinic, caseNumber: clinic, amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_clinic_contact', description: 'Remove a contact person from a clinic. Args: { clinic: string, contactName: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const clinic = String(args.clinic || '').trim();
+      const contactName = String(args.contactName || '').trim();
+      if (!clinic || !contactName) return { kind: 'read', text: 'Which clinic, and which contact should I remove?' };
+      return { kind: 'action', risk: 'write', summary: `Remove contact “${contactName}” from ${clinic}?`, pending: { kind: 'deleteLabContact', clinicHint: clinic, contactName, amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_clinic_address', description: 'Remove an address from a clinic. Args: { clinic: string, addressType: "billing"|"shipping"|"lab_location" }.', risk: 'write',
+    run: (_ctx, args) => {
+      const clinic = String(args.clinic || '').trim();
+      const addressType = String(args.addressType || '').trim();
+      if (!clinic || !addressType) return { kind: 'read', text: 'Which clinic, and which address type should I remove?' };
+      return { kind: 'action', risk: 'write', summary: `Remove the ${addressType} address for ${clinic}?`, pending: { kind: 'deleteLabAddress', clinicHint: clinic, addressType: addressType as never, amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_pricing_override', description: 'Remove a custom price override for a case type at a clinic. Args: { clinic: string, caseType: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const clinic = String(args.clinic || '').trim();
+      const caseType = String(args.caseType || '').trim();
+      if (!clinic || !caseType) return { kind: 'read', text: 'Which clinic, and which case type price should I reset?' };
+      return { kind: 'action', risk: 'write', summary: `Remove the ${caseType} price override at ${clinic}?`, pending: { kind: 'deletePricingOverride', clinicHint: clinic, caseTypeName: caseType, amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'set_doctor_preferred_lab', description: 'Set which clinic/lab a doctor prefers. Args: { doctorName: string, clinic: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const doctorName = String(args.doctorName || '').trim();
+      const clinic = String(args.clinic || '').trim();
+      if (!doctorName || !clinic) return { kind: 'read', text: 'Which doctor, and which clinic should be their preferred lab?' };
+      return { kind: 'action', risk: 'write', summary: `Set ${clinic} as the preferred lab for Dr ${doctorName}?`, pending: { kind: 'setDoctorPreferredLab', clinicHint: clinic, doctorName, amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'get_doctor_preferred_lab', description: 'Find a doctor’s preferred lab. Args: { doctorName: string }.', risk: 'read',
+    run: (ctx, args) => {
+      const q = String(args.doctorName || '').trim().toLowerCase();
+      if (!q) return { kind: 'read', text: 'Which doctor?' };
+      const hit = (ctx.doctorPreferences || []).find((d) => d.doctor_name.toLowerCase().includes(q));
+      if (!hit) return { kind: 'read', text: `No preferred lab recorded for Dr ${String(args.doctorName || '')}.` };
+      return { kind: 'read', text: `Dr ${hit.doctor_name} prefers ${hit.lab_name}.` };
+    },
+  },
+  // ── Catalog extras ─────────────────────────────────────────────────────
+  {
+    id: 'case_types_list', description: 'List every case type in the catalog with its base price and lead time. No args.', risk: 'read',
+    run: (ctx) => ({ kind: 'read', text: getCaseTypesList(ctx) }),
+  },
+  {
+    id: 'clinical_specs', description: 'Clinical specifications for a case type — material system, shade guide, indications, contraindications, warranty. Args: { caseType: string }.', risk: 'read',
+    run: (ctx, args) => ({ kind: 'read', text: getClinicalSpecs(ctx, String(args.caseType || '')) }),
+  },
+  {
+    id: 'catalog_categories', description: 'List catalog categories with how many case types each has. No args.', risk: 'read',
+    run: (ctx) => ({ kind: 'read', text: getCatalogCategories(ctx) }),
+  },
+  {
+    id: 'sla_status', description: 'Show the current SLA turnaround promise (days) for each priority. No args.', risk: 'read',
+    run: () => ({ kind: 'read', text: getSlaStatus() }),
+  },
+  {
+    id: 'create_case_type', description: 'Add a new case type to the catalog. Args: { name: string, basePrice: number, category?, leadTimeDays?, material?, description? }.', risk: 'write',
+    run: (_ctx, args) => {
+      const name = String(args.name || '').trim();
+      const basePrice = Number(args.basePrice || 0);
+      if (!name || !basePrice) return { kind: 'read', text: 'What should the new case type be called, and what is its base price?' };
+      return { kind: 'action', risk: 'write', summary: `Add case type “${name}” at PKR ${basePrice.toLocaleString()}?`, pending: { kind: 'addCaseType', caseTypeName: name, caseTypeBasePrice: basePrice, caseTypeCategory: String(args.category || ''), caseTypeLeaderDays: Number(args.leadTimeDays || 0), caseTypeMaterial: String(args.material || ''), caseTypeDescription: String(args.description || ''), clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'update_case_type', description: 'Change a case type’s price, category, lead time, material or description. Args: { name: string, basePrice?, category?, leadTimeDays?, material?, description? }.', risk: 'write',
+    run: (_ctx, args) => {
+      const name = String(args.name || '').trim();
+      if (!name) return { kind: 'read', text: 'Which case type should I update?' };
+      return { kind: 'action', risk: 'write', summary: `Update case type “${name}”?`, pending: { kind: 'updateCaseType', caseTypeName: name, caseTypeBasePrice: args.basePrice !== undefined ? Number(args.basePrice) : undefined, caseTypeCategory: args.category !== undefined ? String(args.category) : undefined, caseTypeLeaderDays: args.leadTimeDays !== undefined ? Number(args.leadTimeDays) : undefined, caseTypeMaterial: args.material !== undefined ? String(args.material) : undefined, caseTypeDescription: args.description !== undefined ? String(args.description) : undefined, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_case_type', description: 'Delete a case type from the catalog. Args: { name: string }. Destructive.', risk: 'destructive',
+    run: (_ctx, args) => {
+      const name = String(args.name || '').trim();
+      if (!name) return { kind: 'read', text: 'Which case type should I delete?' };
+      return { kind: 'action', risk: 'destructive', summary: `Delete case type “${name}” from the catalog?`, pending: { kind: 'deleteCaseType', caseTypeName: name, caseNumber: name, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'set_sla_settings', description: 'Change the turnaround promise in days for a priority. Args: { urgent?, high?, normal?, low? } — at least one.', risk: 'write',
+    run: (_ctx, args) => {
+      const days = {
+        urgent: args.urgent !== undefined ? Number(args.urgent) : undefined,
+        high: args.high !== undefined ? Number(args.high) : undefined,
+        normal: args.normal !== undefined ? Number(args.normal) : undefined,
+        low: args.low !== undefined ? Number(args.low) : undefined,
+      };
+      if (Object.values(days).every((v) => v === undefined)) return { kind: 'read', text: 'Which priority should change, and to how many days?' };
+      const parts = Object.entries(days).filter(([, v]) => v !== undefined).map(([k, v]) => `${k} ${v}d`).join(', ');
+      return { kind: 'action', risk: 'write', summary: `Set SLA turnaround: ${parts}?`, pending: { kind: 'slaSave', slaDays: days, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  // ── Billing depth ──────────────────────────────────────────────────────
+  {
+    id: 'aging_report', description: 'Outstanding-invoice ageing report — 0–30, 31–60, 61–90, 91–120 and 120+ day buckets. Args: { clinic?: string }.', risk: 'read',
+    run: (ctx, args) => ({ kind: 'read', text: getAgingReport(ctx, args.clinic ? String(args.clinic) : undefined) }),
+  },
+  {
+    id: 'adjustments_list', description: 'Recent account adjustments (credit notes, debit adjustments, refunds). Args: { clinic?: string }.', risk: 'read',
+    run: (ctx, args) => ({ kind: 'read', text: getAdjustmentList(ctx, args.clinic ? String(args.clinic) : undefined) }),
+  },
+  {
+    id: 'payments_list', description: 'Recent payments with their receipt numbers. Args: { clinic?: string }. Use this before editing or deleting a payment.', risk: 'read',
+    run: (ctx, args) => ({ kind: 'read', text: getPaymentList(ctx, args.clinic ? String(args.clinic) : undefined) }),
+  },
+  {
+    id: 'reconciliation_queue', description: 'Bank reconciliation queue — payments waiting to be matched or verified. No args.', risk: 'read',
+    run: (ctx) => ({ kind: 'read', text: getReconciliationQueue(ctx) }),
+  },
+  {
+    id: 'record_adjustment', description: 'Record an account adjustment: credit note, debit adjustment or refund. Args: { clinic: string, amount: number, type: "credit_note"|"debit_adjustment"|"refund", reason?: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const clinic = String(args.clinic || '').trim();
+      const amount = Number(args.amount || 0);
+      const type = String(args.type || '').trim() as 'credit_note' | 'debit_adjustment' | 'refund';
+      if (!clinic || !amount || !['credit_note', 'debit_adjustment', 'refund'].includes(type)) return { kind: 'read', text: 'Which clinic, what amount, and is it a credit note, debit adjustment or refund?' };
+      return { kind: 'action', risk: 'write', summary: `Record a ${type.replace(/_/g, ' ')} of PKR ${amount.toLocaleString()} for ${clinic}?`, pending: { kind: 'recordAdjustment', clinicHint: clinic, amount, adjustmentType: type, reason: String(args.reason || 'Recorded by voice'), method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_adjustment', description: 'Delete an account adjustment. Args: { clinic: string, amount?: number, referenceNumber?: string }. List adjustments first if unsure.', risk: 'destructive',
+    run: (_ctx, args) => {
+      const clinic = String(args.clinic || '').trim();
+      if (!clinic) return { kind: 'read', text: 'Which clinic’s adjustment should I delete, and what amount or reference?' };
+      return { kind: 'action', risk: 'destructive', summary: `Delete the adjustment${args.amount ? ` of PKR ${Number(args.amount).toLocaleString()}` : ''} for ${clinic}?`, pending: { kind: 'deleteAdjustment', clinicHint: clinic, amount: Number(args.amount || 0), referenceNumber: String(args.referenceNumber || ''), caseNumber: `ADJ ${clinic}`, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_payment', description: 'Delete a payment receipt and reverse its allocation. Args: { receiptNumber: string }. Destructive.', risk: 'destructive',
+    run: (_ctx, args) => {
+      const receiptNumber = String(args.receiptNumber || '').trim();
+      if (!receiptNumber) return { kind: 'read', text: 'Which receipt number should I delete? Say “list payments” first if you need the numbers.' };
+      return { kind: 'action', risk: 'destructive', summary: `Delete payment ${receiptNumber}?`, pending: { kind: 'deletePayment', receiptNumber, caseNumber: receiptNumber, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'update_payment', description: 'Change the amount on an existing payment receipt. Args: { receiptNumber: string, amount: number }.', risk: 'write',
+    run: (_ctx, args) => {
+      const receiptNumber = String(args.receiptNumber || '').trim();
+      const amount = Number(args.amount || 0);
+      if (!receiptNumber || !amount) return { kind: 'read', text: 'Which receipt, and what should the new amount be?' };
+      return { kind: 'action', risk: 'write', summary: `Change payment ${receiptNumber} to PKR ${amount.toLocaleString()}?`, pending: { kind: 'updatePayment', receiptNumber, newAmount: amount, clinicHint: '', amount, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'issue_credit_note', description: 'Issue a credit note against an invoice. Args: { clinic: string, invoice: string, amount: number, reason: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const clinic = String(args.clinic || '').trim();
+      const invoiceNumber = String(args.invoice || '').trim().toUpperCase();
+      const amount = Number(args.amount || 0);
+      const reason = String(args.reason || '').trim();
+      if (!clinic || !invoiceNumber || !amount || !reason) return { kind: 'read', text: 'Which clinic, invoice, amount and reason for the credit note?' };
+      return { kind: 'action', risk: 'write', summary: `Issue a PKR ${amount.toLocaleString()} credit note on ${invoiceNumber} for ${clinic}?`, pending: { kind: 'issueCreditNote', clinicHint: clinic, invoiceNumber, amount, reason, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'delete_invoice', description: 'Delete an invoice. Args: { invoiceNumber: string }. Destructive.', risk: 'destructive',
+    run: (_ctx, args) => {
+      const invoiceNumber = String(args.invoiceNumber || '').trim().toUpperCase();
+      if (!invoiceNumber) return { kind: 'read', text: 'Which invoice number should I delete?' };
+      return { kind: 'action', risk: 'destructive', summary: `Delete invoice ${invoiceNumber}?`, pending: { kind: 'deleteInvoice', invoiceNumber, caseNumber: invoiceNumber, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'reconcile_payment', description: 'Mark a bank/cheque payment as reconciled against the bank statement. Args: { referenceNumber: string, notes?: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const referenceNumber = String(args.referenceNumber || '').trim();
+      if (!referenceNumber) return { kind: 'read', text: 'Which payment reference should I reconcile?' };
+      return { kind: 'action', risk: 'write', summary: `Mark payment ${referenceNumber} as reconciled?`, pending: { kind: 'reconcileItem', referenceNumber, reason: String(args.notes || ''), clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  {
+    id: 'flag_reconciliation', description: 'Flag a reconciliation exception on a payment (wrong amount, wrong reference). Args: { referenceNumber: string, reason: string }.', risk: 'write',
+    run: (_ctx, args) => {
+      const referenceNumber = String(args.referenceNumber || '').trim();
+      const reason = String(args.reason || '').trim();
+      if (!referenceNumber || !reason) return { kind: 'read', text: 'Which payment reference, and what is the exception?' };
+      return { kind: 'action', risk: 'write', summary: `Flag ${referenceNumber} as a reconciliation exception — “${reason}”?`, pending: { kind: 'flagReconciliation', referenceNumber, reason, clinicHint: '', amount: 0, method: 'cash' } } as never;
+    },
+  },
+  // ── Admin / diagnostics ────────────────────────────────────────────────
+  {
+    id: 'audit_trail', description: 'Show recent audit-trail events (who did what, when). Args: { limit?: number }.', risk: 'read',
+    run: (ctx, args) => ({ kind: 'read', text: getAuditTrail(ctx, Number(args.limit || 8)) }),
+  },
+  {
+    id: 'sync_status', description: 'Check whether the app is online, offline or running as the desktop build. No args.', risk: 'read',
+    run: () => ({ kind: 'read', text: getSyncStatus() }),
+  },
+  {
+    id: 'templates_list', description: 'List saved case templates. No args.', risk: 'read',
+    run: (ctx) => ({ kind: 'read', text: getTemplateList(ctx) }),
   },
 ];
 

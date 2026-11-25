@@ -158,6 +158,14 @@ export const setProviderBaseUrl = (id: AiProviderId, baseUrl: string) => {
 
 export const getLastError = (): AiChatResult['error'] => lastError;
 
+/** Ping one provider with a tiny prompt — used by Settings → Jarvis AI. */
+export const testProvider = async (id: AiProviderId): Promise<{ ok: boolean; error: AiChatResult['error'] }> => {
+  const p = providers.find((x) => x.id === id);
+  if (!p || !p.apiKey) return { ok: false, error: 'invalid_key' };
+  const { result } = await callProvider(p, [{ role: 'user', content: 'Reply with the single word OK.' }], [], { maxTokens: 5, timeoutMs: 10000, temperature: 0 });
+  return result ? { ok: true, error: null } : { ok: false, error: lastError };
+};
+
 export const resetLastError = () => { lastError = null; };
 
 /** Classify an HTTP response status into an error category. */

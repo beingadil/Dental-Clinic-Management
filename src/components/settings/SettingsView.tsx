@@ -15,6 +15,7 @@ import {
   Printer,
   ArrowUpCircle,
   Activity,
+  Bot,
 } from 'lucide-react';
 import { TabsNav } from '../common/ui';
 import { canManageSystem, type SystemAction } from '../../services/permissions';
@@ -27,6 +28,7 @@ import { PreferencesTab } from './PreferencesTab';
 import { ModuleSecurityTab } from './ModuleSecurityTab';
 import { PrintTab } from './PrintTab';
 import { JarvisAuditTab } from './JarvisAuditTab';
+import { JarvisAiTab } from './JarvisAiTab';
 import { UpdatesTab } from './UpdatesTab';
 
 
@@ -41,7 +43,7 @@ export const SettingsView: React.FC = () => {
   // it diverged from the tested matrix and out-lived its 4-role era.
   const may = (a: SystemAction) => canManageSystem(user, a);
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'security' | 'updates' | 'audit'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'account' | 'users' | 'backup' | 'testing' | 'preferences' | 'print' | 'security' | 'updates' | 'audit' | 'jarvis'>('branding');
   /* Shared by BackupTab and TestingTab, so it lives here rather than in either
      tab. `useTransientMessage` owns the timer: the old version set it with a
      bare `setTimeout(() => setBackupMessage(null), N)` inside two async
@@ -93,6 +95,7 @@ export const SettingsView: React.FC = () => {
     { id: 'account', label: 'My Account & Security', icon: User, group: 'Account & Access', allowed: true },
     { id: 'preferences', label: 'Application Defaults', icon: Sliders, group: 'Account & Access', allowed: true },
     { id: 'audit', label: 'Jarvis Audit', icon: Activity, group: 'Account & Access', allowed: true },
+    { id: 'jarvis', label: 'Jarvis AI', icon: Bot, group: 'Account & Access', allowed: true },
     { id: 'security', label: 'Module Security', icon: ShieldCheck, group: 'Account & Access', allowed: may('users:manage') },
     { id: 'backup', label: 'Database & Backup', icon: Database, group: 'Data & System', allowed: may('backup:restore') },
     { id: 'testing', label: 'System Reset', icon: Trash2, group: 'Data & System', allowed: may('data:wipe') },
@@ -212,6 +215,7 @@ export const SettingsView: React.FC = () => {
       {activeTab === 'testing' && may('data:wipe') && <TestingTab />}
       {activeTab === 'preferences' && <PreferencesTab />}
       {activeTab === 'audit' && <JarvisAuditTab />}
+      {activeTab === 'jarvis' && <JarvisAiTab />}
       {activeTab === 'security' && may('users:manage') && <ModuleSecurityTab />}
       {activeTab === 'print' && may('print:edit') && <PrintTab />}
       {activeTab === 'updates' && may('updates:install') && <UpdatesTab />}

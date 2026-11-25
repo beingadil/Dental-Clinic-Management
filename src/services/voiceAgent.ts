@@ -20,6 +20,8 @@ export interface AgentResult {
   pendingWrite?: WriteCommand;
   risk?: 'write' | 'destructive';
   navigateTo?: string;
+  /** Tool output already final — return without another model round-trip. */
+  direct?: boolean;
 }
 
 const MAX_ITER = 3;
@@ -74,6 +76,43 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   user_list: { required: [], optional: [], describe: 'List system users. No args.' },
   theme_switch: { required: ['mode'], optional: [], describe: 'Switch the app theme. Args: mode (light|dark|system)' },
   backup_create: { required: [], optional: [], describe: 'Create a database backup. No args.' },
+  delivery_calendar: { required: [], optional: ['date'], describe: 'Show cases due for delivery on a date (YYYY-MM-DD, defaults to today). Args: date' },
+  shade_guide: { required: [], optional: [], describe: 'Show the VITA classical shade guide reference. No args.' },
+  case_queue: { required: [], optional: [], describe: 'Show cases ready for dispatch (ready or in QC). No args.' },
+  global_search: { required: [], optional: ['query'], describe: 'Search across all data — cases, invoices, clinics. Args: query' },
+  delete_case_note: { required: ['caseNumber', 'noteText'], optional: [], describe: 'Delete a note from a case. Args: caseNumber, noteText (text from the note)' },
+  delete_case_attachment: { required: ['caseNumber', 'fileName'], optional: [], describe: 'Delete an attachment from a case. Args: caseNumber, fileName' },
+  create_case_from_template: { required: ['templateName', 'clinic'], optional: ['patientName', 'deliveryDate'], describe: 'Create a case from a saved template. Args: templateName, clinic, patientName, deliveryDate' },
+  bulk_archive: { required: [], optional: [], describe: 'Archive all delivered cases older than 30 days. No args.' },
+  delete_clinic: { required: ['clinic'], optional: [], describe: 'Delete a clinic and all its records (destructive). Args: clinic' },
+  delete_clinic_contact: { required: ['clinic', 'contactName'], optional: [], describe: 'Remove a contact from a clinic. Args: clinic, contactName' },
+  delete_clinic_address: { required: ['clinic', 'addressType'], optional: [], describe: 'Remove a clinic address. Args: clinic, addressType (billing|shipping|lab_location)' },
+  delete_pricing_override: { required: ['clinic', 'caseType'], optional: [], describe: 'Remove a case-type price override at a clinic. Args: clinic, caseType' },
+  set_doctor_preferred_lab: { required: ['doctorName', 'clinic'], optional: [], describe: 'Set a doctor’s preferred lab. Args: doctorName, clinic' },
+  get_doctor_preferred_lab: { required: ['doctorName'], optional: [], describe: 'Find a doctor’s preferred lab. Args: doctorName' },
+  case_types_list: { required: [], optional: [], describe: 'List catalog case types with prices. No args.' },
+  clinical_specs: { required: ['caseType'], optional: [], describe: 'Clinical specs for a case type. Args: caseType' },
+  catalog_categories: { required: [], optional: [], describe: 'List catalog categories. No args.' },
+  sla_status: { required: [], optional: [], describe: 'Show SLA turnaround days per priority. No args.' },
+  create_case_type: { required: ['name', 'basePrice'], optional: ['category', 'leadTimeDays', 'material', 'description'], describe: 'Add a catalog case type. Args: name, basePrice, category, leadTimeDays, material, description' },
+  update_case_type: { required: ['name'], optional: ['basePrice', 'category', 'leadTimeDays', 'material', 'description'], describe: 'Update a catalog case type. Args: name, basePrice, category, leadTimeDays, material, description' },
+  delete_case_type: { required: ['name'], optional: [], describe: 'Delete a catalog case type (destructive). Args: name' },
+  set_sla_settings: { required: [], optional: ['urgent', 'high', 'normal', 'low'], describe: 'Set SLA turnaround days per priority. Args: urgent, high, normal, low' },
+  aging_report: { required: [], optional: ['clinic'], describe: 'Outstanding-invoice ageing report. Args: clinic (optional)' },
+  adjustments_list: { required: [], optional: ['clinic'], describe: 'Recent account adjustments. Args: clinic (optional)' },
+  payments_list: { required: [], optional: ['clinic'], describe: 'Recent payments with receipt numbers. Args: clinic (optional)' },
+  reconciliation_queue: { required: [], optional: [], describe: 'Bank reconciliation queue. No args.' },
+  record_adjustment: { required: ['clinic', 'amount', 'type'], optional: ['reason'], describe: 'Record a credit note, debit adjustment or refund. Args: clinic, amount, type (credit_note|debit_adjustment|refund), reason' },
+  delete_adjustment: { required: ['clinic'], optional: ['amount', 'referenceNumber'], describe: 'Delete an account adjustment (destructive). Args: clinic, amount, referenceNumber' },
+  delete_payment: { required: ['receiptNumber'], optional: [], describe: 'Delete a payment receipt (destructive). Args: receiptNumber' },
+  update_payment: { required: ['receiptNumber', 'amount'], optional: [], describe: 'Change a payment amount. Args: receiptNumber, amount' },
+  issue_credit_note: { required: ['clinic', 'invoice', 'amount', 'reason'], optional: [], describe: 'Issue a credit note against an invoice. Args: clinic, invoice, amount, reason' },
+  delete_invoice: { required: ['invoiceNumber'], optional: [], describe: 'Delete an invoice (destructive). Args: invoiceNumber' },
+  reconcile_payment: { required: ['referenceNumber'], optional: ['notes'], describe: 'Mark a payment reconciled. Args: referenceNumber, notes' },
+  flag_reconciliation: { required: ['referenceNumber', 'reason'], optional: [], describe: 'Flag a reconciliation exception. Args: referenceNumber, reason' },
+  audit_trail: { required: [], optional: ['limit'], describe: 'Recent audit-trail events. Args: limit (optional)' },
+  sync_status: { required: [], optional: [], describe: 'Check online/offline/desktop status. No args.' },
+  templates_list: { required: [], optional: [], describe: 'List saved case templates. No args.' },
 };
 
 const toolsForApi = () =>
@@ -103,10 +142,6 @@ const toolsForApi = () =>
       },
     };
   });
-
-/** Compact tool catalog — only id + description (no args hints) to save tokens. */
-const compactToolCatalog = () =>
-  VOICE_TOOLS.map((t) => `- ${t.id}: ${t.description}`).join('\n');
 
 /** Build a one-line summary of every clinic for the system prompt. */
 const allClinicsSummary = (ctx: VoiceToolContext): string => {
@@ -139,10 +174,7 @@ The user may speak loosely ("DS-0001", "Mir Dental", "the books", "what's owed")
 Clinics and case numbers must match what exists; never fabricate.
 
 ## Current Clinic Context
-${ctxSection || 'No specific clinic context — ask which clinic the user means.'}${allClinics}
-
-## Tools
-${compactToolCatalog()}`;
+${ctxSection || 'No specific clinic context — ask which clinic the user means.'}${allClinics}`;
 };
 
 const KNOWN_CASE_NUMBER = /\bDS-\d+\b/i;
@@ -158,10 +190,12 @@ const invokeApprovedTool = async (id: string, args: Record<string, unknown>, ctx
   const result = await tool.run(ctx, args);
   if (!result) return clarify(`I can do "${tool.description}", but I need more detail.`);
   if (result.kind === 'read') {
-    return { text: result.text ?? 'Done.', navigateTo: result.navigateTo };
+    // Read output is already natural language — return it directly. This saves
+    // a whole second model round-trip (and its tokens) on every read.
+    return { text: result.text ?? 'Done.', navigateTo: result.navigateTo, direct: true };
   }
   // It's an action — return it so the caller can show the confirmation panel.
-  return { text: result.summary, pendingWrite: result.pending, risk: result.risk as 'write' | 'destructive' };
+  return { text: result.summary, pendingWrite: result.pending, risk: result.risk as 'write' | 'destructive', direct: true };
 };
 
 /** Run the agentic loop: model → tool → result → maybe ask, repeat up to MAX_ITER times. */
@@ -188,6 +222,7 @@ export const runAgenticLoop = async (raw: string, ctx: VoiceToolContext, clinicC
         name: name ?? 'tool',
       };
       const result = await invokeApprovedTool(name, args, ctx);
+      if (result.direct) return result;
       if (result.navigateTo) return result;
       toolMsg.content = result.text ?? JSON.stringify(result);
       messages.push(toolMsg);

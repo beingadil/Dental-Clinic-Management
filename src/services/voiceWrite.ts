@@ -15,7 +15,12 @@ export interface CaseUpdateFields {
 
 export interface WriteCommand {
   kind: 'payment' | 'advance' | 'createClinic' | 'setCaseStatus' | 'updateClinicField' | 'addCaseNote' | 'recordQc' | 'archiveCase' | 'updateClinicDoctor' | 'bulkArchive'
-  | 'caseUpdateFields' | 'casePriority' | 'bulkCaseStatus' | 'restoreCase' | 'caseTemplateSave' | 'deleteCase' | 'purgeCase' | 'addClinicContact' | 'addClinicAddress' | 'addPricingOverride' | 'createCase' | 'applyAdvance' | 'markPaid' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth';
+  | 'caseUpdateFields' | 'casePriority' | 'bulkCaseStatus' | 'restoreCase' | 'caseTemplateSave' | 'deleteCase' | 'purgeCase' | 'addClinicContact' | 'addClinicAddress' | 'addPricingOverride' | 'createCase' | 'applyAdvance' | 'markPaid' | 'printSettingsSave' | 'printSectionsSave' | 'notificationConfigSave' | 'closeMonth'
+  | 'deleteCaseNote' | 'deleteCaseAttachment' | 'createCaseFromTemplate'
+  | 'deleteLab' | 'deleteLabContact' | 'deleteLabAddress' | 'deletePricingOverride' | 'setDoctorPreferredLab'
+  | 'addCaseType' | 'updateCaseType' | 'deleteCaseType' | 'slaSave'
+  | 'recordAdjustment' | 'deleteAdjustment' | 'deletePayment' | 'updatePayment' | 'deleteInvoice' | 'issueCreditNote'
+  | 'reconcileItem' | 'flagReconciliation';
   amount: number;
   clinicHint: string;
   invoiceNumber?: string;
@@ -84,4 +89,25 @@ export interface WriteCommand {
   bulkCaseNumbers?: string[];
   /** Template name — saveAsTemplate. */
   templateName?: string;
+  /** Row id resolved by the tool for by-id deletes (note, attachment, contact, …). */
+  rowId?: string;
+  /** Note body fragment (deleteCaseNote) / attachment file name (deleteCaseAttachment). */
+  fileName?: string;
+  /** Case-type CRUD (create/update/delete + catalog details). */
+  caseTypeBasePrice?: number;
+  caseTypeCategory?: string;
+  caseTypeLeaderDays?: number;
+  caseTypeMaterial?: string;
+  caseTypeDescription?: string;
+  /** SLA turnaround days per priority (slaSave). */
+  slaDays?: { urgent?: number; high?: number; normal?: number; low?: number };
+  /** Account adjustment / credit note. */
+  adjustmentType?: 'credit_note' | 'debit_adjustment' | 'refund';
+  reason?: string;
+  referenceNumber?: string;
+  /** Payment edits by receipt number. */
+  receiptNumber?: string;
+  newAmount?: number;
+  /** Reconciliation action. */
+  reconciliationId?: string;
 }

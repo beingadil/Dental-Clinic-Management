@@ -12,6 +12,7 @@ import { savePrintSettings, saveDocumentSections, setStatementBankExcluded, setI
 import { type DentalCase } from '../../types';
 import { saveNotificationConfig, announceNotificationConfigChanged } from '../../services/notificationSettings';
 import { closeMonth } from '../../services/monthClose';
+import { loadSlaSettings, saveSlaSettings, computeSlaDueDate } from '../../services/prioritySla';
 import { groqEnabled } from '../../services/voiceGroq';
 import { recordClip, transcribeWithGroq, type RecordingHandle } from '../../services/voiceGroqStt';
 import type { WriteCommand } from '../../services/voiceWrite';
@@ -60,9 +61,14 @@ export const VoiceShell: React.FC = () => {
   const {
     user, currentView, userPreferences, labs, invoices, advancePayments, accountAdjustments, cases,
     caseTypes, labContacts, labAddresses, pricingOverrides, qcInspections, caseNotes, caseAttachments,
+    templates, doctorPreferences, allPayments, reconciliationItems, auditEvents,
     addLabContact, addLabAddress, addPricingOverride, addCase, applyAdvanceCreditV2, bulkMarkPaid,
     recordTransactionV2, recordAdvanceDepositV2, setCurrentView, addLab, updateLab, updateCase, addCaseNote, recordQcCase, archiveCase,
     restoreCase, deleteCasePermanently, saveAsTemplate,
+    deleteCaseNote, deleteCaseAttachment, deleteLab, deleteLabContact, deleteLabAddress,
+    deletePricingOverride, setDoctorPreferredLab, addCaseType, updateCaseType, deleteCaseType,
+    recordAccountAdjustment, deleteAccountAdjustment, deletePaymentV2, updatePaymentAmountV2,
+    deleteInvoice, issueCreditNoteV2, reconcileItemV2, flagReconciliationExceptionV2,
   } = useApp();
   const [open, setOpen] = useState(false);
   const [online, setOnline] = useState(true);
@@ -226,7 +232,9 @@ export const VoiceShell: React.FC = () => {
       const result = await askAssistant(text, {
         labs: labs || [], invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], cases: cases || [],
         caseTypes: caseTypes || [], labContacts: labContacts || [], labAddresses: labAddresses || [], pricingOverrides: pricingOverrides || [],
-        qcInspections: qcInspections || [], caseNotes: caseNotes || {}, caseAttachments: caseAttachments || [], user,
+        qcInspections: qcInspections || [], caseNotes: caseNotes || {}, caseAttachments: caseAttachments || {},
+        templates: templates || [], doctorPreferences: doctorPreferences || [], allPayments: allPayments || [],
+        reconciliationItems: reconciliationItems || [], auditEvents: auditEvents || [], user,
         allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
         api: {
           labs: labs || [], invoices: invoices || [], cases: cases || [],
@@ -620,6 +628,285 @@ export const VoiceShell: React.FC = () => {
         setAnswer(`${cmd.month} closed for ${cmd.labName}. Nothing locks — corrections can re-close.`);
         setStatus('done');
         setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not close the month.'); }
+      return;
+    }
+    /* ── Case management extras ───────────────────────────────────────── */
+    if (cmd.kind === 'deleteCaseNote' && cmd.caseNumber && cmd.noteText) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      const notes = target ? (caseNotes?.[target.id] || []) : [];
+      const lower = cmd.noteText.toLowerCase();
+      const hit = notes.find((n) => String(n.note_text || '').toLowerCase().includes(lower));
+      if (!target || !hit) { setStatus('error'); setAnswer(`No note matching “${cmd.noteText.slice(0, 50)}” on ${cmd.caseNumber}.`); setPending(null); return; }
+      try {
+        deleteCaseNote(target.id, hit.id);
+        setAnswer(`Note removed from ${cmd.caseNumber}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the note.'); }
+      return;
+    }
+    if (cmd.kind === 'deleteCaseAttachment' && cmd.caseNumber && cmd.fileName) {
+      const blocked = deny('case:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const target = findCaseByNumber(cmd.caseNumber);
+      const files = target ? (caseAttachments?.[target.id] || []) : [];
+      const lower = cmd.fileName.toLowerCase();
+      const hit = files.find((f) => String(f.filename || '').toLowerCase().includes(lower));
+      if (!target || !hit) { setStatus('error'); setAnswer(`No attachment matching “${cmd.fileName}” on ${cmd.caseNumber}.`); setPending(null); return; }
+      try {
+        deleteCaseAttachment(target.id, hit.id);
+        setAnswer(`Attachment “${hit.filename}” removed from ${cmd.caseNumber}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the attachment.'); }
+      return;
+    }
+    if (cmd.kind === 'createCaseFromTemplate' && cmd.templateName && cmd.clinicHint) {
+      const blocked = deny('case:create');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      const tpl = (templates || []).find((t) => t.template_name.toLowerCase() === cmd.templateName!.toLowerCase())
+        || (templates || []).find((t) => t.template_name.toLowerCase().includes(cmd.templateName!.toLowerCase()));
+      if (!chosen || !tpl) { setStatus('error'); setAnswer('Could not match that template or clinic.'); return; }
+      const ct = (caseTypes || []).find((t) => t.id === tpl.case_type_id);
+      const price = Number(ct?.base_price || 0);
+      try {
+        const created = addCase({
+          lab_id: chosen.id, lab_name: chosen.name,
+          case_type_id: tpl.case_type_id, case_type_name: tpl.case_type_name,
+          doctor_name: 'Voice', selected_teeth: tpl.selected_teeth || [], shade: tpl.shade,
+          instructions: tpl.instructions, delivery_date: cmd.deliveryDate || computeSlaDueDate(tpl.default_priority || 'normal'),
+          priority: tpl.default_priority || 'normal', price, discount: 0, final_price: price,
+          status: 'received', patient_name: cmd.patientName || 'Template case',
+        } as never);
+        setAnswer(`Case created from template “${tpl.template_name}” for ${cmd.patientName || 'the patient'} at ${chosen.name} — ${created.case_number}, PKR ${price.toLocaleString()}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not create the case.'); }
+      return;
+    }
+    /* ── Lab / clinic lifecycle ───────────────────────────────────────── */
+    if (cmd.kind === 'deleteLab') {
+      const blocked = deny('clinic:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      if (!chosen) { setStatus('error'); setAnswer('I could not match that clinic. Tell me the clinic name again.'); return; }
+      try {
+        deleteLab(chosen.id);
+        setAnswer(`${chosen.name} deleted with all its cases, invoices and history.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the clinic.'); }
+      return;
+    }
+    if (cmd.kind === 'deleteLabContact' && cmd.contactName) {
+      const blocked = deny('contacts:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      const hit = chosen ? (labContacts || []).find((c) => c.lab_id === chosen.id && c.name.toLowerCase().includes(cmd.contactName!.toLowerCase())) : null;
+      if (!chosen || !hit) { setStatus('error'); setAnswer(`No contact matching “${cmd.contactName}” at that clinic.`); return; }
+      try {
+        deleteLabContact(hit.id);
+        setAnswer(`Contact “${hit.name}” removed from ${chosen.name}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the contact.'); }
+      return;
+    }
+    if (cmd.kind === 'deleteLabAddress' && cmd.addressType) {
+      const blocked = deny('contacts:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      const hit = chosen ? (labAddresses || []).find((a) => a.lab_id === chosen.id && a.type === cmd.addressType) : null;
+      if (!chosen || !hit) { setStatus('error'); setAnswer(`No ${cmd.addressType} address on that clinic.`); return; }
+      try {
+        deleteLabAddress(hit.id);
+        setAnswer(`${cmd.addressType} address removed from ${chosen.name}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the address.'); }
+      return;
+    }
+    if (cmd.kind === 'deletePricingOverride' && cmd.caseTypeName) {
+      const blocked = deny('pricing:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      const hit = chosen ? (pricingOverrides || []).find((p) => p.lab_id === chosen.id && p.case_type_name.toLowerCase().includes(cmd.caseTypeName!.toLowerCase())) : null;
+      if (!chosen || !hit) { setStatus('error'); setAnswer(`No ${cmd.caseTypeName} price override at that clinic.`); return; }
+      try {
+        deletePricingOverride(hit.id);
+        setAnswer(`${hit.case_type_name} price override removed from ${chosen.name}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the pricing override.'); }
+      return;
+    }
+    if (cmd.kind === 'setDoctorPreferredLab' && cmd.doctorName) {
+      const blocked = deny('clinic:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      if (!chosen) { setStatus('error'); setAnswer('I could not match that clinic.'); return; }
+      try {
+        setDoctorPreferredLab(cmd.doctorName, chosen.id, chosen.name);
+        setAnswer(`Dr ${cmd.doctorName} now prefers ${chosen.name}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save the preference.'); }
+      return;
+    }
+    /* ── Catalog extras ───────────────────────────────────────────────── */
+    if (cmd.kind === 'addCaseType' && cmd.caseTypeName) {
+      const blocked = deny('catalog:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      try {
+        addCaseType({
+          name: cmd.caseTypeName,
+          base_price: Number(cmd.caseTypeBasePrice || 0),
+          category: cmd.caseTypeCategory || undefined,
+          lead_time_days: cmd.caseTypeLeaderDays || undefined,
+          material_system: cmd.caseTypeMaterial || undefined,
+          description: cmd.caseTypeDescription || undefined,
+        } as never);
+        setAnswer(`Case type “${cmd.caseTypeName}” added at PKR ${Number(cmd.caseTypeBasePrice || 0).toLocaleString()}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not add the case type.'); }
+      return;
+    }
+    if (cmd.kind === 'updateCaseType' && cmd.caseTypeName) {
+      const blocked = deny('catalog:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const ct = (caseTypes || []).find((t) => t.name.toLowerCase() === cmd.caseTypeName!.toLowerCase())
+        || (caseTypes || []).find((t) => t.name.toLowerCase().includes(cmd.caseTypeName!.toLowerCase()));
+      if (!ct) { setStatus('error'); setAnswer(`No case type named “${cmd.caseTypeName}”.`); return; }
+      try {
+        updateCaseType(ct.id, {
+          base_price: cmd.caseTypeBasePrice !== undefined ? Number(cmd.caseTypeBasePrice) : undefined,
+          category: cmd.caseTypeCategory || undefined,
+          lead_time_days: cmd.caseTypeLeaderDays !== undefined ? Number(cmd.caseTypeLeaderDays) : undefined,
+          material_system: cmd.caseTypeMaterial || undefined,
+          description: cmd.caseTypeDescription || undefined,
+        } as never);
+        setAnswer(`Case type “${ct.name}” updated.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the case type.'); }
+      return;
+    }
+    if (cmd.kind === 'deleteCaseType' && cmd.caseTypeName) {
+      const blocked = deny('catalog:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const ct = (caseTypes || []).find((t) => t.name.toLowerCase() === cmd.caseTypeName!.toLowerCase())
+        || (caseTypes || []).find((t) => t.name.toLowerCase().includes(cmd.caseTypeName!.toLowerCase()));
+      if (!ct) { setStatus('error'); setAnswer(`No case type named “${cmd.caseTypeName}”.`); return; }
+      try {
+        deleteCaseType(ct.id);
+        setAnswer(`Case type “${ct.name}” deleted from the catalog.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the case type. A category may block it.'); }
+      return;
+    }
+    if (cmd.kind === 'slaSave' && cmd.slaDays) {
+      try {
+        const current = loadSlaSettings();
+        saveSlaSettings({ ...current, ...Object.fromEntries(Object.entries(cmd.slaDays).filter(([, v]) => v !== undefined)) } as never);
+        const next = loadSlaSettings();
+        setAnswer(`SLA updated — urgent ${next.urgent}d, high ${next.high}d, normal ${next.normal}d, low ${next.low}d.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save SLA settings.'); }
+      return;
+    }
+    /* ── Billing depth ────────────────────────────────────────────────── */
+    if (cmd.kind === 'recordAdjustment' && cmd.adjustmentType) {
+      const blocked = deny('payment:record');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      if (!chosen) { setStatus('error'); setAnswer('I could not match that clinic.'); return; }
+      try {
+        const adj = recordAccountAdjustment(chosen.id, cmd.adjustmentType, cmd.amount, cmd.reason || 'Recorded by voice');
+        setAnswer(`${cmd.adjustmentType.replace(/_/g, ' ')} of PKR ${cmd.amount.toLocaleString()} recorded for ${chosen.name} — ${adj.adjustment_number}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not record the adjustment.'); }
+      return;
+    }
+    if (cmd.kind === 'deleteAdjustment') {
+      const blocked = deny('payment:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const chosen = findLabByHint(labs || [], cmd.clinicHint);
+      const hit = chosen ? (accountAdjustments || [])
+        .filter((a) => a.lab_id === chosen.id)
+        .filter((a) => !cmd.amount || Math.abs(Number(a.amount) - cmd.amount) < 0.005)
+        .filter((a) => !cmd.referenceNumber || String(a.reference_number || '').toLowerCase().includes(cmd.referenceNumber.toLowerCase()))
+        .slice(-1)[0] : null;
+      if (!chosen || !hit) { setStatus('error'); setAnswer('No matching adjustment found. Say “list adjustments” first.'); return; }
+      try {
+        const ok = deleteAccountAdjustment(hit.id);
+        setAnswer(ok ? `${hit.adjustment_number || hit.id} deleted.` : 'Could not delete that adjustment.');
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the adjustment.'); }
+      return;
+    }
+    if (cmd.kind === 'deletePayment' && cmd.receiptNumber) {
+      const blocked = deny('payment:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const want = cmd.receiptNumber.toUpperCase();
+      const hit = (allPayments || []).find((p) => [p.receipt_number, p.payment_number, p.id].filter(Boolean).some((x) => String(x).toUpperCase() === want));
+      if (!hit) { setStatus('error'); setAnswer(`No payment ${cmd.receiptNumber} found. Say “list payments” first.`); return; }
+      try {
+        const ok = deletePaymentV2(hit.id);
+        setAnswer(ok ? `Payment ${cmd.receiptNumber} deleted and its allocation reversed.` : 'Could not delete that payment.');
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the payment.'); }
+      return;
+    }
+    if (cmd.kind === 'updatePayment' && cmd.receiptNumber && cmd.newAmount) {
+      const blocked = deny('payment:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const want = cmd.receiptNumber.toUpperCase();
+      const hit = (allPayments || []).find((p) => [p.receipt_number, p.payment_number, p.id].filter(Boolean).some((x) => String(x).toUpperCase() === want));
+      if (!hit) { setStatus('error'); setAnswer(`No payment ${cmd.receiptNumber} found.`); return; }
+      try {
+        const ok = updatePaymentAmountV2(hit.id, cmd.newAmount);
+        setAnswer(ok ? `Payment ${cmd.receiptNumber} changed to PKR ${cmd.newAmount.toLocaleString()}.` : 'Refused — the new amount may overpay the invoice.');
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the payment.'); }
+      return;
+    }
+    if (cmd.kind === 'issueCreditNote' && cmd.invoiceNumber) {
+      const blocked = deny('payment:record');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const inv = (invoices || []).find((i) => i.invoice_number.toUpperCase() === cmd.invoiceNumber!.toUpperCase());
+      if (!inv) { setStatus('error'); setAnswer(`No invoice ${cmd.invoiceNumber} found.`); return; }
+      try {
+        const adj = issueCreditNoteV2({
+          clinicId: inv.lab_id, invoiceId: inv.id, amount: cmd.amount,
+          reasonCode: 'other', reasonText: cmd.reason || 'Issued by voice',
+        });
+        setAnswer(`Credit note issued on ${inv.invoice_number} for PKR ${cmd.amount.toLocaleString()} — ${adj.adjustment_number}.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not issue the credit note.'); }
+      return;
+    }
+    if (cmd.kind === 'deleteInvoice' && cmd.invoiceNumber) {
+      const blocked = deny('payment:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const inv = (invoices || []).find((i) => i.invoice_number.toUpperCase() === cmd.invoiceNumber!.toUpperCase());
+      if (!inv) { setStatus('error'); setAnswer(`No invoice ${cmd.invoiceNumber} found.`); return; }
+      try {
+        deleteInvoice(inv.id);
+        setAnswer(`Invoice ${cmd.invoiceNumber} deleted.`);
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the invoice.'); }
+      return;
+    }
+    if ((cmd.kind === 'reconcileItem' || cmd.kind === 'flagReconciliation') && cmd.referenceNumber) {
+      const blocked = deny('payment:edit');
+      if (blocked) { setStatus('error'); setAnswer(blocked); return; }
+      const want = cmd.referenceNumber.toLowerCase();
+      const hit = (reconciliationItems || []).find((r) => String(r.reference_number || '').toLowerCase().includes(want));
+      if (!hit) { setStatus('error'); setAnswer(`No reconciliation item for “${cmd.referenceNumber}”.`); return; }
+      try {
+        if (cmd.kind === 'reconcileItem') {
+          reconcileItemV2(hit.id, cmd.reason || 'Reconciled by voice');
+          setAnswer(`Payment ${hit.reference_number} marked reconciled.`);
+        } else {
+          flagReconciliationExceptionV2(hit.id, cmd.reason || 'Flagged by voice');
+          setAnswer(`Payment ${hit.reference_number} flagged — ${cmd.reason || 'exception recorded'}.`);
+        }
+        setStatus('done'); setPending(null); setPendingNote('');
+      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update reconciliation.'); }
       return;
     }
     const { clinic, candidates } = resolveClinicForWrite(cmd.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };
