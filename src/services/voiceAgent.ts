@@ -113,6 +113,7 @@ const TOOL_PARAMS: Record<string, { required: string[]; optional: string[]; desc
   sync_status: { required: [], optional: [], describe: 'Check online/offline/desktop status. No args.' },
   templates_list: { required: [], optional: [], describe: 'List saved case templates. No args.' },
   vouchers_list: { required: [], optional: ['limit'], describe: 'List the saved voucher log (job slips / invoices). Args: limit (optional)', kinds: { limit: 'number' } },
+  rag_search: { required: ['query'], optional: [], describe: 'Retrieve documents from the RAG knowledge base. Args: query' },
   save_voucher: { required: ['caseNumber'], optional: ['voucherType'], describe: 'Log a job slip or invoice voucher for a case. Args: caseNumber, voucherType (job_slip|invoice)' },
   delete_voucher: { required: ['voucherNumber'], optional: [], describe: 'Delete a saved voucher (destructive). Args: voucherNumber' },
   dueToday: { required: [], optional: [], describe: 'Cases due today (priority-sorted) plus overdue. No args.' },

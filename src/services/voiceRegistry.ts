@@ -29,7 +29,7 @@ import {
   getDeliveryCalendar, getCaseQueue, getShadeGuide, globalSearch,
   getCaseTypesList, getClinicalSpecs, getCatalogCategories, getSlaStatus, getAgingReport,
   getAdjustmentList, getPaymentList, getReconciliationQueue, getAuditTrail, getSyncStatus, getTemplateList,
-  getVoucherList,
+  getVoucherList, getRagSearch,
 } from './voiceTools';
 import { guessClinic } from './voiceTools';
 import { selectCasesToAutoArchive } from '../context/hooks/autoArchive';
@@ -1202,6 +1202,10 @@ const tools: VoiceTool[] = [
   {
     id: 'vouchers_list', description: 'List the saved voucher log — job slips and invoices already printed and logged. Args: { limit?: number }.', risk: 'read',
     run: (ctx, args) => ({ kind: 'read', text: getVoucherList(ctx, Number(args.limit || 8)) }),
+  },
+  {
+    id: 'rag_search', description: 'Retrieve matching documents from the RAG knowledge base (indexed from the app) — use before answering fact-based questions that need actual wording. Args: { query: string }.', risk: 'read',
+    run: async (_ctx, args) => ({ kind: 'read', text: await getRagSearch(String(args.query || '')) }),
   },
   {
     id: 'save_voucher', description: 'Log a voucher for a case — either a job slip or an invoice — into the saved voucher register. Args: { caseNumber: string, voucherType: "job_slip"|"invoice" }.', risk: 'write',

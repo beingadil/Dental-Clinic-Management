@@ -841,3 +841,10 @@ export const getVoucherList = (ctx: VoiceContext, limit = 8): string => {
   if (!rows.length) return 'No vouchers saved yet. Print a job slip or invoice to log one.';
   return `Saved vouchers (${rows.length}): ${rows.map((v) => `${v.voucher_number} — ${v.voucher_type.replace(/_/g, ' ')} — ${v.case_number} — ${v.lab_name}${v.amount ? ` — PKR ${Number(v.amount).toLocaleString()}` : ''}`).join('; ')}.`;
 };
+
+/** RAG retrieval over the app knowledge base (build-time FTS index, BM25-ranked). */
+export const getRagSearch = async (q: string): Promise<string> => {
+  const hits = await searchRag(q, { limit: 5 });
+  if (!hits.length) return 'No matching documents found in the RAG index.';
+  return hits.map((h) => `• ${h.citation} — ${h.excerpt.replace(/\s+/g, ' ').slice(0, 200)}`).join('\n');
+};

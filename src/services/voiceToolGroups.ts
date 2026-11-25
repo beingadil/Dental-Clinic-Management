@@ -54,7 +54,7 @@ export const TOOL_GROUPS: VoiceToolGroup[] = [
       'setCaseStatus', 'casePriority', 'addCaseNote', 'recordQc', 'archiveCase', 'caseUpdateFields',
       'bulkCaseStatus', 'restoreCase', 'caseTemplateSave', 'deleteCase', 'purgeCase', 'cancelCase',
       'delete_case_note', 'delete_case_attachment', 'create_case_from_template', 'bulk_archive',
-      'templates_list', 'fillForm',
+      'templates_list', 'fillForm', 'rag_search',
     ],
   },
   {
