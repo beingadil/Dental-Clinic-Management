@@ -224,6 +224,31 @@ export const VoiceShell: React.FC = () => {
       setAnswer(`Say “${expectTyped}” or type it to confirm — this cannot be undone.`);
       return;
     }
+    /* Amber confirmation for writes — spoken or typed "confirm" is enough,
+       per the project's confirmation contract. Anything else is treated as a
+       fresh command, so the operator can just say the corrected thing. */
+    if (pending && pendingRisk === 'write') {
+      const yes = /^(confirm|confirmed|yes|yeah|yep|ok|okay|do it|go ahead|proceed|apply|save it)\.?$/i;
+      if (yes.test(text.trim())) {
+        const cmd = pending;
+        setPending(null);
+        setPendingNote('');
+        setStatus('thinking');
+        setBusy(true);
+        try {
+          await executeWrite(cmd);
+          setStatus('done');
+        } catch {
+          setStatus('error');
+          setAnswer('Something went wrong applying that change.');
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+      cancelPending();
+      /* fall through — the new sentence goes to the agentic loop below */
+    }
     /* Everything — reads, writes, navigation — goes through the agentic loop
        (Groq tool calling) below. No fixed-phrase routing, no slot interviews. */
     setBusy(true);
@@ -251,17 +276,18 @@ export const VoiceShell: React.FC = () => {
           setBusy(false);
           return;
         }
-        const tts = {
+        // Amber write gate: park it, show what will change, wait for confirm.
+        setPending(result.pendingWrite);
+        setPendingRisk('write');
+        setPendingNote(text);
+        setAnswer(result.text);
+        setStatus('done');
+        setBusy(false);
+        speak(`${result.text} Say confirm to apply it.`, {
           rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
           locale: userPreferences?.voice_locale || 'en-PK',
           allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
-        };
-        await executeWrite(result.pendingWrite);
-        setMemoryCount(listMemories().length);
-        setStatus('done');
-        setAnswer(result.text);
-        speak(result.text, tts);
-        setBusy(false);
+        });
         return;
       }
       setAnswer(result.text);
@@ -1197,10 +1223,10 @@ export const VoiceShell: React.FC = () => {
           </div>
 
           {pending && (
-            <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
-              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : ''}</div>
+            <div className={`mt-2 rounded-xl border p-2.5 text-xs ${pendingRisk === 'destructive' ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : 'Confirm this change'}</div>
               <p className="mt-1.5">{answer}</p>
-              {pendingRisk === 'destructive' && (
+              {pendingRisk === 'destructive' ? (
                 <>
                   <p className="mt-1 text-[10px] font-semibold text-rose-600">Say “{expectTyped}” to confirm this cannot be undone. Or type it above.</p>
                   {expectTyped && (
@@ -1209,6 +1235,8 @@ export const VoiceShell: React.FC = () => {
                     </div>
                   )}
                 </>
+              ) : (
+                <p className="mt-1 text-[10px] font-semibold text-amber-700">Say “confirm”, press Confirm, or say something else to change it.</p>
               )}
               <div className="mt-2 flex gap-2">
                 {pendingRisk === 'destructive' ? (
@@ -1225,7 +1253,12 @@ export const VoiceShell: React.FC = () => {
                     <button type="button" onClick={() => void submit()} className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700">Confirm destructive</button>
                     <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
                   </>
-                ) : null}
+                ) : (
+                  <>
+                    <button type="button" onClick={() => void submit('confirm')} className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700">Confirm</button>
+                    <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
+                  </>
+                )}
               </div>
             </div>
           )}

@@ -28,11 +28,18 @@ export const CORE_TOOLS = [
   'navigate',
   'global_search',
   'help',
+  'briefing',
+  'narrate',
   'patient_search',
   'case_search',
   'case_detail',
-  'briefing',
-  'narrate',
+  'case_count',
+  // Money is the app's daily question; these stay available so a balance
+  // question never depends on the router guessing the right area.
+  'standings',
+  'outstanding',
+  'clinicBalance',
+  'invoiceSearch',
 ];
 
 export const TOOL_GROUPS: VoiceToolGroup[] = [

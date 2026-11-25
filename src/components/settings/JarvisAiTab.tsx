@@ -38,6 +38,9 @@ const ERROR_TEXT: Record<NonNullable<AiChatResult['error']>, string> = {
   rate_limited: 'Rate limited — try again in a minute or enable another provider.',
   invalid_key: 'Key rejected or missing — check the key and try again.',
   network_error: 'Could not reach the provider — check the URL and connection.',
+  insufficient_credit: 'Account out of credit — top it up or pick another provider.',
+  invalid_model: 'This model is not available — pick another model name.',
+  server_error: 'The provider is having trouble — try again shortly.',
 };
 
 export const JarvisAiTab: React.FC = () => {

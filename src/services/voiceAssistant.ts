@@ -64,15 +64,20 @@ const buildFallback = (): string => {
   const err = getLastError();
   switch (err) {
     case 'rate_limited':
-      return "AI providers are rate-limited right now — try again in a few minutes, or add another provider (OpenRouter, etc.) in Settings → Jarvis AI.";
+      return 'AI providers are rate-limited right now — try again in a few minutes, or add another provider (OpenRouter, etc.) in Settings → Jarvis AI.';
     case 'invalid_key':
       return 'No AI provider keys configured. Add a Groq or OpenRouter API key in Settings → Jarvis AI.';
+    case 'insufficient_credit':
+      return 'Your AI provider account is out of credit — top it up or switch providers in Settings → Jarvis AI.';
+    case 'invalid_model':
+      return "That model name isn't accepted by your AI provider. Open Settings → Jarvis AI to pick a supported model, or use the default.";
+    case 'server_error':
+      return 'The AI provider is having trouble on their end. Try again in a moment.';
     case 'network_error':
       return "Couldn't reach the AI right now — check your internet connection and try again.";
     default:
       break;
   }
-  // No error info (e.g. AI returned null) — ask a natural clarifying question.
   return "I'm not sure what you mean — could you say it a different way? Say 'what can you do?' for everything I can help with.";
 };
 

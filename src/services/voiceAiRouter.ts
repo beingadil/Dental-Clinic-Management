@@ -29,7 +29,7 @@ export interface AiChatResult {
   tool_calls?: { id: string; type?: string; function: { name: string; arguments: string } }[] | null;
   provider: AiProviderId;
   providerName: string;
-  error: string | null; // 'rate_limited' | 'invalid_key' | 'network_error' | null
+  error: string | null; // 'rate_limited' | 'invalid_key' | 'network_error' | 'insufficient_credit' | 'invalid_model' | 'server_error' | null
 }
 
 const DEFAULT_PROVIDERS: AiProviderConfig[] = [
@@ -169,10 +169,13 @@ export const testProvider = async (id: AiProviderId): Promise<{ ok: boolean; err
 export const resetLastError = () => { lastError = null; };
 
 /** Classify an HTTP response status into an error category. */
-const classifyError = (status: number): AiChatResult['error'] => {
+const classifyError = (status: number): NonNullable<AiChatResult['error']> | null => {
   if (status === 429) return 'rate_limited';
   if (status === 401 || status === 403) return 'invalid_key';
-  return 'network_error';
+  if (status === 402) return 'insufficient_credit';
+  if (status >= 500) return 'server_error';
+  if (status >= 400) return 'invalid_model';
+  return null;
 };
 
 /** Call a single provider. Returns null on transient errors (so router tries next),

@@ -136,27 +136,50 @@ const needClinic = (ctx: VoiceToolContext, q: string): ClinicNeed => {
 };
 
 const NAV: Record<string, string> = {
-  dashboard: 'dashboard', home: 'dashboard', overview: 'dashboard',
-  case: 'cases', cases: 'cases', workstation: 'cases', 'dental workstation': 'cases', records: 'cases',
-  labs: 'labs', lab: 'labs', clinics: 'labs', clinic: 'labs', 'dental clinics': 'labs',
-  billing: 'billing', payments: 'billing', finance: 'billing', 'payment receive': 'billing',
-  ledger: REPORTS_TABS[0].id, 'general ledger': REPORTS_TABS[0].id, books: REPORTS_TABS[0].id,
-  statement: REPORTS_TABS[1].id, statements: REPORTS_TABS[1].id, monthly: REPORTS_TABS[1].id, 'monthly statement': REPORTS_TABS[1].id, vouchers: REPORTS_TABS[1].id,
-  insights: REPORTS_TABS[2].id, insight: REPORTS_TABS[2].id, analytics: REPORTS_TABS[2].id, reports: REPORTS_ENTRY_ID,
+  dashboard: 'dashboard', home: 'dashboard', overview: 'dashboard', landing: 'dashboard',
+  case: 'cases', cases: 'cases', workstation: 'cases', dental_workstation: 'cases', records: 'cases',
+  labs: 'labs', lab: 'labs', dental_clinics: 'labs', clinic: 'labs', clinics: 'labs',
+  billing: 'billing', payments: 'billing', finance: 'billing', billing_and_invoices: 'billing',
+  ledger: REPORTS_TABS[0].id, general_ledger: REPORTS_TABS[0].id, books: REPORTS_TABS[0].id,
+  statement: REPORTS_TABS[1].id, statements: REPORTS_TABS[1].id, monthly: REPORTS_TABS[1].id,
+  'monthly statement': REPORTS_TABS[1].id, vouchers: REPORTS_TABS[1].id,
+  insights: REPORTS_TABS[2].id, insight: REPORTS_TABS[2].id, analytics: REPORTS_TABS[2].id,
+  reports: REPORTS_ENTRY_ID,
   catalog: 'catalog', catalogue: 'catalog', pricing: 'catalog', price: 'catalog',
+  price_list: 'catalog', invoices_and_pricing: 'catalog',
   notifications: 'notifications', alerts: 'notifications', inbox: 'notifications',
-  settings: 'settings', preferences: 'settings',
-  'print invoices': 'print-invoices', batch: 'print-invoices', 'batch print': 'print-invoices',
+  system_inbox: 'notifications',
+  settings: 'settings', preferences: 'settings', system_settings: 'settings', admin: 'settings',
+  'print invoices': 'print-invoices', print_invoices: 'print-invoices', batch: 'print-invoices',
+  'batch print': 'print-invoices',
+};
+
+/** Resolve the many phrasings of "open that screen" to a real view id. */
+const resolveView = (raw: string): string | null => {
+  const base = raw.trim().toLowerCase().replace(/[^a-z0-9 ]+/g, '');
+  if (!base) return null;
+  const candidates = [base, base.replace(/\s+/g, '_'), base.replace(/\s+/g, '')];
+  for (const key of candidates) {
+    if (NAV[key]) return NAV[key];
+  }
+  return null;
 };
 
 const tools: VoiceTool[] = [
   // ── Navigation ─────────────────────────────────────────────────────────
   {
-    id: 'navigate', description: 'Open any screen in the app. Args: { view: string } - one of: dashboard, cases, labs, clinics, billing, ledger, statements, insights, catalog, notifications, settings, print-invoices', risk: 'read',
+    id: 'navigate', description: 'Open any screen in the app. Args: { view: string } — e.g. dashboard, cases, billing, labs, catalog, settings, print-invoices, ledger, statements, insights, notifications. Unresolved names are reported back, not silently dropped.', risk: 'read',
     run(_ctx, args) {
-      const view = String(args.view || '').trim().toLowerCase().replace(/\s+/g, '_');
-      const target = NAV[view];
-      return view ? { kind: 'read', text: `Opening ${String(args.view || '')}.`, navigateTo: target } : null;
+      const raw = String(args.view || '').trim();
+      if (!raw) return null;
+      const target = resolveView(raw);
+      if (!target) {
+        return {
+          kind: 'read',
+          text: `I could not find a screen called “${raw}”. The app screens are Dashboard, Dental Workstation (cases), Dental Clinics, Billing, Print Invoices, Catalog, Analytics & Reports, System Inbox or System Settings. Say one of those names.`,
+        };
+      }
+      return { kind: 'read', text: `Opening ${raw}.`, navigateTo: target };
     },
   },
   // ── Read tools ─────────────────────────────────────────────────────────

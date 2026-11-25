@@ -208,6 +208,10 @@ The user may speak loosely ("DS-0001", "Mir Dental", "the books", "what's owed")
 
 Clinics and case numbers must match what exists; never fabricate.
 
+For balances, outstanding amounts, who owes what or any clinic comparison, call standings, outstanding or clinic_outstanding — never answer those from the context summary.
+
+If a request needs data you cannot see, say what you would need instead of guessing.
+
 ## Current Clinic Context
 ${ctxSection || 'No specific clinic context — ask which clinic the user means.'}${allClinics}`;
 };
