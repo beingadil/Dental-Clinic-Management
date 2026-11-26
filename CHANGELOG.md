@@ -1,3 +1,26 @@
+## [2.34.2] - 2026-11-26
+
+### Fixed
+- **Ctrl+P printed a fragment of the General Ledger.** The preview windows its
+  rows — only the ones near the viewport are mounted, which is what keeps a
+  1,500-row statement responsive — and paper does not scroll, so the browser
+  printed exactly the rows that happened to be on screen. `beforeprint` now
+  renders the whole table synchronously and drops the scroller's height cap for
+  the duration of the job, then restores the window (and the scroll position)
+  on `afterprint`. Every virtualized table prints complete.
+
+### Changed
+- **Monthly Statement headings read the way the money does**: `Cases Billed` →
+  `Cases`, `Collected (Cr)` → `Received`, `Closing Balance` → `Remaining` — on
+  the screen, in the PDF and in the Excel workbook, because all three read the
+  one column declaration. Column keys, figures and totals are unchanged.
+- **The Monthly Statement PDF is now the General Ledger's document**: A4
+  portrait, 10mm margins, 190mm of usable width, the same navy letterhead and
+  info box, the same ruled table, the same `Page n of m` footer and the same
+  document metadata. It was a landscape sheet of its own design, so one
+  practice sent a clinic two statements that shared nothing. Months, rows,
+  totals and the summary strip are unchanged.
+
 ## [2.31.34] - 2026-11-20
 
 ### Added
