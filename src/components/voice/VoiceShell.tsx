@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { VoiceOrb, type VoiceOrbState } from './VoiceOrb';
 import { listMemories, clearMemories } from '../../services/voiceMemory';
 import { X, SendHorizonal, AudioLines, CheckCircle2, History, Sparkles, Maximize2, Minimize2, Mic } from 'lucide-react';
@@ -44,7 +44,7 @@ const getRecognition = (): SpeechRecognitionLike | null => {
   return rec;
 };
 
-/** AI-executed write commands come from the agentic loop — the shell runs
+/** AI-executed write commands come from the agentic loop â€” the shell runs
     them immediately through executeWrite. Only destructive actions keep a
     typed-token gate (the red flow in queueWrite). */
 const findLabByHint = (labs: { id: string; name: string }[], hint?: string): { id: string; name: string } | null => {
@@ -91,13 +91,13 @@ export const VoiceShell: React.FC = () => {
 
   const voiceEnabled = !!userPreferences?.voice_enabled;
   /* Cloud mic (Groq Whisper) works in Tauri/WebView2 whenever a Groq key is
-     configured — it uses fetch + getUserMedia + MediaRecorder, no
+     configured â€” it uses fetch + getUserMedia + MediaRecorder, no
      SpeechRecognition API needed. The built-in Chrome/Edge recognizer does not
      exist in WebView2, so cloud mic is the only reliable speech-input path on
      desktop. */
   const cloudMic = groqEnabled() && typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
 
-  /* ── Always-On Mic (VAD + Groq Whisper) ───────────────────────────────
+  /* â”€â”€ Always-On Mic (VAD + Groq Whisper) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       While the orb is open and Always Listen is enabled, a poller watches
       the microphone RMS. When speech starts it begins a Groq Whisper capture;
       when speech ends it transcribes and submits. Submission goes through
@@ -146,8 +146,14 @@ export const VoiceShell: React.FC = () => {
             if (rms > SPEECH_START_RMS && !recording) {
               recording = true;
               setStatus('listening');
-              setAnswer('Speak now — transcribing…');
-              handle = await recordClip();
+              setAnswer('Speak now â€” transcribingâ€¦');
+              try {
+                handle = await recordClip();
+              } catch {
+                recording = false;
+                setStatus('idle');
+                setAnswer('Microphone busy or unavailable â€” type your question instead.');
+              }
             } else if (rms < SPEECH_END_RMS && recording) {
               recording = false;
               const done = handle;
@@ -156,7 +162,14 @@ export const VoiceShell: React.FC = () => {
               setAnswer('Listening (always-on)');
               void done?.stop()
                 .then((blob: Blob) => transcribeWithGroq(blob))
-                .then((text: string | null) => { if (text) { setQuery(text); void submitRef.current?.(text); } })
+                .then((text: string | null) => {
+                  if (text) {
+                    setQuery(text);
+                    if (submitRef.current) void submitRef.current(text);
+                  } else {
+                    setAnswer('I didnâ€™t catch that â€” try again, or type the question.');
+                  }
+                })
                 .catch(() => { /* ignore */ });
             }
           }
@@ -173,7 +186,7 @@ export const VoiceShell: React.FC = () => {
         setStatus('error');
         setAnswer(err instanceof Error && err.name === 'NotAllowedError'
           ? 'Microphone access is blocked. Allow microphone for this app in your system settings, then try again.'
-          : 'Always-on mic unavailable — type your questions instead.');
+          : 'Always-on mic unavailable â€” type your questions instead.');
       }
     })();
   };
@@ -199,13 +212,13 @@ export const VoiceShell: React.FC = () => {
     setStatus('done');
     const want = cmd.kind === 'purgeCase' ? `PURGE ${cmd.caseNumber}` : `DELETE ${cmd.caseNumber}`;
     setExpectTyped(want);
-    setAnswer(`DESTRUCTIVE — type “${want}” to confirm. This cannot be undone.`);
+    setAnswer(`DESTRUCTIVE â€” type â€œ${want}â€ to confirm. This cannot be undone.`);
   };
 
   const submit = async (raw?: string) => {
     const text = (raw ?? query).trim();
     if (!text || busy) return;
-    /* Destructive confirmation — accept typed token OR spoken token match. */
+    /* Destructive confirmation â€” accept typed token OR spoken token match. */
     if (pending && pendingRisk === 'destructive') {
       const norm = (s: string) => s.replace(/\s+/g, '').toUpperCase();
       const want = norm(expectTyped || '');
@@ -221,10 +234,10 @@ export const VoiceShell: React.FC = () => {
         return;
       }
       setStatus('typing');
-      setAnswer(`Say “${expectTyped}” or type it to confirm — this cannot be undone.`);
+      setAnswer(`Say â€œ${expectTyped}â€ or type it to confirm â€” this cannot be undone.`);
       return;
     }
-    /* Amber confirmation for writes — spoken or typed "confirm" is enough,
+    /* Amber confirmation for writes â€” spoken or typed "confirm" is enough,
        per the project's confirmation contract. Anything else is treated as a
        fresh command, so the operator can just say the corrected thing. */
     if (pending && pendingRisk === 'write') {
@@ -247,9 +260,9 @@ export const VoiceShell: React.FC = () => {
         return;
       }
       cancelPending();
-      /* fall through — the new sentence goes to the agentic loop below */
+      /* fall through â€” the new sentence goes to the agentic loop below */
     }
-    /* Everything — reads, writes, navigation — goes through the agentic loop
+    /* Everything â€” reads, writes, navigation â€” goes through the agentic loop
        (Groq tool calling) below. No fixed-phrase routing, no slot interviews. */
     setBusy(true);
     setAnswer('');
@@ -271,7 +284,7 @@ export const VoiceShell: React.FC = () => {
       if (result.navigateTo) setCurrentView(result.navigateTo);
       if (result.pendingWrite) {
         if (result.risk === 'destructive') {
-          // Destructive: the typed-token red gate — auto-execute for the rest.
+          // Destructive: the typed-token red gate â€” auto-execute for the rest.
           queueWrite(result.pendingWrite, text, 'destructive');
           setBusy(false);
           return;
@@ -315,7 +328,7 @@ export const VoiceShell: React.FC = () => {
 
   const deny = (action: string) => {
     if (!user) return 'Sign in required.';
-    return can(user, action) ? null : `Requires the “${action}” permission.`;
+    return can(user, action) ? null : `Requires the â€œ${action}â€ permission.`;
   };
 
   const cancelPending = () => { setPending(null); setPendingNote(''); setExpectTyped(null); setStatus('idle'); setAnswer(''); cancelSpeech(); };
@@ -347,7 +360,7 @@ export const VoiceShell: React.FC = () => {
           opening_balance: 0,
           opening_balance_type: 'debit',
         });
-        setAnswer(`Clinic “${created.name}” created. Open Settings or the directory to add doctor, phone and pricing.`);
+        setAnswer(`Clinic â€œ${created.name}â€ created. Open Settings or the directory to add doctor, phone and pricing.`);
         setStatus('done');
       } catch (err) {
         setStatus('error');
@@ -383,7 +396,7 @@ export const VoiceShell: React.FC = () => {
         const fields = (cmd.updateFields || {}) as never;
         updateCase(target.id, fields, `Voice: updated case fields`);
         const parts = Object.entries(cmd.updateFields || {}).map(([k, v]) => `${k} = ${v}`).join(', ');
-        setAnswer(`Case ${cmd.caseNumber} updated — ${parts}.`);
+        setAnswer(`Case ${cmd.caseNumber} updated â€” ${parts}.`);
         setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the case.'); }
       return;
     }
@@ -394,7 +407,7 @@ export const VoiceShell: React.FC = () => {
       if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
         updateCase(target.id, { priority: cmd.priority } as never, `Voice: priority ${cmd.priority}`);
-        setAnswer(`Priority of ${cmd.caseNumber} set to “${cmd.priority}”.`);
+        setAnswer(`Priority of ${cmd.caseNumber} set to â€œ${cmd.priority}â€.`);
         setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not set the priority.'); }
       return;
     }
@@ -414,7 +427,7 @@ export const VoiceShell: React.FC = () => {
         setAnswer(missing.length ? `No case(s) found: ${missing.join(', ')}.` : 'Nothing matched those case numbers.');
         return;
       }
-      setAnswer(`Moved ${moved.length} case(s) to “${cmd.targetStatus}”${missing.length ? ` — not found: ${missing.join(', ')}` : ''}.`);
+      setAnswer(`Moved ${moved.length} case(s) to â€œ${cmd.targetStatus}â€${missing.length ? ` â€” not found: ${missing.join(', ')}` : ''}.`);
       setStatus('done'); setPending(null); setPendingNote('');      return;
     }
     if (cmd.kind === 'restoreCase' && cmd.caseNumber) {
@@ -435,7 +448,7 @@ export const VoiceShell: React.FC = () => {
       if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
         saveAsTemplate(cmd.templateName, target);
-        setAnswer(`Template “${cmd.templateName}” saved from ${cmd.caseNumber}.`);
+        setAnswer(`Template â€œ${cmd.templateName}â€ saved from ${cmd.caseNumber}.`);
         setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save the template.'); }
       return;
     }
@@ -457,7 +470,7 @@ export const VoiceShell: React.FC = () => {
       if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
       try {
         deleteCasePermanently(target.id);
-        setAnswer(`Case ${cmd.caseNumber} purged — case, notes, attachments and QC data removed.`);
+        setAnswer(`Case ${cmd.caseNumber} purged â€” case, notes, attachments and QC data removed.`);
         setStatus('done'); setPending(null); setPendingNote('');      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not purge the case.'); }
       return;
     }
@@ -515,7 +528,7 @@ export const VoiceShell: React.FC = () => {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const due = selectCasesToAutoArchive(cases || [], new Date(`${getTodayStr()}T00:00:00`));
-      if (!due.length) { setStatus('error'); setAnswer('Nothing to archive now — no delivered case is more than 30 days past delivery.'); return; }
+      if (!due.length) { setStatus('error'); setAnswer('Nothing to archive now â€” no delivered case is more than 30 days past delivery.'); return; }
       let archived = 0;
       for (const c of due) {
         try { archiveCase(c.id); archived += 1; } catch { /* keep going */ }
@@ -528,7 +541,7 @@ export const VoiceShell: React.FC = () => {
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const target = (cases || []).find((c) => c.case_number === cmd.caseNumber);
       if (!target) { setStatus('error'); setAnswer(`No case ${cmd.caseNumber} found.`); return; }
-      if (target.status !== 'delivered') { setStatus('error'); setAnswer(`Case ${cmd.caseNumber} is "${target.status}" — archive works on delivered cases only.`); setPending(null); setPendingNote(''); return; }
+      if (target.status !== 'delivered') { setStatus('error'); setAnswer(`Case ${cmd.caseNumber} is "${target.status}" â€” archive works on delivered cases only.`); setPending(null); setPendingNote(''); return; }
       try {
         archiveCase(target.id);
         setAnswer(`Case ${cmd.caseNumber} archived.`);
@@ -567,7 +580,7 @@ export const VoiceShell: React.FC = () => {
           priority: (cmd.priority as never) ?? 'normal', price: cmd.amount, discount: 0, final_price: cmd.amount,
           status: 'received', patient_name: cmd.patientName,
         } as never);
-        setAnswer(`Case created for ${cmd.patientName} at ${clinic.name} — ${ct.name}, PKR ${cmd.amount.toLocaleString()}. Case number: ${created.case_number}.`);
+        setAnswer(`Case created for ${cmd.patientName} at ${clinic.name} â€” ${ct.name}, PKR ${cmd.amount.toLocaleString()}. Case number: ${created.case_number}.`);
         setStatus('done'); setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not create the case.'); }
       return;
     }
@@ -580,7 +593,7 @@ export const VoiceShell: React.FC = () => {
       try {
         if (cmd.kind === 'addClinicContact') {
           addLabContact({ lab_id: chosen.id, name: cmd.contactName!, phone: cmd.contactPhone!, email: cmd.contactEmail ?? '', role: cmd.contactRole || undefined, notes: 'Added by voice assistant', is_primary: !!cmd.isPrimary });
-          setAnswer(`Contact “${cmd.contactName}” added to ${chosen.name}${cmd.isPrimary ? ' as primary' : ''}.`);
+          setAnswer(`Contact â€œ${cmd.contactName}â€ added to ${chosen.name}${cmd.isPrimary ? ' as primary' : ''}.`);
         } else if (cmd.kind === 'addClinicAddress') {
           addLabAddress({ lab_id: chosen.id, type: cmd.addressType!, street: cmd.street!, city: cmd.city!, state: cmd.state!, postal_code: cmd.postalCode!, country: cmd.country!, is_default: !!cmd.isDefault });
           setAnswer(`${cmd.addressType} address added for ${chosen.name}${cmd.isDefault ? ' as default' : ''}.`);
@@ -599,19 +612,19 @@ export const VoiceShell: React.FC = () => {
       try {
         const ok = applyAdvanceCreditV2({ clinicId: inv.lab_id, invoiceId: inv.id, amount: cmd.amount, notes: 'Voice-applied advance' });
         setAnswer(ok
-          ? `Advance of PKR ${cmd.amount.toLocaleString()} applied to ${inv.invoice_number} — receipt issued.`
-          : `Could not apply — the wallet balance or the invoice balance may have changed.`);
+          ? `Advance of PKR ${cmd.amount.toLocaleString()} applied to ${inv.invoice_number} â€” receipt issued.`
+          : `Could not apply â€” the wallet balance or the invoice balance may have changed.`);
         setStatus('done'); setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not apply the advance.'); }
       return;
     }
     if (cmd.kind === 'markPaid' && cmd.invoiceNumbers?.length) {
-      if (user && !canPost(user, 'payment:bulk')) { setStatus('error'); setAnswer('Requires the “bulk settle” permission.'); return; }
+      if (user && !canPost(user, 'payment:bulk')) { setStatus('error'); setAnswer('Requires the â€œbulk settleâ€ permission.'); return; }
       const nums = new Set(cmd.invoiceNumbers.map((n) => n.toUpperCase()));
       const ids = (invoices || []).filter((i) => nums.has(i.invoice_number.toUpperCase())).map((i) => i.id);
       if (!ids.length) { setStatus('error'); setAnswer('No matching invoices remained.'); return; }
       try {
         bulkMarkPaid(ids);
-        setAnswer(`${ids.length} invoice${ids.length > 1 ? 's' : ''} marked paid — payments journalled for PKR ${cmd.amount.toLocaleString()}.`);
+        setAnswer(`${ids.length} invoice${ids.length > 1 ? 's' : ''} marked paid â€” payments journalled for PKR ${cmd.amount.toLocaleString()}.`);
         setStatus('done'); setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not mark paid.'); }
       return;
     }
@@ -643,21 +656,21 @@ export const VoiceShell: React.FC = () => {
       try {
         saveNotificationConfig(cmd.notification as never);
         announceNotificationConfigChanged();
-        setAnswer('Notification configuration saved — sweeps will use the new cadence.');
+        setAnswer('Notification configuration saved â€” sweeps will use the new cadence.');
         setStatus('done');
         setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save notification config.'); }
       return;
     }
     if (cmd.kind === 'closeMonth' && cmd.month && cmd.labId) {
-      if (user && !canPost(user, 'payment:record')) { setStatus('error'); setAnswer('Requires the “Record payment” permission to close a month.'); return; }
+      if (user && !canPost(user, 'payment:record')) { setStatus('error'); setAnswer('Requires the â€œRecord paymentâ€ permission to close a month.'); return; }
       try {
         closeMonth({ invoices: invoices || [], advancePayments: advancePayments || [], accountAdjustments: accountAdjustments || [], labs: labs || [], month: cmd.month, labId: cmd.labId, labName: cmd.labName, actor: user?.name || 'System' });
-        setAnswer(`${cmd.month} closed for ${cmd.labName}. Nothing locks — corrections can re-close.`);
+        setAnswer(`${cmd.month} closed for ${cmd.labName}. Nothing locks â€” corrections can re-close.`);
         setStatus('done');
         setPending(null);      } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not close the month.'); }
       return;
     }
-    /* ── Case management extras ───────────────────────────────────────── */
+    /* â”€â”€ Case management extras â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     if (cmd.kind === 'deleteCaseNote' && cmd.caseNumber && cmd.noteText) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
@@ -665,7 +678,7 @@ export const VoiceShell: React.FC = () => {
       const notes = target ? (caseNotes?.[target.id] || []) : [];
       const lower = cmd.noteText.toLowerCase();
       const hit = notes.find((n) => String(n.note_text || '').toLowerCase().includes(lower));
-      if (!target || !hit) { setStatus('error'); setAnswer(`No note matching “${cmd.noteText.slice(0, 50)}” on ${cmd.caseNumber}.`); setPending(null); return; }
+      if (!target || !hit) { setStatus('error'); setAnswer(`No note matching â€œ${cmd.noteText.slice(0, 50)}â€ on ${cmd.caseNumber}.`); setPending(null); return; }
       try {
         deleteCaseNote(target.id, hit.id);
         setAnswer(`Note removed from ${cmd.caseNumber}.`);
@@ -680,10 +693,10 @@ export const VoiceShell: React.FC = () => {
       const files = target ? (caseAttachments?.[target.id] || []) : [];
       const lower = cmd.fileName.toLowerCase();
       const hit = files.find((f) => String(f.filename || '').toLowerCase().includes(lower));
-      if (!target || !hit) { setStatus('error'); setAnswer(`No attachment matching “${cmd.fileName}” on ${cmd.caseNumber}.`); setPending(null); return; }
+      if (!target || !hit) { setStatus('error'); setAnswer(`No attachment matching â€œ${cmd.fileName}â€ on ${cmd.caseNumber}.`); setPending(null); return; }
       try {
         deleteCaseAttachment(target.id, hit.id);
-        setAnswer(`Attachment “${hit.filename}” removed from ${cmd.caseNumber}.`);
+        setAnswer(`Attachment â€œ${hit.filename}â€ removed from ${cmd.caseNumber}.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the attachment.'); }
       return;
@@ -706,12 +719,12 @@ export const VoiceShell: React.FC = () => {
           priority: tpl.default_priority || 'normal', price, discount: 0, final_price: price,
           status: 'received', patient_name: cmd.patientName || 'Template case',
         } as never);
-        setAnswer(`Case created from template “${tpl.template_name}” for ${cmd.patientName || 'the patient'} at ${chosen.name} — ${created.case_number}, PKR ${price.toLocaleString()}.`);
+        setAnswer(`Case created from template â€œ${tpl.template_name}â€ for ${cmd.patientName || 'the patient'} at ${chosen.name} â€” ${created.case_number}, PKR ${price.toLocaleString()}.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not create the case.'); }
       return;
     }
-    /* ── Lab / clinic lifecycle ───────────────────────────────────────── */
+    /* â”€â”€ Lab / clinic lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     if (cmd.kind === 'deleteLab') {
       const blocked = deny('clinic:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
@@ -729,10 +742,10 @@ export const VoiceShell: React.FC = () => {
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const chosen = findLabByHint(labs || [], cmd.clinicHint);
       const hit = chosen ? (labContacts || []).find((c) => c.lab_id === chosen.id && c.name.toLowerCase().includes(cmd.contactName!.toLowerCase())) : null;
-      if (!chosen || !hit) { setStatus('error'); setAnswer(`No contact matching “${cmd.contactName}” at that clinic.`); return; }
+      if (!chosen || !hit) { setStatus('error'); setAnswer(`No contact matching â€œ${cmd.contactName}â€ at that clinic.`); return; }
       try {
         deleteLabContact(hit.id);
-        setAnswer(`Contact “${hit.name}” removed from ${chosen.name}.`);
+        setAnswer(`Contact â€œ${hit.name}â€ removed from ${chosen.name}.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the contact.'); }
       return;
@@ -775,7 +788,7 @@ export const VoiceShell: React.FC = () => {
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save the preference.'); }
       return;
     }
-    /* ── Catalog extras ───────────────────────────────────────────────── */
+    /* â”€â”€ Catalog extras â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     if (cmd.kind === 'addCaseType' && cmd.caseTypeName) {
       const blocked = deny('catalog:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
@@ -788,7 +801,7 @@ export const VoiceShell: React.FC = () => {
           material_system: cmd.caseTypeMaterial || undefined,
           description: cmd.caseTypeDescription || undefined,
         } as never);
-        setAnswer(`Case type “${cmd.caseTypeName}” added at PKR ${Number(cmd.caseTypeBasePrice || 0).toLocaleString()}.`);
+        setAnswer(`Case type â€œ${cmd.caseTypeName}â€ added at PKR ${Number(cmd.caseTypeBasePrice || 0).toLocaleString()}.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not add the case type.'); }
       return;
@@ -798,7 +811,7 @@ export const VoiceShell: React.FC = () => {
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const ct = (caseTypes || []).find((t) => t.name.toLowerCase() === cmd.caseTypeName!.toLowerCase())
         || (caseTypes || []).find((t) => t.name.toLowerCase().includes(cmd.caseTypeName!.toLowerCase()));
-      if (!ct) { setStatus('error'); setAnswer(`No case type named “${cmd.caseTypeName}”.`); return; }
+      if (!ct) { setStatus('error'); setAnswer(`No case type named â€œ${cmd.caseTypeName}â€.`); return; }
       try {
         updateCaseType(ct.id, {
           base_price: cmd.caseTypeBasePrice !== undefined ? Number(cmd.caseTypeBasePrice) : undefined,
@@ -807,7 +820,7 @@ export const VoiceShell: React.FC = () => {
           material_system: cmd.caseTypeMaterial || undefined,
           description: cmd.caseTypeDescription || undefined,
         } as never);
-        setAnswer(`Case type “${ct.name}” updated.`);
+        setAnswer(`Case type â€œ${ct.name}â€ updated.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the case type.'); }
       return;
@@ -817,10 +830,10 @@ export const VoiceShell: React.FC = () => {
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const ct = (caseTypes || []).find((t) => t.name.toLowerCase() === cmd.caseTypeName!.toLowerCase())
         || (caseTypes || []).find((t) => t.name.toLowerCase().includes(cmd.caseTypeName!.toLowerCase()));
-      if (!ct) { setStatus('error'); setAnswer(`No case type named “${cmd.caseTypeName}”.`); return; }
+      if (!ct) { setStatus('error'); setAnswer(`No case type named â€œ${cmd.caseTypeName}â€.`); return; }
       try {
         deleteCaseType(ct.id);
-        setAnswer(`Case type “${ct.name}” deleted from the catalog.`);
+        setAnswer(`Case type â€œ${ct.name}â€ deleted from the catalog.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not delete the case type. A category may block it.'); }
       return;
@@ -830,12 +843,12 @@ export const VoiceShell: React.FC = () => {
         const current = loadSlaSettings();
         saveSlaSettings({ ...current, ...Object.fromEntries(Object.entries(cmd.slaDays).filter(([, v]) => v !== undefined)) } as never);
         const next = loadSlaSettings();
-        setAnswer(`SLA updated — urgent ${next.urgent}d, high ${next.high}d, normal ${next.normal}d, low ${next.low}d.`);
+        setAnswer(`SLA updated â€” urgent ${next.urgent}d, high ${next.high}d, normal ${next.normal}d, low ${next.low}d.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not save SLA settings.'); }
       return;
     }
-    /* ── Billing depth ────────────────────────────────────────────────── */
+    /* â”€â”€ Billing depth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     if (cmd.kind === 'recordAdjustment' && cmd.adjustmentType) {
       const blocked = deny('payment:record');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
@@ -843,7 +856,7 @@ export const VoiceShell: React.FC = () => {
       if (!chosen) { setStatus('error'); setAnswer('I could not match that clinic.'); return; }
       try {
         const adj = recordAccountAdjustment(chosen.id, cmd.adjustmentType, cmd.amount, cmd.reason || 'Recorded by voice');
-        setAnswer(`${cmd.adjustmentType.replace(/_/g, ' ')} of PKR ${cmd.amount.toLocaleString()} recorded for ${chosen.name} — ${adj.adjustment_number}.`);
+        setAnswer(`${cmd.adjustmentType.replace(/_/g, ' ')} of PKR ${cmd.amount.toLocaleString()} recorded for ${chosen.name} â€” ${adj.adjustment_number}.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not record the adjustment.'); }
       return;
@@ -857,7 +870,7 @@ export const VoiceShell: React.FC = () => {
         .filter((a) => !cmd.amount || Math.abs(Number(a.amount) - cmd.amount) < 0.005)
         .filter((a) => !cmd.referenceNumber || String(a.reference_number || '').toLowerCase().includes(cmd.referenceNumber.toLowerCase()))
         .slice(-1)[0] : null;
-      if (!chosen || !hit) { setStatus('error'); setAnswer('No matching adjustment found. Say “list adjustments” first.'); return; }
+      if (!chosen || !hit) { setStatus('error'); setAnswer('No matching adjustment found. Say â€œlist adjustmentsâ€ first.'); return; }
       try {
         const ok = deleteAccountAdjustment(hit.id);
         setAnswer(ok ? `${hit.adjustment_number || hit.id} deleted.` : 'Could not delete that adjustment.');
@@ -870,7 +883,7 @@ export const VoiceShell: React.FC = () => {
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const want = cmd.receiptNumber.toUpperCase();
       const hit = (allPayments || []).find((p) => [p.receipt_number, p.payment_number, p.id].filter(Boolean).some((x) => String(x).toUpperCase() === want));
-      if (!hit) { setStatus('error'); setAnswer(`No payment ${cmd.receiptNumber} found. Say “list payments” first.`); return; }
+      if (!hit) { setStatus('error'); setAnswer(`No payment ${cmd.receiptNumber} found. Say â€œlist paymentsâ€ first.`); return; }
       try {
         const ok = deletePaymentV2(hit.id);
         setAnswer(ok ? `Payment ${cmd.receiptNumber} deleted and its allocation reversed.` : 'Could not delete that payment.');
@@ -886,7 +899,7 @@ export const VoiceShell: React.FC = () => {
       if (!hit) { setStatus('error'); setAnswer(`No payment ${cmd.receiptNumber} found.`); return; }
       try {
         const ok = updatePaymentAmountV2(hit.id, cmd.newAmount);
-        setAnswer(ok ? `Payment ${cmd.receiptNumber} changed to PKR ${cmd.newAmount.toLocaleString()}.` : 'Refused — the new amount may overpay the invoice.');
+        setAnswer(ok ? `Payment ${cmd.receiptNumber} changed to PKR ${cmd.newAmount.toLocaleString()}.` : 'Refused â€” the new amount may overpay the invoice.');
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update the payment.'); }
       return;
@@ -901,7 +914,7 @@ export const VoiceShell: React.FC = () => {
           clinicId: inv.lab_id, invoiceId: inv.id, amount: cmd.amount,
           reasonCode: 'other', reasonText: cmd.reason || 'Issued by voice',
         });
-        setAnswer(`Credit note issued on ${inv.invoice_number} for PKR ${cmd.amount.toLocaleString()} — ${adj.adjustment_number}.`);
+        setAnswer(`Credit note issued on ${inv.invoice_number} for PKR ${cmd.amount.toLocaleString()} â€” ${adj.adjustment_number}.`);
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not issue the credit note.'); }
       return;
@@ -923,25 +936,25 @@ export const VoiceShell: React.FC = () => {
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const want = cmd.referenceNumber.toLowerCase();
       const hit = (reconciliationItems || []).find((r) => String(r.reference_number || '').toLowerCase().includes(want));
-      if (!hit) { setStatus('error'); setAnswer(`No reconciliation item for “${cmd.referenceNumber}”.`); return; }
+      if (!hit) { setStatus('error'); setAnswer(`No reconciliation item for â€œ${cmd.referenceNumber}â€.`); return; }
       try {
         if (cmd.kind === 'reconcileItem') {
           reconcileItemV2(hit.id, cmd.reason || 'Reconciled by voice');
           setAnswer(`Payment ${hit.reference_number} marked reconciled.`);
         } else {
           flagReconciliationExceptionV2(hit.id, cmd.reason || 'Flagged by voice');
-          setAnswer(`Payment ${hit.reference_number} flagged — ${cmd.reason || 'exception recorded'}.`);
+          setAnswer(`Payment ${hit.reference_number} flagged â€” ${cmd.reason || 'exception recorded'}.`);
         }
         setStatus('done'); setPending(null); setPendingNote('');
       } catch (err) { setStatus('error'); setAnswer(err instanceof Error ? err.message : 'Could not update reconciliation.'); }
       return;
     }
-    /* ── Saved vouchers (job slips / invoice log) ─────────────────────── */
+    /* â”€â”€ Saved vouchers (job slips / invoice log) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     if (cmd.kind === 'saveVoucher' && cmd.caseNumber) {
       const blocked = deny('case:edit');
       if (blocked) { setStatus('error'); setAnswer(blocked); return; }
       const target = findCaseByNumber(cmd.caseNumber);
-      if (!target) { setStatus('error'); setAnswer(`I can’t find case ${cmd.caseNumber}.`); return; }
+      if (!target) { setStatus('error'); setAnswer(`I canâ€™t find case ${cmd.caseNumber}.`); return; }
       const voucherType = cmd.voucherType || 'job_slip';
       try {
         const saved = saveVoucherToSystem({
@@ -954,7 +967,7 @@ export const VoiceShell: React.FC = () => {
           patient_name: target.patient_name,
           case_type_name: target.case_type_name,
           amount: voucherType === 'invoice' ? Number(target.final_price || 0) : undefined,
-          notes: `Logged by voice${target.selected_teeth?.length ? ` — teeth ${target.selected_teeth.join(', ')}` : ''}`,
+          notes: `Logged by voice${target.selected_teeth?.length ? ` â€” teeth ${target.selected_teeth.join(', ')}` : ''}`,
         });
         setAnswer(`${voucherType === 'invoice' ? 'Invoice' : 'Job slip'} voucher ${saved.voucher_number} logged for ${target.case_number}.`);
         setStatus('done'); setPending(null); setPendingNote('');
@@ -967,7 +980,7 @@ export const VoiceShell: React.FC = () => {
       const want = cmd.voucherNumber.toUpperCase();
       const hit = (savedVouchers || []).find((v) => v.voucher_number.toUpperCase() === want)
         || (savedVouchers || []).find((v) => v.voucher_number.toUpperCase().includes(want));
-      if (!hit) { setStatus('error'); setAnswer(`No voucher ${cmd.voucherNumber} in the register. Say “list vouchers” first.`); return; }
+      if (!hit) { setStatus('error'); setAnswer(`No voucher ${cmd.voucherNumber} in the register. Say â€œlist vouchersâ€ first.`); return; }
       try {
         deleteSavedVoucher(hit.id);
         setAnswer(`Voucher ${hit.voucher_number} deleted from the register.`);
@@ -978,7 +991,7 @@ export const VoiceShell: React.FC = () => {
     const { clinic, candidates } = resolveClinicForWrite(cmd.clinicHint) as { clinic?: { id: string; name: string }; candidates?: string[] };
     if (!clinic) {
       setStatus('error');
-      setAnswer(candidates?.length ? `Which clinic — ${candidates.join(', ')}?` : 'I could not match that clinic. Tell me the clinic name again.');
+      setAnswer(candidates?.length ? `Which clinic â€” ${candidates.join(', ')}?` : 'I could not match that clinic. Tell me the clinic name again.');
       return;
     }
     try {
@@ -1026,15 +1039,15 @@ export const VoiceShell: React.FC = () => {
 
   const listen = () => {
     if (locked || busy) return;
-    // Push-to-tap and Always-On are mutually exclusive — stop the poller
+    // Push-to-tap and Always-On are mutually exclusive â€” stop the poller
     // so the manual clip isn't appended to the still-open speech path.
     stopAlwaysOn();
-    // Cloud mic (Groq Whisper) — the only speech-input path that works in
+    // Cloud mic (Groq Whisper) â€” the only speech-input path that works in
     // Tauri/WebView2 (the built-in SpeechRecognition API is not exposed there).
     if (cloudMic) {
       void (async () => {
         setStatus('listening');
-        setAnswer('Listening…');
+        setAnswer('Listeningâ€¦');
         let startTimer: number | null = null;
         try {
           // Watchdog: if the mic doesn't start in time, surface an error.
@@ -1042,7 +1055,7 @@ export const VoiceShell: React.FC = () => {
             setStatus('error');
             setAnswer('Microphone did not start. Try again.');
           }, 4000);
-          // Inline: mic → recorder → ready (no external promise chain).
+          // Inline: mic â†’ recorder â†’ ready (no external promise chain).
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           window.clearTimeout(startTimer);
           startTimer = null;
@@ -1057,17 +1070,17 @@ export const VoiceShell: React.FC = () => {
               recorder.stop();
               const blob = await blobPromise;
               setStatus('thinking');
-              setAnswer('Transcribing…');
+              setAnswer('Transcribingâ€¦');
               const text = await transcribeWithGroq(blob);
               if (text) { setQuery(text); void submit(text); }
-              else { setStatus('error'); setAnswer('Jarvis could not transcribe that — check the Groq key in Settings, or type the question.'); }
+              else { setStatus('idle'); setAnswer('I didnâ€™t catch that â€” try again, or type the question.'); }
             } finally { cloudStop.current = null; }
           }, 6000);
           cloudStop.current = () => { window.clearTimeout(timeout); recorder.stop(); stream.getTracks().forEach((t) => t.stop()); };
         } catch (err) {
           const msg = err instanceof Error && err.name === 'NotAllowedError'
             ? 'Microphone access is blocked. Allow microphone for this app in your system settings, then try again.'
-            : 'Microphone is unavailable on this device. Type your question — the assistant answers it the same way.';
+            : 'Microphone is unavailable on this device. Type your question â€” the assistant answers it the same way.';
           setStatus('error');
           setAnswer(msg);
         } finally {
@@ -1082,13 +1095,13 @@ export const VoiceShell: React.FC = () => {
       setStatus('error');
       setAnswer(groqEnabled()
         ? 'Cloud mic failed to start. Check microphone permissions, or type the question.'
-        : 'No Groq key saved yet. Paste one in Settings → Jarvis → Groq API key, or type the question.');
+        : 'No Groq key saved yet. Paste one in Settings â†’ Jarvis â†’ Groq API key, or type the question.');
       return;
     }
     recRef.current?.stop();
     recRef.current = rec;
     setStatus('listening');
-    setAnswer('Listening — speak now…');
+    setAnswer('Listening â€” speak nowâ€¦');
     rec.onresult = (e) => {
       const transcript = Array.from(e.results).map((r) => r[0]?.transcript || '').join(' ').trim();
       if (transcript) { setQuery(transcript); void submit(transcript); }
@@ -1097,12 +1110,12 @@ export const VoiceShell: React.FC = () => {
       const code = e?.error || 'unknown';
       const message =
         code === 'not-allowed' || code === 'service-not-allowed'
-          ? 'Microphone is blocked. Click the padlock in the address bar → Allow for microphone, then try again.'
+          ? 'Microphone is blocked. Click the padlock in the address bar â†’ Allow for microphone, then try again.'
           : code === 'no-speech'
           ? 'No speech detected. Speak right after the listening icon appears.'
           : code === 'network'
-          ? 'The built-in recognizer failed (Chrome/Edge need internet). Enable “Cloud microphone (Groq)” in Settings, or type the question.'
-          : `Speech recognition failed (${code}). Try “Cloud microphone (Groq)” in Settings, or type the question.`;
+          ? 'The built-in recognizer failed (Chrome/Edge need internet). Enable â€œCloud microphone (Groq)â€ in Settings, or type the question.'
+          : `Speech recognition failed (${code}). Try â€œCloud microphone (Groq)â€ in Settings, or type the question.`;
       setStatus('error');
       setAnswer(message);
     };
@@ -1154,7 +1167,7 @@ export const VoiceShell: React.FC = () => {
       else {
         stopAlwaysOn();
         setStatus('idle');
-        setAnswer('Always-on needs Groq: save a key in Settings → Jarvis, or pause Always Listen.');
+        setAnswer('Always-on needs Groq: save a key in Settings â†’ Jarvis, or pause Always Listen.');
       }
     } else {
       stopAlwaysOn();
@@ -1163,7 +1176,7 @@ export const VoiceShell: React.FC = () => {
   }, [open, userPreferences?.voice_always_listen, cloudMic, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* A "listening" *speech capture* pulse beats faster; the always-on beat
-     is steady — the visual says "already listening" vs "listening now". */
+     is steady â€” the visual says "already listening" vs "listening now". */
   const orbState: VoiceOrbState =
     locked ? 'locked' : status === 'listening' ? 'listening' : alwaysOnActive ? 'always_on' : status === 'thinking' ? 'thinking' : 'idle';
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
@@ -1172,7 +1185,7 @@ export const VoiceShell: React.FC = () => {
 
   return (
     <aside aria-label="Voice assistant" className="no-print pointer-events-none fixed bottom-24 right-4 sm:right-6 z-[90] flex flex-col items-end gap-2">
-      {/* The orb is the single entry point; breathing idle → ring pulse while listening/thinking. */}
+      {/* The orb is the single entry point; breathing idle â†’ ring pulse while listening/thinking. */}
       <VoiceOrb
         state={orbState}
         locked={locked}
@@ -1183,7 +1196,7 @@ export const VoiceShell: React.FC = () => {
       {open && (
         <div className={`pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl ${expanded ? 'fixed inset-4 sm:inset-10 z-[95] flex flex-col overflow-hidden' : 'w-80'}`}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Jarvis {expanded ? '— dedicated panel' : ''}</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Jarvis {expanded ? 'â€” dedicated panel' : ''}</span>
             <div className="flex items-center gap-1.5">
               <button type="button" onClick={() => setExpanded((v) => !v)} aria-label={expanded ? 'Collapse panel' : 'Open dedicated panel'} title={expanded ? 'Collapse' : 'Dedicated panel'} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                 {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -1193,7 +1206,7 @@ export const VoiceShell: React.FC = () => {
           </div>
           {expanded && alwaysOnActive && (
             <div className="mt-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs font-semibold text-emerald-800" role="status">
-              Always listening — speak anytime, or click the mic to type.
+              Always listening â€” speak anytime, or click the mic to type.
             </div>
           )}
           {expanded && (
@@ -1219,24 +1232,24 @@ export const VoiceShell: React.FC = () => {
             </div>
           )}
           <div className="mt-3 min-h-[64px] whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-700" role="status" aria-live="polite">
-            {busy ? 'Thinking…' : answer || 'Ask Jarvis — balances, statements, payments, navigation — or just talk.'}
+            {busy ? 'Thinkingâ€¦' : answer || 'Ask Jarvis â€” balances, statements, payments, navigation â€” or just talk.'}
           </div>
 
           {pending && (
             <div className={`mt-2 rounded-xl border p-2.5 text-xs ${pendingRisk === 'destructive' ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
-              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action — cannot be undone' : 'Confirm this change'}</div>
+              <div className="flex items-center gap-1.5 font-bold"><CheckCircle2 className="h-4 w-4" />{pendingRisk === 'destructive' ? 'Destructive action â€” cannot be undone' : 'Confirm this change'}</div>
               <p className="mt-1.5">{answer}</p>
               {pendingRisk === 'destructive' ? (
                 <>
-                  <p className="mt-1 text-[10px] font-semibold text-rose-600">Say “{expectTyped}” to confirm this cannot be undone. Or type it above.</p>
+                  <p className="mt-1 text-[10px] font-semibold text-rose-600">Say â€œ{expectTyped}â€ to confirm this cannot be undone. Or type it above.</p>
                   {expectTyped && (
                     <div className="mt-1 flex items-center gap-1 px-2 py-1 rounded bg-rose-50 text-[10px] font-semibold text-rose-900">
-                      <Mic className="h-3 w-3" /> Spoken: “{expectTyped}”
+                      <Mic className="h-3 w-3" /> Spoken: â€œ{expectTyped}â€
                     </div>
                   )}
                 </>
               ) : (
-                <p className="mt-1 text-[10px] font-semibold text-amber-700">Say “confirm”, press Confirm, or say something else to change it.</p>
+                <p className="mt-1 text-[10px] font-semibold text-amber-700">Say â€œconfirmâ€, press Confirm, or say something else to change it.</p>
               )}
               <div className="mt-2 flex gap-2">
                 {pendingRisk === 'destructive' ? (
@@ -1246,7 +1259,7 @@ export const VoiceShell: React.FC = () => {
                       value={typedConfirm}
                       onChange={(e) => setTypedConfirm(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
-                      placeholder={`Type “${expectTyped}”`}
+                      placeholder={`Type â€œ${expectTyped}â€`}
                       aria-label="Type to confirm"
                       className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-xs font-bold text-rose-900"
                     />
@@ -1269,14 +1282,14 @@ export const VoiceShell: React.FC = () => {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ask Jarvis or type…"
+              placeholder="Ask Jarvis or typeâ€¦"
               className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-xs"
               aria-label="Ask Jarvis"
             />
             <button type="button" onClick={listen} aria-label="Listen" title="Listen" className="ds-tap rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><AudioLines className="h-4 w-4" /></button>
             <button type="submit" disabled={busy} aria-label="Ask" className="ds-tap rounded-lg bg-indigo-600 p-2 text-white hover:bg-indigo-700 disabled:opacity-50"><SendHorizonal className="h-4 w-4" /></button>
           </form>
-          <p className="mt-2 text-[10px] text-slate-400">Mic: {alwaysOnActive ? 'Always listening (VAD + Groq Whisper).' : cloudMic ? 'Groq Whisper cloud transcription (audio goes to Groq).' : 'No cloud mic — save a Groq API key in Settings → Jarvis, or type the question.'} {groqEnabled() ? 'Groq routing ON.' : 'Groq routing off — offline answers.'}</p>
+          <p className="mt-2 text-[10px] text-slate-400">Mic: {alwaysOnActive ? 'Always listening (VAD + Groq Whisper).' : cloudMic ? 'Groq Whisper cloud transcription (audio goes to Groq).' : 'No cloud mic â€” save a Groq API key in Settings â†’ Jarvis, or type the question.'} {groqEnabled() ? 'Groq routing ON.' : 'Groq routing off â€” offline answers.'}</p>
         </div>
       )}
     </aside>

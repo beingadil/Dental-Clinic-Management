@@ -310,6 +310,11 @@ export interface LedgerPdfMeta {
 const pk = (n: number) => `PKR ${(n || 0).toLocaleString('en-US')}`;
 const num = (n: number) => (n || 0).toLocaleString('en-US');
 
+/** A ledger balance always states its side: a negative balance is a credit,
+ *  a positive one (or zero) a debit. The operator reads the column straight
+ *  down without having to infer the side from a sign. */
+const bal = (n: number): string => `${num(Math.abs(n))} ${n < 0 ? 'Cr' : 'Dr'}`;
+
 /** Helvetica widths — measure, don't guess. */
 const HELV_W: Record<string, number> = {
   ' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, "'": 191,
@@ -493,7 +498,7 @@ export function buildLedgerPdf(
         { text: e.credit ? num(e.credit) : '\u2013', size: 7 },
         /* The running balance is the column a reader follows down the page:
            one step heavier than the money beside it. */
-        { text: num(e.closing), bold: true, size: 7.5 },
+        { text: bal(e.closing), bold: true, size: 7.5 },
       ] as TableCell[],
     };
   });
@@ -576,9 +581,8 @@ export function buildLedgerPdf(
     top: firstRowY,
     /* Continuation pages start higher because they carry a compact header. */
     continuationTop: compactFirstRowY,
-    /* Room for the per-page subtotal strip (~22) on every page, plus the
-       totals + account summary + note (~64) on the last page. */
-    bottom: g.CONTENT_BOTTOM + 48,
+    /* No per-page strip; reserve only the closing-balance band on the last page. */
+    bottom: g.CONTENT_BOTTOM + 26,
     heading: (ops, geo, _y, continued) => {
       if (!continued) {
         ops.push({
@@ -591,58 +595,23 @@ export function buildLedgerPdf(
          label — go straight to the column headings, higher up the page. */
       return compactTableHeadY;
     },
-    /* Per-page subtotal strip: this page's debit/credit and closing balance. */
-    pageStrip: (ops, geo, X, cols, y, pageRows) => {
-      const end = geo.MARGIN + geo.CONTENT_W;
-      const dr = pageRows.reduce((s, r) => s + (r.debit || 0), 0);
-      const cr = pageRows.reduce((s, r) => s + (r.credit || 0), 0);
-      const top = y + 2;
-      const bottom = y - 14;
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.955 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: end, y2: top, grey: 0.5, width: 0.6 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: end, y2: bottom, grey: 0.5, width: 0.6 });
-      ops.push({
-        kind: 'text', x: geo.MARGIN + 6, y: bottom + 4, size: 6.5, bold: true, grey: 0.15,
-        text: `PAGE TOTAL  (${pageRows.length} ${pageRows.length === 1 ? 'ENTRY' : 'ENTRIES'})`,
-      });
-      const figure = (key: string, text: string) => {
-        const col = cols.find((c) => c.key === key);
-        if (!col) return;
-        ops.push({
-          kind: 'text', x: X[key] + col.w - textW(text, 6.5) - 2, y: bottom + 4,
-          size: 6.5, bold: true, grey: 0.15, text,
-        });
-      };
-      figure('debit', dr ? num(dr) : '\u2013');
-      figure('credit', cr ? num(cr) : '\u2013');
-      figure('close', '');
-    },
-    totals: (ops, geo, X, cols, rowEndY, rowCount) => {
+    totals: (ops, geo, _X, _cols, rowEndY) => {
       const y = rowEndY - 8;
       const end = geo.MARGIN + geo.CONTENT_W;
-      /* One clean band for the grand totals — no stacked rules, no per-cell
-         boxes. The single table frame already provides the vertical rules. */
       const top = y + 12;
       const bottom = y - 8;
       ops.push({ kind: 'rect', x: geo.MARGIN, y: bottom, w: geo.CONTENT_W, h: top - bottom, grey: 0.93 });
       ops.push({ kind: 'line', x1: geo.MARGIN, y1: top, x2: end, y2: top, grey: 0.45, width: 0.8 });
       ops.push({ kind: 'line', x1: geo.MARGIN, y1: bottom, x2: end, y2: bottom, grey: 0.45, width: 0.8 });
-
-      const label = `TOTALS (${num(rowCount || meta.transactionCount)} TRANSACTION${(rowCount || meta.transactionCount) === 1 ? '' : 'S'})`;
-      ops.push({ kind: 'text', x: geo.MARGIN + 6, y: y + 1, size: 6.5, bold: true, grey: 0.1, text: label });
-      const figure = (key: string, text: string, size: number) => {
-        const col = cols.find((c) => c.key === key);
-        if (!col) return;
-        ops.push({
-          kind: 'text', x: X[key] + col.w - textW(text, size) - 2, y: y + 1,
-          size, bold: true, grey: 0.1, text,
-        });
-      };
-      figure('debit', num(meta.totalDebits), 6.5);
-      figure('credit', num(meta.totalCredits), 6.5);
-      figure('close', num(meta.closingBalance), 8);
-
-      drawAccountSummary(ops, geo, meta, y - 34);
+      ops.push({
+        kind: 'text', x: geo.MARGIN + 6, y: y + 1, size: 7, bold: true, grey: 0.12,
+        text: 'CLOSING BALANCE',
+      });
+      const value = bal(meta.closingBalance);
+      ops.push({
+        kind: 'text', x: end - textW(value, 9) - 6, y: y + 1, size: 9, bold: true, grey: 0.1,
+        text: value,
+      });
     },
   };
 
@@ -698,6 +667,7 @@ export interface DailyReportPdfRow {
   /** Days past the promised delivery date. 0 when the case is not late. */
   daysLate: number;
   fee: number;
+  /** Teeth (FDI numbers) shown when the operator included teeth. */ teeth?: string;
 }
 
 export interface DailyReportPdfClinic {
@@ -744,6 +714,7 @@ const PRODUCTION_COLS: [string, string, number, 'left' | 'right'][] = [
   ['patient', 'PATIENT', 0.15, 'left'],
   ['doctor', 'DOCTOR', 0.15, 'left'],
   ['clinic', 'CLINIC', 0.15, 'left'],
+  ['teeth', 'TEETH', 0.1, 'left'],
   ['deliv', 'DELIVERY', 0.11, 'left'],
   ['fee', 'FEE', 0.1, 'right'],
 ];
@@ -1097,55 +1068,6 @@ function drawStatementInfoBox(
  * This is the page's conclusion, not a headline: the reader arrives at it
  * after the transactions, which is the order an accountant checks them in.
  */
-function drawAccountSummary(ops: PdfOp[], g: Geo, meta: LedgerPdfMeta, y: number): void {
-  const right = g.W - g.MARGIN;
-  const labels = ['Opening balance', 'Total debits', 'Total credits', 'Closing balance'];
-  const values = [
-    pk(meta.openingBalance),
-    pk(meta.totalDebits),
-    pk(meta.totalCredits),
-    pk(meta.closingBalance),
-  ];
-  const colW = g.CONTENT_W / labels.length;
-  const rowH = 17;
-
-  ops.push({ kind: 'text', x: g.MARGIN, y, size: 7.5, bold: true, grey: 0.2, text: 'ACCOUNT SUMMARY' });
-  const headTop = y - 8;
-  const tableBottom = headTop - rowH * 2;
-  /* One header band, one outer frame, one rule between the two rows — no
-     stacked strokes. Matches the clean single-rule table frame above. */
-  ops.push({ kind: 'rect', x: g.MARGIN, y: headTop - rowH, w: g.CONTENT_W, h: rowH, grey: 0.93 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop, x2: right, y2: headTop, grey: 0.45, width: 0.6 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: headTop - rowH, x2: right, y2: headTop - rowH, grey: 0.75, width: 0.4 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: tableBottom, x2: right, y2: tableBottom, grey: 0.45, width: 0.6 });
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: tableBottom, x2: g.MARGIN, y2: headTop, grey: 0.45, width: 0.6 });
-  ops.push({ kind: 'line', x1: right, y1: tableBottom, x2: right, y2: headTop, grey: 0.45, width: 0.6 });
-  for (let i = 1; i < labels.length; i++) {
-    ops.push({ kind: 'line', x1: g.MARGIN + i * colW, y1: tableBottom, x2: g.MARGIN + i * colW, y2: headTop, grey: 0.85, width: 0.35 });
-  }
-  labels.forEach((label, i) => {
-    ops.push({
-      kind: 'text', x: g.MARGIN + i * colW + 6, y: headTop - 11, size: 6, bold: true, grey: 0.25,
-      text: fitShrink(label.toUpperCase(), colW - 12, 6).text,
-    });
-    const v = fitShrink(values[i], colW - 12, 8);
-    ops.push({
-      kind: 'text', x: g.MARGIN + i * colW + 6, y: headTop - rowH - 11.5, size: v.size, bold: true, grey: 0.1, text: v.text,
-    });
-  });
-
-  /* Closing balance is already the 4th column of the summary table, shown
-     prominently — a separate repeated sentence would only restate it. */
-  const noteY = tableBottom - 18;
-  ops.push({
-    kind: 'text', x: g.MARGIN, y: noteY, size: 6.5, grey: 0.45,
-    text: fitShrink(
-      'Note: This is a computer-generated account statement. Please verify the entries against the clinic\u2019s records.',
-      g.CONTENT_W,
-      6.5,
-    ).text,
-  });
-}
 
 /** Draws a document's footer: who it is, which document, and where we are. */
 function drawDocFooter(
@@ -1584,6 +1506,7 @@ export function buildDailyReportPdf(
           { text: r.patient },
           { text: r.doctor },
           { text: r.clinic },
+          { text: r.teeth || '' },
           {
             /* A case that went past its delivery date says so, on the row
                itself. The column is narrow, so the marker shrinks with the
@@ -1674,6 +1597,196 @@ export function buildDailyReportPdf(
     },
   );
 
+  return assemblePdf(pages);
+}
+
+
+/* ---------- daily lab report — compact portrait print ---------- */
+
+/**
+ * The operator's column choice for the Daily Lab Report, in print order.
+ * The screen's Values dropdown and the PDF read the SAME list, so what the
+ * operator ticks on screen is exactly what gets printed.
+ */
+export interface DailyLabReportColumn {
+  key: string;
+  label: string;
+  /** Share of the content width. */
+  w: number;
+  align: 'left' | 'right';
+}
+
+/** One case row on the printed Daily Lab Report. */
+export interface DailyLabReportRow {
+  caseNumber: string;
+  receivedDate: string;
+  deliveryDate: string;
+  caseType: string;
+  patient: string;
+  doctor: string;
+  clinic: string;
+  status: string;
+  /** Formatted units count — blank when the case has none. */
+  units: string;
+  /** Numeric units, for the TOTAL row. */
+  unitsValue?: number;
+  /** Formatted FDI teeth — blank when the case has none. */
+  teeth: string;
+  shade: string;
+  /** Formatted PKR fee. */
+  fee: string;
+  /** Numeric PKR fee, for the TOTAL row. */
+  feeValue?: number;
+}
+
+export interface DailyLabReportDocMeta {
+  labName: string;
+  /** The signed-in operator who prepared this sheet. */
+  operator: string;
+  /** The date window, e.g. '2026-11-23 → 2026-11-23'. */
+  periodLabel: string;
+  generatedOn: string;
+  /** The columns to print, in order — taken from the Values dropdown. */
+  columns: DailyLabReportColumn[];
+}
+
+/**
+ * Compact, portrait A4 Daily Lab Report — one clean table, no summary strip,
+ * no per-clinic section, no footer. A letterhead, a ruled section heading and
+ * the case rows: the sheet a lab owner reads off the bench and files.
+ *
+ * Columns are the operator's selection (the Values dropdown), so a field they
+ * excluded on screen never appears on paper. Rows paginate on measured height;
+ * the column headings repeat on every page.
+ */
+export function buildDailyLabReportPdf(
+  rows: DailyLabReportRow[],
+  meta: DailyLabReportDocMeta,
+): PdfBuildResult {
+  const g = GEOS['a4-portrait'];
+
+  /* A letterhead: top rule, clinic, the report name at display weight, a small
+     subtitle, and the three identifying facts in a right-hand column. The
+     production table underneath spans the FULL content width — the page's own
+     12mm margins are what keep it off the edge, not a narrower table. */
+  const header = (): DocHeader => ({
+    labName: meta.labName,
+    title: 'Daily Lab Report',
+    subtitle: ['PRODUCTION REPORT'],
+    meta: [
+      { label: 'Period', value: meta.periodLabel },
+      { label: 'Prepared by', value: meta.operator || '—' },
+      { label: 'Generated', value: meta.generatedOn },
+    ],
+  });
+
+  /* Column shares mirror the sheet's CSS: type 17, patient 13, clinic 35,
+     units 9, shade 9, fee 17. layoutCols() normalises them to the page's
+     content width, so an operator who ticks other fields still gets a table
+     that fits. */
+  const WEIGHT: Record<string, number> = {
+    caseNumber: 10,
+    receivedDate: 10,
+    deliveryDate: 10,
+    caseType: 17,
+    patient: 13,
+    doctor: 12,
+    clinic: 35,
+    status: 10,
+    units: 9,
+    teeth: 9,
+    shade: 9,
+    fee: 17,
+  };
+  const cols: TableCol[] = meta.columns.map((c) => ({
+    key: c.key, label: c.label, w: WEIGHT[c.key] ?? 10, align: c.align,
+  }));
+
+  const columnCells = (r: DailyLabReportRow): TableCell[] =>
+    meta.columns.map((c) => {
+      const raw: Record<string, string> = {
+        caseNumber: r.caseNumber,
+        receivedDate: r.receivedDate,
+        deliveryDate: r.deliveryDate,
+        caseType: r.caseType,
+        patient: r.patient,
+        doctor: r.doctor,
+        clinic: r.clinic,
+        status: r.status,
+        units: r.units,
+        teeth: r.teeth,
+        shade: r.shade,
+        fee: r.fee,
+      };
+      const text = raw[c.key] ?? '';
+      const strong = c.key === 'caseNumber' || c.key === 'fee';
+      return { text, bold: strong, grey: strong ? 0.18 : 0.12 };
+    });
+
+  const totalUnits = rows.reduce((s, r) => s + (r.unitsValue ?? 0), 0);
+  const totalFee = rows.reduce((s, r) => s + (r.feeValue ?? 0), 0);
+
+  const sections: TableSection[] = [
+    {
+      cols,
+      rows: rows.map((r) => ({ cells: columnCells(r) })),
+      top: docRuleY(g, 3) - 54,
+      continuationTop: docRuleY(g, 3) - 34,
+      bottom: g.CONTENT_BOTTOM + 26,
+      heading: (ops, geo, y, continued) => {
+        drawSectionHeading(
+          ops,
+          geo.MARGIN,
+          y + 16,
+          geo.CONTENT_W,
+          continued ? 'Production sheet (continued)' : 'Production sheet',
+          `${num(rows.length)} case${rows.length === 1 ? '' : 's'}`,
+        );
+        if (!rows.length) {
+          ops.push({
+            kind: 'text', x: geo.MARGIN, y: y - 8, size: 8, grey: 0.45,
+            text: 'No cases were received in this window.',
+          });
+        }
+        return y;
+      },
+      /* The TOTAL row: a ruled band with the label, the summed units and the
+         summed fee — the sheet's own footing, the last thing read before the
+         report footer. */
+      totals: (ops, geo, X, tcols, rowEndY) => {
+        const y = rowEndY - 2;
+        ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 19, grey: 0.92 });
+        drawGridLines(ops, geo, tcols, X, y - 8, y + 11);
+        ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: geo.MARGIN + geo.CONTENT_W, y2: y - 8, grey: 0.45, width: 1.1 });
+        ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 11, x2: geo.MARGIN + geo.CONTENT_W, y2: y + 11, grey: 0.3, width: 1 });
+        const first = tcols[0];
+        ops.push({ kind: 'text', x: first ? X[first.key] + 2 : geo.MARGIN, y: y + 1, size: 7, bold: true, grey: 0.15, text: 'TOTAL' });
+        const unitsCol = tcols.find((c) => c.key === 'units');
+        if (unitsCol) {
+          const t = num(totalUnits);
+          ops.push({ kind: 'text', x: X[unitsCol.key] + unitsCol.w - textW(t, 7) - 2, y: y + 1, size: 7, bold: true, grey: 0.15, text: t });
+        }
+        const feeCol = tcols.find((c) => c.key === 'fee');
+        if (feeCol) {
+          const t = pk(totalFee);
+          ops.push({ kind: 'text', x: X[feeCol.key] + feeCol.w - textW(t, 7) - 2, y: y + 1, size: 7, bold: true, grey: 0.15, text: t });
+        }
+      },
+    },
+  ];
+
+  const pages = renderTableSections(
+    g,
+    sections,
+    (ops) => { drawDocHeader(ops, g, header()); },
+    (ops) => {
+      const y = g.FOOTER_Y;
+      ops.push({ kind: 'line', x1: g.MARGIN, y1: y + 12, x2: g.W - g.MARGIN, y2: y + 12, grey: 0.72, width: 0.4 });
+      ops.push({ kind: 'text', x: g.MARGIN, y, size: 6, grey: 0.46, text: fitShrink(meta.labName, g.CONTENT_W * 0.5, 6).text });
+      const right = `Daily Lab Report · ${meta.periodLabel}`;
+      ops.push({ kind: 'text', x: g.W - g.MARGIN - textW(right, 6), y, size: 6, grey: 0.46, text: right });
+    },
+  );
   return assemblePdf(pages);
 }
 

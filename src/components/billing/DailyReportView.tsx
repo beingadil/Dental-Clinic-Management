@@ -4,10 +4,19 @@ import { can } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { EmptyState, DataTable, GlassSelect, Modal } from '../common/ui';
 import { formatPKR } from '../../services/financeDomain';
-import { buildDailyReportPdf, downloadPdf } from '../../lib/pdf';
+import {
+  buildDailyLabReportPdf,
+  downloadPdf,
+  type DailyLabReportColumn,
+  type DailyLabReportRow,
+} from '../../lib/pdf';
 import { getTodayStr } from '../../utils/dateUtils';
 import {
   buildDailyLabReport,
+  defaultDailyReportInclude,
+  getDailyReportInclude,
+  setDailyReportInclude,
+  type DailyReportInclude,
   type ClinicWorkRow,
   type ProductionRow,
 } from '../../services/dailyLabReport';
@@ -53,6 +62,90 @@ export const DailyReportView: React.FC = () => {
    * is a switch and not a second report: nothing can fall out of sync.
    */
   const [pane, setPane] = useState<'sheet' | 'clinic'>('sheet');
+  /**
+   * The operator's include-toggles — "which things the report shows". The
+   * list is first: what's in the sheet is decided here, then read off.
+   * `units` ships off: the operator never asked for a units column.
+   */
+  const [include, setInclude] = useState<DailyReportInclude>(() => getDailyReportInclude());
+  const OPTION_ITEMS: Array<[keyof DailyReportInclude, string]> = [
+    ['caseNumber', 'Case #'],
+    ['receivedDate', 'Received'],
+    ['deliveryDate', 'Delivery'],
+    ['caseType', 'Type'],
+    ['patient', 'Patient'],
+    ['doctor', 'Doctor'],
+    ['clinic', 'Clinic'],
+    ['status', 'Status'],
+    ['units', 'Units'],
+    ['teeth', 'Teeth'],
+    ['shade', 'Shade'],
+    ['price', 'Fee'],
+  ];
+
+  /* The print columns: same keys as the dropdown, with the page widths and
+     alignment the A4 sheet needs. Only the operator's ticked keys go to paper. */
+  const PRINT_COLUMNS: DailyLabReportColumn[] = [
+    { key: 'caseNumber', label: 'CASE', w: 10, align: 'left' },
+    { key: 'receivedDate', label: 'RECEIVED', w: 10, align: 'left' },
+    { key: 'deliveryDate', label: 'DELIVERY', w: 10, align: 'left' },
+    { key: 'caseType', label: 'TYPE', w: 17, align: 'left' },
+    { key: 'patient', label: 'PATIENT', w: 13, align: 'left' },
+    { key: 'doctor', label: 'DOCTOR', w: 12, align: 'left' },
+    { key: 'clinic', label: 'CLINIC', w: 35, align: 'left' },
+    { key: 'status', label: 'STATUS', w: 10, align: 'left' },
+    { key: 'units', label: 'UNITS', w: 9, align: 'right' },
+    { key: 'teeth', label: 'TEETH', w: 9, align: 'left' },
+    { key: 'shade', label: 'SHADE', w: 9, align: 'left' },
+    { key: 'fee', label: 'FEE', w: 17, align: 'right' },
+  ];
+
+  /* The production sheet's columns, each tagged with the include-toggle it
+     belongs to — so a toggled-off field disappears from the list and nothing
+     about it lingers (header, width, order). */
+  type SheetColumn = {
+    key: keyof DailyReportInclude;
+    header: React.ReactNode;
+    className?: string;
+    render: (r: ProductionRow) => React.ReactNode;
+  };
+  const sheetColumns: SheetColumn[] = [
+    { key: 'caseNumber', header: 'Case #', className: 'font-bold text-slate-900 font-mono whitespace-nowrap', render: (r) => <>{r.caseNumber}</> },
+    { key: 'receivedDate', header: 'Received', className: 'whitespace-nowrap text-slate-600 tabular-nums', render: (r) => <>{r.receivedDate}</> },
+    { key: 'caseType', header: 'Type', className: 'whitespace-nowrap text-slate-700', render: (r) => <>{r.caseType}</> },
+    { key: 'patient', header: 'Patient', className: 'font-semibold text-slate-900 whitespace-nowrap', render: (r) => <>{r.patient}</> },
+    { key: 'doctor', header: 'Doctor', className: 'text-slate-700 whitespace-nowrap', render: (r) => <>{r.doctor}</> },
+    { key: 'clinic', header: 'Clinic', className: 'text-slate-600 whitespace-nowrap', render: (r) => <>{r.clinic}</> },
+    {
+      key: 'deliveryDate',
+      header: 'Delivery',
+      className: 'whitespace-nowrap tabular-nums',
+      render: (r) => (
+        <span className={r.isOverdue ? 'font-bold text-rose-700' : 'text-slate-600'}>
+          {r.deliveryDate}
+          {r.isOverdue && (
+            <span className="ml-1 text-[10px] font-bold uppercase">
+              {Math.abs(r.daysRemaining)}d late
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { key: 'units', header: 'Units', className: 'text-right tabular-nums text-slate-600 whitespace-nowrap', render: (r) => <>{r.units > 0 ? r.units : ''}</> },
+    { key: 'teeth', header: 'Teeth', className: 'text-slate-600 whitespace-nowrap', render: (r) => <>{r.teeth || ''}</> },
+    { key: 'shade', header: 'Shade', className: 'font-mono text-slate-600 whitespace-nowrap', render: (r) => <>{r.shade}</> },
+    {
+      key: 'status',
+      header: 'Status',
+      className: 'whitespace-nowrap',
+      render: (r) => (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold capitalize bg-slate-100 text-slate-700">
+          {String(r.status).replace('_', ' ')}
+        </span>
+      ),
+    },
+    { key: 'price', header: 'Fee', className: 'text-right font-mono font-bold text-slate-900 whitespace-nowrap', render: (r) => <>{formatPKR(r.price)}</> },
+  ];
 
   const report = useMemo(
     () =>
@@ -64,9 +157,13 @@ export const DailyReportView: React.FC = () => {
         to,
         includeArchived,
         caseTypes,
+        include,
       }),
-    [cases, invoices, advancePayments, from, to, includeArchived, caseTypes]
+    [cases, invoices, advancePayments, from, to, includeArchived, caseTypes, include]
   );
+
+  /* The production sheet's list, filtered by the operator's toggles. */
+  const sheetColumnsOn: SheetColumn[] = sheetColumns.filter((c) => report.include[c.key]);
 
   /** The scope as it reads on screen — the chip, the empty state and the
    *  drill-down header all name it the same way. */
@@ -97,44 +194,43 @@ export const DailyReportView: React.FC = () => {
    */
   const buildDocument = () => {
     const labName = brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab';
-    /* The exported document must say what it left out. The sheet is built from
-       the filtered rows, so a type filter that only lived in the screen state
-       would produce a PDF that looks like the lab's whole month. */
+    /* The label must say what the sheet left out, so a type filter that only
+       lived in screen state never produces a document that reads as the lab's
+       whole month. */
     const periodLabel = `${from || 'Beginning'} → ${to || 'Present'}${
       report.caseType ? ` · ${report.caseType} only` : ''
     }`;
-    const result = buildDailyReportPdf(
-      report.production.map((r) => ({
-        caseNumber: r.caseNumber,
-        receivedDate: r.receivedDate,
-        caseType: r.caseType,
-        patient: r.patient,
-        doctor: r.doctor,
-        clinic: r.clinic,
-        deliveryDate: r.deliveryDate,
-        daysLate: r.isOverdue ? Math.abs(r.daysRemaining) : 0,
-        fee: r.price,
-      })),
-      [],
-      {
-        labName,
-        periodLabel,
-        generatedOn: getTodayStr(),
-        invoicesRaised: report.invoicesRaised,
-        invoicedValue: report.invoicedValue,
-        paymentsReceived: report.paymentsReceived,
-        paidValue: report.paidValue,
-        totalOutstanding: report.totalOutstanding,
-        production: {
-          casesReceived: report.received,
-          unitsReceived: report.production.reduce((s, r) => s + (r.units || 0), 0),
-          casesDue: report.due,
-          openCases: report.open,
-          overdueCases: report.overdue,
-          clinics: report.clinics.length,
-        },
-      }
+    /* The operator's ticked fields become the printed columns — same flags
+       the on-screen Values dropdown uses. `fee` is the print name for `price`. */
+    const includeKey: Record<string, keyof DailyReportInclude> = {
+      fee: 'price',
+    };
+    const columns = PRINT_COLUMNS.filter((c) =>
+      report.include[includeKey[c.key] ?? (c.key as keyof DailyReportInclude)]
     );
+    const rows: DailyLabReportRow[] = report.production.map((r) => ({
+      caseNumber: r.caseNumber,
+      receivedDate: r.receivedDate,
+      deliveryDate: r.deliveryDate,
+      caseType: r.caseType,
+      patient: r.patient,
+      doctor: r.doctor,
+      clinic: r.clinic,
+      status: String(r.status).replace('_', ' '),
+      units: r.units > 0 ? String(r.units) : '',
+      unitsValue: r.units || 0,
+      teeth: r.teeth && r.teeth !== '—' ? r.teeth : '',
+      shade: r.shade && r.shade !== '—' ? r.shade : '',
+      fee: formatPKR(r.price),
+      feeValue: r.price || 0,
+    }));
+    const result = buildDailyLabReportPdf(rows, {
+      labName,
+      operator: user?.name || '—',
+      periodLabel,
+      generatedOn: getTodayStr(),
+      columns,
+    });
     const fileName = `Daily_Report_${from || 'Beginning'}_${to || 'Present'}`.replace(
       /[^A-Za-z0-9_-]+/g,
       '_'
@@ -184,6 +280,24 @@ export const DailyReportView: React.FC = () => {
           own header instead. */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
+          {/* ---- What's included — the operator's on/off list, FIRST in the
+              list: decide here what the sheet and the PDF carry. `units`
+              ships off, because the operator never asked for a units column. */}
+          <GlassSelect
+            multiple
+            ariaLabel="Values"
+            emptyLabel="Include: everything"
+            values={OPTION_ITEMS.filter(([k]) => include[k]).map(([k]) => k)}
+            onValuesChange={(selected) => {
+              const sel = new Set(selected);
+              const next = defaultDailyReportInclude();
+              OPTION_ITEMS.forEach(([k]) => { next[k] = sel.has(k); });
+              setInclude(next);
+              setDailyReportInclude(next);
+            }}
+            options={OPTION_ITEMS.map(([k, label]) => ({ value: k, label }))}
+            className="w-[300px] px-3 py-1.5 text-xs font-semibold text-slate-700"
+          />
           <div
             role="group"
             aria-label="Report view"
@@ -295,76 +409,7 @@ export const DailyReportView: React.FC = () => {
             <DataTable<ProductionRow>
               data={report.production}
               rowKey={(r) => r.id}
-              columns={[
-                {
-                  header: 'Case #',
-                  className: 'font-bold text-slate-900 font-mono whitespace-nowrap',
-                  render: (r) => <>{r.caseNumber}</>,
-                },
-                {
-                  header: 'Received',
-                  className: 'whitespace-nowrap text-slate-600 tabular-nums',
-                  render: (r) => <>{r.receivedDate}</>,
-                },
-                {
-                  header: 'Type',
-                  className: 'whitespace-nowrap text-slate-700',
-                  render: (r) => <>{r.caseType}</>,
-                },
-                {
-                  header: 'Patient',
-                  className: 'font-semibold text-slate-900 whitespace-nowrap',
-                  render: (r) => <>{r.patient}</>,
-                },
-                {
-                  header: 'Doctor',
-                  className: 'text-slate-700 whitespace-nowrap',
-                  render: (r) => <>{r.doctor}</>,
-                },
-                {
-                  header: 'Clinic',
-                  className: 'text-slate-600 whitespace-nowrap',
-                  render: (r) => <>{r.clinic}</>,
-                },
-                {
-                  header: 'Delivery',
-                  className: 'whitespace-nowrap tabular-nums',
-                  render: (r) => (
-                    <span className={r.isOverdue ? 'font-bold text-rose-700' : 'text-slate-600'}>
-                      {r.deliveryDate}
-                      {r.isOverdue && (
-                        <span className="ml-1 text-[10px] font-bold uppercase">
-                          {Math.abs(r.daysRemaining)}d late
-                        </span>
-                      )}
-                    </span>
-                  ),
-                },
-                {
-                  header: 'Units',
-                  className: 'text-right tabular-nums text-slate-600 whitespace-nowrap',
-                  render: (r) => <>{r.units || '—'}</>,
-                },
-                {
-                  header: 'Shade',
-                  className: 'font-mono text-slate-600 whitespace-nowrap',
-                  render: (r) => <>{r.shade}</>,
-                },
-                {
-                  header: 'Status',
-                  className: 'whitespace-nowrap',
-                  render: (r) => (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold capitalize bg-slate-100 text-slate-700">
-                      {String(r.status).replace('_', ' ')}
-                    </span>
-                  ),
-                },
-                {
-                  header: 'Fee',
-                  className: 'text-right font-mono font-bold text-slate-900 whitespace-nowrap',
-                  render: (r) => <>{formatPKR(r.price)}</>,
-                },
-              ]}
+              columns={sheetColumnsOn}
             />
           )}
         </div>
@@ -415,7 +460,7 @@ export const DailyReportView: React.FC = () => {
               <div className="hidden sm:grid grid-cols-[1fr_64px_64px_120px_24px] gap-3 px-4 py-2 border-b border-slate-100 ds-th">
                 <span>Clinic</span>
                 <span className="text-right">Cases</span>
-                <span className="text-right">Units</span>
+                {report.include.units && <span className="text-right">Units</span>}
                 <span className="text-right">Value</span>
                 <span />
               </div>
@@ -442,9 +487,11 @@ export const DailyReportView: React.FC = () => {
                       <span className="hidden sm:block text-right text-xs font-semibold text-slate-700 tabular-nums">
                         {row.cases}
                       </span>
-                      <span className="hidden sm:block text-right text-xs text-slate-600 tabular-nums">
-                        {row.units || '—'}
-                      </span>
+                      {report.include.units && (
+                        <span className="hidden sm:block text-right text-xs text-slate-600 tabular-nums">
+                          {row.units > 0 ? row.units : ''}
+                        </span>
+                      )}
                       <span className="hidden sm:block text-right text-xs font-bold text-slate-900 tabular-nums">
                         {formatPKR(row.value)}
                       </span>
@@ -484,10 +531,12 @@ export const DailyReportView: React.FC = () => {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Cases</div>
                 <div className="text-lg font-bold text-slate-900 tabular-nums">{detail.cases}</div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Units</div>
-                <div className="text-lg font-bold text-slate-900 tabular-nums">{detail.units}</div>
-              </div>
+              {report.include.units && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Units</div>
+                  <div className="text-lg font-bold text-slate-900 tabular-nums">{detail.units}</div>
+                </div>
+              )}
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Value</div>
                 <div className="text-lg font-bold text-slate-900 tabular-nums">{formatPKR(detail.value)}</div>
@@ -521,12 +570,14 @@ export const DailyReportView: React.FC = () => {
                     className: 'whitespace-nowrap text-slate-700',
                     render: (r) => <>{r.caseType}</>,
                   },
-                  {
-                    header: 'Units',
-                    align: 'right' as const,
-                    className: 'tabular-nums text-slate-600 whitespace-nowrap',
-                    render: (r) => <>{r.units || '—'}</>,
-                  },
+                  ...(report.include.units
+                    ? [{
+                        header: 'Units' as const,
+                        align: 'right' as const,
+                        className: 'tabular-nums text-slate-600 whitespace-nowrap',
+                        render: (r: ProductionRow) => <>{r.units > 0 ? r.units : ''}</>,
+                      }]
+                    : []),
                   {
                     header: 'Status',
                     className: 'whitespace-nowrap',

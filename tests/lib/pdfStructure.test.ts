@@ -189,6 +189,34 @@ describe('the PDF writer', () => {
     );
     expect(inspect(pdf)).toEqual([]);
   });
+
+  it('states every balance with its side and drops the old strips', () => {
+    const { pdf } = buildLedgerPdf(
+      [
+        { date: '2026-10-20', clinic: 'Rahat', caseNumber: 'DS-1', typeLabel: 'Invoice', narration: 'Payment received', debit: 0, credit: 100, closing: 100 },
+        { date: '2026-10-21', clinic: 'Rahat', caseNumber: '', typeLabel: 'Payment', narration: 'Cash', debit: 200, credit: 0, closing: -100 },
+      ],
+      {
+        labName: 'Dental Lab',
+        clinicLabel: 'Rahat',
+        periodLabel: '2026-10-20 → 2026-10-21',
+        openingBalance: 0,
+        totalDebits: 200,
+        totalCredits: 100,
+        closingBalance: -100,
+        transactionCount: 2,
+        generatedOn: '2026-10-21',
+      }
+    );
+    const text = toBytes(pdf).reduce((a, b) => a + String.fromCharCode(b), '');
+    expect(text).toContain('100 Dr'); // positive balance = Debit
+    expect(text).toContain('100 Cr'); // negative balance = Credit
+    expect(text).toContain('CLOSING BALANCE');
+    expect(text).not.toContain('PAGE TOTAL');
+    expect(text).not.toContain('ACCOUNT SUMMARY');
+    expect(text).not.toContain('Total debits');
+    expect(text).not.toContain('Total credits');
+  });
 });
 
 describe('saving a PDF', () => {

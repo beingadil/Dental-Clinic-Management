@@ -37,6 +37,13 @@ export interface DailyReportInput {
   /** Include archived cases. Off by default: an archived case is history. */
   includeArchived?: boolean;
   /**
+   * The operator's include-toggles for the sheet's list: which fields appear
+   * at all. Anything not supplied stays on (see {@link defaultDailyReportInclude}).
+   * "Don't show units" is why `units` is off by default — the operator never
+   * asked for a units column in the daily sheet.
+   */
+  include?: DailyReportInclude;
+  /**
    * Restrict the report to some case types ("Zirconia", "Aligners", …).
    *
    * An empty list, or the entries `'all'`, mean every type. The match is exact
@@ -52,6 +59,94 @@ export interface DailyReportInput {
   /** Single-type shorthand for callers that only ever ask about one treatment. */
   caseType?: string;
 }
+
+/* ---- What's in the sheet's list: the operator's on/off toggles --------
+ * Each key is one thing the sheet may show or hide. `units` is the one that
+ * ships off, because the operator never asked for units in the daily sheet. */
+export interface DailyReportInclude {
+  caseNumber: boolean;
+  receivedDate: boolean;
+  deliveryDate: boolean;
+  caseType: boolean;
+  patient: boolean;
+  doctor: boolean;
+  clinic: boolean;
+  status: boolean;
+  units: boolean;
+  /** Which teeth the case uses (FDI numbers). */ teeth: boolean;
+  shade: boolean;
+  price: boolean;
+}
+
+/**
+ * Default columns: Type, Patient, Clinic, Units, Shade — the operator's chosen
+ * opening set for both the on-screen sheet and the PDF. Everything else stays
+ * available in the Values dropdown and comes up off.
+ */
+export const defaultDailyReportInclude = (): DailyReportInclude => ({
+  caseNumber: false,
+  receivedDate: false,
+  deliveryDate: false,
+  caseType: true,
+  patient: true,
+  doctor: false,
+  clinic: true,
+  status: false,
+  units: true,
+  teeth: false,
+  shade: true,
+  price: false,
+});
+
+/** Fill in the toggles a caller left out, so an include object is always complete. */
+export const normalizeDailyReportInclude = (
+  partial?: Partial<DailyReportInclude>,
+): DailyReportInclude => {
+  const def = defaultDailyReportInclude();
+  const out: DailyReportInclude = { ...def };
+  if (partial) {
+    (Object.keys(def) as Array<keyof DailyReportInclude>).forEach((k) => {
+      if (partial[k] !== undefined) out[k] = Boolean(partial[k]);
+    });
+  }
+  return out;
+};
+
+/** localStorage key for the operator's persisted toggles. */
+const INCLUDE_KEY = 'ds.dailyLabReport.include';
+/** Bump when the default column set changes, so old stored values don't win. */
+const INCLUDE_VERSION = 'ds.dailyLabReport.include.v2';
+
+export const getDailyReportInclude = (): DailyReportInclude => {
+  try {
+    /* A version bump means the operator's old selection belonged to the old
+       default set — start from the new defaults instead of reviving it. */
+    if (localStorage.getItem(INCLUDE_VERSION) !== '2') {
+      localStorage.removeItem(INCLUDE_KEY);
+      localStorage.setItem(INCLUDE_VERSION, '2');
+    }
+    const raw = localStorage.getItem(INCLUDE_KEY);
+    const stored = raw ? (JSON.parse(raw) as Partial<DailyReportInclude> | null) : null;
+    const def = defaultDailyReportInclude();
+    const out: DailyReportInclude = { ...def };
+    if (stored) {
+      (Object.keys(def) as Array<keyof DailyReportInclude>).forEach((k) => {
+        if (stored[k] !== undefined) out[k] = Boolean(stored[k]);
+      });
+    }
+    return out;
+  } catch {
+    return normalizeDailyReportInclude();
+  }
+};
+
+export const setDailyReportInclude = (inc: DailyReportInclude): void => {
+  try {
+    localStorage.setItem(INCLUDE_KEY, JSON.stringify(normalizeDailyReportInclude(inc)));
+  } catch {
+    /* storage unavailable — the report still builds with in-memory toggles */
+  }
+};
 
 /** One case as it appears in the production sheet. */
 export interface ProductionRow {
@@ -120,6 +215,8 @@ export interface DailyLabReport {
   to: string;
   /** The case-type filter this report was built with (`''` = all types). */
   caseType: string;
+  /** The include-toggles the sheet was built with (normalized). */
+  include: DailyReportInclude;
   /** Per-clinic work for the window and the chosen type, biggest value first. */
   byClinic: ClinicWorkRow[];
   /** Cases received in the window. */
@@ -149,6 +246,9 @@ const DAY_MS = 86_400_000;
 
 export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => {
   const { cases, invoices, advancePayments, from, to, includeArchived } = input;
+  /* The operator's on/off toggles, normalized once so the UI, the sheet and
+     the PDF all read the same set of what's included. */
+  const include = normalizeDailyReportInclude(input.include);
 
   /* One list of requested types, whichever way the caller supplied them, with
      hand-typed duplicates folded together so the label cannot read
@@ -207,7 +307,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
         clinic: c.lab_name || '—',
         status: c.status,
         priority: c.priority,
-        units: c.units_count || 0,
+        units: c.units_count ?? (c.selected_teeth?.length || 0),
         teeth: (c.selected_teeth || []).length ? c.selected_teeth.map((t) => `#${t}`).join(' ') : '—',
         shade: c.shade || '—',
         material: c.material || '—',
@@ -346,6 +446,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
   return {
     from,
     to,
+    include,
     received: production.length,
     due: due.length,
     open,
