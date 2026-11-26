@@ -432,5 +432,13 @@ export function buildLedgerReportPdf(
     return { ops, geo: { ...PAGE, W, H } };
   });
 
-  return assemblePdf(pageSpecs);
+  return assemblePdf(pageSpecs, {
+    title: `General Ledger - ${meta.clinicLabel} - ${meta.periodLabel}`,
+    author: meta.labName,
+    subject: `Accounts receivable statement for ${meta.clinicLabel}`,
+    keywords: `general ledger, accounts receivable, ${meta.accountCode || ''}, ${meta.clinicLabel}`,
+    creator: 'Dental Solutions',
+    producer: 'Dental Solutions PDF Engine',
+    created: meta.generatedOn,
+  });
 }

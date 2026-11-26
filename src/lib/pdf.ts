@@ -148,6 +148,37 @@ export interface PdfBuildResult {
   pageCount: number;
 }
 
+/** Document properties a reader shows in its title bar and File > Properties. */
+export interface PdfDocumentMeta {
+  title: string;
+  author?: string;
+  subject?: string;
+  keywords?: string;
+  creator?: string;
+  producer?: string;
+  /** ISO date (YYYY-MM-DD) or Date; also used for CreationDate/ModDate. */
+  created?: string | Date;
+}
+
+const pdfText = (value: string): string =>
+  String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7e]/g, '?')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+
+const pdfDate = (value?: string | Date): string => {
+  const date = value instanceof Date
+    ? value
+    : new Date(`${String(value || new Date().toISOString().slice(0, 10))}T00:00:00Z`);
+  const safe = isNaN(date.getTime()) ? new Date() : date;
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `D:${safe.getUTCFullYear()}${two(safe.getUTCMonth() + 1)}${two(safe.getUTCDate())}${two(safe.getUTCHours())}${two(safe.getUTCMinutes())}${two(safe.getUTCSeconds())}Z`;
+};
+
 /**
  * Byte length of a string as it will be written to a file.
  *
@@ -163,14 +194,17 @@ const byteLength = (s: string): number => new TextEncoder().encode(s).length;
 /**
  * Assemble a complete PDF from page op-lists. Exact byte offsets via char codes.
  */
-export function assemblePdf(pages: PageSpec[]): PdfBuildResult {
+export function assemblePdf(pages: PageSpec[], meta?: PdfDocumentMeta): PdfBuildResult {
   if (pages.length === 0) pages = [{ ops: [], geo: GEOS['a4-portrait'] }];
 
   const objects: string[] = [];
   const push = (body: string) => { objects.push(body); return objects.length; };
 
   // 1: Catalog, 2: Pages, 3: F1 Helvetica, 4: F2 Helvetica-Bold
-  push('<< /Type /Catalog /Pages 2 0 R >>');
+  push(
+    '<< /Type /Catalog /Pages 2 0 R /Lang (en-US) ' +
+      '/ViewerPreferences << /DisplayDocTitle true >> >>',
+  );
   // Pages are interleaved with their content streams: page i's dict is
   // object 5 + 2i, its stream 5 + 2i + 1 (see push order below).
   const kids = pages.map((_, i) => `${5 + i * 2} 0 R`).join(' ');
@@ -195,10 +229,23 @@ export function assemblePdf(pages: PageSpec[]): PdfBuildResult {
     // content stream that follows is objects.length + 2.
     push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${p.geo.W} ${p.geo.H}] ` +
-        `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${objects.length + 2} 0 R >>`
+        `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Tabs /S /Contents ${objects.length + 2} 0 R >>`
     );
     push(`<< /Length ${declared} >>\nstream\n${stream}\nendstream`);
   });
+
+  const infoId = meta
+    ? push(
+        '<< ' +
+          `/Title (${pdfText(meta.title)}) ` +
+          `/Author (${pdfText(meta.author || '')}) ` +
+          `/Subject (${pdfText(meta.subject || '')}) ` +
+          `/Keywords (${pdfText(meta.keywords || '')}) ` +
+          `/Creator (${pdfText(meta.creator || 'Dental Solutions')}) ` +
+          `/Producer (${pdfText(meta.producer || 'Dental Solutions PDF Engine')}) ` +
+          `/CreationDate (${pdfDate(meta.created)}) /ModDate (${pdfDate(meta.created)}) >>`,
+      )
+    : 0;
 
   let out = '%PDF-1.4\n';
   const offsets: number[] = [];
@@ -213,7 +260,7 @@ export function assemblePdf(pages: PageSpec[]): PdfBuildResult {
   offsets.forEach((off) => {
     out += `${off.toString().padStart(10, '0')} 00000 n \n`;
   });
-  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R${infoId ? ` /Info ${infoId} 0 R` : ''} >>\nstartxref\n${xrefStart}\n%%EOF`;
 
   /* Same check for the whole document: `xrefStart` and every offset above are
      character counts, and the trailer points at them. If the document is not

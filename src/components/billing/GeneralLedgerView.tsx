@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ACCOUNT_CODES, formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import { ACCOUNT_CODES, formatPKR } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
 import { can, canPost } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
@@ -12,12 +12,20 @@ import {
   X,
   FileDown,
   FileSpreadsheet,
-  Building2
+  Building2,
+  ChevronDown,
+  ChevronUp,
+  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import { downloadPdf } from '../../lib/pdf';
-import { buildLedgerReportPdf } from '../../lib/ledgerPdf';
+import { buildLedgerReportPdfAsync } from '../../lib/ledgerPdfAsync';
 import { attributeAdjustmentsToInvoices } from '../../services/adjustmentAttribution';
 import { buildLedgerReport, type LedgerReportRow } from '../../services/ledgerReport';
+import { findLedgerIssues } from '../../services/ledgerQuality';
+import { buildLedgerCsvRows } from '../../services/ledgerCsv';
+import { saveCSV } from '../../services/csvExport';
+import { settlementAsOf } from '../../services/ledgerSettlement';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { receiptNumberOf } from '../../services/ledgerDomain';
@@ -139,6 +147,10 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
 
   // Preview state: hidden until the user clicks Preview.
   const [isPreviewActive, setIsPreviewActive] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(true);
+  const [onlyIssues, setOnlyIssues] = useState(false);
 
   /* Outcome of the last Export/Print press, shown on the page. */
   const [exportNotice, setExportNotice] = useState<ExportNotice | null>(null);
@@ -233,15 +245,28 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
     });
   }, [rawLedgerEntries, caseLookup, invoices, paymentAllocations, startDate, endDate, selectedClinicId, caseFilter]);
 
-  /* Render cap: totals are computed over the full set above (always correct),
-     but the table only mounts the newest LEDGER_CAP_STEP rows — building+mounting
-     ~1500 rows froze the view (audit §9). Expanded on demand like the other
-     capped tables. */
-  const LEDGER_CAP_STEP = 400;
-  const [ledgerLimit, setLedgerLimit] = useState(LEDGER_CAP_STEP);
+  /* Data-quality exceptions are derived from the same rows the statement
+     prints, so an issue cannot exist on screen but disappear from the PDF. */
+  const qualityIssues = useMemo(
+    () => findLedgerIssues(
+      reportRows,
+      invoices || [],
+      summary.openingBalanceReview || [],
+    ),
+    [reportRows, invoices, summary.openingBalanceReview],
+  );
+  const issueRowIds = useMemo(
+    () => new Set(qualityIssues.flatMap((issue) => (issue.rowId ? [issue.rowId] : []))),
+    [qualityIssues],
+  );
+
+  /* Long ledgers stay fully available (so totals and exports never truncate),
+     while `ledger-row-virtual` lets the browser skip layout/paint for rows
+     outside the viewport. This is the browser-native form of row virtualization
+     and keeps the real <table> semantics screen readers rely on. */
   const visibleLedgerItems = useMemo(
-    () => reportRows.slice(0, ledgerLimit),
-    [reportRows, ledgerLimit],
+    () => (onlyIssues ? reportRows.filter((row) => issueRowIds.has(row.id)) : reportRows),
+    [reportRows, onlyIssues, issueRowIds],
   );
 
   // Helper to format narration and determine entry category
@@ -249,9 +274,10 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
    * A Paid / Partial / Unpaid badge for an invoice ledger row, or null for
    * every other entry type.
    *
-   * Derived from `invoiceBalanceDue`, the same number the invoice table and the
-   * printed invoice use, so the three surfaces cannot disagree - including after
-   * a credit note, where the stored `payment_status` is the one that drifts.
+   * The badge is as-of the row's business date, not today: a receipt posted in
+   * November cannot make an October row claim the invoice was already settled.
+   * Payments and attributed credit notes are replayed up to the row date; the
+   * stored status is ignored because it drifts after adjustments.
    *
    * Nothing renders for payment rows: a payment IS the act of settling, so
    * labelling it "Paid" would be circular.
@@ -261,27 +287,21 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
     const inv = invoiceForRow(entry);
     if (!inv) return null;
 
-    const balance = invoiceBalanceDue(inv);
-    const partlyPaid = (inv.amount_paid || 0) > 0;
-    const label = balance <= 0 ? 'Paid' : partlyPaid ? 'Partial' : 'Unpaid';
+    const settlement = settlementAsOf(inv, entry.date, adjustmentsByInvoice.get(inv.id) || []);
+    const balance = settlement.balance;
+    const label = settlement.status === 'paid' ? 'Paid' : settlement.status === 'partial' ? 'Partial' : 'Unpaid';
     const tone =
       balance <= 0
         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-        : partlyPaid
+        : settlement.status === 'partial'
           ? 'bg-amber-50 text-amber-700 border-amber-200'
           : 'bg-rose-50 text-rose-700 border-rose-200';
     const title =
       balance <= 0
-        ? `Settled in full${(inv.credit_notes_total || 0) > 0 ? ' (net of credit notes)' : ''}`
-        : `Outstanding ${formatPKR(balance)}`;
+        ? `Settled in full as of ${formatDate(entry.date)}${settlement.credited > 0 ? ' (net of credit notes)' : ''}`
+        : `As of ${formatDate(entry.date)}: outstanding ${formatPKR(balance)}`;
 
-    const paidOn = balance <= 0
-      ? (inv.payments || [])
-          .map((payment) => (payment.payment_date || '').slice(0, 10))
-          .filter(Boolean)
-          .sort()
-          .pop()
-      : undefined;
+    const paidOn = balance <= 0 ? settlement.paidOn : undefined;
 
     return (
       <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -316,22 +336,29 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
     ].filter((v): v is { label: string; value: string } => !!v);
   };
 
-  const buildStatement = () => {
+  const statementMeta = () => {
     const clinicLabel = selectedClinic!.name;
     const periodLabel = startDate || endDate
       ? `${startDate || 'Beginning'} → ${endDate || 'Present'}`
       : 'All Time';
-    const result = buildLedgerReportPdf(reportRows, summary, {
-      labName: brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab',
+    return {
       clinicLabel,
       periodLabel,
+      labName: brandingSettings?.lab_name || brandingSettings?.appName || 'Dental Lab',
       caseFilterLabel: caseFilter.trim() || undefined,
       accountName: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.name,
       accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE.code,
       generatedOn: todayISO(),
-    });
-    const fileName = `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}.pdf`;
-    return { fileName, pdf: result.pdf };
+    };
+  };
+
+  const ledgerFileBase = (clinicLabel: string) =>
+    `Ledger_${clinicLabel.replace(/\s+/g, '_')}${caseFilter.trim() ? `_${caseFilter.trim().replace(/\s+/g, '_')}` : ''}_${todayISO()}`;
+
+  const buildStatement = async () => {
+    const meta = statementMeta();
+    const result = await buildLedgerReportPdfAsync(reportRows, summary, meta);
+    return { fileName: `${ledgerFileBase(meta.clinicLabel)}.pdf`, pdf: result.pdf };
   };
 
   /* Renders the statement and puts it wherever the operator chooses.
@@ -345,9 +372,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
       setExportNotice(NEEDS_CLINIC);
       return;
     }
+    if (isExportingPdf) return;
     setExportNotice(null);
+    setIsExportingPdf(true);
     try {
-      const { fileName, pdf } = buildStatement();
+      const { fileName, pdf } = await buildStatement();
       const outcome = await downloadPdf(fileName, pdf, label);
 
       /* Only the unhappy paths are announced. A successful save is confirmed by
@@ -366,10 +395,56 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
         kind: 'error',
         text: `Could not export the ledger: ${e instanceof Error ? e.message : String(e)}`,
       });
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
   const handleExportPDF = () => saveStatement('PDF document');
+
+  const handleExportCSV = async () => {
+    if (!selectedClinic) {
+      setExportNotice(NEEDS_CLINIC);
+      return;
+    }
+    if (isExportingCsv) return;
+    setExportNotice(null);
+    setIsExportingCsv(true);
+    try {
+      const meta = statementMeta();
+      const settlementByRow: Record<string, string> = {};
+      for (const row of reportRows) {
+        if (row.type !== 'invoice') continue;
+        const inv = invoiceForRow(row);
+        if (!inv) continue;
+        const settlement = settlementAsOf(inv, row.date, adjustmentsByInvoice.get(inv.id) || []);
+        settlementByRow[row.id] = settlement.status === 'paid'
+          ? `Paid${settlement.paidOn ? ` on ${settlement.paidOn}` : ''}`
+          : settlement.status === 'partial'
+            ? `Partial - ${formatPKR(settlement.balance)} outstanding`
+            : `Unpaid - ${formatPKR(settlement.balance)} outstanding`;
+      }
+      const rows = buildLedgerCsvRows(reportRows, summary, {
+        clinicLabel: meta.clinicLabel,
+        periodLabel: meta.periodLabel,
+        accountLabel: `${meta.accountCode} · ${meta.accountName}`,
+        generatedOn: meta.generatedOn,
+        settlementByRow,
+      });
+      const outcome = await saveCSV(`${ledgerFileBase(meta.clinicLabel)}.csv`, rows);
+      if (outcome.status === 'error') {
+        setExportNotice({ kind: 'error', text: `Could not save the CSV: ${outcome.message}` });
+      }
+    } catch (e) {
+      console.error('Error building the ledger CSV:', e);
+      setExportNotice({
+        kind: 'error',
+        text: `Could not export the ledger CSV: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    } finally {
+      setIsExportingCsv(false);
+    }
+  };
 
   if (!can(user, 'ledger:view')) {
     return (
@@ -438,10 +513,23 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
             onClick={handleExportPDF}
             title="Download ledger statement as PDF (selectable text, real pages)"
             aria-label="Download ledger statement as PDF"
+            aria-busy={isExportingPdf}
             className="shrink-0 py-2.5 px-4 ds-glass-pill font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <FileDown className="w-4 h-4" />
-            <span>Export PDF</span>
+            <span>{isExportingPdf ? 'Building PDF…' : 'Export PDF'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            title="Download the same ledger rows as an Excel-ready CSV"
+            aria-label="Download ledger as CSV for Excel"
+            aria-busy={isExportingCsv}
+            className="shrink-0 py-2.5 px-4 ds-glass-pill font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>{isExportingCsv ? 'Building CSV…' : 'Export CSV'}</span>
           </button>
 
           {/* The Print button was removed here at the operator's request. The
@@ -548,27 +636,57 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
               </div>
             </div>
 
-            {summary.openingBalanceReview?.length ? (
-              <div
-                role="note"
-                className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-900"
+            <div className="border-b border-slate-200">
+              <button
+                type="button"
+                onClick={() => setQualityOpen((open) => !open)}
+                aria-expanded={qualityOpen}
+                className="flex w-full items-center gap-2 bg-slate-50/70 px-4 py-3 text-left hover:bg-slate-100/70 transition-colors cursor-pointer"
               >
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <p className="min-w-0 break-words">
-                  <span className="font-bold">Review opening-balance postings.</span>{' '}
-                  {summary.openingBalanceReview.map((r) => `${r.voucherNumber} (${r.typeLabel}, ${formatPKR(r.amount)})`).join(', ')}{' '}
-                  are posted transactions, not the statement&apos;s brought-forward figure. The opening balance before this period is{' '}
-                  {formatPKR(summary.openingBalance)}. Check whether they belong in the clinic&apos;s opening-balance field;
-                  the ledger will not move historical postings automatically.
-                </p>
-              </div>
-            ) : null}
+                {qualityIssues.length > 0 ? (
+                  <ShieldAlert className="h-4 w-4 shrink-0 text-amber-600" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                )}
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Data quality</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${qualityIssues.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                  {qualityIssues.length ? `${qualityIssues.length} exception${qualityIssues.length === 1 ? '' : 's'}` : 'No exceptions'}
+                </span>
+                {qualityOpen ? <ChevronUp className="ml-auto h-4 w-4 text-slate-500" /> : <ChevronDown className="ml-auto h-4 w-4 text-slate-500" />}
+              </button>
+              {qualityOpen && qualityIssues.length > 0 && (
+                <div className="border-t border-slate-100 bg-white px-4 py-3">
+                  <ul className="space-y-2">
+                    {qualityIssues.slice(0, 8).map((issue) => (
+                      <li key={issue.id} className="flex items-start gap-2 text-[11px] leading-5">
+                        <span className={`mt-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${issue.severity === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'}`}>
+                          {issue.severity === 'error' ? 'Error' : 'Check'}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="font-bold text-slate-800">{issue.title}</span>
+                          <span className="text-slate-500"> · {issue.voucherNumber}{issue.date ? ` · ${issue.date}` : ''}</span>
+                          <span className="block text-slate-600">{issue.detail}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {qualityIssues.length > 8 && (
+                    <p className="mt-2 text-[10px] text-slate-500">+ {qualityIssues.length - 8} more exceptions — the CSV export lists every row.</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOnlyIssues((on) => !on)}
+                    className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  >
+                    {onlyIssues ? 'Show every entry' : 'Show only exception rows'}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* DataTable owns the <thead>, the ds-th header row and the scroll
-                wrapper; the card above stays put. The <tfoot> totals row and
-                the "show more" bar travel through `footer` — the tfoot keeps
-                its own one-row table so its eight cells still line up with the
-                columns above. */}
+                wrapper; the card above stays put. The <tfoot> totals stay inside
+                the real table so their cells line up with the columns above. */}
             <DataTable<LedgerReportRow>
               data={visibleLedgerItems}
               rowKey={(row) => row.id}
@@ -584,15 +702,17 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                 const voucher = voucherForRow(row);
                 if (voucher) setReceiptPayment(voucher.payment);
               }}
-              rowClassName={() => ''}
+              rowClassName={() => 'ledger-row-virtual'}
               emptyState={
                 <div className="py-12 text-center text-slate-500">
                   <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-ink-body flex items-center justify-center mb-3">
                     <FileSpreadsheet className="w-6 h-6" />
                   </div>
-                  <p className="text-sm font-bold text-slate-800">No ledger entries found</p>
+                  <p className="text-sm font-bold text-slate-800">{onlyIssues ? 'No row-level exceptions' : 'No ledger entries found'}</p>
                   <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                    There are no recorded case invoices or payments for the selected clinic and date filter. Try selecting 'All Time' or choosing another clinic.
+                    {onlyIssues
+                      ? 'The remaining exceptions are statement-level; clear the exception filter to see every entry.'
+                      : "There are no recorded case invoices or payments for the selected clinic and date filter. Try selecting 'All Time' or choosing another clinic."}
                   </p>
                 </div>
               }
@@ -622,22 +742,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                 ) : null
               }
               footer={
-                <>
-                  {reportRows.length > visibleLedgerItems.length && (
-                    <div className="flex items-center justify-center gap-3 py-4 border-t border-slate-100 bg-slate-50/60">
-                      <span className="text-xs text-slate-500">
-                        Showing {visibleLedgerItems.length} of {reportRows.length} entries — totals cover the full period
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setLedgerLimit((n) => n + LEDGER_CAP_STEP)}
-                        className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                      >
-                        Show {Math.min(LEDGER_CAP_STEP, reportRows.length - visibleLedgerItems.length)} More
-                      </button>
-                    </div>
-                  )}
-                </>
+                onlyIssues ? (
+                  <div className="border-t border-slate-100 bg-amber-50/60 px-4 py-3 text-center text-xs text-amber-900">
+                    Showing {visibleLedgerItems.length} exception row{visibleLedgerItems.length === 1 ? '' : 's'} of {reportRows.length} — totals still cover the full period.
+                  </div>
+                ) : null
               }
               columns={[
                 {

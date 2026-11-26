@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 /* Returns a real result shape. The production `downloadPdf` is awaited now and
    its outcome inspected, so a mock returning undefined made the success path
    look like a failure and fired the error alert. */
 const downloadPdf = vi.fn((_name: unknown, _bytes: unknown) =>
   Promise.resolve({ status: 'saved' as const, path: 'ledger.pdf', bytes: 8 }),
+);
+const saveCSV = vi.fn((_name: unknown, _rows: unknown) =>
+  Promise.resolve({ status: 'saved' as const, path: 'ledger.csv', bytes: 8 }),
 );
 const buildLedgerReportPdf = vi.fn((_rows: unknown, _summary: unknown, _meta: unknown) => ({ pdf: new Uint8Array([1]) }));
 // Intercept the PDF builder itself so we can assert on the exact narration
@@ -17,6 +20,13 @@ vi.mock('../../src/lib/ledgerPdf', () => ({
 vi.mock('../../src/lib/pdf', () => ({
   downloadPdf: (name: unknown, bytes: unknown) => downloadPdf(name, bytes),
 }));
+vi.mock('../../src/services/csvExport', async () => {
+  const actual = await vi.importActual<typeof import('../../src/services/csvExport')>('../../src/services/csvExport');
+  return {
+    ...actual,
+    saveCSV: (name: unknown, rows: unknown) => saveCSV(name, rows),
+  };
+});
 
 const { CASE, LEDGER, ADJUSTMENT } = vi.hoisted(() => {
   const kase = {
@@ -144,6 +154,7 @@ afterEach(() => {
   cleanup();
   downloadPdf.mockClear();
   buildLedgerReportPdf.mockClear();
+  saveCSV.mockClear();
 });
 
 /** Picks "Cases Clinic" in the header dropdown so the ledger rows mount. */
@@ -207,11 +218,17 @@ describe('GeneralLedgerView invoice narration', () => {
     expect(screen.getByText('Edit Adjustment')).toBeTruthy();
   });
 
-  it('puts the case identity in the printed PDF narration', () => {
+  it('shows the data-quality panel and a clean state when postings reconcile', () => {
+    renderLedger();
+    expect(screen.getByText('Data quality')).toBeTruthy();
+    expect(screen.getByText('No exceptions')).toBeTruthy();
+  });
+
+  it('puts the case identity in the printed PDF narration', async () => {
     renderLedger();
     fireEvent.click(screen.getByText('Export PDF'));
 
-    expect(buildLedgerReportPdf).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(buildLedgerReportPdf).toHaveBeenCalledTimes(1));
     const entries = buildLedgerReportPdf.mock.calls[0][0] as {
       caseNumber: string;
       narration: string;
@@ -250,5 +267,18 @@ describe('GeneralLedgerView invoice narration', () => {
     expect(payment?.narration).not.toContain('Procedure:');
 
     expect(downloadPdf).toHaveBeenCalledTimes(1);
+  });
+
+  it('exports the same ledger rows as an Excel-ready CSV', async () => {
+    renderLedger();
+    fireEvent.click(screen.getByText('Export CSV'));
+
+    await waitFor(() => expect(saveCSV).toHaveBeenCalledTimes(1));
+    const [filename, rows] = saveCSV.mock.calls[0] as [string, (string | number)[][]];
+    expect(filename).toMatch(/^Ledger_Cases_Clinic_\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(rows).toContainEqual([
+      'TOTAL PERIOD ACTIVITY', '', '', '', '', 30000, 5500, 24500,
+    ]);
+    expect(rows.some((line) => line[1] === 'INV-0042')).toBe(true);
   });
 });

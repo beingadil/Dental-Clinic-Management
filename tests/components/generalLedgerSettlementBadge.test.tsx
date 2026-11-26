@@ -146,7 +146,7 @@ describe('General Ledger preview: invoice settlement badge', () => {
           { id: 'pay-2', payment_date: '2026-11-05', amount: 20000 },
         ],
       })],
-      [mkEntry()],
+      [mkEntry({ date: '2026-11-10' })],
     );
     expect(screen.getByText('Paid on Nov 5, 2026')).toBeTruthy();
   });
@@ -168,10 +168,26 @@ describe('General Ledger preview: invoice settlement badge', () => {
   });
 
   it('nets a credit note off the balance it labels', () => {
-    // 10,000 billed, 4,000 credited, nothing received => 6,000 still owed.
+    // 30,000 billed, 4,000 credited, nothing received => 26,000 still owed.
     renderLedger([mkInvoice({ credit_notes_total: 4000 })], [mkEntry()]);
+    expect(screen.getByText('Partial')).toBeTruthy();
+    expect(screen.getByTitle(/outstanding/i)).toBeTruthy();
+  });
+
+  it('does not let a later receipt settle an earlier ledger row', () => {
+    // The invoice is paid TODAY, but this row was posted before the receipt.
+    // Reading today's amount_paid into the row would backdate the settlement.
+    renderLedger(
+      [mkInvoice({
+        amount_paid: 30000,
+        payment_status: 'paid',
+        payments: [{ id: 'pay-late', payment_date: '2026-11-05', amount: 30000 }],
+      })],
+      [mkEntry({ date: '2026-10-20' })],
+    );
     expect(screen.getByText('Unpaid')).toBeTruthy();
-    expect(screen.getByTitle(/Outstanding/)).toBeTruthy();
+    expect(screen.queryByText(/Paid on/)).toBeNull();
+    expect(screen.getByTitle(/As of Oct 20, 2026/i)).toBeTruthy();
   });
 
   it('says nothing on a payment row', () => {

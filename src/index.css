@@ -954,3 +954,17 @@
     animation-duration: 2.4s !important;
   }
 }
+
+/* Browser-native row virtualization for long ledgers. Rows outside the
+   viewport skip layout and paint, while the real table and its totals stay in
+   the DOM for printing, find-in-page and assistive technology. */
+.ledger-row-virtual {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+
+@media print {
+  .ledger-row-virtual {
+    content-visibility: visible;
+  }
+}
