@@ -33,43 +33,72 @@ await build({
   logLevel: 'silent',
 });
 
-const { buildLedgerPdf, buildMonthlyStatementPdf } = await import(pathToFileURL(bundle).href);
+const reportBundle = path.join(CACHE, 'ledger-report.mjs');
+await build({
+  entryPoints: [path.join(ROOT, 'src', 'services', 'ledgerReport.ts')],
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  outfile: reportBundle,
+  logLevel: 'silent',
+});
+
+const ledgerBundle = path.join(CACHE, 'ledger-pdf.mjs');
+await build({
+  entryPoints: [path.join(ROOT, 'src', 'lib', 'ledgerPdf.ts')],
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  outfile: ledgerBundle,
+  logLevel: 'silent',
+});
+
+const { buildMonthlyStatementPdf } = await import(pathToFileURL(bundle).href);
+const { buildLedgerReport } = await import(pathToFileURL(reportBundle).href);
+const { buildLedgerReportPdf } = await import(pathToFileURL(ledgerBundle).href);
 
 /* ---------- demo data (the same shape the seeded demo install produces) ---------- */
 
 const LAB = 'Dental Solution';
 
-const LEDGER_META = {
-  labName: LAB,
-  clinicLabel: 'Arif Dental Clinic',
-  periodLabel: 'All Time',
-  openingBalance: 0,
-  totalDebits: 76000,
-  totalCredits: 0,
-  closingBalance: 76000,
-  transactionCount: 9,
-  generatedOn: '2026-11-03',
-};
-
 const LEDGER_ENTRIES = [
-  ['2026-10-05', 'DS-0003', 'Case Invoice', 'Invoice for Zirconia · Patient: 3289 · Teeth: #16 · Shade: A2', 5000, 0, 5000],
-  ['2026-10-05', 'DS-0002', 'Case Invoice', 'Invoice for Zirconia · Patient: 3138 · Teeth: #12, #13, #15 · Shade: A2', 15000, 0, 20000],
-  ['2026-10-06', 'DS-0035', 'Case Invoice', 'Invoice for Zirconia · Patient: 3173 · Teeth: #35, #36, #45, #46 · Shade: A2', 20000, 0, 40000],
-  ['2026-10-06', 'DS-0034', 'Case Invoice', 'Invoice for Zirconia · Patient: 3172 · Teeth: #45 · Shade: A2', 5000, 0, 45000],
-  ['2026-10-06', 'DS-0033', 'Case Invoice', 'Invoice for Zirconia · Patient: 3171 · Teeth: #36 · Shade: A2', 5000, 0, 50000],
-  ['2026-10-08', 'DS-0077', 'Case Invoice', 'Invoice for Zirconia · Patient: 3216 · Teeth: #11, #21 · Shade: A3', 10000, 0, 60000],
-  ['2026-10-10', 'DS-0068', 'Case Invoice', 'Invoice for Zirconia · Patient: 3200 · Teeth: #46 · Shade: A3', 5000, 0, 65000],
-  ['2026-10-14', 'DS-0133', 'Case Invoice', 'Invoice for Denture · Patient: 3273 · Teeth: #31, #32, #41, #42 · Shade: A2', 6000, 0, 71000],
-  ['2026-10-14', 'DS-0132', 'Case Invoice', 'Invoice for Zirconia · Patient: 3272 · Teeth: #15 · Shade: A2', 5000, 0, 76000],
-].map(([date, caseNumber, typeLabel, narration, debit, credit, closing]) => ({
+  ['2026-10-05', 'DS-0003', 'INV-0003', 5000],
+  ['2026-10-05', 'DS-0002', 'INV-0002', 15000],
+  ['2026-10-06', 'DS-0035', 'INV-0035', 20000],
+  ['2026-10-06', 'DS-0034', 'INV-0034', 5000],
+  ['2026-10-06', 'DS-0033', 'INV-0033', 5000],
+  ['2026-10-08', 'DS-0077', 'INV-0077', 10000],
+  ['2026-10-10', 'DS-0068', 'INV-0068', 5000],
+  ['2026-10-14', 'DS-0133', 'INV-0133', 6000],
+  ['2026-10-14', 'DS-0132', 'INV-0132', 5000],
+].map(([date, caseNumber, invoiceNumber, amount]) => ({
+  id: invoiceNumber,
   date,
-  clinic: 'Arif Dental Clinic',
-  caseNumber,
-  typeLabel,
-  narration,
-  debit,
-  credit,
-  closing,
+  entry_type: 'invoice',
+  reference_id: invoiceNumber,
+  reference_number: invoiceNumber,
+  case_id: caseNumber,
+  case_number: caseNumber,
+  description: 'Case Invoice',
+  debit: amount,
+  credit: 0,
+}));
+
+const LEDGER_CASES = LEDGER_ENTRIES.map((e) => ({
+  case_id: e.case_id,
+  case_number: e.case_number,
+  patient_name: 'Demo Patient',
+  case_type_name: 'Zirconia',
+  selected_teeth: ['11', '21'],
+  shade: 'A2',
+}));
+const LEDGER_INVOICES = LEDGER_ENTRIES.map((e) => ({
+  id: e.reference_id,
+  invoice_number: e.reference_number,
+  case_number: e.case_number,
+  case_id: e.case_id,
+  patient_name: 'Demo Patient',
+  case_type_name: 'Zirconia',
 }));
 
 const STATEMENT_COLUMNS = [
@@ -140,7 +169,15 @@ const monthlyPdf = buildMonthlyStatementPdf(
   STATEMENT_COLUMNS,
 );
 
-const ledgerPdf = buildLedgerPdf(LEDGER_ENTRIES, LEDGER_META);
+const ledgerReport = buildLedgerReport({ entries: LEDGER_ENTRIES, cases: LEDGER_CASES, invoices: LEDGER_INVOICES });
+const ledgerPdf = buildLedgerReportPdf(ledgerReport.rows, ledgerReport.summary, {
+  labName: LAB,
+  clinicLabel: 'Arif Dental Clinic',
+  periodLabel: 'All Time',
+  accountName: 'Accounts Receivable',
+  accountCode: '1100',
+  generatedOn: '2026-11-03',
+});
 
 writeFileSync(path.join(OUT_DIR, 'general-ledger.pdf'), Buffer.from(ledgerPdf.pdf, 'latin1'));
 writeFileSync(path.join(OUT_DIR, 'monthly-statement.pdf'), Buffer.from(monthlyPdf.pdf, 'latin1'));

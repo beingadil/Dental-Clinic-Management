@@ -90,16 +90,21 @@ export const nextPaymentNumber = (invoices: Invoice[]): string => {
  * `PAY-2026-0007-2` → `PAY-2026-0007` (slice suffix stripped).
  * An unsliced independent payment like `PAY-2026-0110` is returned unchanged.
  *
- * Only strips when there are 4+ dash-parts (a slice suffix), never the
- * year/sequence from an independent payment.
+ * Only strips the final part when a PAY/ADV voucher has exactly four
+ * dash-parts (a slice suffix), never the year/sequence from an independent
+ * payment, and never a four-part invoice number.
  *
  * Payment Receive and the General Ledger must agree on what counts as
  * "the same payment voucher", so this single shared function is used by
  * both instead of a duplicated local copy.
  */
 export const receiptNumberOf = (paymentNumber?: string): string => {
-  const parts = (paymentNumber || '').split('-');
-  return parts.length > 3 ? parts.slice(0, -1).join('-') : (paymentNumber || '');
+  const value = paymentNumber || '';
+  const parts = value.split('-');
+  /* Slice suffixes are only added to PAY/ADV vouchers (PAY-2026-0005-1). An
+     invoice number with four parts (INV-2026-0001) is not a slice. */
+  const isSlice = parts.length === 4 && /^(PAY|ADV)$/i.test(parts[0]) && /^\d+$/.test(parts[3]);
+  return isSlice ? parts.slice(0, -1).join('-') : value;
 };
 
 /** Next advance number ADV-0001. */

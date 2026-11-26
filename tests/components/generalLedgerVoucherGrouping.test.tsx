@@ -97,10 +97,11 @@ describe('General Ledger: one row per payment voucher', () => {
     expect(screen.queryByText(/Applied to 2 invoices/i)).toBeNull();
   });
 
-  it('collapses one genuine receipt split across two invoices into one row (Scenario A)', () => {
+  it('keeps one line per allocation for a receipt split across two invoices (Scenario A)', () => {
     /* The SAME payment_number on two invoices = one receipt with two
-       allocations. Those share a genuine voucher identity and collapse to one
-       row listing both invoices. */
+       allocations. The voucher identity is shared, but each case keeps its
+       own line and its own allocated amount; the voucher total is never
+       duplicated onto either line. */
     const shared = { id: 'pay-a', payment_number: 'PAY-1-1', payment_date: '2026-10-03', amount: 75000, payment_method: 'bank', lab_id: 'lab-1', lab_name: 'Cases Clinic' };
     const invA = baseInv({ id: 'inv-a', invoice_number: 'INV-A', payments: [shared] });
     const invB = baseInv({ id: 'inv-b', invoice_number: 'INV-B', payments: [shared] });
@@ -113,9 +114,10 @@ describe('General Ledger: one row per payment voucher', () => {
 
     renderLedger([invA, invB], [...invoiceEntries, entryA, entryB]);
 
-    // One row for the single receipt, listing both invoices.
-    expect(screen.getByText(/Applied to 2 invoices/i)).toBeTruthy();
+    // Two allocation lines, same voucher number, one case each.
+    expect(screen.getAllByText('PAY-1-1')).toHaveLength(2);
     expect(screen.getAllByText(/INV-A/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/INV-B/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/Applied to 2 invoices/i)).toBeNull();
   });
 });

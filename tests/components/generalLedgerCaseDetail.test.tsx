@@ -8,15 +8,17 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 const downloadPdf = vi.fn((_name: unknown, _bytes: unknown) =>
   Promise.resolve({ status: 'saved' as const, path: 'ledger.pdf', bytes: 8 }),
 );
-const buildLedgerPdf = vi.fn((_entries: unknown, _meta: unknown) => ({ pdf: new Uint8Array([1]) }));
+const buildLedgerReportPdf = vi.fn((_rows: unknown, _summary: unknown, _meta: unknown) => ({ pdf: new Uint8Array([1]) }));
 // Intercept the PDF builder itself so we can assert on the exact narration
 // rows that reach the printed document, not just that a file was downloaded.
+vi.mock('../../src/lib/ledgerPdf', () => ({
+  buildLedgerReportPdf: (rows: unknown, summary: unknown, meta: unknown) => buildLedgerReportPdf(rows, summary, meta),
+}));
 vi.mock('../../src/lib/pdf', () => ({
-  buildLedgerPdf: (entries: unknown, meta: unknown) => buildLedgerPdf(entries, meta),
   downloadPdf: (name: unknown, bytes: unknown) => downloadPdf(name, bytes),
 }));
 
-const { CASE, LEDGER } = vi.hoisted(() => {
+const { CASE, LEDGER, ADJUSTMENT } = vi.hoisted(() => {
   const kase = {
     id: 'case-1',
     case_number: 'DS-2001',
@@ -70,8 +72,29 @@ const { CASE, LEDGER } = vi.hoisted(() => {
       credit: 5000,
       running_balance: 25000,
     },
+    {
+      id: 'l3',
+      date: '2026-10-07',
+      entry_type: 'credit_note',
+      reference_id: 'adj-1',
+      reference_number: 'CR-0001',
+      description: 'Credit Note: goodwill',
+      debit: 0,
+      credit: 500,
+      running_balance: 24500,
+    },
   ];
-  return { CASE: kase, LEDGER: ledger };
+  const adjustment = {
+    id: 'adj-1',
+    adjustment_number: 'CR-0001',
+    type: 'credit_note' as const,
+    amount: 500,
+    reason: 'goodwill',
+    date: '2026-10-07',
+    lab_id: 'lab-1',
+    lab_name: 'Cases Clinic',
+  };
+  return { CASE: kase, LEDGER: ledger, ADJUSTMENT: adjustment };
 });
 
 // The general ledger needs a clinic picked before it renders rows; the stub
@@ -107,6 +130,7 @@ vi.mock('../../src/context/AppContext', () => ({
     labs: [{ id: 'lab-1', name: 'Cases Clinic' }],
     cases: [CASE],
     invoices: [INVOICE],
+    accountAdjustments: [ADJUSTMENT],
     brandingSettings: { appName: 'DENTAL SOLUTIONS', lab_name: 'DENTAL SOLUTIONS' },
     getLedgerEntries: () => LEDGER,
     setSelectedCaseForModal: () => {},
@@ -119,7 +143,7 @@ import { GeneralLedgerView } from '../../src/components/billing/GeneralLedgerVie
 afterEach(() => {
   cleanup();
   downloadPdf.mockClear();
-  buildLedgerPdf.mockClear();
+  buildLedgerReportPdf.mockClear();
 });
 
 /** Picks "Cases Clinic" in the header dropdown so the ledger rows mount. */
@@ -137,91 +161,89 @@ const renderLedger = () => {
   fireEvent.click(screen.getByRole('button', { name: /preview/i }));
 };
 
-describe('GeneralLedgerView case detail', () => {
-  it('shows the case identity and both dates on the invoice row', () => {
+describe('GeneralLedgerView invoice narration', () => {
+  it('shows the complete invoice facts in the detail box only', () => {
     renderLedger();
 
+    expect(screen.queryByText(/Invoice for Zirconia Crown/)).toBeNull();
     expect(screen.getByText('Patient')).toBeTruthy();
     expect(screen.getByText('Ali Raza')).toBeTruthy();
-    expect(screen.getByText('Procedure')).toBeTruthy();
-    expect(screen.getByText('Zirconia Crown')).toBeTruthy();
     expect(screen.getByText('Teeth')).toBeTruthy();
     expect(screen.getByText('#11, #21')).toBeTruthy();
     expect(screen.getByText('Shade')).toBeTruthy();
     expect(screen.getByText('A2')).toBeTruthy();
-    expect(screen.getByText('Received Date')).toBeTruthy();
+    expect(screen.getByText('Received')).toBeTruthy();
     expect(screen.getByText('Oct 3, 2026')).toBeTruthy();
-    // The promised day is its own row, so it can never be read as the
-    // day the job already reached the bench.
-    expect(screen.getByText('Delivery Date')).toBeTruthy();
+    expect(screen.getByText('Delivery')).toBeTruthy();
     expect(screen.getByText('Dec 20, 2026')).toBeTruthy();
-  });
-
-  it('leaves doctor and material to the case record, and states the unit count', () => {
-    renderLedger();
-
-    expect(screen.queryByText('Doctor')).toBeNull();
-    expect(screen.queryByText('Material')).toBeNull();
-    expect(screen.queryByText('Dr. Tariq Mahmood')).toBeNull();
-
-    // CHANGED (compact invoice): this test used to assert `Units` was ABSENT
-    // — "units belong to the case record, not the money line". A printed
-    // invoice now prints the count instead of the tooth list, so the ledger
-    // block carries it too. The fixture charts two teeth, so it reads "2 units".
-    expect(screen.getByText('Units')).toBeTruthy();
     expect(screen.getByText('2 units')).toBeTruthy();
   });
 
-  it('renders the detail block once, on the invoice row only', () => {
+  it('does not repeat the case facts in the narration line above the box', () => {
     renderLedger();
-    // The doctor sub-line the block used to replace stays gone.
-    expect(screen.queryByText(/^Doctor: /)).toBeNull();
-    // Only the invoice row has a detail block.
+
+    expect(screen.queryByText(/INV-0042 \| Case DS-2001/)).toBeNull();
+    expect(screen.queryByText(/Invoice for Zirconia Crown/)).toBeNull();
+    expect(screen.queryByText(/Patient: Ali Raza/)).toBeNull();
+    expect(screen.queryByText(/Teeth: #11, #21/)).toBeNull();
+    expect(screen.queryByText(/Doctor:/)).toBeNull();
+    expect(screen.queryByText(/Material:/)).toBeNull();
+  });
+
+  it('renders the detail box once, on the invoice row only', () => {
+    renderLedger();
+
     expect(screen.getAllByText('Procedure')).toHaveLength(1);
+    expect(screen.getAllByText('Patient')).toHaveLength(1);
+    expect(screen.queryByText(/Invoice for Zirconia Crown/)).toBeNull();
+    expect(screen.getAllByText('PAY-0007')).toHaveLength(1);
+    expect(screen.getByText(/Bank Receipt/)).toBeTruthy();
+  });
+
+  it('opens a credit/debit adjustment from its ledger voucher', () => {
+    renderLedger();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open adjustment CR-0001' }));
+    expect(screen.getByText('Edit Adjustment')).toBeTruthy();
   });
 
   it('puts the case identity in the printed PDF narration', () => {
     renderLedger();
     fireEvent.click(screen.getByText('Export PDF'));
 
-    expect(buildLedgerPdf).toHaveBeenCalledTimes(1);
-    const entries = buildLedgerPdf.mock.calls[0][0] as {
+    expect(buildLedgerReportPdf).toHaveBeenCalledTimes(1);
+    const entries = buildLedgerReportPdf.mock.calls[0][0] as {
       caseNumber: string;
       narration: string;
+      bodyNarration?: string;
     }[];
 
     const invoice = entries.find((e) => e.caseNumber === 'DS-2001');
 
-    /* CHANGED (ledger print compaction).
-     *
-     * The printed line used to open "Case Invoice - INV-0042  Invoice for
-     * Zirconia Crown (DS-2001) - Patient: Ali Raza - ... - Received Date: Oct 3,
-     * 2026 - Delivery Date: Dec 20, 2026". Four of those facts were already
-     * columns on the same row, and Received Date contradicted the Date column
-     * directly above it.
-     *
-     * What the description now says is what the columns do not:
-     *   Zirconia Crown - Patient: Ali Raza - Teeth: #11, #21 - Shade: A2
-     */
-    expect(invoice?.narration).toContain('Zirconia Crown');
-    expect(invoice?.narration).toContain('Patient: Ali Raza');
-    expect(invoice?.narration).toContain('Teeth: #11, #21');
-    expect(invoice?.narration).toContain('Shade: A2');
+    /* The narration keeps every fact that is not already a column, and keeps
+       the voucher/case relationship explicit for audit. */
+    expect(invoice?.bodyNarration).toContain('Zirconia Crown');
+    expect(invoice?.bodyNarration).toContain('Patient: Ali Raza');
+    expect(invoice?.bodyNarration).toContain('Teeth: #11, #21');
+    expect(invoice?.bodyNarration).toContain('Shade: A2');
 
-    // Already a column, or already said by the heading.
-    expect(invoice?.narration).not.toContain('INV-0042');
-    expect(invoice?.narration).not.toContain('DS-2001');
-    expect(invoice?.narration).not.toContain('Received Date');
-    expect(invoice?.narration).not.toContain('Oct 3, 2026');
-    expect(invoice?.narration).not.toContain('Delivery Date');
-    expect(invoice?.narration).not.toContain('Dec 20, 2026');
-    expect(invoice?.narration).not.toContain('Procedure:');
-    expect(invoice?.narration).not.toContain('Doctor:');
-    expect(invoice?.narration).not.toContain('Material:');
+    // Voucher and case have their own combined column; they do not repeat in
+    // the printed description.
+    expect(invoice?.bodyNarration).not.toContain('INV-0042');
+    expect(invoice?.bodyNarration).not.toContain('Case DS-2001');
+
+    // Dates and the case header are columns; they do not repeat in narration.
+    expect(invoice?.bodyNarration).not.toContain('Received Date');
+    expect(invoice?.bodyNarration).not.toContain('Oct 3, 2026');
+    expect(invoice?.bodyNarration).not.toContain('Delivery Date');
+    expect(invoice?.bodyNarration).not.toContain('Dec 20, 2026');
+    expect(invoice?.bodyNarration).not.toContain('Procedure:');
+    expect(invoice?.bodyNarration).not.toContain('Doctor:');
+    expect(invoice?.bodyNarration).not.toContain('Material:');
 
     // Units repeats what the tooth list already counts. It survives only on an
     // uncharted case, where it is the only quantity on the page.
-    expect(invoice?.narration).not.toContain('Units:');
+    expect(invoice?.bodyNarration).not.toContain('Units:');
 
     // The payment row carries no case detail.
     const payment = entries.find((e) => !e.caseNumber);

@@ -61,7 +61,7 @@ describe('print and export are different actions', () => {
   });
 
   it('builds the exported PDF in one place', () => {
-    const builds = ledger.match(/buildLedgerPdf\(/g) ?? [];
+    const builds = ledger.match(/buildLedgerReportPdf\(/g) ?? [];
     expect(builds).toHaveLength(1);
     expect(ledger).toMatch(/const buildStatement = \(\) =>/);
   });
