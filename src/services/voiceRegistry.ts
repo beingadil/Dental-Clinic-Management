@@ -140,7 +140,7 @@ const NAV: Record<string, string> = {
   case: 'cases', cases: 'cases', workstation: 'cases', dental_workstation: 'cases', records: 'cases',
   labs: 'labs', lab: 'labs', dental_clinics: 'labs', clinic: 'labs', clinics: 'labs',
   billing: 'billing', payments: 'billing', finance: 'billing', billing_and_invoices: 'billing',
-  ledger: REPORTS_TABS[0].id, general_ledger: REPORTS_TABS[0].id, books: REPORTS_TABS[0].id,
+  ledger: REPORTS_TABS[0].id, [REPORTS_TABS[0].id]: REPORTS_TABS[0].id, books: REPORTS_TABS[0].id,
   statement: REPORTS_TABS[1].id, statements: REPORTS_TABS[1].id, monthly: REPORTS_TABS[1].id,
   'monthly statement': REPORTS_TABS[1].id, vouchers: REPORTS_TABS[1].id,
   insights: REPORTS_TABS[2].id, insight: REPORTS_TABS[2].id, analytics: REPORTS_TABS[2].id,
@@ -947,7 +947,7 @@ const tools: VoiceTool[] = [
     id: 'help', description: 'List everything voice can do. No args.', risk: 'read',
     run: () => ({
       kind: 'read',
-      text: 'Everything voice can do: open any screen (dashboard, cases, billing, ledger, settings), read balances/statements/ledgers, record payments/advances, update cases, manage clinics, export data, and more. Just ask naturally.',
+      text: 'Everything voice can do: open any screen (dashboard, cases, billing, ledger, settings); read balances, statements, ledger, outstanding, advance wallet, standings, overdue, cash collected, month close; record payment/advance deposit; update cases, QC, doctor, note, code, archive; manage clinics; print settings; notification; pricing override; export; and more. Just ask naturally.',
     }),
   },
   // ── Case management extras ─────────────────────────────────────────────

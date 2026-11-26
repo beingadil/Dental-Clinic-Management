@@ -289,18 +289,18 @@ export const VoiceShell: React.FC = () => {
           setBusy(false);
           return;
         }
-        // Amber write gate: park it, show what will change, wait for confirm.
-        setPending(result.pendingWrite);
-        setPendingRisk('write');
-        setPendingNote(text);
-        setAnswer(result.text);
-        setStatus('done');
-        setBusy(false);
-        speak(`${result.text} Say confirm to apply it.`, {
-          rate: userPreferences?.voice_tts_rate, voiceUri: userPreferences?.voice_tts_voice_uri,
-          locale: userPreferences?.voice_locale || 'en-PK',
-          allowClinicalDetail: !!userPreferences?.voice_read_clinical_detail,
-        });
+        // Non-destructive writes auto-execute (the AI resolved the intent);
+        // only destructive actions keep the typed-token red gate above.
+        try {
+          await executeWrite(result.pendingWrite);
+          setAnswer(result.text);
+          setStatus('done');
+        } catch {
+          setStatus('error');
+          setAnswer('Something went wrong applying that change.');
+        } finally {
+          setBusy(false);
+        }
         return;
       }
       setAnswer(result.text);
@@ -1268,7 +1268,7 @@ export const VoiceShell: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <button type="button" onClick={() => void submit('confirm')} className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700">Confirm</button>
+                    <button type="button" onClick={() => void submit('confirm')} className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white bg-amber-700 hover:bg-amber-800">Confirm</button>
                     <button type="button" onClick={cancelPending} className="flex-1 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Cancel</button>
                   </>
                 )}

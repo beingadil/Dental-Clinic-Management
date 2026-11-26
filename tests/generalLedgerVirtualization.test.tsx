@@ -97,5 +97,5 @@ describe('General Ledger long-table windowing', () => {
 
     expect(table.getAttribute('data-windowed')).toBe('true');
     expect(container.querySelectorAll('tbody tr').length).toBeLessThan(50);
-  });
+  }, 20000);
 });

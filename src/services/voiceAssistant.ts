@@ -34,6 +34,14 @@ export interface AssistantResult {
 
 const mkr = (text: string): AssistantResult => ({ text, spoke: false });
 
+/** Natural-question fallback when the agentic loop has nothing to run —
+ *  never a canned keyword list; always points at something actionable on the
+ *  user's own clinic. */
+const noActionText = (): string =>
+  "I'm not sure what you mean — what would you like to do with your clinic? " +
+  'I can check balances, statements, open cases, record a payment, or open any screen. ' +
+  "Say 'what can you do?' for everything.";
+
 /** Redact-and-remember the Q/A pair for the local "learn from us" store. */
 const finish = (text: string, raw = ''): AssistantResult => {
   try { remember(raw, text); } catch { /* memory is best-effort */ }
@@ -96,6 +104,10 @@ export async function askAssistant(raw: string, ctx: VoiceToolContext): Promise<
   if (agentResult?.navigateTo) return { ...agentResult, spoke: true } as AssistantResult;
   if (agentResult?.text) return { ...agentResult, spoke: true } as AssistantResult;
 
-  // Fallback: natural message based on the AI provider error state.
-  return done(buildFallback());
+  // Fallback: natural message based on the AI provider error state; when the
+  // agent simply has nothing to run (and no provider error), ask a natural
+  // open question rather than dead-ending.
+  const err = getLastError();
+  if (err && err !== 'invalid_key') return done(buildFallback());
+  return done(noActionText());
 }
