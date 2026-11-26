@@ -1726,6 +1726,26 @@ export function buildDailyLabReportPdf(
   const totalUnits = rows.reduce((s, r) => s + (r.unitsValue ?? 0), 0);
   const totalFee = rows.reduce((s, r) => s + (r.feeValue ?? 0), 0);
 
+  /**
+   * Vertical column rules between header and rows for a table strip.
+   */
+  function drawGridLines(
+    ops: PdfOp[],
+    g: Geo,
+    cols: TableCol[],
+    X: Record<string, number>,
+    bottom: number,
+    top: number,
+  ): void {
+    const right = g.MARGIN + g.CONTENT_W;
+    ops.push({ kind: 'line', x1: g.MARGIN, y1: bottom, x2: g.MARGIN, y2: top, grey: 0.55, width: 0.5 });
+    ops.push({ kind: 'line', x1: right, y1: bottom, x2: right, y2: top, grey: 0.55, width: 0.5 });
+    for (const c of cols.slice(1)) {
+      const x = X[c.key];
+      ops.push({ kind: 'line', x1: x, y1: bottom, x2: x, y2: top, grey: 0.76, width: 0.4 });
+    }
+  }
+
   const sections: TableSection[] = [
     {
       cols,
