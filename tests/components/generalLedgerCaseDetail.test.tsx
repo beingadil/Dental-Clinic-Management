@@ -11,6 +11,9 @@ const downloadPdf = vi.fn((_name: unknown, _bytes: unknown) =>
 const saveCSV = vi.fn((_name: unknown, _rows: unknown) =>
   Promise.resolve({ status: 'saved' as const, path: 'ledger.csv', bytes: 8 }),
 );
+const saveLedgerXlsx = vi.fn((_name: unknown, _bytes: unknown) =>
+  Promise.resolve({ status: 'saved' as const, path: 'ledger.xlsx', bytes: 8 }),
+);
 const buildLedgerReportPdf = vi.fn((_rows: unknown, _summary: unknown, _meta: unknown) => ({ pdf: new Uint8Array([1]) }));
 // Intercept the PDF builder itself so we can assert on the exact narration
 // rows that reach the printed document, not just that a file was downloaded.
@@ -25,6 +28,13 @@ vi.mock('../../src/services/csvExport', async () => {
   return {
     ...actual,
     saveCSV: (name: unknown, rows: unknown) => saveCSV(name, rows),
+  };
+});
+vi.mock('../../src/services/ledgerXlsx', async () => {
+  const actual = await vi.importActual<typeof import('../../src/services/ledgerXlsx')>('../../src/services/ledgerXlsx');
+  return {
+    ...actual,
+    saveLedgerXlsx: (name: unknown, bytes: unknown) => saveLedgerXlsx(name, bytes),
   };
 });
 
@@ -155,6 +165,7 @@ afterEach(() => {
   downloadPdf.mockClear();
   buildLedgerReportPdf.mockClear();
   saveCSV.mockClear();
+  saveLedgerXlsx.mockClear();
 });
 
 /** Picks "Cases Clinic" in the header dropdown so the ledger rows mount. */
@@ -280,5 +291,15 @@ describe('GeneralLedgerView invoice narration', () => {
       'TOTAL PERIOD ACTIVITY', '', '', '', '', 30000, 5500, 24500,
     ]);
     expect(rows.some((line) => line[1] === 'INV-0042')).toBe(true);
+  });
+
+  it('exports a real Excel workbook alongside the CSV', async () => {
+    renderLedger();
+    fireEvent.click(screen.getByText('Export Excel'));
+
+    await waitFor(() => expect(saveLedgerXlsx).toHaveBeenCalledTimes(1));
+    const [filename, bytes] = saveLedgerXlsx.mock.calls[0] as [string, Uint8Array];
+    expect(filename).toMatch(/^Ledger_Cases_Clinic_\d{4}-\d{2}-\d{2}\.xlsx$/);
+    expect(Array.from(bytes.slice(0, 2))).toEqual([0x50, 0x4b]);
   });
 });

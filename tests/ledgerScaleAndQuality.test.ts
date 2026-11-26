@@ -4,6 +4,8 @@ import { findLedgerIssues } from '../src/services/ledgerQuality';
 import { buildLedgerCsvRows } from '../src/services/ledgerCsv';
 import { buildLedgerReportPdf } from '../src/lib/ledgerPdf';
 import { buildLedgerReportPdfAsync } from '../src/lib/ledgerPdfAsync';
+import { buildLedgerXlsx } from '../src/services/ledgerXlsx';
+import { strFromU8, unzipSync } from 'fflate';
 import type { LedgerReportRow, LedgerReportSummary } from '../src/services/ledgerReport';
 
 const row = (over: Partial<LedgerReportRow> = {}): LedgerReportRow => ({
@@ -95,6 +97,38 @@ describe('ledger CSV', () => {
       '03-Oct-2026', 'INV-0042', 'DS-2001', 'Invoice', 'Invoice for Zirconia Crown',
       30000, 0, 30000, 'Unpaid - PKR 30,000.00 outstanding', '', '', '', '', '', '', '', '',
     ]);
+  });
+});
+
+describe('ledger Excel workbook', () => {
+  it('writes a real zipped OOXML workbook with transactions and summary', () => {
+    const meta = {
+      clinicLabel: 'Cases Clinic',
+      periodLabel: 'All Time',
+      accountLabel: '1100 · Accounts Receivable',
+      generatedOn: '2026-10-20',
+      settlementByRow: { 'led-1': 'Unpaid - PKR 30,000.00 outstanding' },
+    };
+    const bytes = buildLedgerXlsx([row()], summary, meta);
+    expect(Array.from(bytes.slice(0, 2))).toEqual([0x50, 0x4b]);
+
+    const zip = unzipSync(bytes);
+    expect(Object.keys(zip)).toEqual(expect.arrayContaining([
+      'xl/workbook.xml',
+      'xl/worksheets/sheet1.xml',
+      'xl/worksheets/sheet2.xml',
+      'xl/styles.xml',
+      'docProps/core.xml',
+    ]));
+    const ledger = strFromU8(zip['xl/worksheets/sheet1.xml']);
+    expect(ledger).toContain('INV-0042');
+    expect(ledger).toContain('TOTAL PERIOD ACTIVITY');
+    expect(ledger).toContain('<v>30000</v>');
+    expect(ledger).toContain('Unpaid - PKR 30,000.00 outstanding');
+    const summarySheet = strFromU8(zip['xl/worksheets/sheet2.xml']);
+    expect(summarySheet).toContain('Cases Clinic');
+    expect(summarySheet).toContain('Closing balance');
+    expect(strFromU8(zip['xl/workbook.xml'])).toContain('name="Ledger"');
   });
 });
 

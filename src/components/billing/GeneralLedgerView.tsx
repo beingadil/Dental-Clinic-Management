@@ -25,6 +25,7 @@ import { buildLedgerReport, type LedgerReportRow } from '../../services/ledgerRe
 import { findLedgerIssues } from '../../services/ledgerQuality';
 import { buildLedgerCsvRows } from '../../services/ledgerCsv';
 import { saveCSV } from '../../services/csvExport';
+import { buildLedgerXlsx, saveLedgerXlsx } from '../../services/ledgerXlsx';
 import { settlementAsOf } from '../../services/ledgerSettlement';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
@@ -149,6 +150,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
   const [isPreviewActive, setIsPreviewActive] = useState<boolean>(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [isExportingXlsx, setIsExportingXlsx] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(true);
   const [onlyIssues, setOnlyIssues] = useState(false);
 
@@ -402,6 +404,32 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
 
   const handleExportPDF = () => saveStatement('PDF document');
 
+  const settlementLabels = () => {
+    const settlementByRow: Record<string, string> = {};
+    for (const row of reportRows) {
+      if (row.type !== 'invoice') continue;
+      const inv = invoiceForRow(row);
+      if (!inv) continue;
+      const settlement = settlementAsOf(inv, row.date, adjustmentsByInvoice.get(inv.id) || []);
+      settlementByRow[row.id] = settlement.status === 'paid'
+        ? `Paid${settlement.paidOn ? ` on ${settlement.paidOn}` : ''}`
+        : settlement.status === 'partial'
+          ? `Partial - ${formatPKR(settlement.balance)} outstanding`
+          : `Unpaid - ${formatPKR(settlement.balance)} outstanding`;
+    }
+    return settlementByRow;
+  };
+
+  const exportMeta = () => {
+    const meta = statementMeta();
+    return {
+      clinicLabel: meta.clinicLabel,
+      periodLabel: meta.periodLabel,
+      accountLabel: `${meta.accountCode} · ${meta.accountName}`,
+      generatedOn: meta.generatedOn,
+    };
+  };
+
   const handleExportCSV = async () => {
     if (!selectedClinic) {
       setExportNotice(NEEDS_CLINIC);
@@ -411,26 +439,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
     setExportNotice(null);
     setIsExportingCsv(true);
     try {
-      const meta = statementMeta();
-      const settlementByRow: Record<string, string> = {};
-      for (const row of reportRows) {
-        if (row.type !== 'invoice') continue;
-        const inv = invoiceForRow(row);
-        if (!inv) continue;
-        const settlement = settlementAsOf(inv, row.date, adjustmentsByInvoice.get(inv.id) || []);
-        settlementByRow[row.id] = settlement.status === 'paid'
-          ? `Paid${settlement.paidOn ? ` on ${settlement.paidOn}` : ''}`
-          : settlement.status === 'partial'
-            ? `Partial - ${formatPKR(settlement.balance)} outstanding`
-            : `Unpaid - ${formatPKR(settlement.balance)} outstanding`;
-      }
-      const rows = buildLedgerCsvRows(reportRows, summary, {
-        clinicLabel: meta.clinicLabel,
-        periodLabel: meta.periodLabel,
-        accountLabel: `${meta.accountCode} · ${meta.accountName}`,
-        generatedOn: meta.generatedOn,
-        settlementByRow,
-      });
+      const meta = exportMeta();
+      const rows = buildLedgerCsvRows(reportRows, summary, { ...meta, settlementByRow: settlementLabels() });
       const outcome = await saveCSV(`${ledgerFileBase(meta.clinicLabel)}.csv`, rows);
       if (outcome.status === 'error') {
         setExportNotice({ kind: 'error', text: `Could not save the CSV: ${outcome.message}` });
@@ -443,6 +453,32 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
       });
     } finally {
       setIsExportingCsv(false);
+    }
+  };
+
+  const handleExportXlsx = async () => {
+    if (!selectedClinic) {
+      setExportNotice(NEEDS_CLINIC);
+      return;
+    }
+    if (isExportingXlsx) return;
+    setExportNotice(null);
+    setIsExportingXlsx(true);
+    try {
+      const meta = exportMeta();
+      const bytes = buildLedgerXlsx(reportRows, summary, { ...meta, settlementByRow: settlementLabels() });
+      const outcome = await saveLedgerXlsx(`${ledgerFileBase(meta.clinicLabel)}.xlsx`, bytes);
+      if (outcome.status === 'error') {
+        setExportNotice({ kind: 'error', text: `Could not save the Excel workbook: ${outcome.message}` });
+      }
+    } catch (e) {
+      console.error('Error building the ledger workbook:', e);
+      setExportNotice({
+        kind: 'error',
+        text: `Could not export the ledger workbook: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    } finally {
+      setIsExportingXlsx(false);
     }
   };
 
@@ -530,6 +566,18 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>{isExportingCsv ? 'Building CSV…' : 'Export CSV'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportXlsx}
+            title="Download a formatted Excel workbook with Ledger and Summary sheets"
+            aria-label="Download ledger as an Excel workbook"
+            aria-busy={isExportingXlsx}
+            className="shrink-0 py-2.5 px-4 ds-glass-pill font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>{isExportingXlsx ? 'Building Excel…' : 'Export Excel'}</span>
           </button>
 
           {/* The Print button was removed here at the operator's request. The
@@ -689,6 +737,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                 the real table so their cells line up with the columns above. */}
             <DataTable<LedgerReportRow>
               data={visibleLedgerItems}
+              virtualize={{ rowHeight: 96, overscan: 6, maxHeight: '70vh' }}
               rowKey={(row) => row.id}
               onRowClick={(row) => {
                 const adjustment = adjustmentForRow(row);
@@ -702,7 +751,6 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
                 const voucher = voucherForRow(row);
                 if (voucher) setReceiptPayment(voucher.payment);
               }}
-              rowClassName={() => 'ledger-row-virtual'}
               emptyState={
                 <div className="py-12 text-center text-slate-500">
                   <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-ink-body flex items-center justify-center mb-3">

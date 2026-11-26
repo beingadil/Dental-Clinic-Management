@@ -10,8 +10,55 @@ export interface LedgerCsvMeta {
   settlementByRow?: Record<string, string>;
 }
 
+export const LEDGER_EXPORT_HEADERS = [
+  'Date',
+  'Voucher',
+  'Case',
+  'Type',
+  'Description',
+  'Debit (PKR)',
+  'Credit (PKR)',
+  'Balance (PKR)',
+  'Settlement',
+  'Procedure',
+  'Patient',
+  'Teeth',
+  'Shade',
+  'Received',
+  'Delivery',
+  'Payment method',
+  'Allocations',
+];
+
 const csvCell = (value: string | number | null | undefined): string | number =>
   value === null || value === undefined ? '' : value;
+
+export function ledgerExportRows(
+  rows: LedgerReportRow[],
+  settlementByRow: Record<string, string> = {},
+): (string | number)[][] {
+  return rows.map((row) => [
+    row.dateLabel || row.date,
+    row.voucherNumber,
+    row.caseNumber || '',
+    row.typeLabel,
+    row.bodyNarration || row.narration || '',
+    row.debit,
+    row.credit,
+    row.balance,
+    settlementByRow[row.id] || '',
+    row.procedure || '',
+    row.patientName || '',
+    row.teeth || '',
+    row.shade || '',
+    row.receivedDate || '',
+    row.deliveryDate || '',
+    row.paymentMethod || '',
+    (row.allocations || [])
+      .map((allocation) => `${allocation.invoiceNumber || ''} ${allocation.amount}`.trim())
+      .join(' | '),
+  ]);
+}
 
 /**
  * One spreadsheet-ready table. Money stays numeric (not formatted with a
@@ -24,47 +71,7 @@ export function buildLedgerCsvRows(
   summary: LedgerReportSummary,
   meta: LedgerCsvMeta,
 ): (string | number)[][] {
-  const header = [
-    'Date',
-    'Voucher',
-    'Case',
-    'Type',
-    'Description',
-    'Debit (PKR)',
-    'Credit (PKR)',
-    'Balance (PKR)',
-    'Settlement',
-    'Procedure',
-    'Patient',
-    'Teeth',
-    'Shade',
-    'Received',
-    'Delivery',
-    'Payment method',
-    'Allocations',
-  ];
-
-  const body = rows.map((row) => [
-    row.dateLabel || row.date,
-    row.voucherNumber,
-    row.caseNumber || '',
-    row.typeLabel,
-    row.bodyNarration || row.narration || '',
-    row.debit,
-    row.credit,
-    row.balance,
-    meta.settlementByRow?.[row.id] || '',
-    row.procedure || '',
-    row.patientName || '',
-    row.teeth || '',
-    row.shade || '',
-    row.receivedDate || '',
-    row.deliveryDate || '',
-    row.paymentMethod || '',
-    (row.allocations || [])
-      .map((allocation) => `${allocation.invoiceNumber || ''} ${allocation.amount}`.trim())
-      .join(' | '),
-  ]);
+  const body = ledgerExportRows(rows, meta.settlementByRow);
 
   return [
     ['General Ledger', meta.clinicLabel],
@@ -72,7 +79,7 @@ export function buildLedgerCsvRows(
     ['Account', meta.accountLabel],
     ['Generated', meta.generatedOn],
     [],
-    header,
+    LEDGER_EXPORT_HEADERS,
     ...body,
     [],
     ['TOTAL PERIOD ACTIVITY', '', '', '', '', summary.totalDebits, summary.totalCredits, summary.closingBalance],
