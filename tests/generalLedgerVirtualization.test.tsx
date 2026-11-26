@@ -68,4 +68,34 @@ describe('General Ledger long-table windowing', () => {
     expect(screen.getByText('PAY-00725')).toBeTruthy();
     expect(container.querySelectorAll('tbody tr[data-index]').length).toBeLessThan(50);
   });
+
+  /* PAPER DOES NOT SCROLL. A windowed table mounts only the rows near the
+     viewport, so Ctrl+P used to print exactly the rows that happened to be on
+     screen — the rest of the statement was never in the document to print.
+     beforeprint must therefore re-render the table in full before the browser
+     takes its snapshot. */
+  it('mounts every row for the printer when printing starts', () => {
+    const { container } = renderLongLedger();
+    const table = container.querySelector('table')!;
+    expect(table.getAttribute('data-windowed')).toBe('true');
+    expect(container.querySelectorAll('tbody tr').length).toBeLessThan(50);
+
+    fireEvent(window, new Event('beforeprint'));
+
+    expect(table.getAttribute('data-windowed')).toBe('false');
+    // All 1,500 rows, plus the totals row — nothing left in the window only.
+    expect(container.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(1500);
+    expect(screen.getByText('PAY-01499')).toBeTruthy();
+    expect(screen.getByText('PAY-00000')).toBeTruthy();
+
+    /* The scroller must also stop clipping: a max-height on paper cuts the
+       statement off at one viewport, however many rows are mounted. */
+    const scroller = container.querySelector('.overflow-auto') as HTMLDivElement | null;
+    expect(scroller).toBeNull();
+
+    fireEvent(window, new Event('afterprint'));
+
+    expect(table.getAttribute('data-windowed')).toBe('true');
+    expect(container.querySelectorAll('tbody tr').length).toBeLessThan(50);
+  });
 });

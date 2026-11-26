@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { CheckSquare, Square } from 'lucide-react';
 
 /** One column of a {@link DataTable}. */
@@ -125,8 +126,26 @@ function DataTableInner<T>({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(600);
   const [measureVersion, setMeasureVersion] = useState(0);
+  /**
+   * True while the browser is printing.
+   *
+   * Windowing mounts the rows near the viewport, which is what keeps a 1,500-row
+   * ledger responsive — and is also why Ctrl+P used to print only the handful of
+   * rows that happened to be in the scroller: paper does not scroll, so the rows
+   * the browser never mounted were simply absent from the sheet.
+   *
+   * `beforeprint` fires immediately before Chromium lays the document out for
+   * the printer, so the switch back to the full table is committed SYNCHRONOUSLY
+   * (flushSync). A queued state update would commit after the snapshot and print
+   * the window again — the bug, only harder to see.
+   */
+  const [printing, setPrinting] = useState(false);
 
-  const keys = useMemo(() => (virtual ? data.map(rowKey) : []), [data, rowKey, virtual]);
+  /* Windowing is suspended while printing, so every row is in the DOM and the
+     browser paginates the whole statement itself. */
+  const windowed = virtual && !printing;
+
+  const keys = useMemo(() => (windowed ? data.map(rowKey) : []), [data, rowKey, windowed]);
 
   useEffect(() => {
     if (!virtual) return;
@@ -155,19 +174,43 @@ function DataTableInner<T>({
     setScrollTop(0);
   }, [data, virtual]);
 
+  /* Print: mount every row for the duration of the job, then go back to the
+     window. `afterprint` restores the screen, including the scroll position,
+     which the full render would otherwise reset. */
+  useEffect(() => {
+    if (!virtual) return;
+    if (typeof window === 'undefined') return;
+    const savedScroll = { top: 0 };
+    const enterPrint = () => {
+      savedScroll.top = scrollRef.current?.scrollTop ?? 0;
+      flushSync(() => setPrinting(true));
+    };
+    const leavePrint = () => {
+      flushSync(() => setPrinting(false));
+      if (scrollRef.current) scrollRef.current.scrollTop = savedScroll.top;
+      setScrollTop(savedScroll.top);
+    };
+    window.addEventListener('beforeprint', enterPrint);
+    window.addEventListener('afterprint', leavePrint);
+    return () => {
+      window.removeEventListener('beforeprint', enterPrint);
+      window.removeEventListener('afterprint', leavePrint);
+    };
+  }, [virtual]);
+
   const offsets = useMemo(() => {
-    if (!virtual) return [0];
+    if (!windowed) return [0];
     const next = new Array<number>(data.length + 1);
     next[0] = 0;
     for (let i = 0; i < data.length; i++) {
       next[i + 1] = next[i] + (heights.current.get(keys[i]) ?? estimate);
     }
     return next;
-  }, [virtual, data.length, keys, estimate, measureVersion]);
+  }, [windowed, data.length, keys, estimate, measureVersion]);
 
   let start = 0;
   let end = data.length;
-  if (virtual && data.length > 0) {
+  if (windowed && data.length > 0) {
     const bottom = scrollTop + Math.max(viewport, estimate);
     let lo = 0;
     let hi = data.length;
@@ -188,12 +231,12 @@ function DataTableInner<T>({
     if (end <= start) end = Math.min(data.length, start + 1);
   }
 
-  const visibleRows = virtual ? data.slice(start, end) : data;
-  const topPad = virtual ? offsets[start] : 0;
-  const bottomPad = virtual ? Math.max(0, offsets[data.length] - offsets[end]) : 0;
+  const visibleRows = windowed ? data.slice(start, end) : data;
+  const topPad = windowed ? offsets[start] : 0;
+  const bottomPad = windowed ? Math.max(0, offsets[data.length] - offsets[end]) : 0;
 
   const measureRow = (el: HTMLTableRowElement | null) => {
-    if (!virtual || !el) return;
+    if (!windowed || !el) return;
     const index = Number(el.dataset.index);
     const key = keys[index];
     if (!key) return;
@@ -223,12 +266,18 @@ function DataTableInner<T>({
     <>
       <div
         ref={scrollRef}
-        onScroll={virtual ? (event) => setScrollTop(event.currentTarget.scrollTop) : undefined}
-        style={virtual ? { maxHeight: virtualize?.maxHeight ?? '70vh' } : undefined}
-        className={virtual ? 'overflow-auto' : 'overflow-x-auto no-scrollbar'}
+        onScroll={windowed ? (event) => setScrollTop(event.currentTarget.scrollTop) : undefined}
+        style={windowed ? { maxHeight: virtualize?.maxHeight ?? '70vh' } : undefined}
+        className={windowed ? 'overflow-auto' : 'overflow-x-auto no-scrollbar'}
       >
-        <table className="w-full text-left border-collapse text-xs" aria-rowcount={virtual ? data.length + 1 : undefined}>
-          <thead className={virtual ? 'sticky top-0 z-10' : undefined}>
+        <table
+          className="w-full text-left border-collapse text-xs"
+          aria-rowcount={windowed ? data.length + 1 : undefined}
+          /* Say which mode the table is in: "windowed" mounts a slice for the
+             screen, "full" mounts every row for the printer. */
+          data-windowed={windowed ? 'true' : 'false'}
+        >
+          <thead className={windowed ? 'sticky top-0 z-10' : undefined}>
             <tr className="ds-th">
               {selection && (
                 <th scope="col" className="py-2 px-3 w-10">
@@ -261,15 +310,15 @@ function DataTableInner<T>({
               </tr>
             )}
             {visibleRows.map((row, index) => {
-              const dataIndex = virtual ? start + index : index;
+              const dataIndex = windowed ? start + index : index;
               const id = rowKey(row);
               const isSelected = selection ? selection.selectedIds.includes(id) : false;
               return (
                 <tr
                   key={id}
-                  ref={virtual ? measureRow : undefined}
-                  data-index={virtual ? dataIndex : undefined}
-                  aria-rowindex={virtual ? dataIndex + 2 : undefined}
+                  ref={windowed ? measureRow : undefined}
+                  data-index={windowed ? dataIndex : undefined}
+                  aria-rowindex={windowed ? dataIndex + 2 : undefined}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={`${onRowClick ? 'cursor-pointer' : ''} hover:bg-slate-50/80 transition-colors ${rowClassName?.(row) ?? ''} ${
                     isSelected ? 'bg-indigo-50/40' : ''
@@ -305,7 +354,7 @@ function DataTableInner<T>({
               </tr>
             )}
           </tbody>
-          {tfoot && <tfoot className={virtual ? 'sticky bottom-0 z-10 bg-white' : undefined}>{tfoot}</tfoot>}
+          {tfoot && <tfoot className={windowed ? 'sticky bottom-0 z-10 bg-white' : undefined}>{tfoot}</tfoot>}
         </table>
       </div>
       {footer}

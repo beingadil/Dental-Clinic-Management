@@ -340,8 +340,8 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
         ],
         headline: [
           { label: 'Billed', value: formatPKR(b.totals.billed) },
-          { label: 'Collected', value: formatPKR(b.totals.collected) },
-          { label: 'Closing', value: `${formatPKR(b.totals.closing_balance)}${drCr(b.totals.closing_balance)}` },
+          { label: 'Received', value: formatPKR(b.totals.collected) },
+          { label: 'Remaining', value: `${formatPKR(b.totals.closing_balance)}${drCr(b.totals.closing_balance)}` },
         ],
       };
     });
@@ -373,12 +373,12 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
             note: `${statementTotals.months} month${statementTotals.months === 1 ? '' : 's'} in scope`,
           },
           {
-            label: 'Collected',
+            label: 'Received',
             value: formatPKR(statementTotals.collected),
             note: 'Payments, advances and notes',
           },
           {
-            label: 'Closing balance',
+            label: 'Remaining',
             value: `${formatPKR(statementTotals.closingBalance)}${drCr(statementTotals.closingBalance)}`,
             note: 'As at the newest month',
           },
@@ -641,12 +641,12 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               <Stat label="Clinics" value={String(statementTotals.clinics)} />
               <Stat label="Billed" value={formatPKR(statementTotals.billed)} />
               <Stat
-                label="Collected"
+                label="Received"
                 value={formatPKR(statementTotals.collected)}
                 tone="success"
               />
               <Stat
-                label="Closing Balance"
+                label="Remaining"
                 value={`${formatPKR(statementTotals.closingBalance)}${drCr(statementTotals.closingBalance)}`}
                 tone={
                   statementTotals.closingBalance < 0

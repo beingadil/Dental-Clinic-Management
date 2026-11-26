@@ -1302,30 +1302,6 @@ function layoutCols(
 }
 
 /**
- * Vertical rules: the table's outer edges and a hairline between each column.
- *
- * These are what make the document read as a ruled table rather than a list
- * of rows floating on the page — a wide description column next to four
- * narrow money columns needs an edge to belong to.
- */
-function drawGridLines(
-  ops: PdfOp[],
-  g: Geo,
-  cols: TableCol[],
-  X: Record<string, number>,
-  bottom: number,
-  top: number,
-): void {
-  const right = g.MARGIN + g.CONTENT_W;
-  ops.push({ kind: 'line', x1: g.MARGIN, y1: bottom, x2: g.MARGIN, y2: top, grey: 0.55, width: 0.5 });
-  ops.push({ kind: 'line', x1: right, y1: bottom, x2: right, y2: top, grey: 0.55, width: 0.5 });
-  for (const c of cols.slice(1)) {
-    const x = X[c.key];
-    ops.push({ kind: 'line', x1: x, y1: bottom, x2: x, y2: top, grey: 0.76, width: 0.4 });
-  }
-}
-
-/**
  * Vertical column rules for a whole table, drawn ONCE spanning the entire
  * table height (header + rows + strip). Consistent single-weight rules give a
  * clean accounting-table look — unlike per-row boxes, which read as a grid of
@@ -1713,7 +1689,7 @@ export function buildDailyReportPdf(
 export interface StatementPdfColumn {
   key: string;
   label: string;
-  /** Share of the content width. */
+  /** Share of the content width; normalised against the other columns. */
   w: number;
   align: 'left' | 'right';
   /** Set in bold: the figures a reader must see. */
@@ -1734,6 +1710,11 @@ export interface MonthlyStatementPdfMeta {
    * money formatting; this module must not re-render a figure it was handed.
    */
   summary?: SummaryFigure[];
+  /**
+   * Accepted for API compatibility and ignored: the statement is A4 PORTRAIT,
+   * the same sheet and geometry as the General Ledger statement. The two
+   * documents are filed together, so they print on the same paper.
+   */
   paper?: PaperKind;
   orientation?: Orientation;
 }
@@ -1752,14 +1733,51 @@ export interface MonthlyStatementPdfMonth {
   headline: { label: string; value: string }[];
 }
 
+const mm = (v: number) => (v * 72) / 25.4;
+
+const MS_NAVY = { rgb: [0.106, 0.188, 0.275] as [number, number, number] };
+const MS_HAIR = { grey: 0.55 };
+
+/*
+ * A4 PORTRAIT — the General Ledger's own geometry: 10mm margins, 190mm of
+ * usable width, the same navy letterhead, the same ruled table, the same
+ * footer with "Page n of m".
+ *
+ * The monthly statement used to be a LANDSCAPE sheet of its own design, so a
+ * clinic received two documents from one practice that shared nothing: a
+ * different paper size, a different header, a different table. They are the
+ * same statement suite, filed together, so they now print as the same
+ * document at the same size.
+ */
+const MS_PAGE = GEOS['a4-portrait'];
+const MS_MARGIN = mm(10);
+const MS_CONTENT_W = mm(190);
+const MS_RIGHT = MS_MARGIN + MS_CONTENT_W;
+const MS_W = MS_PAGE.W;
+const MS_H = MS_PAGE.H;
+const MS_FOOTER_Y = mm(12);
+const MS_BOTTOM = MS_FOOTER_Y + 16;
+const MS_RULE_Y = MS_H - mm(38);
+const MS_BAND_H = 20;
+const MS_HEAD_H = 15;
+const MS_ROW_LINE_H = 8.4;
+const MS_ROW_PAD = 7;
+const MS_ROW_MIN_H = 15;
+const MS_TOTALS_H = 19;
+const MS_CONT_TOP = MS_H - mm(24);
+const MS_CELL_SIZE = 6.9;
+
+/** The geometry the shared card-strip renderer lays out against. */
+const MS_GEO = { ...MS_PAGE, W: MS_W, H: MS_H, MARGIN: MS_MARGIN, CONTENT_W: MS_CONTENT_W };
+
 /**
  * Build the monthly statement PDF.
  *
  * One month per page, because a month IS the unit an operator reads this
  * document in: the clinic rows under a month, and the month's totals under
  * them. A month with more clinics than fit on a page continues onto the
- * next one with its column headings repeated, so no row is ever orphaned
- * under a page it does not belong to.
+ * next one with its band and column headings repeated, so no row is ever
+ * orphaned under a page it does not belong to.
  *
  * The headings are the ones the screen uses, so the document reads without
  * a key beside it. It used to print twelve ABBREVIATIONS and a legend
@@ -1771,127 +1789,279 @@ export function buildMonthlyStatementPdf(
   meta: MonthlyStatementPdfMeta,
   columns: StatementPdfColumn[],
 ): PdfBuildResult {
-  const geoKey = `${meta.paper || 'a4'}-${meta.orientation || 'landscape'}`;
-  const g = GEOS[geoKey] || GEOS['a4-landscape'];
-
-  const header = (): DocHeader => ({
-    labName: meta.labName,
-    title: 'MONTHLY STATEMENT',
-    meta: [
-      { label: 'Period', value: meta.periodLabel },
-      { label: 'Clinics', value: meta.scopeLabel },
-      { label: 'Generated', value: meta.generatedOn },
-    ],
-  });
-  const footerParts = {
-    labName: meta.labName,
-    title: 'Monthly Statement',
-    periodLabel: meta.periodLabel,
-  };
-
-  /* The page's vertical rhythm, measured once: title block, rule, the summary
-     strip, the month's band, the column headings, then the rows. Each band is
-     given its own space, because a statement that prints its heading across
-     its own title is a statement nobody can read. */
-  const ruleY = docRuleY(g, 3);
-  const summaryTop = ruleY - 30;
-  const summaryBottom = summaryTop - CARD_H;
-  /* The month band sits between the strip and the headings (56pt of band and
-     air), so the table body starts below all of them. A month whose page has
-     no strip starts directly under the rule instead — the strip opens the
-     document, it does not reserve a hole in every page after it. */
-  const firstRowWithStrip = summaryBottom - 66;
-  const firstRowY = ruleY - 66;
-
-  const sections: TableSection[] = months.map((month, monthIndex) => ({
-    cols: columns.map((c) => ({ key: c.key, label: c.label, w: c.w, align: c.align })),
-    rows: month.rows.map((cells) => ({
-      cells: cells.map((text, i) => ({
-        text,
-        bold: columns[i]?.strong,
-        grey: columns[i]?.strong ? 0.15 : 0,
-      })),
-    })),
-    top: monthIndex === 0 && meta.summary?.length ? firstRowWithStrip : firstRowY,
-    bottom: g.CONTENT_BOTTOM + 26,
-    heading: (ops, geo, y, continued) => {
-      /* The statement-wide figures open the DOCUMENT, not every month in it:
-         the strip belongs to the first sheet only, or the second month's page
-         leads with totals that are not its own. */
-      if (!continued && monthIndex === 0 && meta.summary?.length) {
-        drawSummaryCards(ops, geo, meta.summary, summaryTop);
-      }
-
-      /* The month's band: a filled strip with a dark tick at its left edge,
-         the month at title weight, and its three figures on the right. The
-         strip separates one month's statement from the next on one sheet. */
-      const bandY = y + 34;
-      const bandH = 24;
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: bandY, w: geo.CONTENT_W, h: bandH, grey: 0.95 });
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: bandY, w: 3, h: bandH, grey: 0.15 });
-      ops.push({
-        kind: 'text', x: geo.MARGIN + 10, y: bandY + 9, size: 11, bold: true, grey: 0.1,
-        text: fitShrink(
-          continued ? `${month.label.toUpperCase()} (CONT.)` : month.label.toUpperCase(),
-          geo.CONTENT_W * 0.42,
-          11,
-        ).text,
-      });
-      // The month's own figures, on the right of the band.
-      let fx = geo.W - geo.MARGIN - 8;
-      for (const f of [...month.headline].reverse()) {
-        ops.push({
-          kind: 'text', x: fx - textW(f.value, 7.5), y: bandY + 9, size: 7.5, bold: true, grey: 0.12,
-          text: f.value,
-        });
-        ops.push({
-          kind: 'text', x: fx - textW(f.value, 7.5) - textW(`${f.label}  `, 6.5) - 3, y: bandY + 9,
-          size: 6.5, grey: 0.45, text: `${f.label}  `,
-        });
-        fx -= textW(f.value, 7.5) + textW(`${f.label}  `, 6.5) + 14;
-      }
-      ops.push({
-        kind: 'line', x1: geo.MARGIN, y1: bandY + bandH, x2: geo.W - geo.MARGIN, y2: bandY + bandH,
-        grey: 0.55, width: 0.6,
-      });
-      return y + 18;
-    },
-    totals: (ops, geo, X, cols, rowEndY) => {
-      // The month's totals, boxed with the table, in the columns they belong to.
-      const y = rowEndY - 4;
-      const right = geo.MARGIN + geo.CONTENT_W;
-      ops.push({ kind: 'rect', x: geo.MARGIN, y: y - 8, w: geo.CONTENT_W, h: 19, grey: 0.92 });
-      drawGridLines(ops, geo, cols, X, y - 8, y + 11);
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y + 10, x2: right, y2: y + 10, grey: 0.3, width: 1 });
-      ops.push({ kind: 'line', x1: geo.MARGIN, y1: y - 8, x2: right, y2: y - 8, grey: 0.3, width: 1 });
-      month.totals.forEach((text, i) => {
-        const col = cols[i];
-        if (!col) return;
-        /* The closing balance is the statement's headline figure, so it is set
-           at the table's display weight rather than in the totals' fine print. */
-        const size = i === month.totals.length - 1 ? 8 : 6.5;
-        ops.push({
-          kind: 'text',
-          x: col.align === 'right' ? X[col.key] + col.w - textW(text, size) - 2 : X[col.key] + 2,
-          y: y + 1, size, bold: true, grey: 0.1, text,
-        });
-      });
-    },
+  /* Column widths come in as shares of the table, and are normalised here so
+     the Compact and Full views both fill exactly the same 190mm. */
+  const totalWeight = columns.reduce((sum, c) => sum + Math.max(0.001, c.w), 0) || 1;
+  const cols = columns.map((c) => ({
+    key: c.key,
+    label: c.label,
+    w: (Math.max(0.001, c.w) / totalWeight) * MS_CONTENT_W,
+    align: c.align,
+    strong: c.strong,
   }));
 
-  const pages = renderTableSections(
-    g,
-    sections,
-    (ops) => {
-      drawDocHeader(ops, g, header());
-    },
-    (ops, i, total) => {
-      drawDocFooter(ops, g, footerParts, i + 1, total);
-    },
-  );
+  const xs: Record<string, { x: number; w: number }> = {};
+  let acc = MS_MARGIN;
+  for (const c of cols) {
+    xs[c.key] = { x: acc, w: c.w };
+    acc += c.w;
+  }
+  const rightAligned = (col: { x: number; w: number }, text: string, size: number) =>
+    col.x + col.w - textW(text, size) - mm(1.5);
 
-  return assemblePdf(pages);
+  const title = 'MONTHLY STATEMENT';
+
+  const drawLetterhead = (ops: PdfOp[]) => {
+    ops.push({ kind: 'rect', x: MS_MARGIN, y: MS_H - mm(9), w: MS_CONTENT_W, h: 1.6, grey: 0.12, ...MS_NAVY });
+    ops.push({ kind: 'text', x: MS_MARGIN, y: MS_H - mm(17), size: 9, bold: true, grey: 0.2, ...MS_NAVY, text: meta.labName.slice(0, 60) });
+    ops.push({ kind: 'text', x: MS_MARGIN, y: MS_H - mm(27), size: 13.5, bold: true, grey: 0.06, ...MS_NAVY, text: title });
+    ops.push({
+      kind: 'text', x: MS_MARGIN, y: MS_H - mm(32.5), size: 6.5, grey: 0.45,
+      text: 'Statement of account by clinic · All amounts in PKR',
+    });
+
+    const boxW = mm(88);
+    const boxX = MS_RIGHT - boxW;
+    const lines: [string, string][] = [
+      ['PERIOD', meta.periodLabel],
+      ['CLINICS', meta.scopeLabel],
+      ['CURRENCY', 'PKR'],
+      ['GENERATED', meta.generatedOn],
+    ];
+    const rowH = 11;
+    const boxTop = MS_H - mm(9);
+    ops.push({ kind: 'rectStroke', x: boxX, y: boxTop - lines.length * rowH - 3, w: boxW, h: lines.length * rowH + 3, width: 0.6, ...MS_HAIR });
+    lines.forEach(([k, v], i) => {
+      const y = boxTop - (i + 1) * rowH + 2;
+      ops.push({ kind: 'text', x: boxX + mm(2), y, size: 6, bold: true, grey: 0.4, text: k });
+      const value = fitShrink(v, boxW - mm(23), 6.2);
+      ops.push({ kind: 'text', x: boxX + mm(22), y, size: value.size, grey: 0.15, text: value.text });
+      if (i < lines.length - 1) {
+        ops.push({ kind: 'line', x1: boxX, y1: y - 2.5, x2: boxX + boxW, y2: y - 2.5, ...MS_HAIR, width: 0.4 });
+      }
+    });
+
+    ops.push({ kind: 'line', x1: MS_MARGIN, y1: MS_RULE_Y, x2: MS_RIGHT, y2: MS_RULE_Y, ...MS_NAVY, width: 0.9 });
+  };
+
+  /* A continuation page repeats what the sheet IS, without the letterhead
+     block: the reader who picks up page 3 still knows whose statement it is. */
+  const drawContHeader = (ops: PdfOp[]) => {
+    ops.push({ kind: 'rect', x: MS_MARGIN, y: MS_H - mm(7), w: MS_CONTENT_W, h: 1.4, grey: 0.12, ...MS_NAVY });
+    ops.push({ kind: 'text', x: MS_MARGIN, y: MS_H - mm(14), size: 7.5, bold: true, grey: 0.08, ...MS_NAVY, text: title });
+    const mid = fitShrink(`${meta.labName} · ${meta.periodLabel} · ${meta.scopeLabel}`, MS_CONTENT_W - mm(52), 6);
+    ops.push({ kind: 'text', x: MS_MARGIN + mm(44), y: MS_H - mm(14), size: mid.size, grey: 0.4, text: mid.text });
+    ops.push({ kind: 'line', x1: MS_MARGIN, y1: MS_H - mm(21), x2: MS_RIGHT, y2: MS_H - mm(21), ...MS_HAIR, width: 0.5 });
+  };
+
+  interface MsPage {
+    ops: PdfOp[];
+    frameTop?: number;
+    frameBottom?: number;
+  }
+  const pages: MsPage[] = [];
+
+  const startPage = (first: boolean): MsPage => {
+    const ops: PdfOp[] = [];
+    if (first) drawLetterhead(ops);
+    else drawContHeader(ops);
+    const page: MsPage = { ops };
+    pages.push(page);
+    return page;
+  };
+
+  const drawBand = (ops: PdfOp[], yTop: number, month: MonthlyStatementPdfMonth, continued: boolean) => {
+    const y = yTop - MS_BAND_H;
+    ops.push({ kind: 'rect', x: MS_MARGIN, y, w: MS_CONTENT_W, h: MS_BAND_H, grey: 0.95 });
+    ops.push({ kind: 'rect', x: MS_MARGIN, y, w: 3, h: MS_BAND_H, grey: 0.15 });
+    const label = fitShrink(
+      continued ? `${month.label.toUpperCase()} (CONT.)` : month.label.toUpperCase(),
+      MS_CONTENT_W * 0.45,
+      10.5,
+    );
+    ops.push({ kind: 'text', x: MS_MARGIN + 9, y: y + 7.5, size: label.size, bold: true, grey: 0.1, text: label.text });
+
+    /* The month's own three figures, right-aligned across the band. */
+    let fx = MS_RIGHT - 8;
+    for (const f of [...month.headline].reverse()) {
+      const valueW = textW(f.value, 7.2);
+      const labelW = textW(`${f.label}  `, 6.2);
+      ops.push({ kind: 'text', x: fx - valueW, y: y + 7.5, size: 7.2, bold: true, grey: 0.12, text: f.value });
+      ops.push({ kind: 'text', x: fx - valueW - labelW - 3, y: y + 7.5, size: 6.2, grey: 0.45, text: `${f.label}  ` });
+      fx -= valueW + labelW + 14;
+    }
+    ops.push({ kind: 'line', x1: MS_MARGIN, y1: y, x2: MS_RIGHT, y2: y, ...MS_HAIR, width: 0.6 });
+  };
+
+  const drawHeader = (ops: PdfOp[], yTop: number) => {
+    ops.push({ kind: 'rect', x: MS_MARGIN, y: yTop - MS_HEAD_H, w: MS_CONTENT_W, h: MS_HEAD_H, grey: 0.93 });
+    cols.forEach((c) => {
+      const col = xs[c.key];
+      const label = fitShrink(c.label.toUpperCase(), col.w - mm(3), 6.2);
+      const x = c.align === 'right'
+        ? col.x + col.w - textW(label.text, label.size) - mm(1.5)
+        : col.x + mm(1.5);
+      ops.push({ kind: 'text', x, y: yTop - MS_HEAD_H + 5, size: label.size, bold: true, grey: 0.2, text: label.text });
+    });
+    ops.push({ kind: 'line', x1: MS_MARGIN, y1: yTop - MS_HEAD_H, x2: MS_RIGHT, y2: yTop - MS_HEAD_H, ...MS_NAVY, width: 0.7 });
+    for (const c of cols.slice(1)) {
+      ops.push({ kind: 'line', x1: xs[c.key].x, y1: yTop, x2: xs[c.key].x, y2: yTop - MS_HEAD_H, ...MS_HAIR, width: 0.4 });
+    }
+  };
+
+  /** Band + column headings, returning the y the first row starts at. */
+  const beginMonthTable = (page: MsPage, top: number, month: MonthlyStatementPdfMonth, continued: boolean) => {
+    drawBand(page.ops, top, month, continued);
+    const headerTop = top - MS_BAND_H;
+    drawHeader(page.ops, headerTop);
+    page.frameTop = headerTop;
+    page.frameBottom = headerTop - MS_HEAD_H;
+    return headerTop - MS_HEAD_H;
+  };
+
+  /** The card strip reserves its own band above the first month. */
+  const summaryH = meta.summary?.length ? CARD_H + 10 : 0;
+
+  if (months.length === 0) {
+    const page = startPage(true);
+    page.ops.push({
+      kind: 'text', x: MS_MARGIN + mm(1.5), y: MS_RULE_Y - 18, size: 8, grey: 0.4,
+      text: 'No statement months in this window.',
+    });
+  }
+
+  months.forEach((month, monthIndex) => {
+    const firstPageTop = monthIndex === 0 ? MS_RULE_Y - 12 - summaryH : MS_RULE_Y - 12;
+    let page = startPage(monthIndex === 0);
+    let cursor = beginMonthTable(page, firstPageTop, month, false);
+
+    /* The statement-wide figures open the DOCUMENT, not every month in it:
+       the strip belongs to the first sheet only. */
+    if (monthIndex === 0 && meta.summary?.length) {
+      drawSummaryCards(page.ops, MS_GEO, meta.summary, MS_RULE_Y - 12);
+    }
+
+    for (const cells of month.rows) {
+      /* Only the clinic column wraps; the money columns are single values and
+         shrink to fit, so a long clinic name never squeezes a figure. */
+      const wrapped = cells.map((text, i) => {
+        const col = cols[i];
+        if (!col || i > 0) return [text];
+        return wrapText(text, col.w - mm(3), MS_CELL_SIZE);
+      });
+      const lineCount = Math.max(1, ...wrapped.map((lines) => lines.length));
+      const rowH = Math.max(MS_ROW_MIN_H, lineCount * MS_ROW_LINE_H + MS_ROW_PAD);
+
+      if (cursor - rowH < MS_BOTTOM) {
+        page = startPage(false);
+        cursor = beginMonthTable(page, MS_CONT_TOP, month, true);
+      }
+
+      const yTop = cursor;
+      const yBottom = yTop - rowH;
+      page.ops.push({ kind: 'line', x1: MS_MARGIN, y1: yBottom, x2: MS_RIGHT, y2: yBottom, ...MS_HAIR, width: 0.35 });
+
+      cells.forEach((text, i) => {
+        const col = cols[i];
+        if (!col) return;
+        if (i === 0) {
+          wrapped[0].forEach((line, li) => {
+            page.ops.push({
+              kind: 'text',
+              x: xs[col.key].x + mm(1.5),
+              y: yTop - MS_ROW_PAD / 2 - MS_CELL_SIZE - li * MS_ROW_LINE_H + 1.5,
+              size: MS_CELL_SIZE,
+              bold: true,
+              grey: 0.12,
+              text: line,
+            });
+          });
+          return;
+        }
+        const fitted = fitShrink(text, col.w - mm(3), col.strong ? 7 : MS_CELL_SIZE);
+        page.ops.push({
+          kind: 'text',
+          x: rightAligned(xs[col.key], fitted.text, fitted.size),
+          y: yTop - MS_ROW_PAD / 2 - fitted.size + 1.5,
+          size: fitted.size,
+          bold: !!col.strong,
+          grey: col.strong ? 0.1 : 0.15,
+          text: fitted.text,
+        });
+      });
+
+      cursor = yBottom;
+      page.frameBottom = yBottom;
+    }
+
+    if (!month.totals.length) return;
+
+    if (cursor - MS_TOTALS_H < MS_BOTTOM) {
+      page = startPage(false);
+      cursor = beginMonthTable(page, MS_CONT_TOP, month, true);
+    }
+
+    const totalsTop = cursor;
+    const totalsBottom = totalsTop - MS_TOTALS_H;
+    page.ops.push({ kind: 'rect', x: MS_MARGIN, y: totalsBottom, w: MS_CONTENT_W, h: MS_TOTALS_H, grey: 0.92 });
+    page.ops.push({ kind: 'line', x1: MS_MARGIN, y1: totalsTop, x2: MS_RIGHT, y2: totalsTop, ...MS_NAVY, width: 1 });
+    page.ops.push({ kind: 'line', x1: MS_MARGIN, y1: totalsBottom, x2: MS_RIGHT, y2: totalsBottom, ...MS_HAIR, width: 0.6 });
+    for (const c of cols.slice(1)) {
+      page.ops.push({ kind: 'line', x1: xs[c.key].x, y1: totalsTop, x2: xs[c.key].x, y2: totalsBottom, ...MS_HAIR, width: 0.35 });
+    }
+    month.totals.forEach((text, i) => {
+      const col = cols[i];
+      if (!col) return;
+      /* The last column is the balance the reader is looking for, so it is set
+         at the table's display weight rather than in the totals' fine print. */
+      const fitted = fitShrink(text, col.w - mm(3), i === cols.length - 1 ? 7.6 : 6.8);
+      const x = i === 0
+        ? xs[col.key].x + mm(1.5)
+        : rightAligned(xs[col.key], fitted.text, fitted.size);
+      page.ops.push({
+        kind: 'text', x, y: totalsBottom + 6.5, size: fitted.size, bold: true, grey: 0.1,
+        text: i === 0 ? fitted.text.toUpperCase() : fitted.text,
+      });
+    });
+    page.frameBottom = totalsBottom;
+  });
+
+  /* Frames end at the last row (or the totals) on each page — never an empty
+     full-height grid below the table. */
+  for (const page of pages) {
+    if (page.frameTop === undefined || page.frameBottom === undefined) continue;
+    if (page.frameBottom >= page.frameTop) continue;
+    page.ops.push({ kind: 'line', x1: MS_MARGIN, y1: page.frameTop, x2: MS_MARGIN, y2: page.frameBottom, ...MS_HAIR, width: 0.4 });
+    page.ops.push({ kind: 'line', x1: MS_RIGHT, y1: page.frameTop, x2: MS_RIGHT, y2: page.frameBottom, ...MS_HAIR, width: 0.4 });
+    for (const c of cols.slice(1)) {
+      page.ops.push({ kind: 'line', x1: xs[c.key].x, y1: page.frameTop, x2: xs[c.key].x, y2: page.frameBottom, ...MS_HAIR, width: 0.35 });
+    }
+  }
+
+  const totalPages = pages.length;
+  const specs = pages.map((page, i) => {
+    const ops = page.ops.slice();
+    ops.push({ kind: 'line', x1: MS_MARGIN, y1: MS_FOOTER_Y + 8, x2: MS_RIGHT, y2: MS_FOOTER_Y + 8, ...MS_HAIR, width: 0.5 });
+    ops.push({
+      kind: 'text', x: MS_MARGIN, y: MS_FOOTER_Y, size: 6, grey: 0.5,
+      text: fitShrink(`${meta.labName} · Monthly Statement · ${meta.periodLabel}`, MS_CONTENT_W - mm(30), 6).text,
+    });
+    const pageText = `Page ${i + 1} of ${totalPages}`;
+    ops.push({ kind: 'text', x: MS_RIGHT - textW(pageText, 6.5), y: MS_FOOTER_Y, size: 6.5, bold: true, grey: 0.4, text: pageText });
+    return { ops, geo: MS_GEO };
+  });
+
+  return assemblePdf(specs, {
+    title: `Monthly Statement - ${meta.periodLabel}`,
+    author: meta.labName,
+    subject: `Monthly clinic statement of account for ${meta.periodLabel}`,
+    keywords: `monthly statement, accounts receivable, ${meta.scopeLabel}`,
+    creator: 'Dental Solutions',
+    producer: 'Dental Solutions PDF Engine',
+    created: meta.generatedOn,
+  });
 }
+
 /* ---------- download helper ---------- */
 
 /**

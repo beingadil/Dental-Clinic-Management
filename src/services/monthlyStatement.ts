@@ -633,7 +633,7 @@ export const STATEMENT_COLUMNS: readonly StatementColumn[] = [
   },
   {
     key: 'cases',
-    label: 'Cases Billed',
+    label: 'Cases',
     width: 0.05,
     align: 'right',
     core: true,
@@ -651,7 +651,7 @@ export const STATEMENT_COLUMNS: readonly StatementColumn[] = [
   },
   {
     key: 'collected',
-    label: 'Collected (Cr)',
+    label: 'Received',
     width: 0.095,
     align: 'right',
     core: true,
@@ -687,7 +687,7 @@ export const STATEMENT_COLUMNS: readonly StatementColumn[] = [
   },
   {
     key: 'closing',
-    label: 'Closing Balance',
+    label: 'Remaining',
     width: 0.095,
     align: 'right',
     core: true,

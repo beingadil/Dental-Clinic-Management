@@ -261,13 +261,13 @@ describe('BillingReportsView monthly statement', () => {
     const allNoor = clinicRow(all);
     expect(figure(all, allNoor, 'Billed (Dr)')).toBe('PKR 65,000');
     // Feb's 10,000 advance + Mar's 15,000 bank + 3,000 credit note — summed.
-    expect(figure(all, allNoor, 'Collected (Cr)')).toBe('PKR 28,000');
+    expect(figure(all, allNoor, 'Received')).toBe('PKR 28,000');
     // A balance is a position, not a sum: the latest closing carries.
-    expect(figure(all, allNoor, 'Closing Balance')).toBe('PKR 37,000 Dr');
+    expect(figure(all, allNoor, 'Remaining')).toBe('PKR 37,000 Dr');
 
     const total = within(all).getByText('Statement total').closest('tr') as HTMLElement;
     expect(figure(all, total, 'Billed (Dr)')).toBe('PKR 77,000');
-    expect(figure(all, total, 'Closing Balance')).toBe('PKR 49,000 Dr');
+    expect(figure(all, total, 'Remaining')).toBe('PKR 49,000 Dr');
 
     // The Months stat reports the history the single table spans, not 1.
     expect(screen.getByText('Months').parentElement?.textContent).toContain('2');
@@ -277,8 +277,8 @@ describe('BillingReportsView monthly statement', () => {
     const [march] = tables();
     for (const heading of [
       'Billed (Dr)',
-      'Collected (Cr)',
-      'Closing Balance',
+      'Received',
+      'Remaining',
     ]) {
       expect(within(march).getByText(heading)).toBeTruthy();
     }
@@ -293,25 +293,25 @@ describe('BillingReportsView monthly statement', () => {
     const [march] = tables();
     // Collected (Cr) is the ledger's Credit column: 15,000 bank cash plus the
     // 3,000 credit note. The 5,000 advance application is a 0/0 memo there.
-    expect(figure(march, clinicRow(march), 'Collected (Cr)')).toBe('PKR 18,000');
+    expect(figure(march, clinicRow(march), 'Received')).toBe('PKR 18,000');
   });
 
   it('shows the balance brought forward as the ledger closing balance with its Dr/Cr side', () => {
     const [march] = tables();
     const marRow = clinicRow(march);
-    expect(figure(march, marRow, 'Closing Balance')).toBe('PKR 37,000 Dr');
+    expect(figure(march, marRow, 'Remaining')).toBe('PKR 37,000 Dr');
   });
 
   it('totals each month in a footer', () => {
     const march = tables()[0];
     const footer = footerRow(march);
-    expect(figure(march, footer, 'Cases Billed')).toBe('1');
+    expect(figure(march, footer, 'Cases')).toBe('1');
     expect(figure(march, footer, 'Billed (Dr)')).toBe('PKR 25,000');
     // The footer is the clinics' position at month end: Al-Noor's 37,000 plus
     // Beta's 12,000 carried from February, even though Beta raised nothing
     // in March. A statement that totalled only the month's movers would
     // understate the receivable by every quiet clinic.
-    expect(figure(march, footer, 'Closing Balance')).toBe('PKR 49,000 Dr');
+    expect(figure(march, footer, 'Remaining')).toBe('PKR 49,000 Dr');
   });
 
   it('lists every clinic in the month, carrying the quiet ones balance forward', () => {
@@ -322,8 +322,8 @@ describe('BillingReportsView monthly statement', () => {
     const [march] = tables();
     const beta = within(march).getByText('Beta Dental').closest('tr') as HTMLElement;
     expect(figure(march, beta, 'Billed (Dr)')).toBe('PKR 0');
-    expect(figure(march, beta, 'Collected (Cr)')).toBe('PKR 0');
-    expect(figure(march, beta, 'Closing Balance')).toBe('PKR 12,000 Dr');
+    expect(figure(march, beta, 'Received')).toBe('PKR 0');
+    expect(figure(march, beta, 'Remaining')).toBe('PKR 12,000 Dr');
   });
 
   it('exports the same closing balance to Excel', async () => {
@@ -358,8 +358,8 @@ describe('the compact view', () => {
       .map((h) => h.textContent!.trim());
     expect(headers).toContain('Dental Clinic');
     expect(headers).toContain('Billed (Dr)');
-    expect(headers).toContain('Collected (Cr)');
-    expect(headers).toContain('Closing Balance');
+    expect(headers).toContain('Received');
+    expect(headers).toContain('Remaining');
     expect(headers).not.toContain('Opening (B/F)');
     expect(headers).not.toContain('Closing (C/F)');
     // The detail columns are the ones the Compact view leaves out.
@@ -376,7 +376,7 @@ describe('the compact view', () => {
     const [, bytes] = saveFile.mock.calls[0] as unknown as [string, Uint8Array];
     const xml = new TextDecoder().decode(bytes);
     // The core columns are there...
-    expect(xml).toContain('Closing Balance');
+    expect(xml).toContain('Remaining');
     // ...and the detail ones are not, because the document is the one on screen.
     expect(xml).not.toContain('Credit Notes');
     expect(xml).not.toContain('Advance Used');
@@ -424,7 +424,7 @@ describe('choosing which clinics are in the statement', () => {
        into March. Filtering February must not rewrite it. */
     excludeClinic('Beta Dental');
     const march = tables()[0];
-    expect(figure(march, clinicRow(march), 'Closing Balance')).toBe('PKR 37,000 Dr');
+    expect(figure(march, clinicRow(march), 'Remaining')).toBe('PKR 37,000 Dr');
   });
 
   it('exports the filtered statement, not the whole one', async () => {
@@ -459,6 +459,22 @@ describe('exporting the statement as a PDF', () => {
     // One month on screen is one sheet in the file — the document does not
     // silently add the archive behind the page the reader was looking at.
     expect(pdf).toContain('/Count 1 >>');
+  });
+
+  it('prints on the General Ledger\u2019s A4 portrait sheet with the same headings', async () => {
+    fireEvent.click(screen.getByLabelText('Download the monthly statement as a PDF'));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    const [, pdf] = downloadPdf.mock.calls[0] as unknown as [string, string];
+    /* 595 × 842 pt is A4 portrait — the ledger statement's own geometry. The
+       two documents are filed together, so they must print on the same paper. */
+    expect(pdf).toContain('/MediaBox [0 0 595 842]');
+    expect(pdf).toContain('Statement of account by clinic');
+    expect(pdf).toContain('Page 1 of');
+    // The renamed headings, exactly as the screen prints them.
+    expect(pdf).toContain('RECEIVED');
+    expect(pdf).toContain('REMAINING');
+    expect(pdf).not.toContain('COLLECTED (CR)');
+    expect(pdf).not.toContain('CLOSING BALANCE');
   });
 
   it('follows the date window into the document', async () => {
