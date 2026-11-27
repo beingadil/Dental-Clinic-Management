@@ -18,8 +18,14 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
   invoice,
   onClose
 }) => {
-  const { brandingSettings } = useApp();
+  const { brandingSettings, invoices } = useApp();
   const printRef = useRef<HTMLDivElement>(null);
+
+  const invoiceFor = (alloc: { invoice_id?: string; invoice_number?: string }) =>
+    (invoices || []).find(
+      (i) => (!!alloc.invoice_id && i.id === alloc.invoice_id) ||
+             (!!alloc.invoice_number && i.invoice_number === alloc.invoice_number)
+    );
 
   const handlePrint = () => {
     void printCurrentDocument();
@@ -143,14 +149,24 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-xs">
               <p className="font-bold text-slate-800 mb-2">Adjusted Invoices</p>
               <div className="space-y-1">
-                {payment.allocations!.map((alloc) => (
-                  <div key={alloc.id} className="flex items-center justify-between gap-3">
-                    <span className="font-mono font-bold text-slate-800">{alloc.invoice_number}</span>
-                    <span className="font-mono tabular-nums text-ink-success">
-                      {formatPKR(alloc.amount || 0)}
-                    </span>
-                  </div>
-                ))}
+                {payment.allocations!.map((alloc) => {
+                  const inv = invoiceFor(alloc);
+                  const detail = [
+                    inv?.patient_name ? `Patient: ${inv.patient_name}` : '',
+                    inv?.case_type_name || '',
+                  ].filter(Boolean).join(' · ');
+                  return (
+                    <div key={alloc.id} className="flex items-center justify-between gap-3 py-0.5">
+                      <div className="min-w-0">
+                        <span className="font-mono font-bold text-slate-800">{alloc.invoice_number}</span>
+                        {detail && <div className="text-[11px] text-slate-500 font-medium truncate">{detail}</div>}
+                      </div>
+                      <span className="font-mono tabular-nums text-ink-success">
+                        {formatPKR(alloc.amount || 0)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
               {payment.unapplied_amount && payment.unapplied_amount > 0 && (
                 <p className="mt-2 text-slate-500">
