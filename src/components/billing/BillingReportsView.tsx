@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { MonthEndCloseModal } from './MonthEndCloseModal';
 import { DailyReportView } from './DailyReportView';
+import { PartnersTab } from './PartnersTab';
+import { loadPersons, loadAssignments } from '../../services/persons';
 
 interface BillingReportsViewProps {
   onPrintInvoice: (invoice: Invoice) => void;
@@ -82,7 +84,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     user,
   } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily'>('monthly');
+  const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily' | 'partners'>('monthly');
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [voucherSearch, setVoucherSearch] = useState<string>('');
   // Monthly statement: the date window chooses which whole months are on
@@ -111,15 +113,33 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
      by default instead of being missing from every report until somebody
      remembers to tick it. Empty means "every clinic". */
   const [excludedLabIds, setExcludedLabIds] = useState<string[]>([]);
+const [personFilter, setPersonFilter] = useState<string>('all');
+const [persons] = useState(() => loadPersons());
+const [assignments] = useState(() => loadAssignments());
 
   /* How many columns the statement shows.
      The full set is twelve, which is more than a laptop screen shows at once.
      COMPACT shows the seven a reader needs to read the statement at all; FULL
      shows every column, for the months a reader is auditing. The choice is
      remembered, because switching it on every visit is a tax. */
+  const effectiveExcludedLabIds = useMemo(() => {
+    if (personFilter === 'all') return excludedLabIds;
+    // Keep only clinics assigned to the selected person; exclude everything else.
+    const keep = new Set(
+      labs
+        .filter((l) => (assignments[l.id]?.personId ?? null) === personFilter)
+        .map((l) => l.id)
+    );
+    const excluded = labs
+      .map((l) => l.id)
+      .filter((id) => !keep.has(id));
+    // Union with user-excluded
+    return Array.from(new Set([...excluded, ...excludedLabIds]));
+  }, [personFilter, excludedLabIds, labs, assignments]);
+
   const visibleBlocks = useMemo(
-    () => filterMonthlyStatements(monthlyBlocks, excludedLabIds),
-    [monthlyBlocks, excludedLabIds]
+    () => filterMonthlyStatements(monthlyBlocks, effectiveExcludedLabIds),
+    [monthlyBlocks, effectiveExcludedLabIds]
   );
 
   // Which months of the statement are on screen. The window is expressed as
@@ -541,6 +561,18 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
             <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
             <span>Daily Lab Report</span>
           </button>
+
+          <button
+            onClick={() => setActiveSubTab('partners')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+              activeSubTab === 'partners'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Partners</span>
+          </button>
         </div>
 
         {activeSubTab === 'monthly' && (
@@ -569,6 +601,17 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               tone="indigo"
               className="sm:w-64"
             />
+            <select
+              value={personFilter}
+              onChange={(e) => setPersonFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white cursor-pointer"
+              aria-label="Filter by person"
+            >
+              <option value="all">All persons</option>
+              {persons.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
             {/* Month-end closing belongs on the statement itself: this is where
                 the operator reads the month, so this is where the close is. */}
             {canPost(user, 'payment:record') && (
@@ -629,6 +672,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
 
       {/* Sub-Tab 3: Daily Lab Report — the end-of-day production sheet. */}
       {activeSubTab === 'daily' && <DailyReportView />}
+      {activeSubTab === 'partners' && <PartnersTab monthlyBlocks={visibleBlocks} />}
 
       {/* Sub-Tab 1: Monthly Breakdown */}
       {activeSubTab === 'monthly' && (
@@ -658,6 +702,35 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
               />
             </div>
           )}
+            {personFilter !== 'all' && displayedBlocks.length > 0 && (() => {
+              const p = persons.find((x) => x.id === personFilter);
+              const billed = displayedBlocks.reduce(
+                (s, b) => s + b.rows.reduce((rs, r) => rs + (r.billed || 0), 0),
+                0
+              );
+              const commission =
+                p?.rateScope === 'person'
+                  ? Math.round((billed * (p?.commissionRate || 0)) / 100)
+                  : displayedBlocks.reduce(
+                      (s, b) =>
+                        s +
+                        b.rows.reduce((rs, r) => {
+                          const rate = assignments[r.lab_id]?.rateOverride ?? 0;
+                          return rs + Math.round(((r.billed || 0) * rate) / 100);
+                        }, 0),
+                      0
+                    );
+              return (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 px-5 py-3 flex items-center justify-between">
+                  <div className="text-sm font-bold text-indigo-700">
+                    {p?.name} — commission ({p?.commissionRate}%{p?.rateScope === 'clinic' ? ' per clinic' : ''})
+                  </div>
+                  <div className="text-sm font-bold text-indigo-700">
+                    Billed {formatPKR(billed)} · Commission {formatPKR(commission)}
+                  </div>
+                </div>
+              );
+            })()}
           {displayedBlocks.length === 0 ? (
             <EmptyState
               icon={BarChart3}
