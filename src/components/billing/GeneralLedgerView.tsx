@@ -98,13 +98,20 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
      reference_id on the ledger entry is the embedded payment's id. */
   const findVoucher = (entry: LedgerReportRow): { payment: PaymentRecord; invoice?: Invoice } | null => {
     if (entry.type !== 'payment' && entry.type !== 'advance_allocation') return null;
+    // Prefer a slice that carries the full allocation trail (the primary slice
+    // of a multi-invoice voucher), so the receipt lists every invoice paid.
+    let fallback: { payment: PaymentRecord; invoice?: Invoice } | null = null;
     for (const inv of invoices || []) {
       const hit = (inv.payments || []).find(
         (p) => p.id === entry.referenceId || p.payment_number === entry.voucherNumber,
       );
-      if (hit) return { payment: hit, invoice: inv };
+      if (hit) {
+        const candidate = { payment: hit, invoice: inv };
+        if ((hit.allocations?.length ?? 0) > 0) return candidate;
+        if (!fallback) fallback = candidate;
+      }
     }
-    return null;
+    return fallback;
   };
 
   /* The voucher a row carries — one row per posting now, so a payment row maps
