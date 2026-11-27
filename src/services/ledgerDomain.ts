@@ -304,7 +304,12 @@ export const buildLedgerEntries = (input: {
       });
     });
 
-    // 1. Invoices -> Debit (Increases Outstanding Receivable)
+    /* Collect payment/advance-allocation slices here; they are merged below so a
+       single multi-invoice voucher posts as ONE ledger entry (narration lists
+       the invoices) instead of one entry per invoice slice. */
+    const paymentRawEvents: RawEvent[] = [];
+
+    // 1. Invoices -> Debit ...
     targetInvoices.forEach((inv) => {
       const invDate = inv.created_at || getTodayStr();
       const parsedTime = new Date(invDate).getTime();
@@ -329,7 +334,7 @@ export const buildLedgerEntries = (input: {
         notes: (inv.discount || 0) > 0 ? `Subtotal PKR ${(inv.amount || 0).toLocaleString()} - Discount PKR ${(inv.discount || 0).toLocaleString()}` : undefined
       });
 
-      // 2. Payments for this Invoice -> Credit (if direct) or Allocation Memo (if advance)
+      // 2. Payments for this Invoice -> collected, merged later by voucher
       (inv.payments || []).forEach((p, pIdx) => {
         const isAdvanceAlloc = p.payment_method === 'advance' || p.payment_type === 'advance_allocation';
         const pDate = p.payment_date || invDate;
@@ -337,9 +342,8 @@ export const buildLedgerEntries = (input: {
         const pBaseTime = isNaN(pParsedTime) ? invTime : pParsedTime;
         const methodStr = String(p.payment_method || 'bank').toUpperCase();
 
-        rawEvents.push({
+        paymentRawEvents.push({
           date: pDate,
-          // Offset timestamp slightly to ensure payments occurring on same date sort after invoice creation
           timestamp: pBaseTime + (pIdx + 1) * 1000,
           lab_id: p.lab_id || inv.lab_id || '',
           lab_name: p.lab_name || inv.lab_name || 'Clinic',
@@ -349,20 +353,85 @@ export const buildLedgerEntries = (input: {
           case_id: p.case_id || inv.case_id,
           case_number: p.case_number || inv.case_number,
           doctor_name: inv.doctor_name,
+          /* Narration lists the invoice this slice pays; merged below into a
+             comma-separated list for multi-invoice vouchers. */
           description: isAdvanceAlloc
             ? `Advance credit applied to ${invNum} (Ref: ${p.reference_number || 'Advance'})`
             : `Payment received for ${invNum} via ${methodStr}`,
-          // If payment was paid from advance, the advance deposit already credited the ledger, so allocation is debit 0, credit 0
           debit: 0,
           credit: isAdvanceAlloc ? 0 : (p.amount || 0),
           payment_method: p.payment_method,
           attachments_count: (p.attachments || []).length,
           attachments: p.attachments || [],
           notes: p.notes || (p.reference_number ? `Ref: ${p.reference_number}` : undefined),
-          recorded_by: p.recorded_by
-        });
+          recorded_by: p.recorded_by,
+          /* Stash the invoice number for narration merging. */
+          _invNum: invNum,
+          _methodStr: methodStr,
+          _isAdvanceAlloc: isAdvanceAlloc,
+          _reference_number_raw: p.reference_number,
+        } as any);
       });
     });
+
+    /* Merge payment slices that share a voucher (receipt base number) into a
+       single ledger entry. The credit total is the sum of the slices, so the
+       running balance is unchanged; only the row count drops. */
+    const mergedPaymentEvents: RawEvent[] = [];
+    const groups = new Map<string, RawEvent[]>();
+    for (const ev of paymentRawEvents) {
+      const base = receiptNumberOf((ev as any).reference_number || '');
+      const key = `${ev.entry_type}|${ev.lab_id}|${base}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(ev);
+    }
+    for (const slices of groups.values()) {
+      if (slices.length === 1) {
+        const ev = slices[0];
+        // clean stash fields
+        delete (ev as any)._invNum;
+        delete (ev as any)._methodStr;
+        delete (ev as any)._isAdvanceAlloc;
+        delete (ev as any)._reference_number_raw;
+        mergedPaymentEvents.push(ev);
+        continue;
+      }
+      // merge
+      const first = slices[0];
+      const isAdvanceAlloc = (first as any)._isAdvanceAlloc;
+      const methodStr = (first as any)._methodStr;
+      const invNums = slices.map((s) => (s as any)._invNum).filter(Boolean);
+      const totalCredit = slices.reduce((sum, s) => sum + (s.credit || 0), 0);
+      const totalAttachments = slices.reduce((sum, s) => sum + (s.attachments_count || 0), 0);
+      const mergedAttachments = slices.flatMap((s) => s.attachments || []);
+      const mergedNotes = slices.map((s) => s.notes).filter(Boolean).join('; ') || undefined;
+      const minTs = Math.min(...slices.map((s) => s.timestamp));
+      const merged: RawEvent = {
+        date: first.date,
+        timestamp: minTs,
+        lab_id: first.lab_id,
+        lab_name: first.lab_name,
+        entry_type: first.entry_type,
+        reference_id: first.reference_id,
+        reference_number: receiptNumberOf(first.reference_number || '') || first.reference_number,
+        case_id: first.case_id,
+        case_number: first.case_number,
+        doctor_name: first.doctor_name,
+        description: isAdvanceAlloc
+          ? `Advance credit applied to ${invNums.join(', ')} (Ref: ${first.notes || 'Advance'})`
+          : `Payment received for ${invNums.join(', ')} via ${methodStr}`,
+        debit: 0,
+        credit: totalCredit,
+        payment_method: first.payment_method,
+        attachments_count: totalAttachments,
+        attachments: mergedAttachments,
+        notes: mergedNotes,
+        recorded_by: first.recorded_by,
+      };
+      mergedPaymentEvents.push(merged);
+    }
+    // Append merged payment events to rawEvents
+    mergedPaymentEvents.forEach((e) => rawEvents.push(e));
 
     // 3. Advance Payments / Deposits received from Clinic -> Credit (Decreases Outstanding Receivable / Creates credit surplus)
     targetAdvances.forEach((adv, advIdx) => {
