@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
-import { EmptyState, DataTable, GlassSelect, Modal } from '../common/ui';
+import { EmptyState, DataTable, GlassSelect, Modal, usePagination } from '../common/ui';
 import { formatPKR } from '../../services/financeDomain';
 import {
   buildDailyLabReportPdf,
@@ -45,7 +45,10 @@ export const DailyReportView: React.FC = () => {
   // Today by default: the report is a daily instrument first and foremost.
   const [from, setFrom] = useState<string>(() => todayISO());
   const [to, setTo] = useState<string>(() => todayISO());
-  const [includeArchived, setIncludeArchived] = useState(false);
+  /* Archived cases are history, not deleted work. Auto-archive files delivered
+     cases after 30 days, so defaulting this off made "All Time" hide most of
+     the lab's history. On by default; the checkbox narrows to live work. */
+  const [includeArchived, setIncludeArchived] = useState(true);
   /* No tick = every type. This is the ONLY filter the operator's question
      needs: "how much zirconia did each clinic send us this month" — and it has
      to take several answers at once ("zirconia and e.max"), because asking two
@@ -161,6 +164,33 @@ export const DailyReportView: React.FC = () => {
       }),
     [cases, invoices, advancePayments, from, to, includeArchived, caseTypes, include]
   );
+
+  /* Both readings of the window are paged. All Time can carry the lab's whole
+     history (hundreds of cases), and the shared hook keeps the page chrome,
+     page-size control and the "showing X–Y of Z" copy identical to Billing. */
+  const filtersKey = `${from}|${to}|${includeArchived}|${caseTypes.join('\u0000')}`;
+  const productionPage = usePagination(report.production, {
+    initialPageSize: 50,
+    resetKey: filtersKey,
+  });
+  const clinicPage = usePagination(report.byClinic, {
+    initialPageSize: 25,
+    resetKey: filtersKey,
+  });
+  /* The drill-down carries the same window's cases; a big clinic can run to
+     three figures, so it gets the same page chrome as the sheet. */
+  const detailRows = useMemo(() => detail?.rows ?? [], [detail]);
+  const detailPage = usePagination(detailRows, {
+    /* Full-page dialog: a small page size keeps the whole table visible
+       without any scroll region; the pager handles the rest. */
+    initialPageSize: 10,
+    resetKey: detail?.labId ?? '',
+  });
+  /* Keep the clinic header and its rows on the same tracks when the operator
+     turns the Units column off. */
+  const clinicGrid = report.include.units
+    ? 'sm:grid-cols-[1fr_64px_64px_120px_24px]'
+    : 'sm:grid-cols-[1fr_64px_120px_24px]';
 
   /* The production sheet's list, filtered by the operator's toggles. */
   const sheetColumnsOn: SheetColumn[] = sheetColumns.filter((c) => report.include[c.key]);
@@ -407,9 +437,10 @@ export const DailyReportView: React.FC = () => {
             />
           ) : (
             <DataTable<ProductionRow>
-              data={report.production}
+              data={productionPage.pageItems}
               rowKey={(r) => r.id}
               columns={sheetColumnsOn}
+              footer={productionPage.pagination}
             />
           )}
         </div>
@@ -457,7 +488,7 @@ export const DailyReportView: React.FC = () => {
             <div>
               {/* Column labels. The rows below are buttons, so this is a table
                   that a keyboard can walk through one clinic at a time. */}
-              <div className="hidden sm:grid grid-cols-[1fr_64px_64px_120px_24px] gap-3 px-4 py-2 border-b border-slate-100 ds-th">
+              <div className={`hidden sm:grid ${clinicGrid} gap-3 px-4 py-2 border-b border-slate-100 ds-th`}>
                 <span>Clinic</span>
                 <span className="text-right">Cases</span>
                 {report.include.units && <span className="text-right">Units</span>}
@@ -465,12 +496,12 @@ export const DailyReportView: React.FC = () => {
                 <span />
               </div>
               <ul className="divide-y divide-slate-100">
-                {report.byClinic.map((row) => (
+                {clinicPage.pageItems.map((row) => (
                   <li key={row.labId}>
                     <button
                       type="button"
                       onClick={() => setDetail(row)}
-                      className="w-full text-left grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_64px_64px_120px_24px] items-center gap-3 px-4 py-2.5 hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      className={`w-full text-left grid grid-cols-[1fr_auto] ${clinicGrid} items-center gap-3 px-4 py-2.5 hover:bg-slate-50/80 transition-colors cursor-pointer`}
                       aria-label={`${row.labName}: ${row.cases} cases, ${formatPKR(row.value)}`}
                     >
                       <span className="min-w-0">
@@ -500,6 +531,7 @@ export const DailyReportView: React.FC = () => {
                   </li>
                 ))}
               </ul>
+              {clinicPage.pagination}
             </div>
           )}
         </div>
@@ -512,7 +544,11 @@ export const DailyReportView: React.FC = () => {
         open={!!detail}
         onClose={() => setDetail(null)}
         label="Clinic work detail"
-        maxWidth="max-w-3xl"
+        maxWidth="max-w-full"
+        /* The drill-down is a page, not a peek. Filling the viewport keeps the
+           stats, the case table and its pager together; only the rows scroll. */
+        cardClassName="h-[calc(100dvh-1.5rem)] md:h-[calc(100dvh-3rem)] flex flex-col"
+        bodyClassName="flex-1 min-h-0 flex flex-col"
         header={
           <div className="min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
@@ -525,8 +561,8 @@ export const DailyReportView: React.FC = () => {
         }
       >
         {detail && (
-          <div className="p-4 space-y-3">
-            <div className="grid grid-cols-3 gap-2">
+          <div className="flex-1 min-h-0 flex flex-col gap-3 p-4">
+            <div className="grid shrink-0 grid-cols-3 gap-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Cases</div>
                 <div className="text-lg font-bold text-slate-900 tabular-nums">{detail.cases}</div>
@@ -542,59 +578,62 @@ export const DailyReportView: React.FC = () => {
                 <div className="text-lg font-bold text-slate-900 tabular-nums">{formatPKR(detail.value)}</div>
               </div>
             </div>
-            <p className="text-[11px] text-slate-500">
+            <p className="shrink-0 text-[11px] text-slate-500">
               Doctor on file: {detail.doctor && detail.doctor !== '—' ? detail.doctor : 'none'}
             </p>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <DataTable<ProductionRow>
-                data={detail.rows}
-                rowKey={(r) => r.id}
-                columns={[
-                  {
-                    header: 'Case #',
-                    className: 'font-bold text-slate-900 font-mono whitespace-nowrap',
-                    render: (r) => <>{r.caseNumber}</>,
-                  },
-                  {
-                    header: 'Received',
-                    className: 'whitespace-nowrap text-slate-600 tabular-nums',
-                    render: (r) => <>{r.receivedDate}</>,
-                  },
-                  {
-                    header: 'Patient',
-                    className: 'font-semibold text-slate-900 whitespace-nowrap',
-                    render: (r) => <>{r.patient}</>,
-                  },
-                  {
-                    header: 'Type',
-                    className: 'whitespace-nowrap text-slate-700',
-                    render: (r) => <>{r.caseType}</>,
-                  },
-                  ...(report.include.units
-                    ? [{
-                        header: 'Units' as const,
-                        align: 'right' as const,
-                        className: 'tabular-nums text-slate-600 whitespace-nowrap',
-                        render: (r: ProductionRow) => <>{r.units > 0 ? r.units : ''}</>,
-                      }]
-                    : []),
-                  {
-                    header: 'Status',
-                    className: 'whitespace-nowrap',
-                    render: (r) => (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold capitalize bg-slate-100 text-slate-700">
-                        {String(r.status).replace('_', ' ')}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: 'Fee',
-                    align: 'right' as const,
-                    className: 'font-mono font-bold text-slate-900 whitespace-nowrap',
-                    render: (r) => <>{formatPKR(r.price)}</>,
-                  },
-                ]}
-              />
+            <div className="flex-1 min-h-0 flex flex-col border border-slate-200 rounded-xl overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-auto">
+                <DataTable<ProductionRow>
+                  data={detailPage.pageItems}
+                  rowKey={(r) => r.id}
+                  columns={[
+                    {
+                      header: 'Case #',
+                      className: 'font-bold text-slate-900 font-mono whitespace-nowrap',
+                      render: (r) => <>{r.caseNumber}</>,
+                    },
+                    {
+                      header: 'Received',
+                      className: 'whitespace-nowrap text-slate-600 tabular-nums',
+                      render: (r) => <>{r.receivedDate}</>,
+                    },
+                    {
+                      header: 'Patient',
+                      className: 'font-semibold text-slate-900 whitespace-nowrap',
+                      render: (r) => <>{r.patient}</>,
+                    },
+                    {
+                      header: 'Type',
+                      className: 'whitespace-nowrap text-slate-700',
+                      render: (r) => <>{r.caseType}</>,
+                    },
+                    ...(report.include.units
+                      ? [{
+                          header: 'Units' as const,
+                          align: 'right' as const,
+                          className: 'tabular-nums text-slate-600 whitespace-nowrap',
+                          render: (r: ProductionRow) => <>{r.units > 0 ? r.units : ''}</>,
+                        }]
+                      : []),
+                    {
+                      header: 'Status',
+                      className: 'whitespace-nowrap',
+                      render: (r) => (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold capitalize bg-slate-100 text-slate-700">
+                          {String(r.status).replace('_', ' ')}
+                        </span>
+                      ),
+                    },
+                    {
+                      header: 'Fee',
+                      align: 'right' as const,
+                      className: 'font-mono font-bold text-slate-900 whitespace-nowrap',
+                      render: (r) => <>{formatPKR(r.price)}</>,
+                    },
+                  ]}
+                />
+              </div>
+              {detailPage.pagination}
             </div>
           </div>
         )}

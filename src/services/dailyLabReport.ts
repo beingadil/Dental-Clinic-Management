@@ -242,6 +242,12 @@ export interface DailyLabReport {
 const inRange = (day: string, from: string, to: string) =>
   !!day && (!from || day >= from) && (!to || day <= to);
 
+/** Like {@link inRange} but for the *received* day of a case. On an unbounded
+ *  window ("All Time") a case that never had a received date recorded still
+ *  belongs to the lab's history, so it is included even when its day is empty. */
+const receivedInRange = (day: string, from: string, to: string) =>
+  !from && !to ? true : inRange(day, from, to);
+
 const DAY_MS = 86_400_000;
 
 export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => {
@@ -278,7 +284,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
 
   /* ---- Production sheet: every case received in the window. */
   const production: ProductionRow[] = scopedCases
-    .filter((c) => inRange(caseReceivedDate(c), from, to))
+    .filter((c) => receivedInRange(caseReceivedDate(c), from, to))
     .map((c) => {
       const received = caseReceivedDate(c);
       const delivery = (c.delivery_date || '').slice(0, 10);
@@ -372,7 +378,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
   };
 
   for (const c of scopedCases) {
-    if (inRange(caseReceivedDate(c), from, to)) {
+    if (receivedInRange(caseReceivedDate(c), from, to)) {
       const row = labFor(c.lab_id, c.lab_name);
       row.casesReceived += 1;
       if (!row.doctor && c.doctor_name) row.doctor = c.doctor_name;
@@ -438,7 +444,7 @@ export const buildDailyLabReport = (input: DailyReportInput): DailyLabReport => 
   );
 
   const open = scopedCases.filter(
-    (c) => c.status !== 'delivered' && c.status !== 'cancelled' && inRange(caseReceivedDate(c), from, to)
+    (c) => c.status !== 'delivered' && c.status !== 'cancelled' && receivedInRange(caseReceivedDate(c), from, to)
   ).length;
 
   const overdue = production.filter((r) => r.isOverdue).length;
