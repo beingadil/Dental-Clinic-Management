@@ -39,6 +39,7 @@ import {
 import { MonthEndCloseModal } from './MonthEndCloseModal';
 import { DailyReportView } from './DailyReportView';
 import { PartnersTab } from './PartnersTab';
+import { CommissionTab } from './CommissionTab';
 import { loadPersons, loadAssignments } from '../../services/persons';
 
 interface BillingReportsViewProps {
@@ -84,7 +85,7 @@ export const BillingReportsView: React.FC<BillingReportsViewProps> = ({
     user,
   } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily' | 'partners'>('monthly');
+  const [activeSubTab, setActiveSubTab] = useState<'monthly' | 'vouchers' | 'daily' | 'partners' | 'commission'>('monthly');
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [voucherSearch, setVoucherSearch] = useState<string>('');
   // Monthly statement: the date window chooses which whole months are on
@@ -573,6 +574,18 @@ const [assignments] = useState(() => loadAssignments());
             <Building2 className="w-3.5 h-3.5 text-indigo-600" />
             <span>Partners</span>
           </button>
+
+          <button
+            onClick={() => setActiveSubTab('commission')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+              activeSubTab === 'commission'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Commission</span>
+          </button>
         </div>
 
         {activeSubTab === 'monthly' && (
@@ -672,7 +685,8 @@ const [assignments] = useState(() => loadAssignments());
 
       {/* Sub-Tab 3: Daily Lab Report — the end-of-day production sheet. */}
       {activeSubTab === 'daily' && <DailyReportView />}
-      {activeSubTab === 'partners' && <PartnersTab monthlyBlocks={visibleBlocks} />}
+      {activeSubTab === 'partners' && <PartnersTab />}
+      {activeSubTab === 'commission' && <CommissionTab />}
 
       {/* Sub-Tab 1: Monthly Breakdown */}
       {activeSubTab === 'monthly' && (

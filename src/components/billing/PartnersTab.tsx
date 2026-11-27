@@ -8,17 +8,14 @@ import {
   loadAssignments,
   saveAssignments,
   newPersonId,
-  commissionFor,
 } from '../../services/persons';
-import { MonthlyStatementBlock } from '../../services/monthlyStatement';
-import { formatPKR } from '../../services/financeDomain';
 import { PlusCircle, Trash2, Pencil, Check, X } from 'lucide-react';
 
 interface Props {
-  monthlyBlocks: MonthlyStatementBlock[];
+  // reserved for future use
 }
 
-export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
+export const PartnersTab: React.FC<Props> = () => {
   const { labs } = useApp();
   const [persons, setPersons] = useState<Person[]>(() => loadPersons());
   const [assignments, setAssignments] = useState<Record<string, { personId: string | null; rateOverride?: number | null }>>(
@@ -35,6 +32,7 @@ export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
     createdAt: '',
     updatedAt: '',
   });
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
 
   const persistPersons = (next: Person[]) => {
@@ -46,16 +44,7 @@ export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
     saveAssignments(next);
   };
 
-  // Billed totals per clinic across the on-screen monthly window.
-  const billedByLab = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const block of monthlyBlocks) {
-      for (const row of block.rows) {
-        map.set(row.lab_id, (map.get(row.lab_id) || 0) + (row.billed || 0));
-      }
-    }
-    return map;
-  }, [monthlyBlocks]);
+  // (billed totals are computed in the Commission tab, not here)
 
   const startCreate = () => {
     setDraft({
@@ -125,19 +114,9 @@ export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
   const personSummary = useMemo(() => {
     return persons.map((p) => {
       const assigned = labs.filter((l) => (assignments[l.id]?.personId ?? null) === p.id);
-      const billed = assigned.reduce((s, l) => s + (billedByLab.get(l.id) || 0), 0);
-      const rate = p.rateScope === 'person' ? p.commissionRate : 0;
-      // For clinic scope, sum per-clinic overrides.
-      const commission =
-        p.rateScope === 'person'
-          ? commissionFor(billed, p.commissionRate)
-          : assigned.reduce((s, l) => {
-              const r = assignments[l.id]?.rateOverride ?? 0;
-              return s + commissionFor(billedByLab.get(l.id) || 0, r);
-            }, 0);
-      return { person: p, assigned, billed, commission, rate };
+      return { person: p, assigned };
     });
-  }, [persons, labs, assignments, billedByLab]);
+  }, [persons, labs, assignments]);
 
   const unassigned = labs.filter((l) => !(assignments[l.id]?.personId));
 
@@ -178,17 +157,24 @@ export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
                 onChange={(e) => setDraft({ ...draft, contact: e.target.value })}
               />
             </label>
-            <label className="text-xs font-semibold text-slate-700">
-              Commission rate (%)
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
-                value={draft.commissionRate}
-                onChange={(e) => setDraft({ ...draft, commissionRate: Number(e.target.value) })}
-              />
-            </label>
+            {draft.rateScope === 'person' && (
+              <label className="text-xs font-semibold text-slate-700">
+                Commission rate (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                  value={draft.commissionRate}
+                  onChange={(e) => setDraft({ ...draft, commissionRate: Number(e.target.value) })}
+                />
+              </label>
+            )}
+            {draft.rateScope === 'clinic' && (
+              <div className="text-xs text-slate-500 flex items-end pb-1.5">
+                Set the per-clinic rate after assigning clinics below.
+              </div>
+            )}
             <label className="text-xs font-semibold text-slate-700">
               Rate scope
               <select
@@ -224,7 +210,7 @@ export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
         {personSummary.length === 0 && (
           <p className="text-sm text-slate-500">No persons yet. Create one to start grouping clinics.</p>
         )}
-        {personSummary.map(({ person, assigned, billed, commission }) => (
+        {personSummary.map(({ person, assigned }) => (
           <div key={person.id} className="border border-slate-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -253,18 +239,10 @@ export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="grid grid-cols-1 gap-2 text-xs">
               <div className="rounded-lg bg-slate-50 px-3 py-2">
-                <div className="text-[10px] font-bold uppercase text-slate-500">Clinics</div>
+                <div className="text-[10px] font-bold uppercase text-slate-500">Clinics assigned</div>
                 <div className="text-lg font-bold text-slate-900">{assigned.length}</div>
-              </div>
-              <div className="rounded-lg bg-slate-50 px-3 py-2">
-                <div className="text-[10px] font-bold uppercase text-slate-500">Billed</div>
-                <div className="text-lg font-bold text-slate-900">{formatPKR(billed)}</div>
-              </div>
-              <div className="rounded-lg bg-indigo-50 px-3 py-2">
-                <div className="text-[10px] font-bold uppercase text-indigo-600">Commission</div>
-                <div className="text-lg font-bold text-indigo-700">{formatPKR(commission)}</div>
               </div>
             </div>
 
@@ -278,7 +256,16 @@ export const PartnersTab: React.FC<Props> = ({ monthlyBlocks }) => {
               </button>
               {selectedPersonId === person.id && (
                 <div className="mt-2 space-y-1.5 max-h-64 overflow-auto border border-slate-100 rounded-lg p-2">
-                  {labs.map((lab) => {
+                  <input
+                    type="text"
+                    placeholder="Search clinics..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs mb-1.5"
+                  />
+                  {labs
+                    .filter((l) => l.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                    .map((lab) => {
                     const isAssigned = (assignments[lab.id]?.personId ?? null) === person.id;
                     const otherOwner = !isAssigned && assignments[lab.id]?.personId;
                     return (
