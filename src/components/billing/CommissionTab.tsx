@@ -7,6 +7,8 @@ import {
   commissionFor,
 } from '../../services/persons';
 import { formatPKR } from '../../services/financeDomain';
+import { buildXlsx, XL, type XlsxCell, type XlsxSheet } from '../../lib/xlsx';
+import { saveFile } from '../../lib/saveFile';
 import { CalendarDays } from 'lucide-react';
 
 const CUTOFF_KEY = 'ds.commissionCutoffDay';
@@ -147,8 +149,56 @@ export const CommissionTab: React.FC = () => {
     });
   }, [invoices, labs, periods, persons, assignments, personFilter]);
 
-  const grandTotalCommission = periodStats.reduce((s, p) => s + p.grandCommission, 0);
   const grandTotalBilled = periodStats.reduce((s, p) => s + p.grandBilled, 0);
+  const grandTotalCommission = periodStats.reduce((s, p) => s + p.grandCommission, 0);
+
+  const handleExportExcel = async () => {
+    const titleRows: XlsxCell[][] = [
+      [{ value: 'Commission Statement', style: XL.totalLabel }],
+      [{ value: `Month ends on: ${cutoff}` }],
+      [{ value: `Periods: ${periods.length}` }],
+      [{ value: 'All amounts in PKR' }],
+      [{ value: '' }],
+    ];
+    const header = ['Period', 'Person', 'Clinic', 'Cases', 'Billed', 'Rate', 'Commission'];
+    const sheets: XlsxSheet[] = [
+      {
+        name: 'Commission',
+        rows: [
+          ...titleRows,
+          header.map((h) => ({ value: h, style: XL.header })),
+          ...periodStats.flatMap((ps) =>
+            ps.rows.map((r) => [
+              { value: ps.period.label },
+              { value: r.person?.name || 'Unassigned' },
+              { value: r.lab_name },
+              { value: r.cases, style: XL.count },
+              { value: r.billed, style: XL.money },
+              { value: `${r.rate}%` },
+              { value: r.commission, style: XL.money },
+            ])
+          ),
+          [
+            { value: 'TOTAL', style: XL.totalLabel },
+            { value: '' },
+            { value: '' },
+            { value: periodStats.reduce((s, p) => s + p.grandCases, 0), style: XL.totalCount },
+            { value: grandTotalBilled, style: XL.totalMoney },
+            { value: '' },
+            { value: grandTotalCommission, style: XL.totalMoney },
+          ],
+        ],
+        widths: [26, 18, 24, 8, 14, 8, 14],
+        freezeRows: titleRows.length + 1,
+      },
+    ];
+    const bytes = buildXlsx(sheets);
+    await saveFile('commission-statement.xlsx', bytes, {
+      extension: 'xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: 'Save commission statement',
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -193,6 +243,13 @@ export const CommissionTab: React.FC = () => {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"
+          >
+            Export to Excel
+          </button>
         </div>
       </div>
 

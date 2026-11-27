@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { can } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
 import { EmptyState, DataTable, GlassSelect, Modal, usePagination } from '../common/ui';
+import { loadPersons, loadAssignments } from '../../services/persons';
 import { formatPKR } from '../../services/financeDomain';
 import {
   buildDailyLabReportPdf,
@@ -49,6 +50,9 @@ export const DailyReportView: React.FC = () => {
      cases after 30 days, so defaulting this off made "All Time" hide most of
      the lab's history. On by default; the checkbox narrows to live work. */
   const [includeArchived, setIncludeArchived] = useState(true);
+  const [personFilter, setPersonFilter] = useState<string>('all');
+  const [persons] = useState(() => loadPersons());
+  const [assignments] = useState(() => loadAssignments());
   /* No tick = every type. This is the ONLY filter the operator's question
      needs: "how much zirconia did each clinic send us this month" — and it has
      to take several answers at once ("zirconia and e.max"), because asking two
@@ -150,10 +154,18 @@ export const DailyReportView: React.FC = () => {
     { key: 'price', header: 'Fee', className: 'text-right font-mono font-bold text-slate-900 whitespace-nowrap', render: (r) => <>{formatPKR(r.price)}</> },
   ];
 
+  const scopedCasesForReport = useMemo(() => {
+    if (personFilter === 'all') return cases;
+    const keep = new Set(
+      Object.keys(assignments).filter((labId) => assignments[labId]?.personId === personFilter)
+    );
+    return cases.filter((c) => keep.has(c.lab_id));
+  }, [cases, personFilter, assignments]);
+
   const report = useMemo(
     () =>
       buildDailyLabReport({
-        cases,
+        cases: scopedCasesForReport,
         invoices,
         advancePayments,
         from,
@@ -162,13 +174,13 @@ export const DailyReportView: React.FC = () => {
         caseTypes,
         include,
       }),
-    [cases, invoices, advancePayments, from, to, includeArchived, caseTypes, include]
+    [scopedCasesForReport, invoices, advancePayments, from, to, includeArchived, caseTypes, include]
   );
 
   /* Both readings of the window are paged. All Time can carry the lab's whole
      history (hundreds of cases), and the shared hook keeps the page chrome,
      page-size control and the "showing X–Y of Z" copy identical to Billing. */
-  const filtersKey = `${from}|${to}|${includeArchived}|${caseTypes.join('\u0000')}`;
+  const filtersKey = `${from}|${to}|${includeArchived}|${caseTypes.join('\u0000')}|${personFilter}`;
   const productionPage = usePagination(report.production, {
     initialPageSize: 50,
     resetKey: filtersKey,
@@ -375,6 +387,17 @@ export const DailyReportView: React.FC = () => {
             emptyLabel="All types"
             className="w-[288px] px-3 py-1.5 text-xs font-semibold text-slate-700"
           />
+          <select
+            value={personFilter}
+            onChange={(e) => setPersonFilter(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white cursor-pointer"
+            aria-label="Filter by person"
+          >
+            <option value="all">All persons</option>
+            {persons.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
         </div>
         {/* The date window sits NEXT TO the export, because it is the
             export's window: you choose the period, then take the document for
