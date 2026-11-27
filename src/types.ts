@@ -279,6 +279,10 @@ export interface DentalLab {
    * (you owe the clinic). Defaults to 'debit' — the common case.
    */
   opening_balance_type: 'debit' | 'credit';
+  /** Partner/person assigned to this clinic (Phase 4). */
+  person_id?: string | null;
+  /** Per-clinic commission rate override (Phase 4). */
+  commission_rate?: number | null;
 }
 
 export interface DoctorPreferredLab {

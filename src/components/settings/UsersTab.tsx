@@ -236,7 +236,7 @@ export const UsersTab: React.FC = () => {
                         flashUserMsg('success', `User account "${u.name}" deleted.`);
                       }
                     }}
-                    className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-500 hover:text-rose-700 cursor-pointer"
+                    className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-600 hover:text-rose-700 cursor-pointer"
                     title="Delete User"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

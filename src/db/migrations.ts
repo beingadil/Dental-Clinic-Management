@@ -1756,6 +1756,25 @@ export const MIGRATION_031_CLEAR_ALIGNERS: Migration = {
   ],
 };
 
+export const MIGRATION_032_PERSONS: Migration = {
+  version: 32,
+  name: 'persons_and_clinic_assignment',
+  statements: [
+    `CREATE TABLE persons (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      contact TEXT,
+      commission_rate REAL NOT NULL DEFAULT 0,
+      rate_scope TEXT NOT NULL DEFAULT 'person' CHECK (rate_scope IN ('person','clinic')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )`,
+    `ALTER TABLE labs ADD COLUMN person_id TEXT REFERENCES persons(id) ON DELETE SET NULL`,
+    `ALTER TABLE labs ADD COLUMN commission_rate REAL`,
+    `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', '32')`,
+  ],
+};
+
 export const MIGRATIONS: Migration[] = [
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_PRAGMAS_AND_FTS,
@@ -1788,6 +1807,7 @@ export const MIGRATIONS: Migration[] = [
   MIGRATION_029_INVOICE_BUSINESS_DAY,
   MIGRATION_030_MONTH_CLOSES,
   MIGRATION_031_CLEAR_ALIGNERS,
+  MIGRATION_032_PERSONS,
 ];
 
 /**

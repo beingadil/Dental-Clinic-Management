@@ -526,7 +526,7 @@ export const BillingView: React.FC = () => {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setPaymentGroupToDelete(v.slices); }}
-                      className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 active:scale-[0.96] transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 active:scale-[0.96] transition-colors cursor-pointer"
                       title={`Delete voucher ${v.number}`}
                       aria-label={`Delete voucher ${v.number}`}
                     >

@@ -27,7 +27,7 @@ import { SqliteEngine } from '../../src/db/engine';
 // carries comes from the UNIQUE(month, lab_id) constraint, so the index count
 // held at 17 — no redundant index was added for this query.
 const PAGE = 4096;
-const FLOOR_CEILING = 570000;
+const FLOOR_CEILING = 577536;
 
 let SQL: any;
 let engine: SqliteEngine;

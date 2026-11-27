@@ -500,7 +500,7 @@ export const InvoiceDetailDrawer: React.FC<InvoiceDetailDrawerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => setDeleteGroupConfirm(slices)}
-                                className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                                className="p-1.5 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                                 title="Delete Payment Entry" aria-label={`Delete payment ${base}`}
                               >
                                 <Trash2 className="w-4 h-4" />

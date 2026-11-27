@@ -295,6 +295,8 @@ export interface LabRow {
   updated_at?: string | null;
   opening_balance?: number | null;
   opening_balance_type?: string | null;
+  person_id?: string | null;
+  commission_rate?: number | null;
 }
 
 function labToDomain(row: LabRow): any {
@@ -314,6 +316,8 @@ function labToDomain(row: LabRow): any {
     created_at: row.created_at,
     opening_balance: row.opening_balance ?? 0,
     opening_balance_type: (row.opening_balance_type as 'debit' | 'credit') ?? 'debit',
+    person_id: row.person_id ?? null,
+    commission_rate: row.commission_rate ?? null,
   };
 }
 
@@ -333,11 +337,12 @@ export const labsRepo = {
     const id = lab.id || genId('lab');
     try {
       requireEngine().run(
-        `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, created_at, updated_at, person_id, commission_rate)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, lab.name, lab.code ?? null, lab.contact_person ?? null, lab.phone ?? null, lab.email ?? null,
          lab.address ?? null, lab.city ?? null, bareDoctorOrNull(lab.doctor_name), lab.notes ?? null,
-         lab.rating ?? 5.0, lab.reviews_count ?? 0, lab.created_at ?? now(), now()]
+         lab.rating ?? 5.0, lab.reviews_count ?? 0, lab.created_at ?? now(), now(),
+         lab.person_id ?? null, lab.commission_rate ?? null]
       );
     } catch (err: any) {
       if (String(err?.message).toUpperCase().includes('UNIQUE')) {
@@ -348,7 +353,7 @@ export const labsRepo = {
     return this.byId(id);
   },
   update(id: string, updates: any): any | null {
-    const allowed = ['name', 'code', 'contact_person', 'phone', 'email', 'address', 'city', 'doctor_name', 'notes', 'rating', 'reviews_count'] as const;
+    const allowed = ['name', 'code', 'contact_person', 'phone', 'email', 'address', 'city', 'doctor_name', 'notes', 'rating', 'reviews_count', 'person_id', 'commission_rate'] as const;
     const sets: string[] = [];
     const params: any[] = [];
     for (const key of allowed) {
@@ -385,6 +390,70 @@ export const labsRepo = {
         [q, q, q, q, q]
       )
       .map(labToDomain);
+  },
+};
+
+export interface PersonRow {
+  id: string;
+  name: string;
+  contact?: string | null;
+  commission_rate: number;
+  rate_scope: string;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+function personRowToDomain(row: PersonRow): any {
+  return {
+    id: row.id,
+    name: row.name,
+    contact: row.contact ?? undefined,
+    commissionRate: row.commission_rate ?? 0,
+    rateScope: (row.rate_scope as 'person' | 'clinic') || 'person',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
+  };
+}
+
+export const personsRepo = {
+  all(): any[] {
+    return requireEngine().all<PersonRow>('SELECT * FROM persons ORDER BY name COLLATE NOCASE ASC').map(personRowToDomain);
+  },
+  byId(id: string): any | undefined {
+    const row = requireEngine().get<PersonRow>('SELECT * FROM persons WHERE id = ?', [id]);
+    return row ? personRowToDomain(row) : undefined;
+  },
+  insert(p: any): any {
+    const id = p.id || genId('per');
+    requireEngine().run(
+      `INSERT INTO persons (id, name, contact, commission_rate, rate_scope, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, p.name, p.contact ?? null, p.commissionRate ?? 0, p.rateScope ?? 'person', p.createdAt ?? now(), now()]
+    );
+    return this.byId(id);
+  },
+  update(id: string, updates: any): any | null {
+    const allowed = ['name', 'contact', 'commission_rate', 'rate_scope'] as const;
+    const sets: string[] = [];
+    const params: any[] = [];
+    for (const key of allowed) {
+      if (key in updates) {
+        sets.push(`${key} = ?`);
+        params.push(updates[key] ?? null);
+      }
+    }
+    if (!sets.length) return this.byId(id);
+    sets.push('updated_at = ?');
+    params.push(now(), id);
+    requireEngine().run(`UPDATE persons SET ${sets.join(', ')} WHERE id = ?`, params);
+    return this.byId(id);
+  },
+  delete(id: string): boolean {
+    const before = requireEngine().rowCount('persons');
+    requireEngine().run('DELETE FROM persons WHERE id = ?', [id]);
+    // Unassign clinics that pointed at this person.
+    requireEngine().run('UPDATE labs SET person_id = NULL, commission_rate = NULL WHERE person_id = ?', [id]);
+    return requireEngine().rowCount('persons') < before;
   },
 };
 

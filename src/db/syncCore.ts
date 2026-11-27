@@ -214,14 +214,18 @@ function syncNow(c: SyncCollections): void {
       try { tx.run('ALTER TABLE labs ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0'); } catch { /* already exists */ }
       try { tx.run("ALTER TABLE labs ADD COLUMN opening_balance_type TEXT NOT NULL DEFAULT 'debit'"); } catch { /* already exists */ }
     }
+    // Ensure the person columns exist (migration 032) for older snapshots.
+    try { tx.run('ALTER TABLE labs ADD COLUMN person_id TEXT'); } catch { /* already exists */ }
+    try { tx.run('ALTER TABLE labs ADD COLUMN commission_rate REAL'); } catch { /* already exists */ }
 
     for (const l of c.labs) {
       tx.run(
-        `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, opening_balance, opening_balance_type, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO labs (id, name, code, contact_person, phone, email, address, city, doctor_name, notes, rating, reviews_count, opening_balance, opening_balance_type, created_at, updated_at, person_id, commission_rate)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [l.id, l.name, l.code ?? null, l.contact_person ?? null, l.phone ?? null, l.email ?? null,
          l.address ?? null, l.city ?? null, l.doctor_name ?? null, l.notes ?? null,
-         l.rating ?? 5, l.reviews_count ?? 0, l.opening_balance ?? 0, l.opening_balance_type ?? 'debit', l.created_at ?? now, now]
+         l.rating ?? 5, l.reviews_count ?? 0, l.opening_balance ?? 0, l.opening_balance_type ?? 'debit', l.created_at ?? now, now,
+         l.person_id ?? null, l.commission_rate ?? null]
       );
       for (const ct of c.labContacts.filter((x) => x.lab_id === l.id)) {
         tx.run(

@@ -231,7 +231,7 @@ export const PartnersTab: React.FC<Props> = () => {
                 <button
                   type="button"
                   onClick={() => deletePerson(person.id)}
-                  className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer"
+                  className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 cursor-pointer"
                   aria-label="Delete person"
                 >
                   <Trash2 className="w-4 h-4" />
