@@ -1,4 +1,4 @@
-import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import { formatPKR, invoiceSettlementStatus, SETTLEMENT_LABEL } from '../../services/financeDomain';
 import { compareInvoiceNumbers } from '../../services/invoiceOrder';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -767,8 +767,7 @@ export const LabDetailModal: React.FC<LabDetailModalProps> = ({ lab, onClose, in
                             {open && (
                               <ul className="bg-white/60 px-4 pt-1 pb-2.5 space-y-1">
                                 {g.invoices.map((inv) => {
-                                  const due = invoiceBalanceDue(inv);
-                                  const state = due <= 0 ? 'Full' : (inv.amount_paid || 0) > 0 ? 'Partial' : 'Unpaid';
+                                  const state = SETTLEMENT_LABEL[invoiceSettlementStatus(inv)];
                                   return (
                                     <li key={inv.id}>
                                       <button

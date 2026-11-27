@@ -1,4 +1,10 @@
-import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
+import {
+  formatPKR,
+  invoiceBalanceDue,
+  invoiceSettlementStatus,
+  SETTLEMENT_LABEL,
+  type InvoiceSettlementState,
+} from '../../services/financeDomain';
 import { buildStatementAccountPosition } from '../../services/invoiceAccount';
 import { printCurrentDocument } from '../../utils/printDocument';
 import React, { useMemo, useState } from 'react';
@@ -33,21 +39,10 @@ interface BatchInvoicePrintModalProps {
   fullScreen?: boolean;
 }
 
-type InvoiceStatus = 'paid' | 'partial' | 'unpaid';
-
-const STATUS_META: Record<InvoiceStatus, { label: string; chip: string }> = {
-  paid: { label: 'Paid', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  partial: { label: 'Partial', chip: 'bg-amber-50 text-amber-700 border-amber-200' },
-  unpaid: { label: 'Unpaid', chip: 'bg-rose-50 text-rose-700 border-rose-200' },
-};
-
-/**
- * Same derivation as the ledger's settlement badge: the money, never the
- * stored `payment_status` (which drifts after a credit note or write-off).
- */
-const invoiceStatus = (inv: Invoice): InvoiceStatus => {
-  if (invoiceBalanceDue(inv) <= 0) return 'paid';
-  return (inv.amount_paid || 0) > 0 ? 'partial' : 'unpaid';
+const STATUS_META: Record<InvoiceSettlementState, { label: string; chip: string }> = {
+  paid: { label: SETTLEMENT_LABEL.paid, chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  partial: { label: SETTLEMENT_LABEL.partial, chip: 'bg-amber-50 text-amber-700 border-amber-200' },
+  unpaid: { label: SETTLEMENT_LABEL.unpaid, chip: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
 
 export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
@@ -66,7 +61,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   /* The list is a selection surface: a month can hold dozens of invoices and
      the operator usually needs to find one or two to exclude. */
   const [listSearch, setListSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | InvoiceStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | InvoiceSettlementState>('all');
   /* The paper preview is reassurance, not the task — collapsed by default so
      the list and the Print action fit one screen. */
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -130,7 +125,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
   const visibleInvoices = useMemo(() => {
     const q = listSearch.trim().toLowerCase();
     return periodInvoices.filter((inv) => {
-      if (statusFilter !== 'all' && invoiceStatus(inv) !== statusFilter) return false;
+      if (statusFilter !== 'all' && invoiceSettlementStatus(inv) !== statusFilter) return false;
       if (!q) return true;
       return [inv.invoice_number, inv.case_number, inv.patient_name, inv.doctor_name]
         .filter(Boolean)
@@ -462,7 +457,7 @@ export const BatchInvoicePrintModal: React.FC<BatchInvoicePrintModalProps> = ({
                   const due = invoiceBalanceDue(inv);
                   const isOn = !excluded.includes(inv.id);
                   const linkedCase = findCaseForInvoice(inv, cases);
-                  const status = STATUS_META[invoiceStatus(inv)];
+                  const status = STATUS_META[invoiceSettlementStatus(inv)];
                   return (
                     <tr
                       key={inv.id}

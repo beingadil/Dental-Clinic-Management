@@ -1,4 +1,9 @@
-import { invoiceBalanceDue } from '../../services/financeDomain';
+import {
+  invoiceBalanceDue,
+  settlementStateFrom,
+  SETTLEMENT_LABEL,
+  type InvoiceSettlementState,
+} from '../../services/financeDomain';
 import React from 'react';
 import { DentalCase, Invoice, BrandingSettings, PaymentRecord } from '../../types';
 import { TOOTH_NAMES, SHADE_COLORS, getToothLayout } from '../cases/Odontogram';
@@ -257,14 +262,20 @@ export const SEP = CASE_DETAIL_SEP;
  * statement row print the same column, and when each had its own inline
  * ternary the batch row fell back to the stored `payment_status` — so the two
  * documents disagreed about the same invoice. Shared, so they cannot.
+ *
+ * The WORD comes from `SETTLEMENT_LABEL` for the same reason: the paper used
+ * to say "Full" where the screen said "Paid" for one invoice, which reads as
+ * two different findings.
  */
-export const invoiceStatus = (
-  balance: number,
-  paid: number | undefined,
-): { label: 'Full' | 'Partial' | 'Unpaid'; className: string } => {
-  if (balance <= 0) return { label: 'Full', className: 'font-bold text-emerald-700' };
-  if ((paid || 0) > 0) return { label: 'Partial', className: 'font-bold text-amber-700' };
-  return { label: 'Unpaid', className: 'font-bold text-rose-700' };
+const SETTLEMENT_TONE: Record<InvoiceSettlementState, string> = {
+  paid: 'font-bold text-emerald-700',
+  partial: 'font-bold text-amber-700',
+  unpaid: 'font-bold text-rose-700',
+};
+
+const invoiceStatus = (balance: number, paid: number | undefined) => {
+  const state = settlementStateFrom(balance, paid || 0);
+  return { label: SETTLEMENT_LABEL[state], className: SETTLEMENT_TONE[state] };
 };
 
 interface PrintDocumentProps {
@@ -982,7 +993,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({
                     <td className="border border-slate-400 px-2 py-0.5 text-right align-top">{units}</td>
                     <td className="border border-slate-400 px-2 py-0.5 text-right align-top font-bold">{money(inv.final_amount)}</td>
                     <td className="border border-slate-400 px-2 py-0.5 align-top font-semibold">
-                      {invoiceBalanceDue(inv) <= 0 ? 'Full' : (inv.amount_paid || 0) > 0 ? 'Partial' : 'Unpaid'}
+                      {invoiceStatus(invoiceBalanceDue(inv), inv.amount_paid).label}
                     </td>
                   </tr>
                   );

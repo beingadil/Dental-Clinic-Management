@@ -20,9 +20,13 @@ import { useTransientFlag } from '../common/useTransient';
 import { Check, ChevronDown, FileSpreadsheet, Landmark, Printer, Search, SlidersHorizontal } from 'lucide-react';
 import { ClinicPicker } from '../common/ui/ClinicPicker';
 import { PageHeader } from '../common/ui';
-import { formatPKR, invoiceBalanceDue } from '../../services/financeDomain';
-
-type InvoiceStatus = 'paid' | 'partial' | 'unpaid';
+import {
+  formatPKR,
+  invoiceBalanceDue,
+  invoiceSettlementStatus,
+  SETTLEMENT_LABEL,
+  type InvoiceSettlementState,
+} from '../../services/financeDomain';
 
 /**
  * Paper geometry at 96dpi, matching what `statementPagination` budgets rows
@@ -43,17 +47,10 @@ const ZOOM_STOPS = [
 
 type ZoomMode = (typeof ZOOM_STOPS)[number]['id'];
 
-const STATUS_META: Record<InvoiceStatus, { label: string; chip: string }> = {
-  paid: { label: 'Paid', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  partial: { label: 'Part paid', chip: 'bg-amber-50 text-amber-700 border-amber-200' },
-  unpaid: { label: 'Unpaid', chip: 'bg-rose-50 text-rose-700 border-rose-200' },
-};
-
-/** Same derivation as the ledger's settlement badge: the money, never the
- *  stored `payment_status` (which drifts after a credit note or write-off). */
-const invoiceStatus = (inv: Invoice): InvoiceStatus => {
-  if (invoiceBalanceDue(inv) <= 0) return 'paid';
-  return (inv.amount_paid || 0) > 0 ? 'partial' : 'unpaid';
+const STATUS_META: Record<InvoiceSettlementState, { label: string; chip: string }> = {
+  paid: { label: SETTLEMENT_LABEL.paid, chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  partial: { label: SETTLEMENT_LABEL.partial, chip: 'bg-amber-50 text-amber-700 border-amber-200' },
+  unpaid: { label: SETTLEMENT_LABEL.unpaid, chip: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
 
 /* The day the invoice was BOOKED, not the day its case is due.
@@ -95,7 +92,7 @@ export const PrintInvoicesView: React.FC = () => {
   const [to, setTo] = useState<string>(() => todayISO());
   const [excluded, setExcluded] = useState<string[]>([]);
   const [listSearch, setListSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | InvoiceStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | InvoiceSettlementState>('all');
   /* The invoice list lives behind a dropdown: picking the clinic and the
      period happens in the band above, and the rows only need to be visible
      while invoices are actually being ticked. It is ALWAYS collapsible — the
@@ -206,7 +203,7 @@ export const PrintInvoicesView: React.FC = () => {
   const visibleInvoices = useMemo(() => {
     const q = listSearch.trim().toLowerCase();
     return periodInvoices.filter((inv) => {
-      if (statusFilter !== 'all' && invoiceStatus(inv) !== statusFilter) return false;
+      if (statusFilter !== 'all' && invoiceSettlementStatus(inv) !== statusFilter) return false;
       if (!q) return true;
       return [inv.invoice_number, inv.case_number, inv.patient_name, inv.doctor_name]
         .filter(Boolean)
@@ -309,7 +306,7 @@ export const PrintInvoicesView: React.FC = () => {
     void printCurrentDocument();
   };
 
-  const statusOptions: ('all' | InvoiceStatus)[] = ['all', 'unpaid', 'partial', 'paid'];
+  const statusOptions: ('all' | InvoiceSettlementState)[] = ['all', 'unpaid', 'partial', 'paid'];
   const paperLabel = printSettings.paper === 'letter' ? 'Letter' : 'A4';
 
   const sheetPx = printSettings.paper === 'letter' ? SHEET_PX.letter : SHEET_PX.a4;
@@ -551,7 +548,7 @@ export const PrintInvoicesView: React.FC = () => {
                   const due = invoiceBalanceDue(inv);
                   const isOn = !excluded.includes(inv.id);
                   const linkedCase = findCaseForInvoice(inv, cases);
-                  const status = STATUS_META[invoiceStatus(inv)];
+                  const status = STATUS_META[invoiceSettlementStatus(inv)];
                   return (
                     <tr
                       key={inv.id}

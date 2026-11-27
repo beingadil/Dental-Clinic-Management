@@ -118,8 +118,11 @@ export function computeKpis(input: MetricsInput): KpiRow {
 
   const totalBilled = invoices.reduce((s, i) => s + i.final_amount, 0);
   const totalCollected = invoices.reduce((s, i) => s + (i.amount_paid || 0), 0);
+  /* Overdue is a LATE BALANCE, so it is read from the money: a credit note
+     that clears an invoice takes it out of the overdue count even if the
+     stored `payment_status` was never rewritten. */
   const overdueInvoices = invoices.filter(
-    (i) => i.payment_status !== 'paid' && i.due_date && i.due_date < today
+    (i) => balanceOf(i) > 0 && i.due_date && i.due_date < today
   );
 
   const dueToday = cases.filter((c) => c.delivery_date === today);
@@ -445,7 +448,7 @@ export function computeRevenue(input: MetricsInput, points = 6): RevenueSummary 
 
   const outstanding = monthInvoices.reduce((s, i) => s + balanceOf(i), 0);
   const overdue = input.invoices
-    .filter((i) => i.payment_status !== 'paid' && i.due_date && i.due_date < today)
+    .filter((i) => balanceOf(i) > 0 && i.due_date && i.due_date < today)
     .reduce((s, i) => s + balanceOf(i), 0);
 
   const [y, m] = monthPrefix.split('-').map(Number);

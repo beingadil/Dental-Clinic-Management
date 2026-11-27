@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ACCOUNT_CODES, formatPKR } from '../../services/financeDomain';
+import { ACCOUNT_CODES, formatPKR, SETTLEMENT_LABEL } from '../../services/financeDomain';
 import { useApp } from '../../context/AppContext';
 import { can, canPost } from '../../services/permissions';
 import { DatePickerRange, todayISO } from '../common/DatePickerRange';
@@ -294,7 +294,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
 
     const settlement = settlementOf(inv);
     const balance = settlement.balance;
-    const label = settlement.status === 'paid' ? 'Paid' : settlement.status === 'partial' ? 'Partial' : 'Unpaid';
+    const label = SETTLEMENT_LABEL[settlement.status];
     const tone =
       balance <= 0
         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -415,10 +415,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
       if (!inv) continue;
       const settlement = settlementOf(inv);
       settlementByRow[row.id] = settlement.status === 'paid'
-        ? `Paid${settlement.paidOn ? ` on ${settlement.paidOn}` : ''}`
-        : settlement.status === 'partial'
-          ? `Partial - ${formatPKR(settlement.balance)} outstanding`
-          : `Unpaid - ${formatPKR(settlement.balance)} outstanding`;
+        ? `${SETTLEMENT_LABEL.paid}${settlement.paidOn ? ` on ${settlement.paidOn}` : ''}`
+        : `${SETTLEMENT_LABEL[settlement.status]} - ${formatPKR(settlement.balance)} outstanding`;
     }
     return settlementByRow;
   };

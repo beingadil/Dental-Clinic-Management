@@ -11,6 +11,7 @@ import type {
   LabFinancialSummary,
 } from '../types';
 import { getTodayStr } from '../utils/dateUtils';
+import { invoiceSettlementStatus } from './financeDomain';
 
 /**
  * Ledger domain — pure financial views extracted from AppContext (audit
@@ -209,9 +210,13 @@ export const buildLabFinancialSummary = (input: {
     outstanding_balance,
     net_balance,
     invoices_count: labInvs.length,
-    unpaid_invoices_count: labInvs.filter((i) => i.payment_status === 'unpaid').length,
-    partial_invoices_count: labInvs.filter((i) => i.payment_status === 'partial').length,
-    paid_invoices_count: labInvs.filter((i) => i.payment_status === 'paid').length,
+    /* Counted by the money, like every other surface: these three buckets sit
+       beside `outstanding_balance`, which is already balance-derived, so
+       reading them off `payment_status` could show "0 unpaid" next to a
+       non-zero balance. */
+    unpaid_invoices_count: labInvs.filter((i) => invoiceSettlementStatus(i) === 'unpaid').length,
+    partial_invoices_count: labInvs.filter((i) => invoiceSettlementStatus(i) === 'partial').length,
+    paid_invoices_count: labInvs.filter((i) => invoiceSettlementStatus(i) === 'paid').length,
     payments_count,
     advance_count: clinicAdvances.length
   };

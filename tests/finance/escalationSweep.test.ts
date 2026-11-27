@@ -88,7 +88,10 @@ describe('buildEscalationAlerts', () => {
 
   it('never escalates a paid, voided or undated invoice', () => {
     const rows = [
-      invoice({ id: 'a', payment_status: 'paid' }),
+      // Settled means the MONEY settles it; the stored status alone is a claim
+      // the sweep no longer trusts (a credit note can clear an invoice without
+      // rewriting it).
+      invoice({ id: 'a', amount_paid: 10000, payment_status: 'paid' }),
       invoice({ id: 'b', status_v2: 'voided' }),
       invoice({ id: 'c', due_date: '' }),
     ];

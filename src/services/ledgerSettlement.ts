@@ -1,10 +1,12 @@
 import type { Invoice, PaymentRecord } from '../types';
-import { invoiceBalanceDue } from './financeDomain';
-
-export type SettlementStatus = 'paid' | 'partial' | 'unpaid';
+import {
+  invoiceBalanceDue,
+  invoiceSettlementStatus,
+  type InvoiceSettlementState,
+} from './financeDomain';
 
 export interface InvoiceSettlement {
-  status: SettlementStatus;
+  status: InvoiceSettlementState;
   /** `invoiceBalanceDue` — the same number the invoice table and the printed invoice read. */
   balance: number;
   /** Money received, as the invoice records it. */
@@ -48,7 +50,7 @@ export function settlementOf(
   const balance = invoiceBalanceDue(invoice);
   const paid = invoice.amount_paid || 0;
   const credited = invoice.credit_notes_total || 0;
-  const status: SettlementStatus = balance <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+  const status = invoiceSettlementStatus(invoice);
   const paidOn = balance <= 0 ? latestPaymentDay(invoice.payments || []) : undefined;
 
   return { status, balance, paid, credited, paidOn };

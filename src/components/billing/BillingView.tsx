@@ -1,5 +1,5 @@
 import { formatPKR } from '../../services/financeDomain';
-import { invoiceBalanceDue, hasLivePayment } from '../../services/financeDomain';
+import { invoiceBalanceDue, invoiceSettlementStatus, hasLivePayment } from '../../services/financeDomain';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Invoice, PaymentRecord, AccountAdjustment } from '../../types';
@@ -280,7 +280,7 @@ export const BillingView: React.FC = () => {
       inv.final_amount,
       inv.amount_paid || 0,
       invoiceBalanceDue(inv),
-      inv.payment_status.toUpperCase(),
+      invoiceSettlementStatus(inv).toUpperCase(),
       inv.due_date
     ]);
     downloadCSV(`Dental_Solutions_Invoices_${getTodayStr()}`, [headers, ...rows]);

@@ -47,6 +47,7 @@ import {
 import { DentalCase } from '../../types';
 import { ThemeToggle } from './ThemeToggle';
 import { formatDoctorName } from '../../utils/doctorName';
+import { invoiceSettlementStatus } from '../../services/financeDomain';
 
 export const Header: React.FC = () => {
   const {
@@ -541,12 +542,12 @@ export const Header: React.FC = () => {
                           <span className="flex items-center gap-1.5 shrink-0">
                             <span
                               className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                                inv.payment_status === 'paid'
+                                invoiceSettlementStatus(inv) === 'paid'
                                   ? 'bg-ds-pos-soft text-ds-pos-ink'
                                   : 'bg-ds-warn-soft text-ds-warn-ink'
                               }`}
                             >
-                              {(inv.payment_status || 'unpaid').toUpperCase()}
+                              {invoiceSettlementStatus(inv).toUpperCase()}
                             </span>
                             <ChevronRight className="w-3.5 h-3.5 text-ds-muted group-hover:text-ds-accent transition-colors" />
                           </span>

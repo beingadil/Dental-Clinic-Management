@@ -31,6 +31,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { can, deniedTooltip } from '../../services/permissions';
+import { invoiceBalanceDue } from '../../services/financeDomain';
 import { currentVersion } from '../../services/updateService';
 import { REPORTS_NAV } from './financeTabs';
 import { ConnectivityStatus } from './ConnectivityStatus';
@@ -80,7 +81,10 @@ export const Sidebar: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const unpaidInvoicesCount = invoices.filter((i) => i.payment_status !== 'paid').length;
+  /* Money still owed, not the denormalised `payment_status` — the same number
+     the ledger badge and the invoice register read, so a credit note that
+     clears an invoice drops it out of this count on its own. */
+  const unpaidInvoicesCount = invoices.filter((i) => invoiceBalanceDue(i) > 0).length;
 
   /**
    * `tone` drives the badge colour and is deliberately NOT decorative: a count

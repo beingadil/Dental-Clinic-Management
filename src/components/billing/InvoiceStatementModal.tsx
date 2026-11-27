@@ -1,6 +1,6 @@
 import { useTransientFlag } from '../common/useTransient';
 import { printCurrentDocument } from '../../utils/printDocument';
-import { invoiceBalanceDue } from '../../services/financeDomain';
+import { invoiceBalanceDue, invoiceSettlementStatus } from '../../services/financeDomain';
 import { buildInvoiceAccountPosition } from '../../services/invoiceAccount';
 import React, { useMemo, useState } from 'react';
 import { Invoice, DentalCase } from '../../types';
@@ -121,7 +121,7 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
         patient_name: caseData?.patient_name || 'Clinical Patient',
         case_type_name: invoice.case_type_name,
         amount: invoice.final_amount,
-        notes: `Printed invoice — Paid: PKR ${invoice.amount_paid.toLocaleString()} | Balance: PKR ${remainingBalance.toLocaleString()} | Status: ${invoice.payment_status}`
+        notes: `Printed invoice — Paid: PKR ${invoice.amount_paid.toLocaleString()} | Balance: PKR ${remainingBalance.toLocaleString()} | Status: ${invoiceSettlementStatus(invoice)}`
       });
     }
 
@@ -129,11 +129,14 @@ export const InvoiceStatementModal: React.FC<InvoiceStatementModalProps> = ({
     void printCurrentDocument();
   };
 
+  /* The note under the printed statement has to describe the balance printed
+     above it, so it follows the money rather than the stored status. */
+  const settlementStatus = invoiceSettlementStatus(invoice);
   const headerNote = useMemo(() => {
-    if (invoice.payment_status === 'paid') return 'Settled in full — thank you.';
-    if (invoice.payment_status === 'partial') return 'Partially settled — balance is due per terms.';
+    if (settlementStatus === 'paid') return 'Settled in full — thank you.';
+    if (settlementStatus === 'partial') return 'Partially settled — balance is due per terms.';
     return 'Payment is due per the agreed terms.';
-  }, [invoice.payment_status]);
+  }, [settlementStatus]);
 
   return (
     // The CARD is the print area (same pattern as the job slip and receipt

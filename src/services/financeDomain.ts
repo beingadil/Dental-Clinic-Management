@@ -59,6 +59,47 @@ export const invoiceBalanceDue = (invoice: {
     (invoice.final_amount || 0) - (invoice.amount_paid || 0) - (invoice.credit_notes_total || 0),
   );
 
+/**
+ * WHERE AN INVOICE STANDS — settled, partly received, or untouched.
+ *
+ * One rule, derived from the balance above, because this question is asked on
+ * the General Ledger badge, the invoice register, the printed invoice, the
+ * header's invoice pill, the sidebar's unpaid count and the reminder sweeps.
+ * Each of those used to answer it from the stored `payment_status`, which
+ * drifts the moment a credit note or a corrected payment moves the money
+ * without rewriting the denormalised column — so the ledger could call an
+ * invoice settled while the register beside it called the same invoice owed.
+ *
+ * Both the decision AND the words are shared: the ledger badge, the register
+ * chip and the printed invoice all say Paid / Partial / Unpaid, so an
+ * operator comparing a screen with the paper reads the same three words.
+ * (The printed invoice used to say "Full" and the register "Part paid" for
+ * the very same invoice.)
+ */
+export type InvoiceSettlementState = 'paid' | 'partial' | 'unpaid';
+
+/** The words every settlement surface prints for those three states. */
+export const SETTLEMENT_LABEL: Record<InvoiceSettlementState, 'Paid' | 'Partial' | 'Unpaid'> = {
+  paid: 'Paid',
+  partial: 'Partial',
+  unpaid: 'Unpaid',
+};
+
+/** The three-state decision, on a balance and the money received so far. */
+export const settlementStateFrom = (
+  balance: number,
+  paid: number,
+): InvoiceSettlementState => {
+  if (balance <= 0) return 'paid';
+  return paid > 0 ? 'partial' : 'unpaid';
+};
+
+export const invoiceSettlementStatus = (invoice: {
+  final_amount?: number;
+  amount_paid?: number;
+  credit_notes_total?: number;
+}): InvoiceSettlementState => settlementStateFrom(invoiceBalanceDue(invoice), invoice.amount_paid || 0);
+
 export const generateId = (prefix: string): string => {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
 };

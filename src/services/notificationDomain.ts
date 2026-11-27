@@ -1,5 +1,6 @@
 import type { AppNotification, DentalCase, Invoice } from '../types';
 import { getNowStamp } from '../utils/dateUtils';
+import { invoiceBalanceDue } from './financeDomain';
 
 /**
  * Notification domain — the single home for notification-building rules that
@@ -125,14 +126,17 @@ export const buildUnpaidInvoiceAlerts = (
 ): AppNotification[] =>
   (invoices || [])
     .filter((inv) => {
-      if (!inv || inv.payment_status === 'paid' || inv.status_v2 === 'voided' || !inv.due_date) return false;
+      /* Reminders chase a BALANCE, never the stored status: an invoice cleared
+         by a credit note has nothing to chase, and one whose status was never
+         updated still does. */
+      if (!inv || invoiceBalanceDue(inv) <= 0 || inv.status_v2 === 'voided' || !inv.due_date) return false;
       return cadence === undefined ? inv.due_date <= today : shouldRemind(cadence, inv.due_date, today);
     })
     .map((inv) => ({
       id: idOf(inv),
       type: 'unpaid_invoice' as const,
       title: `Payment Due — Invoice ${inv.invoice_number}`,
-      message: `${inv.final_amount.toLocaleString()} PKR outstanding for ${inv.patient_name || inv.lab_name}. Due ${inv.due_date}.`,
+      message: `${invoiceBalanceDue(inv).toLocaleString()} PKR outstanding for ${inv.patient_name || inv.lab_name}. Due ${inv.due_date}.`,
       invoice_id: inv.id,
       case_number: inv.case_number,
       lab_id: inv.lab_id,
@@ -203,14 +207,17 @@ export const buildEscalationAlerts = (
 
   return (invoices || [])
     .filter((inv) => {
-      if (!inv || inv.payment_status === 'paid' || inv.status_v2 === 'voided' || !inv.due_date) return false;
+      /* Reminders chase a BALANCE, never the stored status: an invoice cleared
+         by a credit note has nothing to chase, and one whose status was never
+         updated still does. */
+      if (!inv || invoiceBalanceDue(inv) <= 0 || inv.status_v2 === 'voided' || !inv.due_date) return false;
       return daysBetween(inv.due_date, today) >= threshold;
     })
     .map((inv) => {
       const overdueDays = daysBetween(inv.due_date, today);
       // Bucket 0 = first escalation; each further `step` days is another one.
       const bucket = Math.floor(overdueDays / step);
-      const outstanding = Math.max(0, (inv.final_amount || 0) - (inv.amount_paid || 0) - (inv.credit_notes_total || 0));
+      const outstanding = invoiceBalanceDue(inv);
       return {
         id: idOf(inv, bucket),
         type: 'escalation' as const,
