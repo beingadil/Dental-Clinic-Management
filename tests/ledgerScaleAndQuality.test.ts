@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { settlementAsOf } from '../src/services/ledgerSettlement';
 import { findLedgerIssues } from '../src/services/ledgerQuality';
 import { buildLedgerCsvRows } from '../src/services/ledgerCsv';
 import { buildLedgerReportPdf } from '../src/lib/ledgerPdf';
@@ -31,35 +30,6 @@ const summary: LedgerReportSummary = {
   closingBalance: 30000,
   transactionCount: 1,
 };
-
-describe('settlement as of a ledger row date', () => {
-  it('ignores a payment posted after the row', () => {
-    const result = settlementAsOf(
-      {
-        final_amount: 30000,
-        amount_paid: 30000,
-        credit_notes_total: 0,
-        payments: [{ payment_date: '2026-11-05', amount: 30000 }],
-      },
-      '2026-10-20',
-    );
-    expect(result.status).toBe('unpaid');
-    expect(result.balance).toBe(30000);
-  });
-
-  it('counts only credits dated on or before the row', () => {
-    const result = settlementAsOf(
-      { final_amount: 30000, amount_paid: 0, credit_notes_total: 10000 },
-      '2026-10-20',
-      [
-        { amount: 10000, clinicLevel: false, adjustment: { date: '2026-10-10' } },
-        { amount: 5000, clinicLevel: false, adjustment: { date: '2026-11-10' } },
-      ],
-    );
-    expect(result.status).toBe('partial');
-    expect(result.balance).toBe(20000);
-  });
-});
 
 describe('data-quality exceptions', () => {
   it('finds procedure, missing-case, total and opening-balance issues', () => {

@@ -169,14 +169,20 @@ describe('General Ledger preview: invoice settlement badge', () => {
 
   it('nets a credit note off the balance it labels', () => {
     // 30,000 billed, 4,000 credited, nothing received => 26,000 still owed.
+    // The label follows the shared rule (nothing received yet, so Unpaid) and
+    // the balance shows the credit already taken off, exactly as the invoice
+    // table and the printed invoice read it.
     renderLedger([mkInvoice({ credit_notes_total: 4000 })], [mkEntry()]);
-    expect(screen.getByText('Partial')).toBeTruthy();
-    expect(screen.getByTitle(/outstanding/i)).toBeTruthy();
+    expect(screen.getByText('Unpaid')).toBeTruthy();
+    expect(screen.getByTitle('Outstanding PKR 26,000')).toBeTruthy();
   });
 
-  it('does not let a later receipt settle an earlier ledger row', () => {
-    // The invoice is paid TODAY, but this row was posted before the receipt.
-    // Reading today's amount_paid into the row would backdate the settlement.
+  it('shows an invoice paid after the row was posted as Paid, not Unpaid', () => {
+    /* The row is dated the day the invoice was raised; the receipt lands two
+       weeks later. Replaying settlement to the row date reported a settled
+       invoice as unpaid with its whole value outstanding — the bug that made
+       a ledger of paid cases read as a clinic in arrears. The badge answers
+       "is this still owed?", so the later receipt settles it. */
     renderLedger(
       [mkInvoice({
         amount_paid: 30000,
@@ -185,9 +191,9 @@ describe('General Ledger preview: invoice settlement badge', () => {
       })],
       [mkEntry({ date: '2026-10-20' })],
     );
-    expect(screen.getByText('Unpaid')).toBeTruthy();
-    expect(screen.queryByText(/Paid on/)).toBeNull();
-    expect(screen.getByTitle(/As of Oct 20, 2026/i)).toBeTruthy();
+    expect(screen.getByText('Paid')).toBeTruthy();
+    expect(screen.queryByText('Unpaid')).toBeNull();
+    expect(screen.getByText('Paid on Nov 5, 2026')).toBeTruthy();
   });
 
   it('says nothing on a payment row', () => {

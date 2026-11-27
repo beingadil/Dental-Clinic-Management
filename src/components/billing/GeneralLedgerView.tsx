@@ -26,7 +26,7 @@ import { findLedgerIssues } from '../../services/ledgerQuality';
 import { buildLedgerCsvRows } from '../../services/ledgerCsv';
 import { saveCSV } from '../../services/csvExport';
 import { buildLedgerXlsx, saveLedgerXlsx } from '../../services/ledgerXlsx';
-import { settlementAsOf } from '../../services/ledgerSettlement';
+import { settlementOf } from '../../services/ledgerSettlement';
 import { CaseDetailModal } from '../cases/CaseDetailModal';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 import { receiptNumberOf } from '../../services/ledgerDomain';
@@ -276,10 +276,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
    * A Paid / Partial / Unpaid badge for an invoice ledger row, or null for
    * every other entry type.
    *
-   * The badge is as-of the row's business date, not today: a receipt posted in
-   * November cannot make an October row claim the invoice was already settled.
-   * Payments and attributed credit notes are replayed up to the row date; the
-   * stored status is ignored because it drifts after adjustments.
+   * The badge is the invoice's settlement NOW, from the money on file — the
+   * same reading the invoice table and the printed invoice use. It must not be
+   * replayed to the row's own date: a ledger row is dated the day the invoice
+   * was RAISED, so an as-of-a-week-ago reading labels every settled invoice
+   * "Unpaid" with its full value outstanding. The stored `payment_status` is
+   * still ignored, because it drifts after a credit note or a corrected
+   * payment while the balance does not.
    *
    * Nothing renders for payment rows: a payment IS the act of settling, so
    * labelling it "Paid" would be circular.
@@ -289,7 +292,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
     const inv = invoiceForRow(entry);
     if (!inv) return null;
 
-    const settlement = settlementAsOf(inv, entry.date, adjustmentsByInvoice.get(inv.id) || []);
+    const settlement = settlementOf(inv);
     const balance = settlement.balance;
     const label = settlement.status === 'paid' ? 'Paid' : settlement.status === 'partial' ? 'Partial' : 'Unpaid';
     const tone =
@@ -300,8 +303,8 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
           : 'bg-rose-50 text-rose-700 border-rose-200';
     const title =
       balance <= 0
-        ? `Settled in full as of ${formatDate(entry.date)}${settlement.credited > 0 ? ' (net of credit notes)' : ''}`
-        : `As of ${formatDate(entry.date)}: outstanding ${formatPKR(balance)}`;
+        ? `Settled in full${settlement.credited > 0 ? ' (net of credit notes)' : ''}`
+        : `Outstanding ${formatPKR(balance)}`;
 
     const paidOn = balance <= 0 ? settlement.paidOn : undefined;
 
@@ -410,7 +413,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
       if (row.type !== 'invoice') continue;
       const inv = invoiceForRow(row);
       if (!inv) continue;
-      const settlement = settlementAsOf(inv, row.date, adjustmentsByInvoice.get(inv.id) || []);
+      const settlement = settlementOf(inv);
       settlementByRow[row.id] = settlement.status === 'paid'
         ? `Paid${settlement.paidOn ? ` on ${settlement.paidOn}` : ''}`
         : settlement.status === 'partial'

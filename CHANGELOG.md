@@ -1,3 +1,22 @@
+## [2.34.7] - 2026-11-27
+
+### Fixed
+- **General Ledger showed paid invoices as Unpaid.** The ledger release added
+  an "as of the row date" settlement badge: each invoice row replayed only the
+  payments dated on or before that row. An invoice row is dated the day the
+  invoice was RAISED, so a case paid a week later was labelled **Unpaid** with
+  its whole value outstanding - a ledger of settled invoices read as a clinic
+  in arrears, and the row tooltip and the CSV / Excel Status column repeated
+  the same claim. The badge now reports the invoice's actual settlement from
+  the money on file; only the stored `payment_status` is ignored, because that
+  is the field that drifts after a credit note. The date-replay walk is
+  removed so it cannot be wired back in.
+- **An invoice cleared by a credit note could read as fully outstanding.**
+  When every credit on a row was a clinic-level document, the settlement walk
+  returned zero credited and ignored the invoice's stored credit total. The
+  stored total is the fallback now, and the larger of the stored and
+  attributed figures is used, so a missing attribution can never invent debt.
+
 ## [2.34.2] - 2026-11-26
 
 ### Fixed
