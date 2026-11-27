@@ -386,21 +386,32 @@ export const buildLedgerEntries = (input: {
       groups.get(key)!.push(ev);
     }
     for (const slices of groups.values()) {
-      if (slices.length === 1) {
-        const ev = slices[0];
-        // clean stash fields
-        delete (ev as any)._invNum;
-        delete (ev as any)._methodStr;
-        delete (ev as any)._isAdvanceAlloc;
-        delete (ev as any)._reference_number_raw;
-        mergedPaymentEvents.push(ev);
+      const invNums = slices.map((s) => (s as any)._invNum).filter(Boolean);
+      const distinctInvoices = new Set(invNums);
+      // A multi-invoice voucher is one that was recorded with multiple
+      // allocations (its slice payment numbers carry a -1/-2 suffix). Such a
+      // voucher always merges, even if invoice numbers are missing on slices.
+      const isMultiInvoiceVoucher = slices.some(
+        (s) => receiptNumberOf((s as any).reference_number || s.reference_number) !== ((s as any).reference_number || s.reference_number)
+      );
+      // Only merge when a single voucher actually covers MULTIPLE distinct
+      // invoices (or is a recorded multi-invoice voucher). Single-invoice
+      // payments keep one entry per slice, so a payment recorded against one
+      // invoice is never collapsed with others.
+      if (slices.length === 1 || (distinctInvoices.size <= 1 && !isMultiInvoiceVoucher)) {
+        for (const ev of slices) {
+          delete (ev as any)._invNum;
+          delete (ev as any)._methodStr;
+          delete (ev as any)._isAdvanceAlloc;
+          delete (ev as any)._reference_number_raw;
+          mergedPaymentEvents.push(ev);
+        }
         continue;
       }
       // merge
       const first = slices[0];
       const isAdvanceAlloc = (first as any)._isAdvanceAlloc;
       const methodStr = (first as any)._methodStr;
-      const invNums = slices.map((s) => (s as any)._invNum).filter(Boolean);
       const totalCredit = slices.reduce((sum, s) => sum + (s.credit || 0), 0);
       const totalAttachments = slices.reduce((sum, s) => sum + (s.attachments_count || 0), 0);
       const mergedAttachments = slices.flatMap((s) => s.attachments || []);
