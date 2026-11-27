@@ -194,6 +194,7 @@ export interface BuildLedgerReportInput {
     credit?: number;
     running_balance?: number;
     recorded_by?: string;
+    invoiceDetails?: { invoiceNumber?: string; patient?: string; procedure?: string; amount?: number }[];
   }[];
   cases?: LedgerCaseInfo[];
   /** Map invoice voucher number → case number, to recover related invoice + case. */
@@ -338,11 +339,26 @@ export function buildLedgerReport(input: BuildLedgerReportInput): { rows: Ledger
       ].filter(Boolean).join(' | ');
       narration = [`${voucher}`, casePart, bodyNarration].filter(Boolean).join(' | ');
     } else if (type === 'payment') {
+      const details = e.invoiceDetails || [];
+      const against =
+        details.length > 1
+          ? `Against ${details
+              .map(
+                (d) =>
+                  `${d.invoiceNumber || ''}${
+                    d.patient || d.procedure ? ` (${[d.patient, d.procedure].filter(Boolean).join(', ')})` : ''
+                  }`
+              )
+              .join(', ')}`
+          : allInvoiceNumbers.length
+          ? `Against ${allInvoiceNumbers.join(', ')}`
+          : '';
+      const multiInvoice = details.length > 1;
       bodyNarration = [
-        allInvoiceNumbers.length ? `Against ${allInvoiceNumbers.join(', ')}` : '',
+        against,
         typeLabel,
-        patientPart,
-        procedure ? `Procedure: ${procedure}` : '',
+        multiInvoice ? '' : patientPart,
+        multiInvoice ? '' : procedure ? `Procedure: ${procedure}` : '',
         paymentNote || '',
       ].filter(Boolean).join(' | ');
       narration = [`${voucher}`, casePart, bodyNarration].filter(Boolean).join(' | ');

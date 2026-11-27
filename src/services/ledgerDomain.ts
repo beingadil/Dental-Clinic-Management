@@ -267,6 +267,7 @@ export const buildLedgerEntries = (input: {
       attachments?: PaymentAttachment[];
       notes?: string;
       recorded_by?: string;
+      invoiceDetails?: { invoiceNumber?: string; patient?: string; procedure?: string; amount?: number }[];
     };
 
     const rawEvents: RawEvent[] = [];
@@ -365,11 +366,13 @@ export const buildLedgerEntries = (input: {
           attachments: p.attachments || [],
           notes: p.notes || (p.reference_number ? `Ref: ${p.reference_number}` : undefined),
           recorded_by: p.recorded_by,
-          /* Stash the invoice number for narration merging. */
+          /* Stash the invoice context for narration merging. */
           _invNum: invNum,
           _methodStr: methodStr,
           _isAdvanceAlloc: isAdvanceAlloc,
           _reference_number_raw: p.reference_number,
+          _patient: inv.patient_name || '',
+          _procedure: inv.case_type_name || '',
         } as any);
       });
     });
@@ -438,6 +441,12 @@ export const buildLedgerEntries = (input: {
         attachments: mergedAttachments,
         notes: mergedNotes,
         recorded_by: first.recorded_by,
+        invoiceDetails: slices.map((s) => ({
+          invoiceNumber: (s as any)._invNum,
+          patient: (s as any)._patient || undefined,
+          procedure: (s as any)._procedure || undefined,
+          amount: s.credit || 0,
+        })),
       };
       mergedPaymentEvents.push(merged);
     }
@@ -537,7 +546,8 @@ export const buildLedgerEntries = (input: {
         attachments_count: evt.attachments_count,
         attachments: evt.attachments,
         notes: evt.notes,
-        recorded_by: evt.recorded_by
+        recorded_by: evt.recorded_by,
+        invoiceDetails: evt.invoiceDetails,
       };
     });
 

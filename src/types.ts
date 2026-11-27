@@ -438,6 +438,8 @@ export interface LedgerEntry {
   notes?: string;
   recorded_by?: string;
   journal_id?: string;
+  /** For a merged multi-invoice voucher: each invoice with its own context. */
+  invoiceDetails?: { invoiceNumber?: string; patient?: string; procedure?: string; amount?: number }[];
 }
 
 export interface LabFinancialSummary {
