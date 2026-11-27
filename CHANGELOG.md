@@ -1,3 +1,34 @@
+## [2.34.8] - 2026-11-27
+
+### Fixed
+- **Every screen now reads settlement from the money, not the stored status.**
+  The sidebar's unpaid badge, the header's invoice pill, the dashboard's
+  overdue count and amount, the unpaid-reminder and escalation sweeps, the
+  printed statement's note, the invoice CSV's Status column and the clinic
+  summary all keyed off `payment_status`, which drifts once a credit note or a
+  corrected payment moves the balance. They now share
+  `invoiceSettlementStatus()` / `invoiceBalanceDue()`, so an invoice cleared by
+  a credit note stops reading as owed everywhere, not only on the General
+  Ledger.
+- **Reminder text quoted the full invoice instead of the balance.** A part-paid
+  invoice's reminder said the whole amount was outstanding.
+
+### Changed
+- **One status vocabulary.** The register said "Part paid" and the printed
+  invoice said "Full" where the ledger said "Partial" and "Paid" for the same
+  invoice. All three now print Paid / Partial / Unpaid from the single
+  `SETTLEMENT_LABEL` map in `financeDomain`, and the three duplicate unions
+  (`SettlementStatus`, the two `InvoiceStatus` aliases) are gone.
+- `src/services/invoiceBadge.ts` is deleted: no screen imported it, and its
+  only consumer after this change would have been its own test.
+
+### Added
+- **`invoiceStatusAgreement.test.tsx`** renders one invoice per state (unpaid,
+  partly received and credited, settled) through the General Ledger badge, the
+  invoice register row and the printed invoice, and fails unless all three
+  report the same Paid / Partial / Unpaid label and the register shows the same
+  remaining balance.
+
 ## [2.34.7] - 2026-11-27
 
 ### Fixed

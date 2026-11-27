@@ -203,6 +203,16 @@ For invoice rows only: Paid / Partial / Unpaid, derived from
 `invoiceBalanceDue(invoice)` (not the stored `payment_status`, which drifts
 after credit notes). Plus "Paid on {date}" when settled.
 
+The decision AND the words come from one place — `invoiceSettlementStatus()`
+and `SETTLEMENT_LABEL` in `src/services/financeDomain.ts` — and every other
+surface reads them: the invoice register chip, the printed invoice's Status
+column, the header's invoice pill, the sidebar's unpaid count, the dashboard's
+overdue figures, the reminder and escalation sweeps, the invoice CSV and the
+clinic summary. That makes "the ledger, the register and the paper agree" a
+property of the code rather than a habit: `tests/components/invoiceStatusAgreement.test.tsx`
+pins one invoice per state across the three of them. An invoice's status is
+never read off the stored column anywhere in the UI.
+
 ### 4.4 Date filtering
 
 - Default window = today (startDate = endDate = today).
