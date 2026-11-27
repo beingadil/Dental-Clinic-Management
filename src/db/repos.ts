@@ -1186,6 +1186,7 @@ function invoiceToDomain(row: InvoiceRow, db: Db): any {
   ).map((p) => ({
     ...p,
     attachments: db.all('SELECT * FROM payment_attachments WHERE payment_id = ? ORDER BY uploaded_at', [p.id]),
+    allocations: db.all('SELECT * FROM payment_allocations WHERE source_id = ? ORDER BY allocated_at', [p.id]),
   }));
   return {
     id: row.id,
