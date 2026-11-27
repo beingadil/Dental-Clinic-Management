@@ -1,3 +1,31 @@
+## [2.35.0] - 2026-11-27
+
+### Added
+- **Partners & Commission reporting** (new sub-tabs in Reports & Statements).
+  Create partners, assign clinics to one partner each (with a searchable clinic
+  selector), and choose a per-person or per-clinic commission rate.
+  - **Commission** tab: month-end cutoff day (3–8) defines the period, with
+    per-invoice, per-partner subtotals and a period total; Excel export included.
+  - **Daily Lab Report** gained a person filter; grouping is DB-backed
+    (migration 032) so it survives backup/restore.
+- **Pagination** on the Daily Lab Report production sheet, clinic list and
+  clinic drill-down; the drill-down is now a full-page dialog.
+
+### Fixed
+- **"All Time" hid archived and undated cases** in the Daily Lab Report.
+  Archived cases are included by default again, and cases without a received
+  date are included on an unbounded window.
+- **General Ledger collapsed all payment credits** into one entry. Only
+  vouchers that actually cover multiple invoices now merge into one entry;
+  single-invoice payments stay separate. Merged vouchers list every invoice in
+  the narration (with each invoice's patient and procedure) and the receipt
+  shows the full amount with all adjusted invoices.
+- **Payment receipts lost their allocation trail** after a database reload, so
+  a multi-invoice voucher displayed only one invoice. Allocations are loaded
+  with each payment again, and the receipt reconstructs the voucher-level
+  payment from its slices.
+- **WCAG contrast audit** failed on a rose hover pair; corrected the ink.
+
 ## [2.34.8] - 2026-11-27
 
 ### Fixed
