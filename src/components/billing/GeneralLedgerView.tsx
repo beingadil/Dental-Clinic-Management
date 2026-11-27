@@ -98,20 +98,45 @@ export const GeneralLedgerView: React.FC<GeneralLedgerViewProps> = ({ lockedClin
      reference_id on the ledger entry is the embedded payment's id. */
   const findVoucher = (entry: LedgerReportRow): { payment: PaymentRecord; invoice?: Invoice } | null => {
     if (entry.type !== 'payment' && entry.type !== 'advance_allocation') return null;
-    // Prefer a slice that carries the full allocation trail (the primary slice
-    // of a multi-invoice voucher), so the receipt lists every invoice paid.
-    let fallback: { payment: PaymentRecord; invoice?: Invoice } | null = null;
+    const base = receiptNumberOf(entry.voucherNumber || '');
+    // A merged multi-invoice entry points at one slice. Gather EVERY slice of
+    // the same voucher so the receipt shows the whole payment, not a fragment.
+    const slices: { payment: PaymentRecord; invoice?: Invoice }[] = [];
     for (const inv of invoices || []) {
-      const hit = (inv.payments || []).find(
-        (p) => p.id === entry.referenceId || p.payment_number === entry.voucherNumber,
-      );
-      if (hit) {
-        const candidate = { payment: hit, invoice: inv };
-        if ((hit.allocations?.length ?? 0) > 0) return candidate;
-        if (!fallback) fallback = candidate;
+      for (const p of inv.payments || []) {
+        const pBase = receiptNumberOf(p.payment_number || '');
+        if (p.id === entry.referenceId || (!!base && pBase === base)) {
+          slices.push({ payment: p, invoice: inv });
+        }
       }
     }
-    return fallback;
+    if (!slices.length) return null;
+    const primary =
+      slices.find((s) => (s.payment.allocations?.length ?? 0) > 0) || slices[0];
+    if (slices.length === 1) return primary;
+
+    // Build a voucher-level payment: total received + every invoice it paid.
+    const total = slices.reduce((sum, s) => sum + (s.payment.amount || 0), 0);
+    const allocations = slices.map((s) => ({
+      id: `alloc-${s.payment.id}`,
+      source_type: 'payment' as const,
+      source_id: primary.payment.id,
+      source_ref: base,
+      invoice_id: s.invoice?.id || s.payment.invoice_id || '',
+      invoice_number: s.invoice?.invoice_number || s.payment.invoice_number || '',
+      amount: s.payment.amount || 0,
+      allocated_at: s.payment.created_at || s.payment.payment_date || '',
+      allocated_by: s.payment.recorded_by || '',
+    }));
+    const payment: PaymentRecord = {
+      ...primary.payment,
+      payment_number: base,
+      receipt_number: primary.payment.receipt_number || base,
+      invoice_number: allocations.length > 1 ? 'Multi-Invoice' : primary.payment.invoice_number,
+      amount: total,
+      allocations,
+    };
+    return { payment, invoice: primary.invoice };
   };
 
   /* The voucher a row carries — one row per posting now, so a payment row maps

@@ -290,6 +290,11 @@ export function buildLedgerReport(input: BuildLedgerReportInput): { rows: Ledger
         if (m) relatedInvoiceNumber = m[0].toUpperCase();
       }
     }
+    /* A merged multi-invoice voucher names every invoice it paid in the
+       description; keep them all in the narration, not just the first. */
+    const allInvoiceNumbers = Array.from(
+      new Set((e.description || '').toUpperCase().match(/INV-[A-Za-z0-9-]+/g) || [])
+    );
 
     /* payment allocation */
     const allocations = input.paymentAllocations?.get(voucherNumber) || undefined;
@@ -334,7 +339,7 @@ export function buildLedgerReport(input: BuildLedgerReportInput): { rows: Ledger
       narration = [`${voucher}`, casePart, bodyNarration].filter(Boolean).join(' | ');
     } else if (type === 'payment') {
       bodyNarration = [
-        relatedInvoiceNumber ? `Against ${relatedInvoiceNumber}` : '',
+        allInvoiceNumbers.length ? `Against ${allInvoiceNumbers.join(', ')}` : '',
         typeLabel,
         patientPart,
         procedure ? `Procedure: ${procedure}` : '',
